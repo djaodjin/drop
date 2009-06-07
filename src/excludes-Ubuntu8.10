@@ -1,0 +1,9 @@
+./cdrom
+./dev
+./home
+./lost+found
+./media
+./mnt
+./proc
+./sys
+./tmp

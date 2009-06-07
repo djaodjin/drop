@@ -1,0 +1,8 @@
+<?xml version="1.0" ?>
+<book>
+  <section id="drop">
+    <sccs name="git">
+      <url>ssh://codespin.is-a-geek.com/home/codespin/reps/drop/.git</url>
+    </sccs>
+  </section>
+</book>
