@@ -1,5 +1,30 @@
 #!/usr/bin/env python
 #
+# Copyright (c) 2009, Sebastien Mirolo
+#   All rights reserved.
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of codespin nor the
+#       names of its contributors may be used to endorse or promote products
+#       derived from this software without specific prior written permission.
+
+#   THIS SOFTWARE IS PROVIDED BY Sebastien Mirolo ''AS IS'' AND ANY
+#   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#   DISCLAIMED. IN NO EVENT SHALL Sebastien Mirolo BE LIABLE FOR ANY
+#   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+#   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+#   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+#   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 # This script implements workspace management.
 #
 # The workspace manager script is used to setup a local machine
@@ -419,6 +444,15 @@ class Project:
         self.control = None
         self.package = None
 
+class Variable:
+    
+    def __init__(self,name,descr=None):
+        self.name = name
+        self.descr = descr
+        self.base = 
+        self.value =
+        self.default = 
+
 class UpdateHandler(dcontext.PdbHandler):
     '''Aggregate dependencies for a set of projects only when prerequisites
     can not be found on the system.'''
@@ -527,6 +561,64 @@ def pubIndex(args):
     index(context.dbPathname(),context.environ['topSrc'])
     if not os.path.exists(context.localDbPathname()):
         shutil.copy(context.dbPathname(),context.localDbPathname())
+
+
+def pubInit(args):
+    '''init     Create a .buildrc config file in the current directory 
+                and bootstrap a workspace.
+    '''
+    prefix = Variable('prefix',
+                      'Root of the tree where executables, include files and libraries are installed','/usr/local')
+    dirs = [ Variable('buildTop',
+                      'Root of the tree where intermediate files are created.'), 
+             Variable('srcTop',
+                      'Root of the tree where the source code under revision control lives on the local machine.'),
+             Variable('binDir',
+                      'Root of the tree where executables are installed',
+                      prefix),
+             Variable('includeDir',
+                      'Root of the tree where include files are installed',
+                      prefix),
+             Variable('libDir',
+                      'Root of the tree where libraries are installed',
+                      prefix),]
+    for d in dirs:
+        print d.name
+        print d.descr
+        # compute the default leaf directory from the variable name 
+        leafDir = d.name
+        for last in range(0,len(d.name)):
+            if d.name[last] in ascii_uppercase:
+                leafDir = d.name[:last]
+                break
+        dir = d
+        default = '*' + d.base.name + '*/' + leafDir
+        if not d.base.value:
+            print d.name + ' is based on *' + d.base.name + '* by default.'
+            print 'Would you like to ... '
+            print '1) Enter *' + d.name + '* directly ?'
+            print '2) Enter *' + d.base.name + '*, *' + d.name \
+                + '* will defaults to ' + default + ' ?'
+            choice = raw_input("Choice [2]: ")
+            if choice == '2':
+                dir = d.base
+                default = dir.default
+        else:
+            default = os.path.join(d.base.value,leafDir)
+
+        dirname = raw_input("Enter a directory name for " \
+                                + dir.name + "[" + default + "]: ")
+        dirname = os.normpath(os.path.abspath(dirname))
+        dir.value = dirname
+        if not os.path.exists(dirname):
+            print dirname + ' does not exist.'
+            yesNo = raw_input("Would you like to create it [Y/n]: ")
+            if yesNo = 'Y' or yesNo == 'y':
+                os.makedirs(dirname)
+        if dir != d:
+            d.value = os.path.join(d.base.value,leafDir)
+        # \todo add *d* to .buildrc 
+
 
 def pubInstall(args):
     '''install    Install new packages

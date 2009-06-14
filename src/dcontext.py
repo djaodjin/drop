@@ -1,5 +1,30 @@
 #!/usr/bin/env python
 #
+# Copyright (c) 2009, Sebastien Mirolo
+#   All rights reserved.
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of codespin nor the
+#       names of its contributors may be used to endorse or promote products
+#       derived from this software without specific prior written permission.
+
+#   THIS SOFTWARE IS PROVIDED BY Sebastien Mirolo ''AS IS'' AND ANY
+#   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#   DISCLAIMED. IN NO EVENT SHALL Sebastien Mirolo BE LIABLE FOR ANY
+#   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+#   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+#   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+#   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 # Common infrastructure for accessing workspace information
 
 import re, os, subprocess, sys
@@ -215,23 +240,51 @@ def versionCandidates(line):
     return candidates
 
 
+class Variable:
+    
+    def __init__(self,name,descr=None,base=None,default=None):
+        self.base = base
+        self.name = name
+        self.descr = descr
+        self.default = default
+        self.value = None
+
+
 # Find the environment configuration file, then initialize srcDir and objDir.
 # For each project, srcDir points to the top of the project hierarchy where
 # version controlled sources can be found and objDir points to the top of
 # the project hierarchy where intermediate files are created.
 class DropContext:
 
+    configName = '.buildrc'
+
     def __init__(self):
-        configName = '.buildrc'
-        self.cwdProject, self.configFilename = searchBackToRoot(configName)
+        prefix = Variable('prefix',
+                          'Root of the tree where executables, include files and libraries are installed',default='/usr/local')
+        self.environ = { 'buildTop': Variable('buildTop',
+             'Root of the tree where intermediate files are created.'), 
+                         'srcTop' : Variable('srcTop',
+             'Root of the tree where the source code under revision control lives on the local machine.'),
+                         'binDir': Variable('binDir',
+             'Root of the tree where executables are installed',
+                                            prefix),
+                         'includeDir': Variable('includeDir',
+             'Root of the tree where include files are installed',
+                                                prefix),
+                         'libDir': Variable('libDir',
+             'Root of the tree where libraries are installed',
+                                            prefix) }
+
+        self.cwdProject, self.configFilename = searchBackToRoot(self.configName)
         # -- Read the environment variables set in the config file.
-        self.environ = {}
         configFile = open(self.configFilename)
         line = configFile.readline()
         while line != '':
             look = re.match('(\S+)\s*=\s*(\S+)',line)
             if look != None:
-                self.environ[look.group(1)] = look.group(2)
+                if not look.group(1) in self.environ:
+                    self.environ[look.group(1)] = Variable(look.group(1),'no description')
+                self.environ[look.group(1)].value = look.group(2)
             line = configFile.readline()
         configFile.close()        
 
@@ -245,10 +298,12 @@ class DropContext:
         return dgen.topological()
 
     def dbPathname(self):
-        return os.path.join(self.environ['topSrc'],'drop','data','db.xml')
+        return os.path.join(self.environ['topSrc'].value,
+                            'drop','data','db.xml')
 
     def localDbPathname(self):
-        return os.path.join(self.environ['topSrc'],'drop','data','local.xml')
+        return os.path.join(self.environ['topSrc'].value,
+                            'drop','data','local.xml')
 
     # Functions that deal with linking installed dependencies
     # ---------------------------------------------------------
@@ -259,15 +314,16 @@ class DropContext:
                 libname, libext = os.path.splitext(os.path.basename(path))
                 libname = libname.split('-')[0]
                 libname = libname + libext
-                install = os.path.join(self.environ[installName],libname)
+                install = os.path.join(self.environ[installName].value,
+                                       libname)
             elif installName == 'includeDir':
                 dirname, header = os.path.split(path)
                 if dirname != 'include':
-                    install = os.path.join(self.environ[installName],
+                    install = os.path.join(self.environ[installName].value,
                                            os.path.basename(dirname))
                     path = os.path.dirname(path)
             if not install:
-                install = os.path.join(self.environ[installName],
+                install = os.path.join(self.environ[installName].value,
                                        os.path.basename(path))
             if not os.path.exists(os.path.dirname(install)):
                 os.makedirs(os.path.dirname(install))
@@ -277,7 +333,7 @@ class DropContext:
                 os.symlink(path,install)
 
     def objDir(self,name):
-        return os.path.join(self.environ['buildTop'],name)
+        return os.path.join(self.environ['buildTop'].value,name)
 
     def repositories(self, recurse=False):
         if recurse:
@@ -289,8 +345,17 @@ class DropContext:
             return results
         return [ self.cwdProject ]
 
+    def save(self):
+        '''Write the config back to a file.'''
+        configFile = open(self.configFilename,'w')
+        keys = self.environ.keys.sort()
+        configFile.write('# configuration for development workspace\n\n')
+        for key in keys:
+            configFile.write(key + '=' + self.environ[key].value + '\n')
+        configFile.close()
+
     def srcDir(self,name):
-        return os.path.join(self.environ['topSrc'],name)
+        return os.path.join(self.environ['topSrc'].value,name)
 
 
 class PdbHandler:
@@ -567,7 +632,7 @@ if __name__ == '__main__':
             dir, pathname = searchBackToRoot(sys.argv[1],
                    os.path.dirname(context.configFilename))
         except IOError:
-            pathname = os.path.join(context.environ['topSrc'],'drop',
+            pathname = os.path.join(context.environ['topSrc'].value,'drop',
                                'src',sys.argv[1])
         print pathname
 
