@@ -444,15 +444,6 @@ class Project:
         self.control = None
         self.package = None
 
-class Variable:
-    
-    def __init__(self,name,descr=None):
-        self.name = name
-        self.descr = descr
-        self.base = 
-        self.value =
-        self.default = 
-
 class UpdateHandler(dcontext.PdbHandler):
     '''Aggregate dependencies for a set of projects only when prerequisites
     can not be found on the system.'''
@@ -558,7 +549,7 @@ have  the choice to install them from binary package or not at all.''',
 def pubIndex(args):
     '''index    Generate an index database out of specification files
     '''
-    index(context.dbPathname(),context.environ['topSrc'])
+    index(context.dbPathname(),context.environ['topSrc'].value)
     if not os.path.exists(context.localDbPathname()):
         shutil.copy(context.dbPathname(),context.localDbPathname())
 
@@ -567,53 +558,44 @@ def pubInit(args):
     '''init     Create a .buildrc config file in the current directory 
                 and bootstrap a workspace.
     '''
-    prefix = Variable('prefix',
-                      'Root of the tree where executables, include files and libraries are installed','/usr/local')
-    dirs = [ Variable('buildTop',
-                      'Root of the tree where intermediate files are created.'), 
-             Variable('srcTop',
-                      'Root of the tree where the source code under revision control lives on the local machine.'),
-             Variable('binDir',
-                      'Root of the tree where executables are installed',
-                      prefix),
-             Variable('includeDir',
-                      'Root of the tree where include files are installed',
-                      prefix),
-             Variable('libDir',
-                      'Root of the tree where libraries are installed',
-                      prefix),]
-    for d in dirs:
-        print d.name
-        print d.descr
+    for d in dcontext.environ:
+        print d.name + ': ' +  d.descr
         # compute the default leaf directory from the variable name 
         leafDir = d.name
         for last in range(0,len(d.name)):
-            if d.name[last] in ascii_uppercase:
+            if d.name[last] in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
                 leafDir = d.name[:last]
                 break
         dir = d
-        default = '*' + d.base.name + '*/' + leafDir
-        if not d.base.value:
-            print d.name + ' is based on *' + d.base.name + '* by default.'
-            print 'Would you like to ... '
-            print '1) Enter *' + d.name + '* directly ?'
-            print '2) Enter *' + d.base.name + '*, *' + d.name \
-                + '* will defaults to ' + default + ' ?'
-            choice = raw_input("Choice [2]: ")
-            if choice == '2':
-                dir = d.base
-                default = dir.default
-        else:
-            default = os.path.join(d.base.value,leafDir)
+        default = d.default
+        if not default:
+            if d.base:
+                default = '*' + d.base.name + '*/' + leafDir
+                if not d.base.value:
+                    print d.name + ' is based on *' + d.base.name + '* by default.'
+                    print 'Would you like to ... '
+                    print '1) Enter *' + d.name + '* directly ?'
+                    print '2) Enter *' + d.base.name + '*, *' + d.name \
+                        + '* will defaults to ' + default + ' ?'
+                    choice = raw_input("Choice [2]: ")
+                    if choice == '' or choice == '2':
+                        dir = d.base
+                        default = dir.default
+                else:
+                    default = os.path.join(d.base.value,leafDir)
+            else:
+                default = os.getcwd()
 
-        dirname = raw_input("Enter a directory name for " \
-                                + dir.name + "[" + default + "]: ")
-        dirname = os.normpath(os.path.abspath(dirname))
+        dirname = raw_input("Enter a directory name for " + dir.name \
+                                + " [" + default + "]: ")
+        if dirname == '':
+            dirname = default
+        dirname = os.path.normpath(os.path.abspath(dirname))
         dir.value = dirname
         if not os.path.exists(dirname):
             print dirname + ' does not exist.'
             yesNo = raw_input("Would you like to create it [Y/n]: ")
-            if yesNo = 'Y' or yesNo == 'y':
+            if yesNo == 'Y' or yesNo == 'y':
                 os.makedirs(dirname)
         if dir != d:
             d.value = os.path.join(d.base.value,leafDir)
