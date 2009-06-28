@@ -30,7 +30,7 @@
 # it very important to predetermine the most recent copy.
 
 import datetime, re, os, sys 
-import dcontext
+import dws
 
 def findMostRecent(dirname):
     '''Returns the filename and timestamp for the most recent file in the hierarchy
@@ -170,12 +170,12 @@ if __name__ == '__main__':
     rsyncArgs = "-rvtuRh --modify-window=1 --delete --exclude=build/ --exclude='*~' " \
                 + ' '.join(replicateTops) \
                 + ' ' + replicatePath
-    dcontext.shellCommand("rsync -n " + rsyncArgs)
+    dws.shellCommand("rsync -n " + rsyncArgs)
     answer = 'Yes'
     if not '--force' in sys.argv:
         answer = raw_input("Should we proceed with the sync[(Y)es/(N)o] ?")
     if answer.capitalize().startswith('Y'):
-        dcontext.shellCommand("rsync " + rsyncArgs)
-        dcontext.shellCommand("touch " + os.path.join(firstReplicatePath,'.dsync') \
+        dws.shellCommand("rsync " + rsyncArgs)
+        dws.shellCommand("touch " + os.path.join(firstReplicatePath,'.dsync') \
                               + " " + os.path.join(secondReplicatePath,'.dsync'))
         

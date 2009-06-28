@@ -1,0 +1,19 @@
+<h1>Introduction</h1>
+<p>
+The time of centralized computers and teletype terminals is long gone. Today, each developper has his own machine that he carefully setup to his own taste. Any policy that intents to keep engineers productive needs to account for a variety of <a href="glossary#localMachine">local machines</a>. Mass communication, either through public speeches, books, TV broadcasts, etc., has proven through the ages to be the most effective way to distribute ideas and coordinate human beings.It will also be the main purpose of a <a href="glossary#remoteMachine">remote machine</a>, running a <a href="glossary#remoteSite">remote site</a>.
+</p>
+<p>
+Very many of the brightest engineers I know have switched to a laptop as their primary development systems. They also work in different timezone even when physically in the same city. To avoid severely impacting productivity, once more, the system should address intermitent network connectivity and limited live communications.
+</p>
+
+<h1>Communication Platform</h1>
+<p>
+The machine on which the communication infrastructure (website, repository, etc.) can either be loaned as a service, installed on a rented virtual server, or built on an in-house machine.
+</p>
+<p>
+In either case, no technology can provide turn-key solutions for <a href="doc/access">access control</a> and <a href="doc/integrity">data integrity</a>. These are area that are highly dependent on the software business you are building and tools and policies beneficial for a project might not always be appropriate for another.</p>
+
+<h1>Building Code</h1>
+<p>
+Most projects today are not started out of the vacuum but instead rely heavily on third-party projects and source code. Unless those dependencies are carefuly managed, it quickly becomes a nightmare to substain effort on your own project instead of delving into troubles linked to installing third-party <a href="doc/packages">packages</a> on development machines.
+</p>

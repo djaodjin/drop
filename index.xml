@@ -2,7 +2,7 @@
 <book>
   <section id="drop">
     <sccs name="git">
-      <url>ssh://codespin.is-a-geek.com/home/codespin/reps/drop/.git</url>
+      <url>ssh://codespin.is-a-geek.com:/var/codespin/reps/drop</url>
     </sccs>
   </section>
 </book>

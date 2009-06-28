@@ -30,7 +30,7 @@
 # Second, this script will remove files in the current directory based
 # on a specified aging policy.
 
-import datetime, dcontext, os, sys
+import datetime, dws, os, sys
 
 doNotExecute = True
 

@@ -31,9 +31,11 @@ installDirs 	:=	install -d
 installFiles	:=	install -m 644
 installExecs	:=	install -m 755
 
-srcDir		?=	$(subst $(dir $(shell dcontext)),$(topSrc)/,$(shell pwd))
+srcDir		?=	$(subst $(dir $(shell dws context)),\
+	                      $(srcTop)/,$(shell pwd))
 
-includes	:=	$(wildcard $(srcDir)/include/*.hh $(srcDir)/include/*.tcc)
+includes	:=	$(wildcard $(srcDir)/include/*.hh \
+	                           $(srcDir)/include/*.tcc)
 
 CXXFLAGS	:=	-g -MMD
 CPPFLAGS	+=	-I$(srcDir)/include -I$(includeDir)

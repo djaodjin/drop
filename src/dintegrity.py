@@ -40,11 +40,11 @@
 
 
 
-import dcontext, dstamp, re, os, sys
+import dws, dstamp, re, os, sys
 
 if __name__ == '__main__':
     try:
-        context = dcontext.DropContext()
+        context = dws.DropContext()
 
         logDir = context.environ['logDir']
         backupDir = context.environ['backupDir']
@@ -66,17 +66,17 @@ if __name__ == '__main__':
 
         os.chdir(logDir)
         fingerPrintCmd = "mtree -c -K sha1digest "
-        dcontext.shellCommand(fingerPrintCmd + " -p / " \
+        dws.shellCommand(fingerPrintCmd + " -p / " \
                                   + "-X excludes" \
                                   + " > system.mtree")
-        dcontext.shellCommand(fingerPrintCmd + ' -p ' + ' -p '.join(replicateTops) \
+        dws.shellCommand(fingerPrintCmd + ' -p ' + ' -p '.join(replicateTops) \
                                   + " > replicate.mtree")
 
         exclFile = open('patterns')
         for e in [ 'build' ]:
             exclFile.write(e + '\n')
         excl.close()
-        dcontext.shellCommand(fingerPrintCmd + ' -p ' + ' -p '.join(backupTops) \
+        dws.shellCommand(fingerPrintCmd + ' -p ' + ' -p '.join(backupTops) \
                                   + "-X patterns " \
                                   + " > backup.mtree")
 
@@ -86,7 +86,7 @@ if __name__ == '__main__':
         for backupTop in backupTops:
             basename = os.path.basename(backupTop)
             archive = dstamp.stamp(basename)
-            dcontext.shellCommand("tar --bzip2 -cf " + archive \
+            dws.shellCommand("tar --bzip2 -cf " + archive \
                               + " -C " + os.path.dirname(backupTop) \
                               + "--exclude build/" \
                               + " " + basename)
@@ -113,10 +113,10 @@ if __name__ == '__main__':
         # Since transfering in archive mode will preserve mod-time, we do not
         # use -c (skip based on checksum, not mod-time & size) even when transfering
         # to another machine.
-        dcontext.shellCommand("rsync -az --delete --exclude=build/ " \
+        dws.shellCommand("rsync -az --delete --exclude=build/ " \
                                   + ' '.join(replicateTops) \
                                   + replicatePath)
 
-    except dcontext.Error, e:
+    except dws.Error, e:
         e.show(sys.stderr)
         sys.exit(e.code)

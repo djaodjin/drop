@@ -5,7 +5,11 @@
 This is an experimental command-line tool for building packages to be
 installed with the Mac OS X Installer.app application. 
 
-Please read the file ReadMe.txt for more information!
+Sebastien Mirolo, 
+smirolo@hotmail.com
+June 2009
+
+Based on work from 
 
 Dinu C. Gherman, 
 gherman@europemail.com
@@ -14,12 +18,13 @@ September 2002
 !! USE AT YOUR OWN RISK !!
 """
 
-__version__ = 0.3
+__version__ = 0.4
 __license__ = "FreeBSD"
 
 
 import re, os, subprocess, sys, glob, fnmatch, shutil, string, copy, getopt
 from os.path import basename, dirname, join, islink, isdir, isfile
+import hashlib, dws
 
 Error = "buildpkg.Error"
 
@@ -86,7 +91,8 @@ class ImageMaker:
     def __init__(self, name, sourceDir):
         self.name = name
         self.sourceDir = sourceDir
-
+        self.image = self.name + '.dmg'
+ 
     def build(self):
         print 'sourceDir: ' + self.sourceDir
         cmd = ['du', '-sk', self.sourceDir]
@@ -96,44 +102,14 @@ class ImageMaker:
         estimatedSize = look.group(1)
         p.poll()
         estimatedSectors = str(2.1 * float(estimatedSize))
-        image = self.name + '.dmg'
-        tmpImage = '_' + self.name + '.dmg'
-
-        print 'estimatedSize: ' + estimatedSize + ', estimatedSectors: ' + estimatedSectors
+ 
+        print 'estimatedSize: ' + estimatedSize \
+            + ', estimatedSectors: ' + estimatedSectors
 
         # Format the disk image before using it 
-        os.system('hdiutil create -ov ' + tmpImage \
+        os.system('hdiutil create -ov ' + self.image \
                       + ' -srcfolder ' + self.sourceDir)
-        if None:
-            mountLoc = None
-            cmd = ['hdid', '-nomount', tmpImage ]
-            p = subprocess.Popen(cmd,stdout=subprocess.PIPE)
-            line = p.stdout.readline()
-            while line != '':
-                look = re.match('.*(HFS).*',line)
-                if look != None:
-                    look = re.match('^(.\S+)\s',line)
-                    mountLoc = look.group(1)
-                line = p.stdout.readline()
-            p.poll()
-            print 'mountLoc: ' + mountLoc
-            os.system('/sbin/newfs_hfs -v ' + self.name + ' ' + mountLoc)
-            os.system('hdiutil eject ' + mountLoc)
-
-            # Copy the installation files to the disk image
-            os.system('hdid ' + tmpImage)
-            err = os.system('cp -R ' + self.sourceDir + ' ' \
-                          + os.path.join('/Volumes',self.name))
-            if err:
-                raise RuntimeException('error: command returns ' + str(err))
-            os.system('hdiutil eject ' + mountLoc)
-
-            # Resize and compress the disk image
-            os.system('hdiutil resize ' + tmpImage + ' -sectors min')
-            os.system('hdiutil convert ' + tmpImage \
-                          + ' -format UDZO -imagekey zlib-level=2 -o ' + image)
-            os.system('hdiutil internet-enable -yes ' + image)
-
+        return self.image
 
 
 class PackageMaker:
@@ -210,7 +186,7 @@ class PackageMaker:
         return s.replace(' ', '\ ')
                 
 
-    def build(self, root, resources=None, **options):
+    def build(self, root, resources=None, options = {}):
         """Create a package for some given root folder.
 
         With no 'resources' argument set it is assumed to be the same 
@@ -236,6 +212,7 @@ class PackageMaker:
         # Check where we should leave the output. Default is current directory
         outputdir = options.get("OutputDir", os.getcwd())
         packageName = self.packageInfo["Title"]
+        print packageName
         self.packageRootFolder = os.path.join(outputdir, packageName + ".pkg")
  
         # do what needs to be done
@@ -371,89 +348,73 @@ class PackageMaker:
 
 # Shortcut function interface
 
-def buildPackage(*args, **options):
+def buildPackage(args,options):
     "A shortcut function for building a package."
     
     o = options
     title, version, desc = o["Title"], o["Version"], o["Description"]
     pm = PackageMaker(title, version, desc)
-    apply(pm.build, list(args), options)
+    pm.build(args[0],options=options)
     im = ImageMaker(title, pm.packageRootFolder)
-    im.build()
-
-    return pm
+    return im.build()
 
 
-######################################################################
-# Command-line interface
-######################################################################
 
-def printUsage():
-    "Print usage message."
-
-    format = "Usage: %s <opts1> [<opts2>] <root> [<resources>]"
-    print format % basename(sys.argv[0])
-    print
-    print "       with arguments:"
-    print "           (mandatory) root:         the package root folder"
-    print "           (optional)  resources:    the package resources folder"
-    print
-    print "       and options:"
-    print "           (mandatory) opts1:"
-    mandatoryKeys = string.split("Title Version Description", " ")
-    for k in mandatoryKeys:
-        print "               --%s" % k
-    print "           (optional) opts2: (with default values)"
-
-    pmDefaults = PackageMaker.packageInfoDefaults
-    optionalKeys = pmDefaults.keys()
-    for k in mandatoryKeys:
-        optionalKeys.remove(k)
-    optionalKeys.sort()
-    maxKeyLen = max(map(len, optionalKeys))
-    for k in optionalKeys:
-        format = "               --%%s:%s %%s"
-        format = format % (" " * (maxKeyLen-len(k)))
-        print format % (k, repr(pmDefaults[k]))
-
-
-def main():
-    "Command-line interface."
-
-    shortOpts = ""
-    keys = PackageMaker.packageInfoDefaults.keys()
-    longOpts = map(lambda k: k+"=", keys)
-
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], shortOpts, longOpts)
-    except getopt.GetoptError, details:
-        print details
-        printUsage()
-        return
-
-    optsDict = {}
-    for k, v in opts:
-        optsDict[k[2:]] = v
-
-    ok = optsDict.keys()
-    if not (1 <= len(args) <= 2):
-        print "No argument given!"
-    elif not ("Title" in ok and \
-              "Version" in ok and \
-              "Description" in ok):
-        print "Missing mandatory option!"
-    else:
-        pm = apply(buildPackage, args, optsDict)
-        return
-
-    printUsage()
-
-    # sample use:
-    # buildpkg.py --Title=distutils \
-    #             --Version=1.0.2 \
-    #             --Description="Python distutils package." \
-    #             /Users/dinu/Desktop/distutils
+def buildPackageSpecification(sourceSpec,packageName):
+    '''Buils a package specification file named *packageSpec* 
+    that describes how to find and install the binary package.
+    The package specification is made out of *sourceSpec*. 
+    '''
+    packageSpec = os.path.splitext(packageName)[0] + '.dsx'
+    parser = dws.xmlDbParser()
+    source = open(sourceSpec,'r')
+    package = open(packageSpec,'w')
+    proj = parser.copy(package,source)
+    while proj != None:
+        parser.startProject(package,proj)
+        package.write('<package>\n')
+        package.write('<size>' + str(os.path.getsize(packageName)) \
+                          + '</size>\n')        
+        f = open(packageName,'rb')
+        package.write('<md5>' + hashlib.md5(f.read()).hexdigest() \
+                          + '</md5>\n')
+        f.seek(0)
+        package.write('<sha1>' + hashlib.sha1(f.read()).hexdigest() \
+                          + '</sha1>\n')
+        f.seek(0)
+        package.write('<sha256>' + hashlib.sha256(f.read()).hexdigest() \
+                          + '</sha256>\n')
+        f.close()
+        package.write('</package>\n')
+        proj = parser.copy(package,source)
+    parser.trailer(package)
+    source.close()
+    package.close()
 
 
 if __name__ == "__main__":
-    main()
+    from optparse import OptionParser
+
+    parser = OptionParser(description=
+'''builds an OSX package
+    Usage: %s <opts1> [<opts2>] <root> [<resources>]"
+    with arguments:
+           (mandatory) root:         the package root folder
+           (optional)  resources:    the package resources folder
+''')
+    parser.add_option('-t', '--Title', dest='title', action='store',
+                      help='Set title of the package')
+    parser.add_option('-v', '--Version', dest='version', action='store',
+                      help='Set version of the package')
+    parser.add_option('-s', '--Specification', dest='specification', 
+                      action='store', help='Set specification of the package')
+
+    options, args = parser.parse_args()
+
+    optsDict = {}
+    optsDict['Title'] = options.title 
+    optsDict['Version'] = options.version 
+    optsDict['Description'] = 'unknow description'
+
+    buildPackageSpecification(options.specification,
+                              buildPackage(args,optsDict))

@@ -1,0 +1,83 @@
+<h1>Data Integrity</h1>
+<p>
+Data loss and corruption is an integral part of any software activity. This chapter deals with data integrity or the science of to minimize the risk of loosing valuable information stored on digital medium. 
+</p>
+<p>
+We organize *ALL* of our data into four categories. Each category represents the major threat to loosing the data and how to minimize its risk.
+<table>
+	<tr>
+		<th></th>
+		<th>Backup</th>
+		<th>Replicate</th>
+		<th>System</th>
+		<th>Temp</th>
+	</tr>
+	<tr>
+		<th>Examples</th>
+		<td>source code</td>
+		<td>e-mails</td>
+		<td>compilers</td>
+		<td>object files</td>
+	</tr>
+	<tr>
+		<th>Threat</th>
+		<td>Human errors</td>
+		<td>Hardware failures</td>
+		<td>Trojan, viruses, broken updates</td>
+		<td>None, could be entirely re-generated</td>
+	</tr>
+	<tr>
+		<th>Prevention</th>
+		<td>Take snapshots through time by using tar to create dated archives.</td>
+		<td>Keep multiple identical copies on different machines using rsync.</td>
+		<td>Fingerprint files using mtree and sha.</td>
+		<td>None</td>
+	</tr>
+	<caption>data categories</caption>
+</table>
+</p>
+
+<h2>How it works</h2>
+<p>
+The integrity <a href="dintegrity.py">script</a> generates a fingerprint of the system, replicate and backups. Those fingerprints are stored into logDir. The backupTops, which includes logDir, are archives into backupDir. The backupDir is trimed-down out of archives through a <a href="dstamp.py">stamping</a> mechanism. The replicateTops, which includes backupDir, are synchronized to a remote path (replicatePath).
+</p>
+<p>
+Remote server doing the diff between mtrees?
+- run mtree for each kind => e-mail of changes.
+</p>
+<table>
+	<tr>
+		<th>logDir</th><td>directory where mtree fingerprints are stored</td>
+	</tr>
+	<tr>
+		<th>backupDir</th><td>directory where archive (.tar.bz2) files are stored</td>
+	</tr>
+	<tr>
+		<th>backupTops</th><td>all directory hierarchies to backup</td>
+	</tr>
+	<tr>
+		<th>replicatePath</th><td>remote path where replication is done</td>
+	</tr>
+	<tr>
+		<th>replicateTops</th><td>all directory hierarchies to replicate</td>
+	</tr>
+	<tr>
+		<th>excludeTops</th><td>all directory hierarchies to exclude from fingerprinting</td>
+	</tr>
+	<tr>	
+		<th>Directories</th><td>/home, /log, /archives, /bin, *build*</td>
+	</tr>
+</table>
+
+<h2>References</h2>
+<h3>Articles</h3>
+
+<h3>Tools</h3>
+<p>
+<ul>
+<li><a href="http://www2.backup-manager.org/">Backup Manager</a>
+<li><a href="http://sourceforge.net/projects/amanda/">Amanda Network Backup</a>
+</ul>
+</p>
+
+<p>2009-02-12</p>

@@ -27,23 +27,27 @@
 
 include $(shell \
 	d=`pwd` ; \
-	config='.buildrc_not_found' ; \
+	config='ws.mk_not_found' ; \
 	while [ $$d != '/' ] ; do \
-		if [ -f $$d/.buildrc ] ; then \
-			config=$$d/.buildrc ; \
+		if [ -f $$d/ws.mk ] ; then \
+			config=$$d/ws.mk ; \
 			break ; \
 		fi ; \
 		d=`dirname $$d` ; \
 	done ; \
 	echo $$config)
 
-srcDir	:=	$(topSrc)/drop
+srcDir	:=	$(srcTop)/drop
 
-include $(topSrc)/drop/src/prefix.mk
+include $(srcTop)/drop/src/prefix.mk
 
-bins	:=	buildpkg dintegrity dcontext dmake dregress dstamp dsync dws
+bins	:=	buildpkg dintegrity dmake dregress dstamp dsync dws
 
-include $(topSrc)/drop/src/suffix.mk
+include $(srcTop)/drop/src/suffix.mk
 
-install:: dcontext.py
+dmake:
+	echo '#!/bin/sh' > $@
+	echo 'dws make $$*' >> $@
+
+install:: dws.py
 	$(installFiles) $^ $(binDir)

@@ -1,0 +1,11 @@
+<h1>Access Control</h1>
+<h2>Policy</h2>
+<p>
+Before you can deploy technology to support access control of your machine, you need a clear answer to the following questions because you might not want to put secure locks on each door of the house while you keep your valuables in the garage.
+</p>
+<ul>
+<li>Purpose of the machine.
+<li>Evaluation of damages of a compromised machine.
+<li>Which individual is allowed to read and write which file on the machine.
+</ul>
+

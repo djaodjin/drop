@@ -62,24 +62,63 @@ install:: $(bins) $(libs) $(includes)
 # 	git checkout -b branchname tag
 #	make dist
 
+hostdist	:=	$(shell dws host)
 project		:=	$(notdir $(srcDir))
-version		:=	0.1
-description	:=  'web-based source code browser'
-buildInstallDir	:= $(CURDIR)/install
-packageDir	:=	${project}.pkg
+version		:=	$(shell date +%Y-%m-%d-%H-%M-%S)
+buildInstallDir	:= 	$(CURDIR)/install
 
-# \todo insert the prefix.mk, suffix.mk. Maybe the dcontext as well.
-dist:
-	tar -cj --exclude '.*' --exclude '*~' -f $(project).tar.bz2 \
-		-C $(dir $(srcDir)) $(project)
+dist: $(hostdist)-dist
+
+Darwin-dist: $(project)-$(version).dmg
+
+Fedora-dist: $(project)-$(version).rpm
+
+Ubuntu-dist: $(project)-$(version).deb
+
+dist-src: $(project)-$(version).tar.bz2
+
+$(project)-$(version).tar.bz2:
+	cp -rf $(srcDir) $(basename $(basename $@))
+	mv $(basename $(basename $@))/Makefile \
+		$(basename $(basename $@))/Makefile.in
+	$(installExecs) $(shell dws context configure.sh) \
+		$(basename $(basename $@))/configure
+	$(installExecs) $(shell dws context dws.py) $(basename $(basename $@))/dws
+	$(installFiles) $(shell dws context prefix.mk) $(basename $(basename $@))
+	$(installFiles) $(shell dws context suffix.mk) $(basename $(basename $@))
+	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
+		-f $@ $(basename $(basename $@))
 
 # This rule is used to create a OSX distribution package
 # \todo It certainly should move to an *host* specific part of the Makefiles
-package: all
-	${MAKE} -f $(srcDir)/Makefile install     \
+$(project)-$(version).dmg:
+	${MAKE} -f $(srcDir)/Makefile install            \
 		installBinDir=${buildInstallDir}/bin         \
 		installIncludeDir=${buildInstallDir}/include \
 		installLibDir=${buildInstallDir}/lib
-	buildpkg --Title ${project} --Version ${version} --Description ${description} ${buildInstallDir}
+	buildpkg --Title $(basename $@) --Version ${version} \
+			 --Specification $(srcDir)/index.xml ${buildInstallDir}
+
+
+vpath %.spec $(srcDir)/src
+#vpath %.tar.bz2 $(srcDir)/src
+
+%-$(version).rpm: %.spec \
+		$(wildcard $(srcDir)/src/$(project)*.tar.bz2) \
+		$(wildcard $(srcDir)/src/$(project)-*.patch)
+	rpmdev-setuptree -d
+	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
+	rpmbuild -bb --clean $<
+
+%.spec: $(srcDir)/index.xml
+	echo '%files' > $@ 
+	echo $(bins) >> $@
+	echo $(includes) >> $@
+	echo $(libs) >> $@
+
+vpath %.deb $(srcDir)/src
+
+%.deb: $(project)-$(version).tar.bz2
+	debuild
 
 -include *.d
