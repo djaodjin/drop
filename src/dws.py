@@ -30,17 +30,28 @@
 # The workspace manager script is used to setup a local machine
 # with third-party prerequisites and source code under revision
 # control such that it is possible to execute a development cycle
-# (edit/build/run) on the local machine.
+# (edit/build/run) on a local machine.
+#
+# A workspace relies on environment variables (srcTop, buildTop, etc.)
+# and a project dependency graph. The environment variables are set
+# through a workspace configuration file named ws.mk modified by the dws
+# script as necessary. The full project dependency graph is usually common 
+# to many developpers and workspaces. The master copy is stored on a remote 
+# server and cached locally on the development machine.
+# 
+# The dependency graph contains information usually found in a package
+# manager (yum, apt, etc.) as well as information usually found in
+# configure scripts (automake)
 #
 # A third-party package can either be a binary package or a source
 # package. A source controlled project can either contain full source
 # code or only contain a patch into a source package.
-
+#
 
 # Skip lines in the dbPrev file until hitting the definition
 #        of the "install" status for the package or another package
 #        definition. 
-#        The install mode can be on of 
+#        The install mode can be one of 
 #          - skipped         The workspace script skips management 
 #                            of the package and the user is responsible
 #                            for installing the package manually when necessary.
@@ -56,7 +67,7 @@
 #        is updated compared to the version when the user was prompted about 
 #        the install mode.
 
-
+import hashlib
 import re, os, optparse, shutil
 import socket, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
@@ -148,20 +159,25 @@ def findBin(names):
 
 
 def findFilePat(base,namePat):
-    '''Search the directory tree rooted at *base* for files named *name* 
-       and returns a list of absolute pathnames to those files.'''
+    '''Search the directory tree rooted at *base* for files matching pattern
+    *namePat* and returns a list of absolute pathnames to those files.
+    If ./ is part of pattern, base is searched recursively in breadth search 
+    order until at least one results is found.'''
+    subdirs = []
+    results = []
     for p in os.listdir(base):
         path = os.path.join(base,p)
         look = re.match(namePat.replace('.' + os.sep,'(.*)' + os.sep),path)
         if look != None:
-            return path
+            results += [ path ]
         elif (('.' + os.sep) in namePat) and os.path.isdir(path):
             # When we see ./, it means we are looking for a pattern 
             # that can be matched by files in subdirectories of the base. 
-            result = findFilePat(path,namePat)
-            if result:
-                return result
-    return None
+            subdirs += path
+    if len(results) == 0:
+        for subdir in subdirs:
+            results += findFilePat(subdir,namePat)
+    return results
 
 
 def findIncludes(names):
@@ -233,6 +249,21 @@ def findLib(names,version=""):
             sys.stdout.write('no\n')
     return libs
 
+def findSrc(names):
+    '''Search for the presence of files in the cache directory. *names* 
+    is a dictionnary of file names used as key and the associated checksum.'''
+    result = []
+    for name in names.keys():
+        fullName = os.path.join(context.value('cacheTop'),name)
+        if os.path.exists(fullName):
+            f = open(fullName,'rb')
+            sum = hashlib.sha1(f.read()).hexdigest()
+            f.close()
+            if sum == names[name]:
+                # checksum are matching
+                result += [ fullName ]
+    return result
+
 
 def makeProject(name,targets):
     '''Issue make command and log output'''
@@ -295,11 +326,11 @@ class Variable:
         self.value = None
 
 
-# Find the environment configuration file, then initialize srcDir and objDir.
-# For each project, srcDir points to the top of the project hierarchy where
-# version controlled sources can be found and objDir points to the top of
-# the project hierarchy where intermediate files are created.
 class DropContext:
+    '''The workspace configuration file contains environment variables used
+    to update, build and package projects. The environment variables are roots
+    of the dependency graph as most other routines depend at the least on srcTop
+    and buildTop.'''
 
     configName = 'ws.mk'
 
@@ -319,9 +350,12 @@ class DropContext:
                          'libDir': Variable('libDir',
              'Root of the tree where libraries are installed',
                                             prefix),
-                         'pkgRepoTop': Variable('pkgRepoTop',
+                         'cacheTop': Variable('cacheTop',
+             'Root of the tree where cached packages are fetched',
+                                            prefix,default='/usr/local/etc/dws'),
+                         'cacheRemoteTop': Variable('cacheRemoteTop',
              'Root the tree where the remote packages are located',
-                  default='codespin.is-a-geek.com:/var/codespin/reps') }
+                  default='codespin.is-a-geek.com:/var/codespin/repo') }
 
         try:
             self.cwdProject, self.configFilename = searchBackToRoot(self.configName)
@@ -347,19 +381,10 @@ class DropContext:
         except:
             raise
             
-    def closure(self, dgen, db=None):
-        '''Find out all dependencies from a root set of projects as defined 
-        by the dependency generator *dgen*.'''
-        if not db:
-            db = self.dbPathname()
-        parser = xmlDbParser()
-        while len(dgen.vertices) > 0:
-            parser.parse(db,dgen)
-            dgen.nextLevel()
-        return dgen.topological()
-
-    def dbPathname(self):
-        return self.objDir(os.path.join('etc','dws','db.xml'))
+    def dbPathname(self,remote=False):
+        if remote:
+            return self.cacheRemotePath('db.xml')
+        return self.cachePath('db.xml')
 
     def host(self):
         '''returns the distribution on which the script is running.'''
@@ -396,16 +421,16 @@ class DropContext:
                 libname, libext = os.path.splitext(os.path.basename(path))
                 libname = libname.split('-')[0]
                 libname = libname + libext
-                install = os.path.join(self.environ[installName].value,
+                install = os.path.join(self.value(installName),
                                        libname)
             elif installName == 'includeDir':
                 dirname, header = os.path.split(path)
                 if dirname != 'include':
-                    install = os.path.join(self.environ[installName].value,
+                    install = os.path.join(self.value(installName),
                                            os.path.basename(dirname))
                     path = os.path.dirname(path)
             if not install:
-                install = os.path.join(self.environ[installName].value,
+                install = os.path.join(self.value(installName),
                                        os.path.basename(path))
             if not os.path.exists(os.path.dirname(install)):
                 os.makedirs(os.path.dirname(install))
@@ -415,26 +440,20 @@ class DropContext:
                 os.symlink(path,install)
 
     def objDir(self,name):
-        return os.path.join(self.environ['buildTop'].value,name)
+        return os.path.join(self.value('buildTop'),name)
 
-    def remotedb(self,name):
-        '''Path based of the local host platform''' 
-        return self.remotePath(os.path.join(self.host(),name))
+    #def remotedb(self,name):
+    #    '''Path based of the local host platform''' 
+    #    return self.remotePath(os.path.join(self.host(),name))
 
-    def remotePath(self,name):
+    def cachePath(self,name):
+        '''Absolute path to a file in the cached packages directory hierarchy.'''         
+        return os.path.join(context.value('cacheTop'),name)
+
+    def cacheRemotePath(self,name):
         '''Absolute path to access a file on the remote package repository''' 
-        return os.path.join(self.environ['pkgRepoTop'].value,name)
+        return os.path.join(self.value('cacheRemoteTop'),name)
         
-    def repositories(self, recurse=False):
-        if recurse:
-            results = []
-            deps = self.closure(DependencyGenerator([ self.cwdProject ]))
-            for d in deps:
-                if os.path.exists(self.srcDir(d)):
-                    results += [ d ]
-            return results
-        return [ self.cwdProject ]
-
     def save(self):
         '''Write the config back to a file.'''
         try:
@@ -449,7 +468,68 @@ class DropContext:
         configFile.close()
 
     def srcDir(self,name):
-        return os.path.join(self.environ['srcTop'].value,name)
+        return os.path.join(self.value('srcTop'),name)
+
+    def value(self,name):
+        '''returns the value of the workspace variable *name*. If the variable
+        has no value yet, a prompt is displayed for it.'''
+        if not name in self.environ:
+            raise Error("Trying to read unknown variable " + name + ".\n")
+        if not self.environ[name].value:
+            if selectVariable(self.environ[name]):
+                self.save()
+        return self.environ[name].value
+
+
+class IndexProjects:
+    '''Index file containing the graph dependency for all projects.'''
+
+    def __init__(self,context):
+        self.context = context
+        
+    def closure(self, dgen, db=None):
+        '''Find out all dependencies from a root set of projects as defined 
+        by the dependency generator *dgen*.'''
+        if not db:
+            db = self.context.dbPathname()
+            self.validate()
+        parser = xmlDbParser()
+        while len(dgen.vertices) > 0:
+            parser.parse(db,dgen)
+            dgen.nextLevel()
+        return dgen.topological()
+
+    def repositories(self, recurse=False):
+        if recurse:
+            results = []
+            deps = self.closure(DependencyGenerator([ self.context.cwdProject ]))
+            for d in deps:
+                if os.path.exists(self.context.srcDir(d)):
+                    results += [ d ]
+            return results
+        return [ self.context.cwdProject ]
+
+    def update(self):
+        '''Fetch the projects index file from a remote site.'''
+        fetch(os.path.basename(self.context.dbPathname(remote=True)))
+        
+    def validate(self):
+        '''Create the project index file if it does not exist
+        either by fetching it from a remote server or collecting
+        projects indices locally.'''
+        if not os.path.exists(self.context.dbPathname()):
+            # index or copy.
+            selection = selectOne('The project index file could not '
+               + 'be found at ' + self.context.dbPathname() \
+               + '. It can be regenerated through one ' \
+               + 'of the two following method:',
+                      [ [ 'fetching', 'from remote server' ],
+                        [ 'indexing', 'local projects in the workspace' ] ])
+            if selection == 'fetching':
+                fetch(os.path.basename(self.context.dbPathname(remote=True)))
+            elif selection == 'indexing':
+                pubCollect([])
+
 
 
 class PdbHandler:
@@ -462,7 +542,7 @@ class PdbHandler:
     def startProject(self, name):
         None
 
-    def dependency(self, name, bins, includes, libs):
+    def dependency(self, name, deps):
         None
 
     def description(self, text):
@@ -508,9 +588,9 @@ class DependencyGenerator(PdbHandler):
         self.vertices = projects
         self.nextLevel()
  
-    def dependency(self, name, bins, includes, libs):
+    def dependency(self, name, deps):
         if self.source:
-            if self.shouldAddDep(name,bins,includes,libs):
+            if self.shouldAddDep(name,deps):
                 newEdge = [ self.source, name ]
                 # We found a new edge that needs to be recorded. We first walk the tree 
                 # of previously recorded edges to find out if we detected a cycle.
@@ -568,9 +648,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     def __init__(self):
         self.handler = None
         self.depName = None
-        self.depBins = []
-        self.depIncludes = []
-        self.depLibs = []
+        self.deps = { 'bin': {}, 'include': [], 'lib': [], 'src': [] }
 
     def startElement(self, name, attrs):
         '''Start populating an element.'''
@@ -579,9 +657,10 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.handler.startProject(attrs['id'])
         elif name == self.tagDepend:
             self.depName = attrs['linkend']
-            self.depBins = {}
-            self.depIncludes = []
-            self.depLibs = []
+            self.deps['bin'] = {}
+            self.deps['include'] = []
+            self.deps['lib'] = []
+            self.deps['src'] = []
         elif name == self.tagInstall:
             if 'version' in attrs:
                 self.handler.install(attrs['mode'],attrs['version'])
@@ -590,15 +669,11 @@ class xmlDbParser(xml.sax.ContentHandler):
         elif name == self.tagControl:
             self.url = None
             self.type = attrs['name']
-        elif name == 'include':
-            self.depIncludes += [ attrs['name'] ]
-        elif name == 'lib':
-            self.depLibs += [ attrs['name'] ]
-        elif name == 'bin':
+        elif name in [ 'bin', 'include', 'lib', 'src' ]:
             if 'excludes' in attrs:
-                self.depBins[ attrs['name'] ] = attrs['excludes'].split(',')
+                self.deps[name][ attrs['name'] ] = attrs['excludes'].split(',')
             else:
-                self.depBins[ attrs['name'] ] = []
+                self.deps[name][ attrs['name'] ] = []
 
     def characters(self, ch):
         self.text += ch
@@ -609,8 +684,7 @@ class xmlDbParser(xml.sax.ContentHandler):
         if name == self.tagControl:
             self.handler.control(self.type, self.url)
         elif name == self.tagDepend:
-            self.handler.dependency(self.depName,self.depBins,
-                                    self.depIncludes,self.depLibs)
+            self.handler.dependency(self.depName, self.deps)
             self.depName = None
         elif name == self.tagDescription:
             self.handler.description(self.text)
@@ -686,14 +760,6 @@ def findFiles(base,namePat):
             if look:
                 result += [ path ]
     return result
-
-
-def index(dbPathname):
-    '''Consolidate local dependencies information into a glabal
-    dependency database.'''
-    indices = findFiles(context.environ['buildTop'].value,'index.xml')\
-      + findFiles(context.environ['srcTop'].value,'index.xml')
-    createIndexPathname(dbPathname,indices)
 
 
 def createIndexPathname(dbIndexPathname,dbPathnames):
@@ -824,16 +890,16 @@ class InstallGenerator(DependencyGenerator):
                 results += [ [ name, self.installs[name] ] ]
         return results
 
-    def shouldAddDep(self, name, bins, includes, libs):
+    def shouldAddDep(self, name, deps):
         # Find executables, then filters out versions
         # known to be incompatible.
         version = None
         installedBins = []
-        foundBins = findBin(bins.keys())
+        foundBins = findBin(deps['bin'].keys())
         for bin in foundBins:
             version = bin[1]
             excluded = False
-            excludes = bins[os.path.basename(bin[0])]
+            excludes = deps['bin'][os.path.basename(bin[0])]
             for exclude in excludes:
                 if version == exclude:
                     # \todo use comparaison operators.
@@ -841,25 +907,32 @@ class InstallGenerator(DependencyGenerator):
                     break
             if not excluded:
                 installedBins += [ bin[0] ]
-        if len(installedBins) != len(bins):
+        if len(installedBins) != len(deps['bin']):
             self.installs[name] = InstallInfo()
             self.installs[name].version = version
             return True
         installedIncludes = []
-        foundIncludes = findIncludes(includes)
+        foundIncludes = findIncludes(deps['include'])
         for header in foundIncludes:
             installedIncludes += [ header[0] ]
             if header[1]:
                 version = header[1]
-        if len(installedIncludes) != len(includes):
+        if len(installedIncludes) != len(deps['include']):
             self.installs[name] = InstallInfo()
             self.installs[name].version = version
             return True
-        installedLibs = findLib(libs,version)
-        if len(installedLibs) != len(libs):
+        installedLibs = findLib(deps['lib'],version)
+        if len(installedLibs) != len(deps['lib']):
             self.installs[name] = InstallInfo()
             self.installs[name].version = version
             return True
+        installedSrcs = findSrc(deps['src'])
+        if len(installedSrcs) != len(deps['src']):
+            self.installs[name] = InstallInfo()
+            self.installs[name].version = version
+            return True
+
+        # Create links into the prefix directory.
         context.linkPath(installedBins,'binDir')
         context.linkPath(installedIncludes,'includeDir')
         context.linkPath(installedLibs,'libDir')
@@ -924,16 +997,6 @@ def selectBuildEnv(context):
 
 ## \todo end of code rewritten for closure.
 
-def updatedb():
-    init()
-    if not os.path.isdir(os.path.dirname(context.dbPathname())):
-        os.makedirs(os.path.dirname(context.dbPathname()))
-    # download latest index file from package server.
-    cmdline = 'rsync ' + context.remotedb('db.xml') \
-                       + ' ' + context.dbPathname()
-    print cmdline
-    shellCommand(cmdline)
-
 
 # \param db           XML dom structure
 # \param dbPathname   (string) filename to write the build configuration into
@@ -952,18 +1015,23 @@ def writeBuildConf(db,dbPathname):
 # Functions that deal with package management
 # -------------------------------------------
 
-cacheDir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))),'cache')
-# \todo current hack while we put packaged patched sources on a remove server.
-packagedSourcesDir = cacheDir
-
-def fetch(location,package):
-    if not os.path.isfile(os.path.join(cacheDir,package)):
-        p = os.getcwd()
-        os.chdir(cacheDir)
-        shellCommand("curl --location -O " + location + package)
-        os.chdir(p)
+def fetch(filename,force=False):
+    '''download file from remote server.'''
+    remotePathname = context.cacheRemotePath(filename)
+    localPathname = context.cachePath(filename)
+    if not os.path.isdir(os.path.dirname(localPathname)):
+        os.makedirs(os.path.dirname(localPathname))
+    if not os.path.isfile(localPathname):
+        if False:
+            p = os.getcwd()
+            os.chdir(cacheDir)
+            shellCommand("curl --location -O " + location + package)
+            os.chdir(p)
+        else:
+            shellCommand('rsync ' + remotePathname \
+                       + ' ' + localPathname)
     else:
-        print package + "... cached"
+        print filename + "... cached"
 
 
 def packageManagerCommands():
@@ -1024,50 +1092,7 @@ def init():
        in the ws.mk'''
     found = False
     for d in context.environ.values():
-        if not d.value:
-            found = True
-            print '\n' + d.name + ': ' +  d.descr
-            # compute the default leaf directory from the variable name 
-            leafDir = d.name
-            for last in range(0,len(d.name)):
-                if d.name[last] in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
-                    leafDir = d.name[:last]
-                    break
-            dir = d
-            default = d.default
-            if not default:
-                if d.base:
-                    default = '*' + d.base.name + '*/' + leafDir
-                    if not d.base.value:
-                        print d.name + ' is based on *' + d.base.name + '* by default.'
-                        print 'Would you like to ... '
-                        print '1) Enter *' + d.name + '* directly ?'
-                        print '2) Enter *' + d.base.name + '*, *' + d.name \
-                            + '* will defaults to ' + default + ' ?'
-                        choice = raw_input("Choice [2]: ")
-                        if choice == '' or choice == '2':
-                            dir = d.base
-                            default = dir.default
-                    else:
-                        default = os.path.join(d.base.value,leafDir)
-                else:
-                    default = os.getcwd()
-
-            dirname = raw_input("Enter a pathname name for " + dir.name \
-                                    + " [" + default + "]: ")
-            if dirname == '':
-                dirname = default
-            if not ':' in dirname:
-                dirname = os.path.normpath(os.path.abspath(dirname))
-            dir.value = dirname
-            if dir != d:
-                d.value = os.path.join(d.base.value,leafDir)
-            if not ':' in dirname:
-                if not os.path.exists(d.value):
-                    print d.value + ' does not exist.'
-                    yesNo = raw_input("Would you like to create it [Y/n]: ")
-                    if yesNo == '' or yesNo == 'Y' or yesNo == 'y':
-                        os.makedirs(d.value)
+        found |= selectVariable(d)
     if found:
         context.save()
 
@@ -1214,7 +1239,7 @@ def pubCo(args):
 
     # Search for the projects to check out and their dependencies
     dgen = InstallGenerator(args)
-    controlCandidates = dgen.expanded(context.closure(dgen))
+    controlCandidates = dgen.expanded(index.closure(dgen))
 
     controls = args + selectMultiple(
 '''The following dependencies need to be present on your system. 
@@ -1237,11 +1262,13 @@ have  the choice to install them from binary package or not at all.''',
 
 
 def pubCollect(args):
-    '''collect    Generate an index database out of specification files
-                  and collect all packages into a directory.
+    '''collect    Consolidate local dependencies information into a glabal
+                  dependency database and collect all packages into a directory.
     '''
-    index(context.dbPathname())
-    distSrcs = findFiles(context.environ['buildTop'].value,'.*\.tar\.bz2')
+    indices = findFiles(context.value('buildTop'),'index.xml')\
+      + findFiles(context.value('srcTop'),'index.xml')
+    createIndexPathname(context.dbPathname(),indices)
+    distSrcs = findFiles(context.value('buildTop'),'.*\.tar\.bz2')
     distSrcDir = context.remotePath('srcs')
     if not os.path.exists(distSrcDir):
         os.makedirs(distSrcDir)
@@ -1255,10 +1282,9 @@ def pubCollect(args):
 def pubConfigure(args):
     '''configure     Look through the development platform for tools
                      required in order to build a project.'''
-    reps = context.repositories()
-    print reps
+    reps = index.repositories()
     dgen = InstallGenerator(reps)
-    deps = dgen.expanded(context.closure(dgen,'index.xml'))
+    deps = dgen.expanded(index.closure(dgen,'index.xml'))
     if len(deps) > 0:
         showMultiple('error: The following prerequisites are missing.',deps)
         sys.exit(1)
@@ -1292,7 +1318,7 @@ def pubInstall(args):
     # Get list from arguments.
     # update()
     dgen = InstallGenerator(args)
-    packageCandidates = dgen.expanded(context.closure(dgen))
+    packageCandidates = dgen.expanded(index.closure(dgen))
     packages = install(packageCandidates)
 
     # Set the install mode in the local db 
@@ -1401,9 +1427,85 @@ def pubUpstream(args):
         upstream(srcdir,pchdir)
 
 
+def selectVariable(d):
+    '''Generate an interactive prompt to enter a workspace variable 
+    *var* value and returns True if the variable value as been set.'''
+    found = False
+    if not d.value:
+        found = True
+        print '\n' + d.name + ': ' +  d.descr
+        # compute the default leaf directory from the variable name 
+        leafDir = d.name
+        for last in range(0,len(d.name)):
+            if d.name[last] in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                leafDir = d.name[:last]
+                break
+        dir = d
+        default = d.default
+        if not default:
+            if d.base:
+                default = '*' + d.base.name + '*/' + leafDir
+                if not d.base.value:
+                    print d.name + ' is based on *' + d.base.name + '* by default.'
+                    print 'Would you like to ... '
+                    print '1) Enter *' + d.name + '* directly ?'
+                    print '2) Enter *' + d.base.name + '*, *' + d.name \
+                        + '* will defaults to ' + default + ' ?'
+                    choice = raw_input("Choice [2]: ")
+                    if choice == '' or choice == '2':
+                        dir = d.base
+                        default = dir.default
+                else:
+                    default = os.path.join(d.base.value,leafDir)
+            else:
+                default = os.getcwd()
+
+        dirname = raw_input("Enter a pathname name for " + dir.name \
+                                + " [" + default + "]: ")
+        if dirname == '':
+            dirname = default
+        if not ':' in dirname:
+            dirname = os.path.normpath(os.path.abspath(dirname))
+        dir.value = dirname
+        if dir != d:
+            d.value = os.path.join(d.base.value,leafDir)
+        if not ':' in dirname:
+            if not os.path.exists(d.value):
+                print d.value + ' does not exist.'
+                if selectYesNo("Would you like to create it")
+                    os.makedirs(d.value)
+    return found
+
+
+def selectOne(description,choices):
+    '''Prompt an interactive list of choices and returns the element selected
+    by the user. *description* is a text that explains the reason for the 
+    prompt. *choices* is a list of elements to choose from. Each element is 
+    in itself a list. Only the first value of each element is of significance
+    and returned by this function. The other values are only use as textual
+    context to help the user make an informed choice.'''
+    choice = None
+    while True:
+        showMultiple(description,choices)
+        selection = raw_input("Enter a single number: ")
+        try:
+            choice = int(selection)
+            if choice >= 1 and choice <= len(choices):
+                return choices[choice - 1][0]
+        except TypeError:
+            choice = None
+        except ValueError:  
+            choice = None
+    return choice
+
+
 def selectMultiple(description,choices):
-    '''Generate an interactive list of choices and returns elements selected
-    by the user.'''
+    '''Prompt an interactive list of choices and returns elements selected
+    by the user. *description* is a text that explains the reason for the 
+    prompt. *choices* is a list of elements to choose from. Each element is 
+    in itself a list. Only the first value of each element is of significance
+    and returned by this function. The other values are only use as textual
+    context to help the user make an informed choice.'''
     result = []
     done = False
     while len(choices) > 0 and not done:
@@ -1430,6 +1532,14 @@ def selectMultiple(description,choices):
                 remains += [ row ]
         choices = remains
     return result
+
+
+def selectYesNo(description):
+    '''Prompt for a yes/no answer.'''
+    yesNo = raw_input(description + " [Y/n]? ")
+    if yesNo == '' or yesNo == 'Y' or yesNo == 'y':
+        return True
+    return False
 
 
 def showMultiple(description,choices):
@@ -1481,9 +1591,12 @@ if __name__ == '__main__':
         # Find the build information
         arg = args.pop(0)
         context = DropContext()
+        index = IndexProjects(context)
         command = 'pub' + arg.capitalize()
         if command in __main__.__dict__:
             __main__.__dict__[command](args)
+        else:
+            raise Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
 
     except Error, err:
         err.show(sys.stderr)
