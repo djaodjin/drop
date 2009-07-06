@@ -357,13 +357,9 @@ class DropContext:
              'Root the tree where the remote packages are located',
                   default='codespin.is-a-geek.com:/var/codespin/repo') }
 
+        self.buildTopRelativeCwd = None
         try:
-            self.cwdProject, self.configFilename = searchBackToRoot(self.configName)
-            if self.cwdProject == '.':
-                self.cwdProject = os.path.basename(os.getcwd())
-            look = re.match('([^-]+)-.*',self.cwdProject)
-            if look:
-                self.cwdProject = look.group(1)
+            self.locate()
             # -- Read the environment variables set in the config file.
             configFile = open(self.configFilename)
             line = configFile.readline()
@@ -380,7 +376,20 @@ class DropContext:
             None
         except:
             raise
-            
+
+    def cwdProject(self):
+        if not self.buildTopRelativeCwd:
+            self.environ['buildTop'].default = os.path.dirname(os.getcwd())
+            sys.stdout.write('no workspace configuration file could be ' \
+               + 'found from ' + os.getcwd() \
+               + ' all the way up to /. A new one, called ' + self.configName\
+               + ', will be created in *buildTop* after that path is set.\n')
+            self.configFilename = os.path.join(self.value('buildTop'),
+                                               self.configName)
+            self.save()
+            self.locate()
+        return self.buildTopRelativeCwd
+
     def dbPathname(self,remote=False):
         if remote:
             return self.cacheRemotePath('db.xml')
@@ -439,6 +448,17 @@ class DropContext:
             if os.path.exists(path):
                 os.symlink(path,install)
 
+    def locate(self):
+        '''Locate the workspace configuration file and derive the project
+        name out of its location.'''
+        self.buildTopRelativeCwd, self.configFilename \
+            = searchBackToRoot(self.configName)
+        if self.buildTopRelativeCwd == '.':
+            self.buildTopRelativeCwd = os.path.basename(os.getcwd())
+            look = re.match('([^-]+)-.*',self.buildTopRelativeCwd)
+            if look:
+                self.buildTopRelativeCwd = look.group(1)
+
     def objDir(self,name):
         return os.path.join(self.value('buildTop'),name)
 
@@ -464,10 +484,17 @@ class DropContext:
         keys = sorted(self.environ.keys())
         configFile.write('# configuration for development workspace\n\n')
         for key in keys:
-            configFile.write(key + '=' + self.environ[key].value + '\n')
+            if self.environ[key].value:
+                configFile.write(key + '=' + self.environ[key].value + '\n')
         configFile.close()
 
     def srcDir(self,name):
+        filename = os.path.join(self.value('srcTop'),name)
+        if not os.path.exists(filename):
+            # All files in the source tree are source revision controlled
+            # so if the file does not exist in the local source tree, let's 
+            # try to fetch it from a remote repository.
+            raise RuntimeError('notYetImplemented')
         return os.path.join(self.value('srcTop'),name)
 
     def value(self,name):
@@ -502,12 +529,13 @@ class IndexProjects:
     def repositories(self, recurse=False):
         if recurse:
             results = []
-            deps = self.closure(DependencyGenerator([ self.context.cwdProject ]))
+            deps = self.closure(\
+                DependencyGenerator([ self.context.cwdProject() ]))
             for d in deps:
                 if os.path.exists(self.context.srcDir(d)):
                     results += [ d ]
             return results
-        return [ self.context.cwdProject ]
+        return [ self.context.cwdProject() ]
 
     def update(self):
         '''Fetch the projects index file from a remote site.'''
@@ -1362,7 +1390,7 @@ def pubMake(args):
     # Find build information
     print '<build>'
     try:
-        repositories = context.repositories(recurse)
+        repositories = index.repositories(recurse)
         last = repositories.pop()
         # Recurse through projects that need to be rebuilt first 
         for repository in repositories:
@@ -1373,7 +1401,7 @@ def pubMake(args):
             makeProject(last,args)
         print '</build>'
 
-    except Exception, e:
+    except RuntimeError, e:
         print e
         print '</build>'
 
@@ -1472,7 +1500,7 @@ def selectVariable(d):
         if not ':' in dirname:
             if not os.path.exists(d.value):
                 print d.value + ' does not exist.'
-                if selectYesNo("Would you like to create it")
+                if selectYesNo("Would you like to create it"):
                     os.makedirs(d.value)
     return found
 
@@ -1598,6 +1626,6 @@ if __name__ == '__main__':
         else:
             raise Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
 
-    except Error, err:
+    except RuntimeError, err:
         err.show(sys.stderr)
         sys.exit(err.code)
