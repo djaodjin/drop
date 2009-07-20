@@ -24,7 +24,7 @@ __license__ = "FreeBSD"
 
 import re, os, subprocess, sys, glob, fnmatch, shutil, string, copy, getopt
 from os.path import basename, dirname, join, islink, isdir, isfile
-import hashlib, dws
+import hashlib, shutil, dws
 
 Error = "buildpkg.Error"
 
@@ -88,8 +88,8 @@ class ImageMaker:
     """A class to generate Mac OS X images (.dmg) out of 
     a directory tree."""
 
-    def __init__(self, name, sourceDir):
-        self.name = name
+    def __init__(self, project, version, sourceDir):
+        self.name = project.name + '-' + version
         self.sourceDir = sourceDir
         self.image = self.name + '.dmg'
  
@@ -166,17 +166,20 @@ class PackageMaker:
         'InstallFat': 'NO'}
 
 
-    def __init__(self, title, version, desc):
+    def __init__(self, project, version, installTop):
         "Init. with mandatory title/version/description arguments."
 
-        info = {"Title": title, "Version": version, "Description": desc}
+        info = {"Title": project.name + "-" + version, 
+                "Version": version, 
+                "Description": project.description }
         self.packageInfo = copy.deepcopy(self.packageInfoDefaults)
         self.packageInfo.update(info)
-        
+        self.sourceFolder = installTop
+        self.packageName = project.name + '-' + version
+
         # variables set later
         self.packageRootFolder = None
         self.packageResourceFolder = None
-        self.sourceFolder = None
         self.resourceFolder = None
 
 
@@ -186,7 +189,7 @@ class PackageMaker:
         return s.replace(' ', '\ ')
                 
 
-    def build(self, root, resources=None, options = {}):
+    def build(self, resources=None, options = {}):
         """Create a package for some given root folder.
 
         With no 'resources' argument set it is assumed to be the same 
@@ -195,7 +198,6 @@ class PackageMaker:
         """
 
         # set folder attributes
-        self.sourceFolder = root
         if resources == None:
             self.resourceFolder = None
         else:
@@ -211,15 +213,14 @@ class PackageMaker:
         
         # Check where we should leave the output. Default is current directory
         outputdir = options.get("OutputDir", os.getcwd())
-        packageName = self.packageInfo["Title"]
-        print packageName
-        self.packageRootFolder = os.path.join(outputdir, packageName + ".pkg")
+        self.packageRootFolder = os.path.join(outputdir, self.packageName + ".pkg")
  
         # do what needs to be done
         self._makeFolders()
         self._addInfo()
         self._addBom()
         self._addArchive()
+        self._addPkgInfo()
         self._addResources()
         self._addSizes()
 
@@ -246,10 +247,13 @@ class PackageMaker:
         # packageName = "%s-%s" % (self.packageInfo["Title"], 
         #                          self.packageInfo["Version"]) # ??
 
-        contFolder = join(self.packageRootFolder, "Contents")
-        self.packageResourceFolder = join(contFolder, "Resources")
+        self.packageContentFolder = join(self.packageRootFolder, "Contents")
+        self.packageResourceFolder = join(self.packageContentFolder, 
+                                          "Resources")
+        if os.path.exists(self.packageRootFolder):
+            shutil.rmtree(self.packageRootFolder, ignore_errors=True)
         os.mkdir(self.packageRootFolder)
-        os.mkdir(contFolder)
+        os.mkdir(self.packageContentFolder)
         os.mkdir(self.packageResourceFolder)
 
 
@@ -262,10 +266,64 @@ class PackageMaker:
         for f in string.split(PKG_INFO_FIELDS, "\n"):
             info = info + "%s %%(%s)s\n" % (f, f)
         info = info % self.packageInfo
-        base = self.packageInfo["Title"] + ".info"
-        path = join(self.packageResourceFolder, base)
+        path = join(self.packageContentFolder, 'Info.plist')
         f = open(path, "w")
-        f.write(info)
+        f.write('''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleGetInfoString</key>
+	<string>1.0, buildpkg, Inc</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.is-a-geek.codespin.application</string>
+	<key>CFBundleName</key>
+	<string>buildpkg</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>IFMajorVersion</key>
+	<integer>1</integer>
+	<key>IFMinorVersion</key>
+	<integer>0</integer>
+	<key>IFPkgFlagAllowBackRev</key>
+	<true/>
+<!--	
+        <key>IFPkgFlagAuthorizationAction</key>
+	<string>RootAuthorization</string>
+-->
+	<key>IFPkgFlagBackgroundAlignment</key>
+	<string>left</string>
+	<key>IFPkgFlagBackgroundScaling</key>
+	<string>proportional</string>
+	<key>IFPkgFlagDefaultLocation</key>
+	<string>/usr/local</string>
+	<key>IFPkgFlagFollowLinks</key>
+	<true/>
+	<key>IFPkgFlagInstallFat</key>
+	<false/>
+<!--
+	<key>IFPkgFlagInstalledSize</key>
+	<integer>375068</integer>
+-->
+	<key>IFPkgFlagIsRequired</key>
+	<false/>
+	<key>IFPkgFlagOverwritePermissions</key>
+	<false/>
+	<key>IFPkgFlagRelocatable</key>
+	<true/>
+	<key>IFPkgFlagRestartAction</key>
+	<string>NoRestart</string>
+	<key>IFPkgFlagRootVolumeOnly</key>
+	<false/>
+	<key>IFPkgFlagUpdateInstalledLanguages</key>
+	<false/>
+	<key>IFPkgFlagUseUserMask</key>
+	<integer>0</integer>
+	<key>IFPkgFormatVersion</key>
+	<real>0.10000000000000001</real>
+</dict>
+</plist>
+''')
 
 
     def _addBom(self):
@@ -276,6 +334,8 @@ class PackageMaker:
         try:
             base = self.packageInfo["Title"] + ".bom"
             bomPath = join(self.packageResourceFolder, base)
+            base = 'Archive.bom'
+            bomPath = join(self.packageContentFolder, base)
             bomPath = self._escapeBlanks(bomPath)
             sourceFolder = self._escapeBlanks(self.sourceFolder)
             cmd = "mkbom %s %s" % (sourceFolder, bomPath)
@@ -295,14 +355,22 @@ class PackageMaker:
         os.chdir(self.sourceFolder)
         base = basename(self.packageInfo["Title"]) + ".pax"
         self.archPath = join(self.packageResourceFolder, base)
-        archPath = self._escapeBlanks(self.archPath)
-        cmd = "pax -w -f %s %s" % (archPath, ".")
+        base = 'Archive.pax'
+        self.archPath = join(self.packageContentFolder, base)
+        self.archPath = self._escapeBlanks(self.archPath)
+        cmd = "pax -w -f %s %s" % (self.archPath, ".")
         res = os.system(cmd)
         
         # compress archive
-        cmd = "gzip %s" % archPath
+        cmd = "gzip %s" % self.archPath
         res = os.system(cmd)
         os.chdir(cwd)
+
+    def _addPkgInfo(self):
+        filename = os.path.join(self.packageContentFolder,'PkgInfo')
+        f = open(filename,'w')
+        f.write('pmkrpkg1\n')
+        f.close()
 
 
     def _addResources(self):
@@ -348,47 +416,42 @@ class PackageMaker:
 
 # Shortcut function interface
 
-def buildPackage(args,options):
+def buildPackage(project, version, installTop):
     "A shortcut function for building a package."
     
-    o = options
-    title, version, desc = o["Title"], o["Version"], o["Description"]
-    pm = PackageMaker(title, version, desc)
-    pm.build(args[0],options=options)
-    im = ImageMaker(title, pm.packageRootFolder)
+    pm = PackageMaker(project, version, installTop)
+    pm.build()
+    im = ImageMaker(project, version, pm.packageRootFolder)
     return im.build()
 
 
 
-def buildPackageSpecification(sourceSpec,packageName):
+def buildPackageSpecification(project,packageName):
     '''Buils a package specification file named *packageSpec* 
     that describes how to find and install the binary package.
     The package specification is made out of *sourceSpec*. 
     '''
     packageSpec = os.path.splitext(packageName)[0] + '.dsx'
-    parser = dws.xmlDbParser()
-    source = open(sourceSpec,'r')
     package = open(packageSpec,'w')
-    proj = parser.copy(package,source)
-    while proj != None:
-        parser.startProject(package,proj)
-        package.write('<package>\n')
-        package.write('<size>' + str(os.path.getsize(packageName)) \
-                          + '</size>\n')        
-        f = open(packageName,'rb')
-        package.write('<md5>' + hashlib.md5(f.read()).hexdigest() \
-                          + '</md5>\n')
-        f.seek(0)
-        package.write('<sha1>' + hashlib.sha1(f.read()).hexdigest() \
-                          + '</sha1>\n')
-        f.seek(0)
-        package.write('<sha256>' + hashlib.sha256(f.read()).hexdigest() \
-                          + '</sha256>\n')
-        f.close()
-        package.write('</package>\n')
-        proj = parser.copy(package,source)
-    parser.trailer(package)
-    source.close()
+    package.write('<?xml version="1.0" ?>\n')
+    package.write('<book>\n')
+    package.write('\t<section id="' + project.name + '">\n')
+    package.write('\t\t<package name="' + packageName + '">\n')
+    package.write('\t\t\t<size>' + str(os.path.getsize(packageName)) \
+                      + '</size>\n')        
+    f = open(packageName,'rb')
+    package.write('\t\t\t<md5>' + hashlib.md5(f.read()).hexdigest() \
+                      + '</md5>\n')
+    f.seek(0)
+    package.write('\t\t\t<sha1>' + hashlib.sha1(f.read()).hexdigest() \
+                      + '</sha1>\n')
+    f.seek(0)
+    package.write('\t\t\t<sha256>' + hashlib.sha256(f.read()).hexdigest() \
+                      + '</sha256>\n')
+    f.close()
+    package.write('\t\t</package>\n')
+    package.write('\t</section>\n')
+    package.write('</book>\n')
     package.close()
 
 
@@ -402,19 +465,18 @@ if __name__ == "__main__":
            (mandatory) root:         the package root folder
            (optional)  resources:    the package resources folder
 ''')
-    parser.add_option('-t', '--Title', dest='title', action='store',
-                      help='Set title of the package')
-    parser.add_option('-v', '--Version', dest='version', action='store',
+    parser.add_option('-v', '--version', dest='version', action='store',
                       help='Set version of the package')
-    parser.add_option('-s', '--Specification', dest='specification', 
+    parser.add_option('-s', '--spec', dest='spec', 
                       action='store', help='Set specification of the package')
 
     options, args = parser.parse_args()
 
-    optsDict = {}
-    optsDict['Title'] = options.title 
-    optsDict['Version'] = options.version 
-    optsDict['Description'] = 'unknow description'
+    context = dws.DropContext()
+    index = dws.IndexProjects(context,options.spec)
+    handler = dws.Unserializer()
+    index.parse(handler)
+    project = handler.projects[handler.projects.keys()[0]]
 
-    buildPackageSpecification(options.specification,
-                              buildPackage(args,optsDict))
+    buildPackageSpecification(project,
+                              buildPackage(project,options.version,args[0]))

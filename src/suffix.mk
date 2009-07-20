@@ -1,3 +1,4 @@
+# -*- Makefile -*-
 # Copyright (c) 2009, Sebastien Mirolo
 #   All rights reserved.
 #
@@ -22,8 +23,6 @@
 #   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-# -*- Makefile -*-
 
 installBinDir		?=	$(binDir)
 installIncludeDir	?=	$(includeDir)
@@ -64,8 +63,8 @@ install:: $(bins) $(libs) $(includes)
 
 hostdist	:=	$(shell dws host)
 project		:=	$(notdir $(srcDir))
-version		:=	$(shell date +%Y-%m-%d-%H-%M-%S)
-buildInstallDir	:= 	$(CURDIR)/install
+version		?=	$(shell date +%Y-%m-%d-%H-%M-%S)
+buildInstallDir	:= 	$(CURDIR)/install/usr/local
 
 dist: $(hostdist)-dist
 
@@ -96,8 +95,8 @@ $(project)-$(version).dmg:
 		installBinDir=${buildInstallDir}/bin         \
 		installIncludeDir=${buildInstallDir}/include \
 		installLibDir=${buildInstallDir}/lib
-	buildpkg --Title $(basename $@) --Version ${version} \
-			 --Specification $(srcDir)/index.xml ${buildInstallDir}
+	buildpkg --version=${version} \
+			 --spec=$(srcDir)/index.xml ${buildInstallDir}
 
 
 vpath %.spec $(srcDir)/src
