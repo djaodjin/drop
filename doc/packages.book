@@ -4,7 +4,7 @@
 Most operating systems distribute software in the form of packages. At a high-level, each package defines prerequisites packages that need to be installed on the system before it, itself, can be used. The operating system uses a package manager to analyze the packages dependency graph and determine how to update the local system based on an end-user selection.
 </p>
 <p>
-Software is always in an ever-evolving state. In order to keep a local system up-to-date with latest available features and fixes, software is tested, built, packaged and stored on remote update servers. Each package comes with a small specification file that primarly contains information about a package prerequisite dependencies. The remote server aggregates all specification files into a small index file that contains the packages dependency graph. On a local system update, the local package manager downloads the index file and through the analysis of the packages dependency graph, decides to download actual packages and install them on the local system.
+Software is always in an ever-evolving state. In order to keep a local system up-to-date with latest available features and fixes, software is tested, built, packaged and stored on remote update servers. Each package comes with a small specification file that primary contains information about a package prerequisite dependencies. The remote server aggregates all specification files into a small index file that contains the packages dependency graph. On a local system update, the local package manager downloads the index file and through the analysis of the packages dependency graph, decides to download actual packages and install them on the local system.
 </p>
 <h2>Distribution Specific Package Management</h2>
 <p>
@@ -22,7 +22,7 @@ Software is always in an ever-evolving state. In order to keep a local system up
 	<td><a href="https://help.ubuntu.com/community/SwitchingToUbuntu/FromLinux/%20RedHatEnterpriseLinuxAndFedora">apt-*</a>, aptitude</td>
 	<td><a href="http://www.phy.duke.edu/~rgb/General/yum_HOWTO/yum_HOWTO/yum_HOWTO-1.html">yum</a></td>
 	<td>There is no official update tool for all software deployed on an OSX platform even though packaging projects as disk images is a common practise.</td>
-	<td>There is no official update tool for all software deployed on a Windows platform. <a href="http://wwww.cygwin.com">Cygwin</a> has become a de-facto manager for open source packages. <a href="http://www.nabber.org/projects/cyg-get/">cyg-get.py</a> is a command-line tool very convienient to update packages from the command-line.</td>
+	<td>There is no official update tool for all software deployed on a Windows platform. <a href="http://wwww.cygwin.com">Cygwin</a> has become a de-facto manager for open source packages. <a href="http://www.nabber.org/projects/cyg-get/">cyg-get.py</a> is a command-line tool very convenient to update packages from the command-line.</td>
 </tr>
 <tr>
 	<th>Package format</th>
@@ -85,7 +85,7 @@ rpmbuild -bb --clean %name.spec</pre>
 </tr>
 </table>
 <h2>Random notes</h2>
-<p>Information for <a href="https://www.gerts.net/sysconf/pkgupdate/">Solaris package management</a> is also available. The update tool is called <td><a href="http://www.bolthole.com/solaris/pkg-get.html">pkg-get</a>.</p>
+<p>Information for <a href="https://www.gerts.net/sysconf/pkgupdate/">Solaris package management</a> is also available. The update tool is called <a href="http://www.bolthole.com/solaris/pkg-get.html">pkg-get</a>.</p>
 <p>
 I've been trying cyg-apt but it turned out it seemed old. Cyg-get.py uses optparse so the command line syntax is quite strange for a package manager tool but it worked very well.</p>
 <p>Most times, recent packages cannot be found in cygwin but are available in <a href="http://www.cygwinports.org/">cygwinports</a>. Since both sites are using the same distribution model, cyg-get.py can be used to download for either one.
@@ -93,3 +93,5 @@ I've been trying cyg-apt but it turned out it seemed old. Cyg-get.py uses optpar
 <p>
 All software compiled for Windows using cygwin need to be delivered with the cygwin.dll. On the other hand, <a href="http://www.mingw.com">mingwin</a> uses native win32 calls directly.</p>
 <p>Looking at <a href="http://trac.project-builder.org/">Project-Builder.org</a> might be a good step to find more details information. These perl scripts aim to provide support to automate packaging for different distribution.</p>
+
+<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>

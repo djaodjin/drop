@@ -9,3 +9,29 @@ Before you can deploy technology to support access control of your machine, you 
 <li>Which individual is allowed to read and write which file on the machine.
 </ul>
 
+<h2>Partitioning</h2>
+<p>
+One of the first principle of controlling information is partitioning. For example,A same person will have different passwords for different roles and systems. Partitioning restricts compromised information to a specific subsystem.
+</p>
+
+<a name="auditing"><h2>Auditing</h2></a>
+<p>
+It is better to discover and address a vulnerability before taken advantage of by an unauthorized party. Active penetration auditing sets the time it takes to compromise a system. Password cracking tool, for example, should continuously be run against password files, because no matter how complex a password policy is, only actual time to crack the first password matters.
+</p>
+<p>
+Another category of auditing tools focus on intrusion detection. This sets the delay between a system being actually compromised and the intrusion detected. Activity logging and analysis are a big part of this kind of auditing.
+</p>
+
+<h2>Physical Access</h2>
+<p>
+Passwords, file permissions, firewalls, etc. do not prevent against unauthorized accesses to a physical infrastructure. Stolen laptops form a majority of unauthorized physical access. Encryption of the persistent data is the only way to prevent access to controlled information in that case. As most applications use temporary files and generate data caches at different random places on a harddrive, only full disc encryption at the device level guarantees information is actually stored encrypted.  
+</p>
+
+<h2>Remote Access</h2>
+<p>
+The same way encryption is used for preventing unauthorized physical access to information stored on a disk, it can be used in communication protocols to prevent eavesdropping. The most commonly used set of tools for that purpose is the <a href="http://www.openssh.com/">openssh</a> software package.
+</p>
+<p>
+A remote machine provides services on open ports. Since each open ports is potentially a vector of attacks, the most tighten access control policy is to only have one port publicly open for the openssh daemon and use the local forward mechanism to redirect traffic to other services.
+</p>
+<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>

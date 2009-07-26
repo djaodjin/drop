@@ -1,26 +1,26 @@
 <h1>Glossary</h1>
 
-<h3>Dir</h3>
+<a name="Dir"><h3>Dir</h3></a>
 <p>
 A directory name on the local machine. example: backupDir.
 </p>
 
 <a name="localMachine"><h3>Local machine</h3></a>
-<p>Physical machine that runs the web browser and client side executables.</p>
+<p>Physical machine that runs the web browser and client side executables. Also, the development platform of a contributor.</p>
 
-<h3>Package</h3>
+<a name="package"><h3>Package</h3></a>
 <p>
 A package is an archive of a project as a single file. Usually, a distribution package is made out of a stable version of a project but need not be. There exist binary packages of pre-compiled applications in format such as .rpm, .deb, etc. and source packages of a project source files.
 </p>
 
-<h3>Path</h3>
+<a name="path"><h3>Path</h3></a>
 <p>
 A directory name on a local or remote machine. If the path references a directory on a remote machine, it will be qualified with either, or both, a user name and a machine name. example: replicatePath.
 </p>
 
-<h3>Project</h3>
+<a name="project"><h3>Project</h3></a>
 <p>
-A project is a piece of software treated as a single logical unit either because of its functionality, its maintainer, ... In any case, by definition, a single source repository controls a project and commits can only be guarenteed atomic on a per project basis. 
+A project is a piece of software treated as a single logical unit either because of its functionality, its maintainer, ... In any case, by definition, a single source repository controls a project and commits can only be guaranteed atomic on a per project basis. 
 </p>
  
 <a name="remoteMachine"><h3>Remote machine</h3></a>
@@ -29,16 +29,16 @@ A project is a piece of software treated as a single logical unit either because
 <a name="remoteSite"><h3>Remote site</h3></a>
 <p>Information accessible through a web browser present on remote machine.</p>
 <p>
-The remote site (site for short) is composed of read-only and editable elements. Read-only elements comprise mail archives [mbox], billing information, etc. A mail archive is read-only and each e-mail in it stored in full and in time order. Thus mail archives, though part of the site, do not participate into repository activities such as branching, change lists, online edition, etc. [Workflow idea: meeting notes are posted on a special meeting notes mailing list].</p>
-
-<h3>Repository</h3>
+The remote site (site for short) is composed of read-only and editable elements. Read-only elements comprise mail archives [mbox], billing information, etc. A mail archive is read-only and each e-mail in it stored in full and in time order. Thus mail archives, though part of the site, do not participate into repository activities such as branching, change lists, online edition, etc.</p>
+<!-- [Workflow idea: meeting notes are posted on a special meeting notes mailing list] -->
+<a name="repository"><h3>Repository</h3></a>
 <p> 
-Revisioned subset of the remote site</p>
+Information stored under a revision control system.</p>
 <p>
 A repository is made of all editable elements of a site. Each editable element is revisioned. Some elements can even be branched. For example
 <ul>     
 - Vector Graphics (SVG)<br />
-- text snipset (formated text)<br />
+- text snipset (formatted text)<br />
     - source code (C++)<br />
     - Unit test results<br />
     - Simple "active" queries<br />
@@ -47,19 +47,17 @@ A repository is made of all editable elements of a site. Each editable element i
 are candidates for branches while:
 </p>
 <ul>
-   - Calendar tables (google format?), account information are also part of the site. They are editable and thus require to be part of a change list. It does not seem pertinent to keep the revision history nor branch those information so their relevence as part of the repository is questionable.
+   - Calendar tables <!-- google format? -->, account information
 </ul>
-</p>
-<p>
-The site could be implemented as a unified SQL database or as a patch-work of legacy databases (MediaWiki, Subversion) or even as a mix of databases and revisioned file systems (CVS). In all cases, all the backbone product tools treat the site as a single unified database.
+<p>are also part of the site. They are editable and thus require to be part of a change list. It does not seem pertinent to keep the revision history nor branch those information so their relevance as part of the repository is questionable.
 </p>
 
-<h3>Top</h3>
+<a name="top"><h3>Top</h3></a>
 <p>
 The root directory of a file hierarchy. examples: srcTop, buildTop.
 </p>
 
-<h3>Workspace</h3>
+<a name="workspace"><h3>Workspace</h3></a>
 <p>Directory structure in which each file is a complete editable element of the repository at a specific revision.</p>
 
 

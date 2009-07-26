@@ -3,7 +3,7 @@
 Data loss and corruption is an integral part of any software activity. This chapter deals with data integrity or the science of to minimize the risk of loosing valuable information stored on digital medium. 
 </p>
 <p>
-We organize *ALL* of our data into four categories. Each category represents the major threat to loosing the data and how to minimize its risk.
+We organize <b>all</b> of our data into four categories. Each category represents the major threat to loosing the data and how to minimize its risk.
 <table>
 	<tr>
 		<th></th>
@@ -39,45 +39,50 @@ We organize *ALL* of our data into four categories. Each category represents the
 
 <h2>How it works</h2>
 <p>
-The integrity <a href="dintegrity.py">script</a> generates a fingerprint of the system, replicate and backups. Those fingerprints are stored into logDir. The backupTops, which includes logDir, are archives into backupDir. The backupDir is trimed-down out of archives through a <a href="dstamp.py">stamping</a> mechanism. The replicateTops, which includes backupDir, are synchronized to a remote path (replicatePath).
+The <a href="../src/dintegrity.py">integrity tool</a> generates a fingerprint of the system, replicate and backups. Those fingerprints are stored into logDir. The backupTops, which includes logDir, are archives into backupDir. The backupDir is trimmed-down out of archives through a <a href="../src/dstamp.py">stamping</a> mechanism. The replicateTops, which includes backupDir, are synchronized to a remote path (replicatePath).
 </p>
 <p>
-Remote server doing the diff between mtrees?
-- run mtree for each kind => e-mail of changes.
+Apart from integrity, the difference between two fingerprinting of a system can also be used for <a href="access.book#auditing">auditing</a>. 
 </p>
 <table>
-	<tr>
-		<th>logDir</th><td>directory where mtree fingerprints are stored</td>
-	</tr>
-	<tr>
-		<th>backupDir</th><td>directory where archive (.tar.bz2) files are stored</td>
-	</tr>
-	<tr>
-		<th>backupTops</th><td>all directory hierarchies to backup</td>
-	</tr>
-	<tr>
-		<th>replicatePath</th><td>remote path where replication is done</td>
-	</tr>
-	<tr>
-		<th>replicateTops</th><td>all directory hierarchies to replicate</td>
-	</tr>
-	<tr>
-		<th>excludeTops</th><td>all directory hierarchies to exclude from fingerprinting</td>
-	</tr>
-	<tr>	
-		<th>Directories</th><td>/home, /log, /archives, /bin, *build*</td>
-	</tr>
+<tr>
+    <th></th><th>description</th><th>examples</th>
+</tr>
+<tr>
+    <th>backupDir</th><td>directory where archive (.tar.bz2) files are stored</td>
+    <td>/var/backup</td>
+</tr>
+<tr>
+    <th>backupTops</th><td>all directory hierarchies to backup</td>
+    <td>/home, /var/codespin/reps, /var/log</td>
+</tr>
+<tr>
+    <th>excludeTops</th><td>all directory hierarchies to exclude from fingerprinting</td>
+    <td>build</td>
+</tr>
+<tr>
+    <th>logDir</th><td>directory where mtree fingerprints are stored</td>
+    <td>/var/log/mtree</td>
+</tr>
+<tr>
+    <th>replicatePath</th><td>remote path where replication is done</td>
+    <td>secondary:/var/replicates</td>
+</tr>
+<tr>
+    <th>replicateTops</th><td>all directory hierarchies to replicate</td>
+    <td>/var/backup, /var/codespin/data</td>
+</tr>
 </table>
 
 <h2>References</h2>
-<h3>Articles</h3>
 
 <h3>Tools</h3>
 <p>
+Some tools that could be interesting to look at.
+</p>
 <ul>
 <li><a href="http://www2.backup-manager.org/">Backup Manager</a>
 <li><a href="http://sourceforge.net/projects/amanda/">Amanda Network Backup</a>
 </ul>
-</p>
 
-<p>2009-02-12</p>
+<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>

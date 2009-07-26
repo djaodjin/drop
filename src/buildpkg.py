@@ -472,7 +472,7 @@ if __name__ == "__main__":
 
     options, args = parser.parse_args()
 
-    context = dws.DropContext()
+    context = dws.Context()
     index = dws.IndexProjects(context,options.spec)
     handler = dws.Unserializer()
     index.parse(handler)

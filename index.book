@@ -1,19 +1,37 @@
 <h1>Introduction</h1>
 <p>
-The time of centralized computers and teletype terminals is long gone. Today, each developper has his own machine that he carefully setup to his own taste. Any policy that intents to keep engineers productive needs to account for a variety of <a href="doc/glossary.book#localMachine">local machines</a>. Mass communication, either through public speeches, books, TV broadcasts, etc., has proven through the ages to be the most effective way to distribute ideas and coordinate human beings.It will also be the main purpose of a <a href="doc/glossary.book#remoteMachine">remote machine</a>, running a <a href="doc/glossary.book#remoteSite">remote site</a>.
-</p>
-<p>
-Very many of the brightest engineers I know have switched to a laptop as their primary development systems. They also work in different timezone even when physically in the same city. To avoid severely impacting productivity, once more, the system should address intermitent network connectivity and limited live communications.
+The time of centralized computers and teletype terminals is long gone. Today, each developper has his own machine that he carefully setup to his own taste. Any policy that intents to keep engineers productive needs to account for a variety of <a href="doc/glossary.book#localMachine">local machines</a>. Very many of the brightest engineers I know have switched to a laptop as their primary development systems. They also work in different timezone even when physically in the same city. To avoid severely impacting productivity, once more, the system should address intermittent network connectivity and limited live communications.
 </p>
 
-<h1>Communication Platform</h1>
+<h1>Organization</h1>
 <p>
-The machine on which the communication infrastructure (website, repository, etc.) can either be loaned as a service, installed on a rented virtual server, or built on an in-house machine.
+A drop system is based on a distributed version control system (here <a href="http://git-scm.com/">git</a>). At any time, each developper has physically access to the <b>entire</b> software infrastructure for a <a href="doc/glossary.book#project">project</a>. That includes source code (of course), documentation website, bug reports, ... As a design philosophy, <b>all</b> bits of a project are replicated on each contributors local machine.
 </p>
 <p>
-In either case, no technology can provide turn-key solutions for <a href="doc/access.book">access control</a> and <a href="doc/integrity.book">data integrity</a>. These are area that are highly dependent on the software business you are building and tools and policies beneficial for a project might not always be appropriate for another.</p>
+Releasing a quality piece of software requires integration of the work of many contributors, testing under multiple environments, editing for consistency, etc. Mass communication, either through public speeches, books, TV broadcasts, etc., has proven through the ages to be the most effective way to distribute ideas and coordinate human beings. It means that even though a distributed infrastructure is better for development purposes, release and publication is best done through a single point of contact.
+</p>
+
+<h1>Release Platform</h1>
+<p>
+All components of a project are replicated on each contributors local machine. As a result, at any one time, any contributor's local machine can be elected to be the release, i.e. golden reference, platform. Since that machine is surely not configured to handle mass traffic that goes on with being a golden reference, there is a dedicated machine that acts as release. The main emphasis in drop is that release is truly a &quot;role&quot; definition. There is nothing, nowhere in a drop system, as far as implementation and tools are concerned that can distinguish a random local machine from a release machine.
+</p>
+<p>
+In practice, a release machine will see heavy traffic and the hardware need to keep up with it. The machine can either be loaned as a service, installed on a rented virtual server, or built on an in-house machine. Either way, setting it up follows the exact same procedure as setting up a contributor's local development machine. Best IT practices require to have a plan for <a href="doc/access.book">access control</a> and <a href="doc/integrity.book">data integrity</a> before any machine is boot up. These areas are highly dependent on the software business you are building and no technology can provide turn-key solutions. Tools and policies beneficial for a project might not always be appropriate for another.
+</p>
 
 <h1>Building Code</h1>
 <p>
-Most projects today are not started out of the vacuum but instead rely heavily on third-party projects and source code. Unless those dependencies are carefuly managed, it quickly becomes a nightmare to substain effort on your own project instead of delving into troubles linked to installing third-party <a href="doc/packages.book">packages</a> on development machines.
+Most projects today are not started out of the vacuum but instead rely heavily on third-party projects and source code. Unless those dependencies are carefully managed, it quickly becomes a nightmare to sustain effort on your own project instead of delving into troubles while installing third-party <a href="doc/packages.book">packages</a> on development machines. Package managers, configure scripts and the make utility are all useful pieces in an edit/compile/run cycle, though none-of-them is enough by itself. A complete <a href="doc/workspace.book">workspace</a> management strategy integrates all pieces together. Open source projects see their contributors split their time between the project and other things in their life. Some contributors appear and new ones disappear randomly. The time it takes to bring up a new contributor into the edit/compile/run cycle is a direct measure of the effectiveness of the implemented workspace management strategy.
 </p>
+
+<h1>Quality Control</h1>
+<p>
+Building software systems, as any human activity that requires coordination of highly creative minds, is a very risky business. Ideas mature, stabilize and turn into processes. Quality control insures that, along the way, labor intensive organizations or automated computer systems slowly replace risk associated with individual contributors.
+</p>
+<p>
+Different people have different interests and expertise. Some days a person is very careful and dedicated about writing a piece of source code and some other days, the same person is following an idea, cutting corners on the way. It is individually very hard to differentiate a brilliant masterpiece from an uninspired realization. It is the root cause of most bugs and long reaching costly mistakes. Quality Control is first the art of mixing individual motivations and making <b>all</b> information available to each contributor. Design guidelines, code conventions, document templates, web-based source code browsers, automated e-mail of commit messages are examples of tools to achieve that goal.
+</p>
+<p>
+Quality Control also guarantees that a new release of a project is <b>at least</b> as useful as a previous one. Testing for regressions is critical to make users happy and developper engaged. Unit tests, integration tests and metrics tracking are among the tools used to automatically raise early warnings. 
+</p>
+<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>
