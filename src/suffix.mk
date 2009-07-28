@@ -1,3 +1,4 @@
+# -*- Makefile -*-
 # Copyright (c) 2009, Sebastien Mirolo
 #   All rights reserved.
 #
@@ -23,24 +24,100 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# -*- Makefile -*-
+installBinDir		?=	$(binDir)
+installIncludeDir	?=	$(includeDir)
+installLibDir		?=	$(libDir)
 
-.DEFAULT_GOAL 	:=	all
+.PHONY:	all install
 
-installDirs 	:=	install -d
-installFiles	:=	install -m 644
-installExecs	:=	install -m 755
+all::	$(bins) $(libs) $(includes)
 
-srcDir		?=	$(subst $(dir $(shell dws context)),\
-	                      $(srcTop)/,$(shell pwd))
+clean::
+	rm -rf *
 
-includes	:=	$(wildcard $(srcDir)/include/*.hh \
-	                           $(srcDir)/include/*.tcc)
+install:: $(bins) $(libs) $(includes)
+	$(if $(bins),$(installDirs) $(installBinDir))
+	$(if $(bins),$(installExecs) $(bins) $(installBinDir))
+	$(if $(libs),$(installDirs) $(installLibDir))
+	$(if $(libs),$(installFiles) $(libs) $(installLibDir))
+	$(if $(includes),$(installDirs) $(installIncludeDir))
+	$(if $(includes),$(installFiles) $(includes) $(installIncludeDir))
 
-CXXFLAGS	:=	-g -MMD
-CPPFLAGS	+=	-I$(srcDir)/include -I$(includeDir)
-LDFLAGS		+=	-L$(libDir)
+%.a:
+	$(AR) $(ARFLAGS) $@ $^
 
-vpath %.a 	$(libDir)
-vpath %.cc 	$(srcDir)/src
-vpath %.py	$(srcDir)/src
+%: %.cc
+	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) $(LOADLIBES) $(LDLIBS) -o $@
+
+%: %.py
+	$(installFiles)	$< $@
+
+
+# Builds packages for distribution
+#
+# The source package will be made of the current source tree
+# so a shell script to distribute a specific tag would actually
+# look like:
+# 	git checkout -b branchname tag
+#	make dist
+
+hostdist	:=	$(shell dws host)
+project		:=	$(notdir $(srcDir))
+version		?=	$(shell date +%Y-%m-%d-%H-%M-%S)
+buildInstallDir	:= 	$(CURDIR)/install/usr/local
+
+dist: $(hostdist)-dist
+
+Darwin-dist: $(project)-$(version).dmg
+
+Fedora-dist: $(project)-$(version).rpm
+
+Ubuntu-dist: $(project)-$(version).deb
+
+dist-src: $(project)-$(version).tar.bz2
+
+$(project)-$(version).tar.bz2:
+	cp -rf $(srcDir) $(basename $(basename $@))
+	mv $(basename $(basename $@))/Makefile \
+		$(basename $(basename $@))/Makefile.in
+	$(installExecs) $(shell dws context configure.sh) \
+		$(basename $(basename $@))/configure
+	$(installExecs) $(shell dws context dws.py) $(basename $(basename $@))/dws
+	$(installFiles) $(shell dws context prefix.mk) $(basename $(basename $@))
+	$(installFiles) $(shell dws context suffix.mk) $(basename $(basename $@))
+	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
+		-f $@ $(basename $(basename $@))
+
+# This rule is used to create a OSX distribution package
+# \todo It certainly should move to an *host* specific part of the Makefiles
+$(project)-$(version).dmg:
+	${MAKE} -f $(srcDir)/Makefile install            \
+		installBinDir=${buildInstallDir}/bin         \
+		installIncludeDir=${buildInstallDir}/include \
+		installLibDir=${buildInstallDir}/lib
+	buildpkg --version=${version} \
+			 --spec=$(srcDir)/index.xml ${buildInstallDir}
+
+
+vpath %.spec $(srcDir)/src
+#vpath %.tar.bz2 $(srcDir)/src
+
+%-$(version).rpm: %.spec \
+		$(wildcard $(srcDir)/src/$(project)*.tar.bz2) \
+		$(wildcard $(srcDir)/src/$(project)-*.patch)
+	rpmdev-setuptree -d
+	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
+	rpmbuild -bb --clean $<
+
+%.spec: $(srcDir)/index.xml
+	echo '%files' > $@ 
+	echo $(bins) >> $@
+	echo $(includes) >> $@
+	echo $(libs) >> $@
+
+vpath %.deb $(srcDir)/src
+
+%.deb: $(project)-$(version).tar.bz2
+	debuild
+
+-include *.d
