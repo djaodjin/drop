@@ -37,6 +37,7 @@ import re, os, optparse, shutil
 import socket, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
 
+log = None
 useDefaultAnswer = False
 
 class Error(Exception):
@@ -63,32 +64,34 @@ class Context:
     configName = 'ws.mk'
 
     def __init__(self):
-        prefix = Pathname('wsPrefix',
-                          'Root of the workspace tree',
+        self.cacheTop = Pathname('cacheTop',
+                          'Root of the tree where cached packages are fetched',
                           default=os.path.dirname(os.path.dirname(os.getcwd())))
+        self.remoteCacheTop = Pathname('remoteCacheTop',
+             'Root of the remote tree where packages are located',
+                  default='codespin.is-a-geek.com:/var/codespin')
         self.environ = { 'buildTop': Pathname('buildTop',
              'Root of the tree where intermediate files are created.',
-                                              prefix,default='build'), 
+                                              self.cacheTop,default='build'), 
                          'srcTop' : Pathname('srcTop',
-             'Root of the tree where the source code under revision control lives on the local machine.',prefix,default='reps'),
+             'Root of the tree where the source code under revision control lives on the local machine.',self.cacheTop,default='reps'),
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
-                                            prefix),
+                                            self.cacheTop),
                          'includeDir': Pathname('includeDir',
              'Root of the tree where include files are installed',
-                                                prefix),
+                                                self.cacheTop),
                          'libDir': Pathname('libDir',
              'Root of the tree where libraries are installed',
-                                            prefix),
+                                            self.cacheTop),
                          'etcDir': Pathname('etcDir',
              'Root of the tree where extra files are installed',
-                                            prefix,'etc/dws'),
-                         'cacheTop': Pathname('cacheTop',
-             'Root of the tree where cached packages are fetched',
-                                          prefix,default='etc/dws'),
-                         'cacheRemoteTop': Pathname('cacheRemoteTop',
-             'Root the tree where the remote packages are located',
-                  default='codespin.is-a-geek.com:/var/codespin'),
+                                            self.cacheTop,'etc/dws'),
+                         'cacheTop': self.cacheTop,
+                         'remoteCacheTop': self.remoteCacheTop,
+                         'remoteSrcTop': Pathname('remoteSrcTop',
+             'Root the remote tree where repositories are located',
+                                          self.remoteCacheTop,'reps'),
                         'darwinTargetVolume': SingleChoice('darwinTargetVolume',
               'Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
               choices=[ ['LocalSystem', 
@@ -123,16 +126,19 @@ class Context:
         return os.path.join(self.value('cacheTop'),name)
 
 
-    def cacheRemotePath(self,name):
-        '''Absolute path to access a file on the remote machine.''' 
-        return os.path.join(self.value('cacheRemoteTop'),name)
+    def remoteCachePath(self,name):
+        '''Absolute path to access a cached file on the remote machine.''' 
+        return os.path.join(self.value('remoteCacheTop'),name)
 
+    def remoteSrcPath(self,name):
+        '''Absolute path to access a repository file on the remote machine.''' 
+        return os.path.join(self.value('remoteSrcTop'),name)        
 
     def cwdProject(self):
         '''Returns a project name based on the current directory.'''
         if not self.buildTopRelativeCwd:
             self.environ['buildTop'].default = os.path.dirname(os.getcwd())
-            sys.stdout.write('no workspace configuration file could be ' \
+            log.write('no workspace configuration file could be ' \
                + 'found from ' + os.getcwd() \
                + ' all the way up to /. A new one, called ' + self.configName\
                + ', will be created in *buildTop* after that path is set.\n')
@@ -146,8 +152,8 @@ class Context:
     def dbPathname(self,remote=False):
         '''Absolute pathname to the project index file.'''
         if remote:
-            return self.cacheRemotePath('db.xml')
-        return self.cachePath('db.xml')
+            return self.remoteCachePath('db.xml')
+        return os.path.join(self.value('etcDir'),'db.xml')
 
 
     def host(self):
@@ -213,6 +219,11 @@ class Context:
             if look:
                 self.buildTopRelativeCwd = look.group(1)
 
+    def logname(self):
+        filename = os.path.join(self.value('etcDir'),'dws.log')
+        if not os.path.exists(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
+        return filename
 
     def objDir(self,name):
         return os.path.join(self.value('buildTop'),name)
@@ -255,13 +266,11 @@ class IndexProjects:
         self.context = context
         self.parser = xmlDbParser(context)
         self.filename = filename
-        if not self.filename:
-            self.filename = self.context.dbPathname()
+
  
     def closure(self, dgen):
         '''Find out all dependencies from a root set of projects as defined 
         by the dependency generator *dgen*.'''
-        self.validate()
         while len(dgen.vertices) > 0:
             self.parse(dgen)
             dgen.nextLevel()
@@ -270,6 +279,7 @@ class IndexProjects:
 
     def parse(self, dgen):
         '''Parse the project index and generates callbacks to *dgen*'''
+        self.validate()
         self.parser.parse(self.filename,dgen)
 
 
@@ -277,6 +287,8 @@ class IndexProjects:
         '''Create the project index file if it does not exist
         either by fetching it from a remote server or collecting
         projects indices locally.'''
+        if not self.filename:
+            self.filename = self.context.dbPathname()
         if self.filename == self.context.dbPathname():
             if not os.path.exists(self.filename) and not force:
                 # index or copy.
@@ -293,10 +305,42 @@ class IndexProjects:
                     pubCollect([])
             if force:
                 fetch([os.path.join(self.context.host(),
-                                    os.path.basename(self.filename))])
+                                    os.path.basename(self.filename))],
+                      context.value('etcDir'))
         elif not os.path.exists(self.filename):
             raise Error(filename + ' does not exist.')
 
+
+class LogFile:
+    
+    def __init__(self,logfilename):
+        self.logfile = open(logfilename,'w')
+        self.logfile.write('<?xml version="1.0" ?>\n')
+        self.logfile.write('<book>\n')
+
+    def close(self):
+        self.logfile.write('</book>\n')
+        self.logfile.close()        
+
+    def error(self,text):
+        sys.stderr.write(text)
+        self.logfile.write(text)
+
+    def footer(self):
+        self.logfile.write('</section>\n')
+
+    def header(self, text):
+        sys.stdout.write(text + '...\n')
+        self.logfile.write('<section id="' + text + '">\n')
+
+    def flush(self):
+        sys.stdout.flush()
+        self.logfile.flush()
+
+    def write(self, text):
+        sys.stdout.write(text)
+        self.logfile.write(text)
+        
 
 class PdbHandler:
     '''Callback interface for a project index as generated by a PdbParser.
@@ -481,8 +525,42 @@ class MakeGenerator(DependencyGenerator):
             found, version = findCache(patched)
             for source in patched:
                 if not context.cachePath(source) in found:
-                    self.extraFetches[source] = patched[source]
+                    self.extraFetches[source] \
+                        = os.path.join('srcs',patched[source])
+
+
+class DerivedSetsGenerator(PdbHandler):
+    '''Generate different sets of projects which are of interests 
+    to the workspace management algorithms.
+    - roots          set of projects which are not dependency 
+                     for any other project.
+    - repositories   set of projects which are managed under a source 
+                     revision control system.
+    '''
    
+    def __init__(self):
+        self.roots = []
+        self.nonroots = []
+        self.repositories = []
+        self.curProjName = None
+
+    def control(self, type, url):
+        self.repositories += [ self.curProjName ]
+
+    def dependency(self, name, deps, excludes=[]):
+        if name in self.roots:
+            self.roots.remove(name)
+        if not name in self.nonroots:
+            self.nonroots += [ name ]
+
+    def endProject(self):
+        self.curProjName = None
+
+    def startProject(self, name):
+        self.curProjName = name
+        if not name in self.nonroots:
+            self.roots += [ name ]
+
 
 class Variable:
     
@@ -662,7 +740,7 @@ class xmlDbParser(xml.sax.ContentHandler):
             # If the path to the remote repository is not absolute,
             # derive it from *remoteTop*.
             if not ':' in self.url and self.context:
-                self.url = self.context.cacheRemotePath(os.path.join('reps',self.url))
+                self.url = self.context.remoteSrcPath(self.url)
             self.handler.control(self.type, self.url)
         elif name == self.tagDepend:
             self.handler.dependency(self.depName, self.deps,self.excludes)
@@ -801,8 +879,8 @@ def findBin(names,excludes=[]):
     results = []
     version = None
     for name in names:
-        sys.stdout.write(name + '... ')
-        sys.stdout.flush()
+        log.write(name + '... ')
+        log.flush()
         found = False
         for p in os.environ['PATH'].split(':'):
             bin = os.path.join(p,name)
@@ -842,17 +920,17 @@ def findBin(names,excludes=[]):
                             break
                     if not excluded:
                         version = numbers[0]
-                        sys.stdout.write(str(version) + '\n')
+                        log.write(str(version) + '\n')
                         results.append(bin)
                     else:
-                        sys.stdout.write('excluded (' + str(numbers[0]) + ')\n')
+                        log.write('excluded (' + str(numbers[0]) + ')\n')
                 else:
-                    sys.stdout.write('yes\n')
+                    log.write('yes\n')
                     results.append(bin)
                 found = True
                 break
         if not found:
-            sys.stdout.write('no\n')
+            log.write('no\n')
     return results, version
 
 
@@ -862,8 +940,8 @@ def findCache(names):
     results = []
     version = None
     for name in names:
-        sys.stdout.write(name + "... ")
-        sys.stdout.flush()
+        log.write(name + "... ")
+        log.flush()
         fullName = context.cachePath(name)
         if os.path.exists(fullName):
             if names[name]:
@@ -872,14 +950,14 @@ def findCache(names):
                 f.close()
                 if sum == names[name]:
                     # checksum are matching
-                    sys.stdout.write("cached\n")
+                    log.write("cached\n")
                     results += [ fullName ]
                 else:
-                    sys.stdout.write("corrupted?\n")
+                    log.write("corrupted?\n")
             else:
-                sys.stdout.write("yes\n")
+                log.write("yes\n")
         else:
-            sys.stdout.write("no\n")
+            log.write("no\n")
     return results, version
 
 
@@ -958,8 +1036,8 @@ def findInclude(names,excludes=[]):
     version = None
     includeSysDirs = derivedRoots('include')
     for name in names:
-        sys.stdout.write(name + '... ')
-        sys.stdout.flush()
+        log.write(name + '... ')
+        log.flush()
         found = False
         for includeSysDir in includeSysDirs:
             includes = []
@@ -1003,15 +1081,15 @@ def findInclude(names,excludes=[]):
             if len(includes) > 0:
                 if includes[0][1]:
                     version = includes[0][1]
-                    sys.stdout.write(version + '\n')
+                    log.write(version + '\n')
                 else:
-                    sys.stdout.write('yes\n')
+                    log.write('yes\n')
                 results.append(includes[0][0])
                 includeSysDirs = [ os.path.dirname(includes[0][0]) ]
                 found = True
                 break
         if not found:
-            sys.stdout.write('no\n')
+            log.write('no\n')
     return results, version
     
 
@@ -1035,8 +1113,8 @@ def findLib(names,excludes=[]):
     results = []
     version = None
     for name in names:
-        sys.stdout.write(name + '... ')
-        sys.stdout.flush()
+        log.write(name + '... ')
+        log.flush()
         found = False
         for libSysDir in derivedRoots('lib'):
             libs = []
@@ -1067,14 +1145,14 @@ def findLib(names,excludes=[]):
                     look = re.match('.*lib' + name + '(.+)',libs[0][0])
                     if look:
                         suffix = look.group(1)
-                    sys.stdout.write(suffix + '\n')
+                    log.write(suffix + '\n')
                 else:
-                    sys.stdout.write('yes\n')
+                    log.write('yes\n')
                 results.append(libs[0][0])
                 found = True
                 break
         if not found:
-            sys.stdout.write('no\n')
+            log.write('no\n')
     return results, version
 
 
@@ -1114,8 +1192,9 @@ def findPrerequisites(deps, excludes=[]):
     return installed, complete
 
 
-def fetch(filenames,force=False):
+def fetch(filenames, cacheDir=None, force=False):
     '''download file from remote server.'''
+    print "fetch: " + ' '.join(filenames)
     if len(filenames) > 0:
         if force:
             downloads = filenames
@@ -1124,28 +1203,59 @@ def fetch(filenames,force=False):
             downloads = []
             for filename in filenames:
                 if not context.cachePath(filename) in locals:
-                    cacheDir = context.cachePath('')
-                    if not os.path.exists(cacheDir):
-                        os.makedirs(cacheDir)
+                    dir = os.path.dirname(context.cachePath(filename))
+                    if not os.path.exists(dir):
+                        os.makedirs(dir)
                     downloads += [ filename ]
-        
-        cacheDir = context.cachePath('')
-        remotePath = context.cacheRemotePath('')
+        cmdline = "rsync -avuzb"
+        if not cacheDir:
+            cacheDir = context.cachePath('')
+            cmdline = cmdline + 'R'
+        remotePath = context.remoteCachePath('')
         if  remotePath.find(':') > 0:
             remotePath = remotePath[remotePath.find(':') + 1:]
-        cmdLine = context.cacheRemotePath('') \
-                  +' '.join(downloads).replace(' ',' ' + remotePath + os.sep)
-        if context.cacheRemotePath('').find(':') > 0:
-            cmdLine = "rsync -avuzb --rsh=ssh '" \
-                + username + "@" + cmdLine + "' " + cacheDir
+        sources = context.remoteCachePath('') + './' \
+                +' ./'.join(downloads).replace(' ',' ' + remotePath + os.sep)
+        if context.remoteCachePath('').find(':') > 0:
+            cmdline = cmdline + " --rsh=ssh '" \
+                + username + "@" + sources + "' " + cacheDir
         else:
-            cmdLine = 'rsync -avuzb ' + cmdLine + ' ' + cacheDir
-        shellCommand(cmdLine)
+            cmdline = cmdline + ' ' + sources + ' ' + cacheDir
+        shellCommand(cmdline)
+
+
+def make(targets, projects):
+    '''invoke the make utility to build a set of projects.'''
+    recurse = 'recurse' in targets
+    if 'recurse' in targets:
+        targets.remove('recurse')
+
+    # Find build information
+    if recurse:
+        projects = validateControls(projects)
+        # We will generate a "make install" for all projects which are 
+        # a prerequisite. Those Makefiles expects bin, include, lib, etc.
+        # to be defined.
+        for dir in [ 'bin', 'include', 'lib', 'etc' ]:
+            name = context.value(dir + 'Dir')
+ 
+    last = projects.pop()
+    try:
+        # Recurse through projects that need to be rebuilt first 
+        for repository in projects:
+            makeProject(repository,['install'])
+
+        # Make current project
+        if not recurse or len(targets) > 0:
+            makeProject(last,targets)
+
+    except Error, e:
+        log.error(str(e))
 
 
 def makeProject(name,targets):
     '''Issue make command and log output'''
-    sys.stdout.write('<book id="' + name + '">\n')
+    log.header(name)
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
     if objDir != os.getcwd():
@@ -1154,7 +1264,7 @@ def makeProject(name,targets):
         os.chdir(objDir)
     cmdline = 'make -f ' + makefile + ' ' + ' '.join(targets)
     shellCommand(cmdline)
-    sys.stdout.write('</book>\n')
+    log.footer()
 
 
 def makeSrcDirs(names):
@@ -1236,11 +1346,24 @@ def searchBackToRoot(filename,root=os.sep):
 
 def shellCommand(cmdline):
     '''Execute a shell command and throws an exception when the command fails'''
-    sys.stdout.write(cmdline + '\n')
-    sys.stdout.flush()
-    err = os.system(cmdline)
-    if err != 0:
-        raise Error("unable to complete: " + cmdline,err)
+    if log:
+        log.write(cmdline + '\n')
+        log.flush()
+    else:
+        sys.stdout.write(cmdline + '\n')
+    cmd = subprocess.Popen(cmdline,shell=True,
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT)
+    line = cmd.stdout.readline()
+    while line != '':
+        if log:
+            log.write(line)
+        else:
+            sys.stdout.write(line)
+        line = cmd.stdout.readline()
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise Error("unable to complete: " + cmdline,cmd.returncode)
 
 
 def sortBuildConfList(dbPathnames,parser):
@@ -1458,7 +1581,7 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
             shellCommand('hdiutil attach ' + context.cachePath(image))
             target = context.value('darwinTargetVolume')
             if target != 'CurrentUserHomeDirectory':
-                sys.stdout.write('ATTENTION: You need sudo access on ' \
+                log.write('ATTENTION: You need sudo access on ' \
                  + 'the local machine to execute the following cmmand\n')
                 cmdline = 'sudo '
             else:
@@ -1483,10 +1606,30 @@ def upstream(srcdir,pchdir):
     while line != '':
         look = re.match('Only in ' + srcdir + ':',line)
         if look == None:
-            sys.stdout.write(line)
+            log.write(line)
         line = p.stdout.readline()
     p.poll()
     integrate(srcdir,pchdir)
+
+
+def pubBuild(args):
+    '''build  [remoteTop [localTop]]      
+           Download all projects from a remote machine 
+           and rebuild everything.
+    '''
+    print args
+    if len(args) > 0:
+        context.remoteCacheTop.default = args[0]
+    if len(args) > 1:
+        context.cacheTop.default = args[1]
+    global useDefaultAnswer
+    useDefaultAnswer = True
+    global log
+    log = LogFile(context.logname())
+    rgen = DerivedSetsGenerator()
+    index.parse(rgen)
+    make([ 'recurse', 'check', 'dist', 'install' ],rgen.repositories)
+    pubCollect([])
 
 
 def pubCollect(args):
@@ -1496,9 +1639,9 @@ def pubCollect(args):
     '''
 
     # Create the distribution directory, i.e. where packages are stored.
-    removePackageDir = context.cacheRemotePath(context.host())
-    if not os.path.exists(removePackageDir):
-        os.makedirs(removePackageDir)
+    remotePackageDir = context.remoteCachePath(context.host())
+    if not os.path.exists(remotePackageDir):
+        os.makedirs(remotePackageDir)
 
     # Create the project index file
     extensions = { 'Darwin': '\.dsx' }
@@ -1514,7 +1657,7 @@ def pubCollect(args):
     ext = extensions[context.host()]
     cmdline = 'rsync ' + context.dbPathname() + ' ' \
                        + ' '.join(findFiles(context.value('buildTop'),ext)) \
-                       + ' ' + removePackageDir
+                       + ' ' + remotePackageDir
     shellCommand(cmdline)
 
 
@@ -1541,7 +1684,7 @@ def pubContext(args):
                    os.path.dirname(context.configFilename))
         except IOError:
             pathname = os.path.join(context.value('etcDir'),args[0])
-    print pathname
+    sys.stdout.write(pathname)
 
 
 def pubInit(args):
@@ -1593,35 +1736,10 @@ def pubList(args):
 def pubMake(args):
     '''make    Make projects. "make recurse" will build all dependencies
                required before a project can be itself built.'''
-    recurse = 'recurse' in args
-    if 'recurse' in args:
-        args.remove('recurse')
-
-    # Find build information
-    print '<build>'
+    global log 
+    log = LogFile(context.logname())
     repositories = [ context.cwdProject() ]
-    if recurse:
-        repositories = validateControls(repositories)
-        # We will generate a "make install" for all projects which are 
-        # a prerequisite. Those Makefiles expects bin, include, lib, etc.
-        # to be defined.
-        for dir in [ 'bin', 'include', 'lib', 'etc' ]:
-            name = context.value(dir + 'Dir')
- 
-    last = repositories.pop()
-    try:
-        # Recurse through projects that need to be rebuilt first 
-        for repository in repositories:
-            makeProject(repository,['install'])
-
-        # Make current project
-        if not recurse or len(args) > 0:
-            makeProject(last,args)
-        print '</build>'
-
-    except Error, e:
-        print e
-        print '</build>'
+    make(args,repositories)
 
 
 def pubUpdate(args):
@@ -1896,5 +2014,8 @@ if __name__ == '__main__':
             raise Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
 
     except Error, err:
-        sys.stderr.write(str(err))
+        log.error(str(err))
         sys.exit(err.code)
+
+    if log:
+        log.close()
