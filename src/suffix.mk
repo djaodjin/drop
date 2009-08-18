@@ -82,9 +82,11 @@ $(project)-$(version).tar.bz2:
 		$(basename $(basename $@))/Makefile.in
 	$(installExecs) $(shell dws context configure.sh) \
 		$(basename $(basename $@))/configure
-	$(installExecs) $(shell dws context dws.py) $(basename $(basename $@))/dws
-	$(installFiles) $(shell dws context prefix.mk) $(basename $(basename $@))
-	$(installFiles) $(shell dws context suffix.mk) $(basename $(basename $@))
+	$(installExecs) $(shell dws context dws.py) \
+		$(basename $(basename $@))/dws
+	$(installFiles) $(shell dws context prefix.mk) \
+			$(shell dws context suffix.mk) \
+		$(basename $(basename $@))
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
 		-f $@ $(basename $(basename $@))
 

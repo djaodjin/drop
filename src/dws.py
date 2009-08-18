@@ -1264,10 +1264,11 @@ def makeProject(name,targets):
     try:
         cmdline = 'make -f ' + makefile
         if len(targets) > 0:
-            for target in targets:
-                cmdline = cmdline + ' ' + target
-                shellCommand(cmdline)
-                status = target
+            cmdline = cmdline + ' '.join(targets)
+            shellCommand(cmdline)
+            status = target[0]
+            if len(targets) > 1:
+                status = status + '...'
         else:
             shellCommand(cmdline)
             status = 'build'
