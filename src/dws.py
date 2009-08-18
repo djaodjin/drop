@@ -52,7 +52,7 @@ class Error(Exception):
         self.msg = msg
 
     def __str__(self):
-        return 'error ' + str(self.code) + ':' + self.msg
+        return 'error ' + str(self.code) + ': ' + self.msg
 
 
 class Context:
@@ -326,12 +326,14 @@ class LogFile:
         sys.stderr.write(text)
         self.logfile.write(text)
 
-    def footer(self):
+    def footer(self,status):
+        self.logfile.write(']]>\n<status>' + status + '</status>\n')
         self.logfile.write('</section>\n')
 
     def header(self, text):
         sys.stdout.write(text + '...\n')
         self.logfile.write('<section id="' + text + '">\n')
+        self.logfile.write('<![CDATA[')
 
     def flush(self):
         sys.stdout.flush()
@@ -1240,31 +1242,38 @@ def make(targets, projects):
             name = context.value(dir + 'Dir')
  
     last = projects.pop()
-    try:
-        # Recurse through projects that need to be rebuilt first 
-        for repository in projects:
-            makeProject(repository,['install'])
+    # Recurse through projects that need to be rebuilt first 
+    for repository in projects:
+        makeProject(repository,['install'])
 
-        # Make current project
-        if not recurse or len(targets) > 0:
-            makeProject(last,targets)
-
-    except Error, e:
-        log.error(str(e))
+    # Make current project
+    if not recurse or len(targets) > 0:
+        makeProject(last,targets)
 
 
 def makeProject(name,targets):
     '''Issue make command and log output'''
     log.header(name)
+    status = 'compile'
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
     if objDir != os.getcwd():
         if not os.path.exists(objDir):
             os.makedirs(objDir)
         os.chdir(objDir)
-    cmdline = 'make -f ' + makefile + ' ' + ' '.join(targets)
-    shellCommand(cmdline)
-    log.footer()
+    try:
+        cmdline = 'make -f ' + makefile
+        if len(targets) > 0:
+            for target in targets:
+                cmdline = cmdline + ' ' + target
+                shellCommand(cmdline)
+                status = target
+        else:
+            shellCommand(cmdline)
+            status = 'build'
+    except Error, e:
+        log.error(str(e))
+    log.footer(status)
 
 
 def makeSrcDirs(names):
@@ -1566,35 +1575,38 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
     # development in the workspace. We will use the local machine official 
     # package manager for this task. If there are no official package manager 
     # for the system, we will provide an ad-hoc solution if possible.
-    if context.host() == 'Darwin':
-        images = {}
-        filenames = []
-        for name in packages:
-            package = handler.asProject(name).package
-            images[ os.path.join(context.host(),package.filename) ] \
-                = package.sha1
-            filenames += [ package.filename ]
-        images.update(extraFetches)
-        fetch(images)
-        for image in filenames:
-            pkg, ext = os.path.splitext(image)
-            shellCommand('hdiutil attach ' + context.cachePath(image))
-            target = context.value('darwinTargetVolume')
-            if target != 'CurrentUserHomeDirectory':
-                log.write('ATTENTION: You need sudo access on ' \
-                 + 'the local machine to execute the following cmmand\n')
-                cmdline = 'sudo '
-            else:
-                cmdline = ''
-            cmdline += 'installer -pkg ' + os.path.join('/Volumes',
-                                                        pkg,pkg + '.pkg') \
-                + ' -target "' + target + '"'
-            shellCommand(cmdline)
-            shellCommand('hdiutil detach ' \
-                         + os.path.join('/Volumes',pkg))
-    else:
-        raise Error("Use of package manager for '" \
-                    + context.host() + " not yet implemented.'")
+    if len(packages) > 0 or len(extraFetches) > 0:
+        if context.host() == 'Darwin':
+            images = {}
+            filenames = []
+            for name in packages:
+                package = handler.asProject(name).package
+                images[ os.path.join(context.host(),package.filename) ] \
+                    = package.sha1
+                filenames += [ package.filename ]
+            images.update(extraFetches)
+            fetch(images)
+            for image in filenames:
+                pkg, ext = os.path.splitext(image)
+                shellCommand('hdiutil attach ' + context.cachePath(image))
+                target = context.value('darwinTargetVolume')
+                if target != 'CurrentUserHomeDirectory':
+                    log.write('ATTENTION: You need sudo access on ' \
+                     + 'the local machine to execute the following cmmand\n')
+                    cmdline = 'sudo '
+                else:
+                    cmdline = ''
+                cmdline += 'installer -pkg ' + os.path.join('/Volumes',
+                                                            pkg,pkg + '.pkg') \
+                    + ' -target "' + target + '"'
+                shellCommand(cmdline)
+                shellCommand('hdiutil detach ' \
+                             + os.path.join('/Volumes',pkg))
+        else:
+            fetch(extraFetches)
+            if len(packages) > 0:
+                raise Error("Use of package manager for '" \
+                        + context.host() + " not yet implemented.'")
                              
             
 def upstream(srcdir,pchdir):
@@ -1628,7 +1640,7 @@ def pubBuild(args):
     log = LogFile(context.logname())
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    make([ 'recurse', 'check', 'dist', 'install' ],rgen.repositories)
+    make([ 'recurse', 'check', 'dist-src', 'install' ],rgen.repositories)
     pubCollect([])
 
 
@@ -1644,21 +1656,20 @@ def pubCollect(args):
         os.makedirs(remotePackageDir)
 
     # Create the project index file
-    extensions = { 'Darwin': '\.dsx' }
-    ext = extensions[context.host()]
-    indices = findFiles(context.value('buildTop'),ext) \
-      + findFiles(context.value('srcTop'),'index.xml')
+    # and copy the packages in the distribution directory.
+    extensions = { 'Darwin': ('\.dsx', '\.dmg'),
+                   'Fedora': ('.spec', '\.rpm'), 
+                 }
+    indices = []
+    if context.host() in extensions:
+        ext = extensions[context.host()]
+        indices = findFiles(context.value('buildTop'),ext[0])
+        cmdline = 'rsync ' + context.dbPathname() + ' ' \
+                     + ' '.join(findFiles(context.value('buildTop'),ext[1])) \
+                     + ' ' + remotePackageDir
+        shellCommand(cmdline)
+    indices += findFiles(context.value('srcTop'),'index.xml')
     createIndexPathname(context.dbPathname(),indices)
-
-    # Copy the packages in the distribution directory.
-    extensions = { 'Darwin': '\.dmg', 
-                   'Fedora': '\.rpm', 
-                   'Ubuntu': '\.deb' }
-    ext = extensions[context.host()]
-    cmdline = 'rsync ' + context.dbPathname() + ' ' \
-                       + ' '.join(findFiles(context.value('buildTop'),ext)) \
-                       + ' ' + remotePackageDir
-    shellCommand(cmdline)
 
 
 def pubConfigure(args):

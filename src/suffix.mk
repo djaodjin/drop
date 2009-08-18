@@ -28,7 +28,7 @@ installBinDir		?=	$(binDir)
 installIncludeDir	?=	$(includeDir)
 installLibDir		?=	$(libDir)
 
-.PHONY:	all install
+.PHONY:	all install check
 
 all::	$(bins) $(libs) $(includes)
 
@@ -88,10 +88,13 @@ $(project)-$(version).tar.bz2:
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
 		-f $@ $(basename $(basename $@))
 
+install-from-srctar:: $(project)-$(version).tar.bz2
+
+
 # This rule is used to create a OSX distribution package
 # \todo It certainly should move to an *host* specific part of the Makefiles
-$(project)-$(version).dmg:
-	${MAKE} -f $(srcDir)/Makefile install            \
+$(project)-$(version).dmg: $(project)-$(version).tar.bz2
+	${MAKE} -f $(srcDir)/Makefile install-from-srctar    \
 		installBinDir=${buildInstallDir}/bin         \
 		installIncludeDir=${buildInstallDir}/include \
 		installLibDir=${buildInstallDir}/lib
@@ -117,7 +120,56 @@ vpath %.spec $(srcDir)/src
 
 vpath %.deb $(srcDir)/src
 
-%.deb: $(project)-$(version).tar.bz2
-	debuild
+# alternative:
+#   apt-get install pbuilder
+#   pbuilder create
+#   pdebuild --buildresult ..
+#
+# debuild will try to install the packages in /usr/local so it needs
+# permission access to the directory.
+# Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
+%.deb: pkgdeb
+	cd $</$(basename $@) && debuild
+
+
+# Rules to build unit test logs
+# -----------------------------
+
+check: results.log
+
+regression.log: results.log reference.log
+	dregress $^
+
+results.log:
+	$(MAKE) -k -f $(thisMakefile) results ; echo "ok to get positive error code" > /dev/null
+	echo "<tests>" > $@
+	for logfile in $(logfiles) ; do \
+		if [ ! -f $$logfile ] ; then \
+			echo "<test name=\"$$logfile\">" >> $@ ; \
+			echo "<status>compile</status>" >> $@ ; \
+			echo "</test>" >> $@ ; \
+		else \
+			cat $$logfile >> $@ ; \
+		fi ; \
+	done
+	echo "</tests>" >> $@
+
+
+results: $(logfiles)
+
+define bldUnitTest
+
+$(1): $(1).cc $(testDepencencies)
+
+endef
+
+
+%Test.log: %Test
+	if [ -f $< ] ; then \
+		echo "<test name=\"$<\">" > $@ 2>&1 ; \
+		./$< $(filter $<,$^) >> $@ 2>&1 ; \
+		echo "</test>" >> $@ 2>&1 ; \
+	fi
+
 
 -include *.d
