@@ -33,7 +33,7 @@ installLibDir		?=	$(libDir)
 all::	$(bins) $(libs) $(includes)
 
 clean::
-	rm -rf *
+	rm $(bins) $(libs) *.o *.d
 
 install:: $(bins) $(libs) $(includes)
 	$(if $(bins),$(installDirs) $(installBinDir))

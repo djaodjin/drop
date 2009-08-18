@@ -32,6 +32,8 @@
 # control such that it is possible to execute a development cycle
 # (edit/build/run) on a local machine.
 
+__version__ = '0.1'
+
 import hashlib
 import re, os, optparse, shutil
 import socket, subprocess, sys, tempfile
@@ -308,7 +310,7 @@ class IndexProjects:
                                     os.path.basename(self.filename))],
                       context.value('etcDir'))
         elif not os.path.exists(self.filename):
-            raise Error(filename + ' does not exist.')
+            raise Error(self.filename + ' does not exist.')
 
 
 class LogFile:
@@ -739,10 +741,6 @@ class xmlDbParser(xml.sax.ContentHandler):
         '''Once the element is fully populated, call back the simplified
            interface on the handler.'''
         if name == self.tagControl:
-            # If the path to the remote repository is not absolute,
-            # derive it from *remoteTop*.
-            if not ':' in self.url and self.context:
-                self.url = self.context.remoteSrcPath(self.url)
             self.handler.control(self.type, self.url)
         elif name == self.tagDepend:
             self.handler.dependency(self.depName, self.deps,self.excludes)
@@ -1009,13 +1007,21 @@ def findFirstFiles(base,namePat,subdir=''):
 def findEtc(names,excludes=[]):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by etc.'''
-    found = []
-    for base in derivedRoots('etc'):
-        for name in names:
-            found += [ findFiles(base,name) ]
-        if len(found) == len(names):
-            return found
-    return []
+    results = []
+    for name in names:
+        log.write(name + '... ')
+        log.flush()
+        found = False
+        for base in derivedRoots('etc'):
+            fullNames = findFiles(base,name)
+            if len(fullNames) > 0:
+                log.write('yes\n')
+                results += [ fullNames[0] ]
+                found = True
+                break
+        if not found:
+            log.write('no\n')
+    return results, None
 
 
 def findInclude(names,excludes=[]):
@@ -1243,8 +1249,14 @@ def make(targets, projects):
  
     last = projects.pop()
     # Recurse through projects that need to be rebuilt first 
+    # If no targets have been specified, the default target is to build
+    # projects. Each project in turn has thus to be installed in order
+    # to build the next one in the topological chain.
+    recursiveTargets = targets
+    if len(recursiveTargets) == 0:
+        recursiveTargets = [ 'install' ]
     for repository in projects:
-        makeProject(repository,['install'])
+        makeProject(repository,recursiveTargets)
 
     # Make current project
     if not recurse or len(targets) > 0:
@@ -1264,9 +1276,9 @@ def makeProject(name,targets):
     try:
         cmdline = 'make -f ' + makefile
         if len(targets) > 0:
-            cmdline = cmdline + ' '.join(targets)
+            cmdline = cmdline + ' ' + ' '.join(targets)
             shellCommand(cmdline)
-            status = target[0]
+            status = targets[0]
             if len(targets) > 1:
                 status = status + '...'
         else:
@@ -1557,6 +1569,11 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
         if control.type == 'git':
             if not os.path.exists(os.path.join(context.srcDir(name),'.git')):
                 shutil.rmtree(context.srcDir(name))
+                # If the path to the remote repository is not absolute,
+                # derive it from *remoteTop*. Binding any sooner will trigger
+                # a potentially unnecessary prompt for remotePath.
+                if not ':' in control.url and context:
+                    control.url = context.remoteSrcPath(control.url)
                 cmdline = 'git clone ' + control.url \
                     + ' ' + context.srcDir(name)
                 shellCommand(cmdline)
@@ -1630,7 +1647,6 @@ def pubBuild(args):
            Download all projects from a remote machine 
            and rebuild everything.
     '''
-    print args
     if len(args) > 0:
         context.remoteCacheTop.default = args[0]
     if len(args) > 1:
@@ -1641,7 +1657,7 @@ def pubBuild(args):
     log = LogFile(context.logname())
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    make([ 'recurse', 'check', 'dist-src', 'install' ],rgen.repositories)
+    make([ 'recurse', 'dist-src' ],rgen.repositories)
     pubCollect([])
 
 
@@ -1677,11 +1693,12 @@ def pubConfigure(args):
     '''configure     Configure the local machine with direct dependencies
                      of a project such that the project can be built later on.
     '''
+    global log 
+    log = LogFile(context.logname())
     projectName = context.cwdProject()
     validateControls([ projectName ],
                      IndexProjects(context,
-                                   context.srcDir(os.path.join(projectName,
-                                                               'index.xml'))))
+                                   context.srcDir('index.xml')))
 
 
 def pubContext(args):
@@ -2011,7 +2028,7 @@ if __name__ == '__main__':
         
 	options, args = parser.parse_args()
 	if options.version:
-		print('dws version: ', __version__)
+		sys.stdout.write('dws version ' + __version__ + '\n')
 		sys.exit(0)
         useDefaultAnswer = options.default
 
@@ -2026,7 +2043,10 @@ if __name__ == '__main__':
             raise Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
 
     except Error, err:
-        log.error(str(err))
+        if log:
+            log.error(str(err))
+        else:
+            sys.stderr.write(str(err))
         sys.exit(err.code)
 
     if log:
