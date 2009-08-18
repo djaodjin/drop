@@ -82,8 +82,7 @@ $(project)-$(version).tar.bz2:
 		$(basename $(basename $@))/Makefile.in
 	$(installExecs) $(shell dws context configure.sh) \
 		$(basename $(basename $@))/configure
-	$(installExecs) $(shell dws context dws.py) \
-		$(basename $(basename $@))/dws
+	$(installExecs) $(shell which dws) $(basename $(basename $@))
 	$(installFiles) $(shell dws context prefix.mk) \
 			$(shell dws context suffix.mk) \
 		$(basename $(basename $@))
@@ -137,7 +136,8 @@ vpath %.deb $(srcDir)/src
 # Rules to build unit test logs
 # -----------------------------
 
-check: results.log
+check:
+	$(MAKE) -f $(srcDir)/test/Makefile
 
 regression.log: results.log reference.log
 	dregress $^
