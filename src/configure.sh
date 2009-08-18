@@ -22,9 +22,11 @@ srcTop=`cd $srcTop ; pwd`
 echo buildTop=${buildTop} > ws.mk
 echo srcTop=$srcTop >> ws.mk
 echo binDir=${buildTop}/bin >> ws.mk
+echo etcDir=${buildTop}/etc >> ws.mk
 echo libDir=${buildTop}/lib >> ws.mk
 echo includeDir=${buildTop}/include >> ws.mk
 echo installBinDir=${prefix}/bin >> ws.mk
+echo installEtcDir=${prefix}/etc >> ws.mk
 echo installIncludeDir=${prefix}/include >> ws.mk
 echo installLibDir=${prefix}/lib >> ws.mk
 
