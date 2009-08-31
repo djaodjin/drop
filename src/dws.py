@@ -31,6 +31,17 @@
 # with third-party prerequisites and source code under revision
 # control such that it is possible to execute a development cycle
 # (edit/build/run) on a local machine.
+#
+# example: 
+# dws --exclude 'contrib' build ~/workspace/codeSpin ~/build/codespin/install
+#
+# http://www.kernel.org/pub/software/scm/git/docs/everyday.html
+#
+# http://www.gelato.unsw.edu.au/archives/git/0511/11390.html
+# If the only thing you would want to do is to build it, then you
+# could 'git-tar-tree v2.6.14' and extract that on your notebook.
+# The output is just a tar so there will no history, though.
+
 
 __version__ = '0.1'
 
@@ -41,6 +52,7 @@ import xml.dom.minidom, xml.sax
 
 log = None
 useDefaultAnswer = False
+excludePats = []
 
 class Error(Exception):
     '''This type of exception is used to identify "expected" 
@@ -89,6 +101,9 @@ class Context:
                          'etcDir': Pathname('etcDir',
              'Root of the tree where extra files are installed',
                                             self.cacheTop,'etc/dws'),
+                         'logDir': Pathname('logDir',
+             'Root of the tree where logs are installed',
+                                            self.cacheTop,'log'),
                          'cacheTop': self.cacheTop,
                          'remoteCacheTop': self.remoteCacheTop,
                          'remoteSrcTop': Pathname('remoteSrcTop',
@@ -189,12 +204,9 @@ class Context:
         for path in paths:
             install = None
             if installName == 'libDir':
-                libname, libext = os.path.splitext(os.path.basename(path))
-                libname = libname.split('-')[0]
-                libname = libname + libext
-                install = os.path.join(self.value(installName),
-                                       libname)
+                install = linkPathLib(path)
             elif installName == 'includeDir':
+                # install = linkPathInclude(path)
                 dirname, header = os.path.split(path)
                 if dirname != 'include':
                     install = os.path.join(self.value(installName),
@@ -333,7 +345,7 @@ class LogFile:
         self.logfile.write('</section>\n')
 
     def header(self, text):
-        sys.stdout.write(text + '...\n')
+        sys.stdout.write('make ' + text + '...\n')
         self.logfile.write('<section id="' + text + '">\n')
         self.logfile.write('<![CDATA[')
 
@@ -382,7 +394,10 @@ class PdbHandler:
 class DependencyGenerator(PdbHandler):
     '''Aggregate dependencies for a set of projects'''
 
-    def __init__(self, projects):
+    def __init__(self, projects, excludePats = []):
+        '''*projects* is a list of root projects used to generate
+        the dependency graph. *excludePats* is a list of projects which
+        should be removed from the final topological order.'''
         # None if we don't record dependencies for a project and the name 
         # of the project otherwise.
         self.source = None
@@ -395,8 +410,9 @@ class DependencyGenerator(PdbHandler):
         # such that we can detect cycles. That is when an edge would be 
         # traversed again.
         roots = []
-        self.projects = projects
-        for p in projects:
+        self.excludePats = excludePats
+        self.projects = {}
+        for p in projects:         
             roots += [ [ None, p ] ]
         self.levels = [ roots ]
         self.vertices = projects
@@ -408,45 +424,37 @@ class DependencyGenerator(PdbHandler):
         # *prerequisites* contains a list a missing projects, which is to say
         # projects which are targets of *missings* dependencies.
         self.missings = []
-        self.prerequisites = {}
+        self.prerequisites = []
         self.nextLevel()
 
     def candidates(self):
         '''Returns a list of rows where each row contains expanded information
         for each missing project.'''
-        results = []
+        controls = []
+        packages = []
         for name in self.prerequisites:
-            row = [ name ]
-            if self.prerequisites[name].installedVersion:
-                row += [ self.prerequisites[name].installedVersion ]
-            results += [ row ]
-        return results
+            if name in self.projects:
+                row = [ name ]
+                if self.projects[name].installedVersion:
+                    row += [ self.projects[name].installedVersion ]
+                if self.projects[name].control:
+                    controls += [ row ]
+                elif self.projects[name].package:
+                    packages += [ row ]
+        return controls, packages
  
     def dependency(self, name, deps, excludes=[]):
         if self.source:
+            self.projects[self.source].buildDeps[name] = deps
+            self.projects[self.source].buildExcludes[name] = excludes
             if self.addDep(name,deps,excludes):
                 self.levels[0] += [ [ self.source, name ] ]
             else:
-                cut = self.addCut(name,deps,excludes)
-                if cut.complete:
-                    self.cuts += [ cut ]
+                if self.addCut(name,deps,excludes):
+                    self.cuts += [ name ]
                 else:
-                    self.prerequisites[name] = Project(name)
-                    self.prerequisites[name].deps = deps
-                    self.prerequisites[name].excludes = excludes
+                    self.prerequisites += [ name ]
                     self.missings += [ [ self.source, name ] ]
-
-    def linkPackageDeps(self):
-        '''All projects which are dependencies but are not part of *srcTop*
-        are not under development in the current workspace. Links to the required
-        executables, headers, libraries, etc. will be added to the install
-        directories such that projects in *srcTop* can build.'''
-        for cut in self.cuts:
-            if not cut.complete:        
-                cut.deps, cut.complete = findPrerequisites(cut.deps,
-                                                           cut.excludes)
-            for install in cut.deps:
-                context.linkPath(cut.deps[install],install + 'Dir')
 
     def nextLevel(self, filtered=[]):
         '''Going one step further in the breadth-first recursion introduces 
@@ -462,8 +470,8 @@ class DependencyGenerator(PdbHandler):
         self.missings = []
         for package in self.prerequisites:
             if not package in filtered:
-                self.cuts += [ self.prerequisites[package] ]
-        self.prerequisites = {}
+                self.cuts += [ package ]
+        self.prerequisites = []
         self.vertices = []
         for newEdge in self.levels[0]:
             # We first walk the tree of previously recorded edges to find out 
@@ -482,17 +490,28 @@ class DependencyGenerator(PdbHandler):
         self.source = None
         if name in self.vertices:
             self.source = name
+            if not name in self.projects:
+                self.projects[name] = Project(name)
 
     def addDep(self, name, deps, excludes=[]):
         return True
 
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
-        results = []
+        sorted = []
         for level in self.levels:
             for edge in level:
-                if not edge[1] in results:
-                    results += [ edge[1] ] 
+                if not edge[1] in sorted:
+                    sorted += [ edge[1] ] 
+        results = []
+        for name in sorted:
+            found = False
+            for excludePat in self.excludePats:
+                if re.match(excludePat,name):
+                    found = True
+                    break
+            if not found:
+                results += [ name ]
         return results
 
 
@@ -510,9 +529,9 @@ class MakeGenerator(DependencyGenerator):
     to check there are no *missing* prerequisites and act appropriately.
     '''
     
-    def __init__(self, projects):
+    def __init__(self, projects, excludePats = []):
         self.extraFetches = {}
-        DependencyGenerator.__init__(self, projects)
+        DependencyGenerator.__init__(self,projects,excludePats)
 
     def addDep(self, name, deps, excludes=[]):
         if os.path.isdir(context.srcDir(name)):
@@ -520,9 +539,12 @@ class MakeGenerator(DependencyGenerator):
         return False
 
     def addCut(self, name, deps, excludes=[]):
-        result = Project(name)
-        result.deps, result.complete = findPrerequisites(deps,excludes)
-        return result
+        (self.projects[self.source].buildDeps[name],
+         complete) = findPrerequisites(deps,excludes)
+        if not complete:
+            if not name in self.projects:
+                self.projects[name] = Project(name)
+        return complete
     
     def sources(self, name, patched={}):
         if self.source:
@@ -607,9 +629,9 @@ class Project:
 
     def __init__(self, name):
         self.name = name
-        self.deps = {}
+        self.buildDeps = {}
+        self.buildExcludes = {}
         self.description = None
-        self.excludes = []
         self.complete = False
         self.control = None
         self.package = None
@@ -632,6 +654,11 @@ class Unserializer(PdbHandler):
     def control(self, type, url):
         if self.project:
             self.projects[self.project].control = Control(type,url)
+
+    def dependency(self, name, deps, excludes=[]):
+        if self.project:
+            self.projects[self.project].buildDeps[name] = deps
+            self.projects[self.project].buildExcludes[name] = excludes
 
     def description(self, text):
         if self.project:
@@ -1179,12 +1206,11 @@ def findPrerequisites(deps, excludes=[]):
     will not be present. This function returns True if all files in *deps* 
     can be fulfilled and returns False if any file cannot be found.'''
     import __main__
-
     version = None
     installed = {}
     complete = True
     for dir in [ 'bin', 'include', 'lib', 'etc' ]:
-        if len(deps[dir]) > 0:
+        if dir in deps:
             command = 'find' + dir.capitalize()
             installed[dir], installedVersion = \
                 __main__.__dict__[command](deps[dir],excludes)
@@ -1232,7 +1258,64 @@ def fetch(filenames, cacheDir=None, force=False):
         shellCommand(cmdline)
 
 
-def make(targets, projects):
+def linkDependencies(projects, cuts=[]):
+    '''All projects which are dependencies but are not part of *srcTop*
+    are not under development in the current workspace. Links to 
+    the required executables, headers, libraries, etc. will be added to 
+    the install directories such that projects in *srcTop* can build.'''
+    import __main__
+
+    missings = []
+    for project in projects:
+        for prereq in projects[project].buildDeps:
+            if not prereq in cuts:
+                complete = True
+                deps = projects[project].buildDeps[prereq]
+                for dir in [ 'bin', 'include', 'lib', 'etc' ]:
+                    if dir in deps:
+                        for path in deps[dir]:
+                            command = 'linkPath' + dir.capitalize()
+                            if dir == 'lib':
+                                path = 'lib' + path + '.a'
+                            linkName = __main__.__dict__[command](path)
+                            if not os.path.exists(linkName):
+                                complete = False
+                if not complete:
+                    deps, complete = findPrerequisites(
+                        projects[project].buildDeps[prereq],
+                        projects[project].buildExcludes[prereq])
+                    if complete:
+                        for install in deps:
+                            context.linkPath(deps[install],install + 'Dir')
+                    else:
+                        if not prereq in missings:
+                            missings += [ prereq ]
+    if len(missings) > 0:
+        raise Error("incomplete prerequisites for " + ' '.join(missings),1)
+
+
+def linkPathBin(path):
+    return os.path.join(context.value('binDir'),
+                        os.path.basename(path))
+
+def linkPathEtc(path):
+    return os.path.join(context.value('etcDir'),
+                        os.path.basename(path))
+
+def linkPathInclude(path):
+    dirname, header = os.path.split(path)
+    if dirname != 'include':
+        header = os.path.basename(dirname)
+    return os.path.join(context.value('includeDir'),header)
+
+def linkPathLib(path):
+    libname, libext = os.path.splitext(os.path.basename(path))
+    libname = libname.split('-')[0]
+    libname = libname + libext
+    return os.path.join(context.value('libDir'),libname)
+
+
+def make(names, targets):
     '''invoke the make utility to build a set of projects.'''
     recurse = 'recurse' in targets
     if 'recurse' in targets:
@@ -1240,14 +1323,18 @@ def make(targets, projects):
 
     # Find build information
     if recurse:
-        projects = validateControls(projects)
+        names, projects = validateControls(names)
         # We will generate a "make install" for all projects which are 
         # a prerequisite. Those Makefiles expects bin, include, lib, etc.
         # to be defined.
-        for dir in [ 'bin', 'include', 'lib', 'etc' ]:
+        for dir in [ 'bin', 'include', 'lib', 'etc', 'log' ]:
             name = context.value(dir + 'Dir')
+    else:
+        handler = Unserializer(names)
+        index.parse(handler)
+        projects = handler.projects
  
-    last = projects.pop()
+    last = names.pop()
     # Recurse through projects that need to be rebuilt first 
     # If no targets have been specified, the default target is to build
     # projects. Each project in turn has thus to be installed in order
@@ -1255,20 +1342,24 @@ def make(targets, projects):
     recursiveTargets = targets
     if len(recursiveTargets) == 0:
         recursiveTargets = [ 'install' ]
-    for repository in projects:
-        makeProject(repository,recursiveTargets)
+    for name in names:
+        makeProject(projects[name],recursiveTargets)
 
     # Make current project
     if not recurse or len(targets) > 0:
-        makeProject(last,targets)
+        makeProject(projects[last],targets)
 
 
-def makeProject(name,targets):
-    '''Issue make command and log output'''
-    log.header(name)
+def makeProject(project,targets):
+    '''find and soft link direct dependencies when necessary,
+    then issue make command and log output.
+    *project* is an instance of Project which describes the project 
+    to be made.'''
     status = 'compile'
-    makefile = context.srcDir(os.path.join(name,'Makefile'))
-    objDir = context.objDir(name)
+    log.header(project.name)
+    linkDependencies({ project.name: project})
+    makefile = context.srcDir(os.path.join(project.name,'Makefile'))
+    objDir = context.objDir(project.name)
     if objDir != os.getcwd():
         if not os.path.exists(objDir):
             os.makedirs(objDir)
@@ -1385,7 +1476,7 @@ def shellCommand(cmdline):
         line = cmd.stdout.readline()
     cmd.wait()
     if cmd.returncode != 0:
-        raise Error("unable to complete: " + cmdline,cmd.returncode)
+        raise Error("unable to complete: " + cmdline + '\n',cmd.returncode)
 
 
 def sortBuildConfList(dbPathnames,parser):
@@ -1412,19 +1503,20 @@ def sortBuildConfList(dbPathnames,parser):
 
 
 def validateControls(repositories,dbindex=None):
-    '''Checkout source code files, install packages and generate 
-    links such that the project *repositories* can be built.
+    '''Checkout source code files, install packages such that 
+    the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency 
     information to use. If None, the global index fetched from
     the remote machine will be used.
 
     This function returns a topologicaly sorted list of projects
-    in *srcTop*. By iterating through the list, it is possible
-    to 'make' each prerequisite project in order.'''
+    in *srcTop* and an associated dictionary of Project instances. 
+    By iterating through the list, it is possible to 'make' 
+    each prerequisite project in order.'''
     if not dbindex:
         dbindex = index
     dbindex.validate()
-    dgen = MakeGenerator(repositories)
+    dgen = MakeGenerator(repositories,excludePats) # excludePats is global.
     missingControls = []
     missingPackages = []
 
@@ -1445,7 +1537,8 @@ def validateControls(repositories,dbindex=None):
             # projects, the checked-out projects will be added to 
             # the dependency graph while the packaged projects will
             # be added to the *cut* list.
-            controls, packages = selectCheckout(dgen.candidates())
+            controls, packages = dgen.candidates()
+            controls, packages = selectCheckout(controls,packages)
             missingControls += controls
             missingPackages += packages
         dgen.nextLevel(controls)
@@ -1455,8 +1548,9 @@ def validateControls(repositories,dbindex=None):
     update(missingControls + missingPackages,dgen.extraFetches,dbindex)
     # Executables, headers and libraries for recently installed 
     # packages need to be fully resolved.
-    dgen.linkPackageDeps()
-    return dgen.topological()
+    # \todo !!! cannot do the link until projects are built in some cases
+    linkDependencies(dgen.projects,dgen.cuts)
+    return dgen.topological(), dgen.projects
 
 
 def versionCandidates(line):
@@ -1657,7 +1751,7 @@ def pubBuild(args):
     log = LogFile(context.logname())
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    make([ 'recurse', 'dist-src' ],rgen.repositories)
+    make(rgen.repositories,[ 'recurse', 'install', 'dist-src' ])
     pubCollect([])
 
 
@@ -1668,9 +1762,12 @@ def pubCollect(args):
     '''
 
     # Create the distribution directory, i.e. where packages are stored.
-    remotePackageDir = context.remoteCachePath(context.host())
-    if not os.path.exists(remotePackageDir):
-        os.makedirs(remotePackageDir)
+    packageDir = context.cachePath(context.host())
+    if not os.path.exists(packageDir):
+        os.makedirs(packageDir)
+    srcPackageDir = context.cachePath('srcs')
+    if not os.path.exists(srcPackageDir):
+        os.makedirs(srcPackageDir)
 
     # Create the project index file
     # and copy the packages in the distribution directory.
@@ -1678,15 +1775,22 @@ def pubCollect(args):
                    'Fedora': ('.spec', '\.rpm'), 
                  }
     indices = []
+    # collect source packages
+    copySrcPackages = 'rsync ' + context.dbPathname() + ' ' \
+                 + ' '.join(findFiles(context.value('buildTop'),'.tar.bz2')) \
+                 + ' ' + srcPackageDir
+    copyBinPackages = 'rsync ' + context.dbPathname() + ' '
     if context.host() in extensions:
         ext = extensions[context.host()]
         indices = findFiles(context.value('buildTop'),ext[0])
-        cmdline = 'rsync ' + context.dbPathname() + ' ' \
-                     + ' '.join(findFiles(context.value('buildTop'),ext[1])) \
-                     + ' ' + remotePackageDir
-        shellCommand(cmdline)
+        copyBinPackages = copyBinPackages \
+                     + ' '.join(findFiles(context.value('buildTop'),ext[1]))
+    copyBinPackages = copyBinPackages + ' ' + packageDir
     indices += findFiles(context.value('srcTop'),'index.xml')
     createIndexPathname(context.dbPathname(),indices)
+    # We should only copy the index file after we created it.
+    shellCommand(copyBinPackages)
+    shellCommand(copySrcPackages)
 
 
 def pubConfigure(args):
@@ -1768,7 +1872,7 @@ def pubMake(args):
     global log 
     log = LogFile(context.logname())
     repositories = [ context.cwdProject() ]
-    make(args,repositories)
+    make(repositories,args)
 
 
 def pubUpdate(args):
@@ -1789,7 +1893,7 @@ def pubUpstream(args):
         upstream(srcdir,pchdir)
 
 
-def selectCheckout(controlCandidates):
+def selectCheckout(controlCandidates,packageCondidates=[]):
     '''Interactive prompt for a selection of projects to checkout.
     *controlCandidates* contains a list of rows describing projects available
     for selection. This function will return a list of projects to checkout
@@ -1806,7 +1910,6 @@ have  the choice to install them from binary package or not at all.''',
 
         # Filters out the dependencies that should be installed from a source 
         # repository from the list of candidates to install as binary packages.
-        packageCandidates = []
         for row in controlCandidates:
             if not row[0] in controls:
                 packageCandidates += [ row ]
@@ -2021,16 +2124,20 @@ if __name__ == '__main__':
                 epilog += __main__.__dict__[command].__doc__ + '\n'
 
 	parser = optparse.OptionParser(epilog=epilog)
-	parser.add_option('--version', dest='version', action='store_true',
-	    help='Print version information')
 	parser.add_option('--default', dest='default', action='store_true',
 	    help='Use default answer for every interactive prompt.')
+	parser.add_option('--exclude', dest='excludePats', action='append',
+	    help='The specified command will not be applied to projects matching the name pattern.')
+	parser.add_option('--version', dest='version', action='store_true',
+	    help='Print version information')
         
 	options, args = parser.parse_args()
 	if options.version:
 		sys.stdout.write('dws version ' + __version__ + '\n')
 		sys.exit(0)
         useDefaultAnswer = options.default
+        if options.excludePats:
+            excludePats = options.excludePats
 
         # Find the build information
         arg = args.pop(0)

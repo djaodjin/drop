@@ -11,7 +11,7 @@ Projects at least depend on some compiler toolchain. Most times, they also requi
 Most Open source distributions use <a href="packages.book">packages</a> to resolve runtime dependencies. It eventually guarantees a whole subsystem of released projects will run together. As package managers focus on project stability, installed files on a local machine get out of date with the prerequisites of a project head.
 </p>
 <p>
-When development requires changes in multiple projects, there are also no way to rebuilt those projects in dependency topological order. In most of these cases, custom shell scripts are put together as needed.
+When development requires changes in multiple projects, there are also no way to rebuilt those projects in dependence topological order. In most of these cases, custom shell scripts are put together as needed.
 </p>
 <p>
 A workspace concept and a workspace manager tool, <a href="../src/dws.py">dws</a>, has been put together to alleviate the time each contributor deals with dependencies troubles. 
@@ -51,5 +51,12 @@ It is the topic of the next chapters.
 <h2>Compiling - Libtool</h2>
 <h2>Running regression tests</h2> 
 -->
+
+<h2>References</h2>
+<p>
+<li><a href="http://book.git-scm.com/">The Git Community Book</a>
+<li><a href="http://www.gnu.org/software/make/manual/make.html">GNU Make Reference Manual</a>
+<li><a href="http:/docs.python.org">Python documentation</a>
+</p>
 
 <p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>

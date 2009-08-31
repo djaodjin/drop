@@ -27,21 +27,24 @@
 installBinDir		?=	$(binDir)
 installIncludeDir	?=	$(includeDir)
 installLibDir		?=	$(libDir)
+installLogDir		?=	$(logDir)
 
 .PHONY:	all install check
 
-all::	$(bins) $(libs) $(includes)
+all::	$(bins) $(libs) $(includes) $(logs)
 
 clean::
-	rm $(bins) $(libs) *.o *.d
+	rm -rf install-stamp $(bins) $(libs) *.o *.d *.dSYM
 
-install:: $(bins) $(libs) $(includes)
+install:: $(bins) $(libs) $(includes) $(logs)
 	$(if $(bins),$(installDirs) $(installBinDir))
 	$(if $(bins),$(installExecs) $(bins) $(installBinDir))
 	$(if $(libs),$(installDirs) $(installLibDir))
 	$(if $(libs),$(installFiles) $(libs) $(installLibDir))
 	$(if $(includes),$(installDirs) $(installIncludeDir))
 	$(if $(includes),$(installFiles) $(includes) $(installIncludeDir))
+	$(if $(logs),$(installDirs) $(installLogDir))
+	$(if $(logs),$(installFiles) $(logs) $(installLogDir))
 
 %.a:
 	$(AR) $(ARFLAGS) $@ $^
@@ -76,6 +79,8 @@ Ubuntu-dist: $(project)-$(version).deb
 
 dist-src: $(project)-$(version).tar.bz2
 
+# 	git archive -b branchname tag
+#	make dist
 $(project)-$(version).tar.bz2:
 	cp -rf $(srcDir) $(basename $(basename $@))
 	mv $(basename $(basename $@))/Makefile \
@@ -135,43 +140,39 @@ vpath %.deb $(srcDir)/src
 
 # Rules to build unit test logs
 # -----------------------------
-
 check:
-	$(MAKE) -f $(srcDir)/test/Makefile
+	$(installDirs) test
+	cd test && $(MAKE) -k -f $(srcDir)/test/Makefile results ; \
+	echo "ok to get positive error code" > /dev/null
+	cd test && $(MAKE) -f $(srcDir)/test/Makefile regression.book
 
-regression.log: results.log reference.log
-	dregress $^
+regression.book: regression.log $(srcDir)/src/book.xsl
+	xsltproc $(word 2,$^) $< > $@
 
-results.log:
-	$(MAKE) -k -f $(thisMakefile) results ; echo "ok to get positive error code" > /dev/null
-	echo "<tests>" > $@
-	for logfile in $(logfiles) ; do \
-		if [ ! -f $$logfile ] ; then \
-			echo "<test name=\"$$logfile\">" >> $@ ; \
-			echo "<status>compile</status>" >> $@ ; \
-			echo "</test>" >> $@ ; \
+regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
+	dregress -o $@ $^ 
+
+results.log: $(wildcard *Test.cout)
+	echo "<config name=\"$(version)\">" >> $@
+	dws host >> $@
+	echo "</config>" >> $@
+	for testunit in $(testunits) ; do \
+		echo "@@ test: $$testunit @@" >> $@ ; \
+		if [ ! -f $$testunit ] ; then \
+			echo "<status>compile error</status>" >> $@ ; \
 		else \
-			cat $$logfile >> $@ ; \
+			if [ -f $${testunit}.cout ] ; then \
+				cat $${testunit}.cout >> $@ ; \
+			fi ; \
 		fi ; \
 	done
-	echo "</tests>" >> $@
 
+results: $(patsubst %,%.cout,$(testunits))
 
-results: $(logfiles)
+%Test.cout: %Test
+	./$< $(filter-out $<,$^) > $@ 2>&1
 
-define bldUnitTest
-
-$(1): $(1).cc $(testDepencencies)
-
-endef
-
-
-%Test.log: %Test
-	if [ -f $< ] ; then \
-		echo "<test name=\"$<\">" > $@ 2>&1 ; \
-		./$< $(filter $<,$^) >> $@ 2>&1 ; \
-		echo "</test>" >> $@ 2>&1 ; \
-	fi
-
+%.log:	%.cout $(wildcard $(srcDir)/data/results-*.log)
+	dregress -o $@ $^
 
 -include *.d

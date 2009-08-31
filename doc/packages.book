@@ -29,6 +29,7 @@ Software is always in an ever-evolving state. In order to keep a local system up
 	<td><a href="http://synthesize.us/HOWTO_make_a_deb_archive_without_dpkg">.deb</a> file</td>
 	<td>.rpm file</td>
 	<td>.pkg file bundled as a .dmg</td>
+	<!-- http://freshmeat.net/projects/macports -->
 	<td>.tar.bz2</td>
 </tr>
 <tr>

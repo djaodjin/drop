@@ -47,3 +47,10 @@ LDFLAGS		+=	-L$(libDir)
 vpath %.a 	$(libDir)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
+
+
+define bldUnitTest
+
+$(1): $(1).cc $(testDepencencies)
+
+endef
