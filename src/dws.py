@@ -176,8 +176,11 @@ class Context:
     def host(self):
         '''Returns the distribution on which the script is running.'''
         dist = None
-        hostname = socket.gethostbyaddr(socket.gethostname())
-        hostname = hostname[0]
+        # \todo This code was working on python 2.5 but not in 2.6
+        #   hostname = socket.gethostbyaddr(socket.gethostname())
+        #   hostname = hostname[0]
+        # replaced by the following line
+        hostname = socket.gethostname()
         sysname, nodename, release, version, machine = os.uname()
         if sysname == 'Darwin':
             dist = 'Darwin'
@@ -992,14 +995,17 @@ def findFiles(base,namePat):
     '''Search the directory tree rooted at *base* for files matching *namePat*
        and returns a list of absolute pathnames to those files.'''
     result = []
-    for p in os.listdir(base):
-        path = os.path.join(base,p)
-        if os.path.isdir(path):
-            result += findFiles(path,namePat)
-        else:
+    try:
+        for p in os.listdir(base):
+            path = os.path.join(base,p)
             look = re.match('.*' + namePat + '$',path)
             if look:
                 result += [ path ]
+            elif os.path.isdir(path):
+                result += findFiles(path,namePat)
+    except OSError:
+        # In case permission to execute os.listdir is denied.
+        None
     return result
 
 
@@ -1256,6 +1262,33 @@ def fetch(filenames, cacheDir=None, force=False):
         else:
             cmdline = cmdline + ' ' + sources + ' ' + cacheDir
         shellCommand(cmdline)
+
+def installDarwinPkg(image,target,pkg=None):
+    '''Mount *image*, a pathnme to a .dmg file and use the Apple installer 
+    to install the *pkg*, a .pkg package onto the platform through the Apple 
+    installer.'''
+    base, ext = os.path.splitext(image)
+    volume = os.path.join('/Volumes',os.path.basename(base))
+    shellCommand('hdiutil attach ' + image)
+    if target != 'CurrentUserHomeDirectory':
+        message = 'ATTENTION: You need sudo access on ' \
+                + 'the local machine to execute the following cmmand\n'
+        if log:
+            log.write(message)
+        else:
+            sys.stdout.write(message)
+        cmdline = 'sudo '
+    else:
+        cmdline = ''
+    if not pkg:
+        pkgs = findFiles(volume,'\.pkg')
+        if len(pkgs) != 1:
+            raise RuntimeError('ambiguous: not exactly one .pkg to install')
+        pkg = pkgs[0]
+    cmdline += 'installer -pkg ' + os.path.join(volume,pkg) \
+            + ' -target "' + target + '"'
+    shellCommand(cmdline)
+    shellCommand('hdiutil detach ' + volume)
 
 
 def linkDependencies(projects, cuts=[]):
@@ -1699,21 +1732,8 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
             images.update(extraFetches)
             fetch(images)
             for image in filenames:
-                pkg, ext = os.path.splitext(image)
-                shellCommand('hdiutil attach ' + context.cachePath(image))
-                target = context.value('darwinTargetVolume')
-                if target != 'CurrentUserHomeDirectory':
-                    log.write('ATTENTION: You need sudo access on ' \
-                     + 'the local machine to execute the following cmmand\n')
-                    cmdline = 'sudo '
-                else:
-                    cmdline = ''
-                cmdline += 'installer -pkg ' + os.path.join('/Volumes',
-                                                            pkg,pkg + '.pkg') \
-                    + ' -target "' + target + '"'
-                shellCommand(cmdline)
-                shellCommand('hdiutil detach ' \
-                             + os.path.join('/Volumes',pkg))
+                installDarwinPkg(context.cachePath(image),
+                                 context.value('darwinTargetVolume'))
         else:
             fetch(extraFetches)
             if len(packages) > 0:
@@ -1830,6 +1850,12 @@ def pubInit(args):
         context.save()
     index.validate()
 
+def pubInstall(args):
+    '''install  Install a package on the local system.
+                \todo currently inconditionally only supports Darwin.
+    ''' 
+    for image in args:
+        installDarwinPkg(image,'LocalSystem')
 
 def pubIntegrate(args):
     '''integrate    Integrate a patch into a source package

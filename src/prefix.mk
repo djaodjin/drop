@@ -35,7 +35,7 @@ installExecs	:=	install -m 755
 #       to keep a maximum of 80 characters per line, the sed command 
 #       in contributors/smirolo/Makefile complains about an extra 
 #       '\n' character.
-srcDir		?=	$(subst $(dir $(shell dws context)),$(srcTop)/,$(shell pwd))
+srcDir		?=	$(subst $(dir $(shell dws context)),$(srcTop)/,$(realpath $(shell pwd)))
 
 includes	:=	$(wildcard $(srcDir)/include/*.hh \
 	                           $(srcDir)/include/*.tcc)
