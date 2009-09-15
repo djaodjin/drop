@@ -1,3 +1,4 @@
+title: Building Software
 <h1>Introduction</h1>
 <p>
 The time of centralized computers and teletype terminals is long gone. Today, each developper has his own machine that he carefully sets up to his own taste. Any policy that intents to keep engineers productive needs to account for a variety of <a href="doc/glossary.book#localMachine">local machines</a>. Very many of the brightest engineers I know have switched to a laptop as their primary development systems. They also work in different timezone even when physically in the same city. To avoid severely impacting productivity, once more, the system should address intermittent network connectivity and limited live communications.
