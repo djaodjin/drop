@@ -47,6 +47,7 @@ LDFLAGS		+=	-L$(libDir)
 vpath %.a 	$(libDir)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
+vpath %.c 	$(srcDir)/src
 
 
 define bldUnitTest

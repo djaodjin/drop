@@ -66,7 +66,14 @@ class Error(Exception):
         self.msg = msg
 
     def __str__(self):
-        return 'error ' + str(self.code) + ': ' + self.msg
+        return 'error ' + str(self.code) + ': ' + self.msg + '\n'
+
+class CircleError(Error):
+    '''Thrown when a circle has been detected while doing
+    a topological traversal of a graph.'''
+    def __init__(self,source,target):
+        Error.__init__(self,msg="circle exception while traversing edge from " \
+                           + source + " to " + target)
 
 
 class Context:
@@ -78,9 +85,10 @@ class Context:
     configName = 'ws.mk'
 
     def __init__(self):
+        # \todo default used to be os.path.dirname(os.path.dirname(os.getcwd()))
         self.cacheTop = Pathname('cacheTop',
                           'Root of the tree where cached packages are fetched',
-                          default=os.path.dirname(os.path.dirname(os.getcwd())))
+                          default=os.getcwd())
         self.remoteCacheTop = Pathname('remoteCacheTop',
              'Root of the remote tree where packages are located',
                   default='codespin.is-a-geek.com:/var/codespin')
@@ -114,7 +122,16 @@ class Context:
               choices=[ ['LocalSystem', 
                          'install packages on the system root for all users'],
                         ['CurrentUserHomeDirectory', 
-                         'install packages for the current user only'] ]) }
+                         'install packages for the current user only'] ]),
+              # These pathnames are not used for building code. They are used
+              # by the integrity (i.e project "machines") scripts to backup
+              # and replicate important files.
+              'backupDir': Pathname('backupDir',
+                   'Directory where archive (.tar.bz2) files are stored',
+                                    self.cacheTop,'backup'),
+              'replicatePath': Pathname('replicatePath',
+                   'Path, usually on a remote machine, where replicated copies are stored. This path might, probably should, point to another machine than *remoteCacheTop*',
+                                    self.remoteCacheTop,'replicate')  }
 
         self.buildTopRelativeCwd = None
         try:
@@ -165,13 +182,21 @@ class Context:
             self.locate()
         return self.buildTopRelativeCwd
 
+    def isControlled(self,name):
+        '''Returns True if the source directory associated with project *name*
+           contains information about a revision control system (i.e. CVS/, 
+           .git/, etc.).'''
+        if os.path.exists(os.path.join(context.srcDir(name),'.git')):
+            return True
+        if os.path.exists(os.path.join(context.srcDir(name),'CVS')):
+            return True
+        return False
 
     def dbPathname(self,remote=False):
         '''Absolute pathname to the project index file.'''
         if remote:
             return self.remoteCachePath('db.xml')
         return os.path.join(self.value('etcDir'),'db.xml')
-
 
     def host(self):
         '''Returns the distribution on which the script is running.'''
@@ -200,7 +225,6 @@ class Context:
             if dist:
                 dist = dist.capitalize()
         return dist
-
 
     def linkPath(self,paths,installName):
         '''Link a set of files in paths into the installName directory.'''
@@ -245,7 +269,6 @@ class Context:
     def objDir(self,name):
         return os.path.join(self.value('buildTop'),name)
 
-        
     def save(self):
         '''Write the config back to a file.'''
         try:
@@ -260,10 +283,8 @@ class Context:
                 configFile.write(key + '=' + self.environ[key].value + '\n')
         configFile.close()
 
-
     def srcDir(self,name):
         return os.path.join(self.value('srcTop'),name)
-
 
     def value(self,name):
         '''returns the value of the workspace variable *name*. If the variable
@@ -444,7 +465,16 @@ class DependencyGenerator(PdbHandler):
                     controls += [ row ]
                 elif self.projects[name].package:
                     packages += [ row ]
+                else:
+                    # If the prerequisites is not defined as an explicit
+                    # package, we will assume the prerequisite name is
+                    # enough to install the required tools for the prerequisite.
+                    packages += [ row ]
         return controls, packages
+
+    def control(self, type, url):
+        if self.source:
+            self.projects[self.source].control = Control(type,url)
  
     def dependency(self, name, deps, excludes=[]):
         if self.source:
@@ -456,8 +486,10 @@ class DependencyGenerator(PdbHandler):
                 if self.addCut(name,deps,excludes):
                     self.cuts += [ name ]
                 else:
-                    self.prerequisites += [ name ]
-                    self.missings += [ [ self.source, name ] ]
+                    if not name in self.prerequisites:
+                        self.prerequisites += [ name ]
+                    if not [ self.source, name ] in self.missings:
+                        self.missings += [ [ self.source, name ] ]
 
     def nextLevel(self, filtered=[]):
         '''Going one step further in the breadth-first recursion introduces 
@@ -483,10 +515,23 @@ class DependencyGenerator(PdbHandler):
                 for level in self.levels[1:]:
                     for edge in level:
                         if edge[0] == newEdge[0] and edge[1] == newEdge[1]:
-                            raise CircleException()
+                            raise CircleError(edge[0],edge[1])
             if not newEdge[1] in self.vertices:
-                # insert each vertex only once
+                # Insert each vertex once. 
                 self.vertices += [ newEdge[1] ]
+        # If an edge's source is matching a vertex added 
+        # to the next level, obviously, it was too "late"
+        # in the topological order.
+        newLevel = []
+        for edge in self.levels[0]:
+            found = False
+            for vertex in self.vertices:
+                if edge[0] == vertex:
+                    found = True
+                    break
+            if not found:
+                newLevel += [ edge ] 
+        self.levels[0] = newLevel            
         self.levels.insert(0,[])
 
     def startProject(self, name):
@@ -712,7 +757,6 @@ class xmlDbParser(xml.sax.ContentHandler):
 
     # Global Constants for the database parser
     tagBuild = 'build'
-    tagControl = 'sccs'
     tagDepend = 'xref'
     tagDescription = 'description'
     tagHash = 'sha1'
@@ -737,7 +781,9 @@ class xmlDbParser(xml.sax.ContentHandler):
     def startElement(self, name, attrs):
         '''Start populating an element.'''
         self.text = ''
-        if name == self.tagProject:
+        if name == self.tagBuild:
+            self.url = None
+        elif name == self.tagProject:
             self.patchedSourcePackages = {}
             self.filename = None
             self.sha1 = None
@@ -752,9 +798,6 @@ class xmlDbParser(xml.sax.ContentHandler):
                 self.handler.install(attrs['mode'],attrs['version'])
             else:
                 self.handler.install(attrs['mode'])
-        elif name == self.tagControl:
-            self.url = None
-            self.type = attrs['name']
         elif name == self.tagPackage:
             self.filename = attrs['name']
         elif name in [ 'bin', 'include', 'lib', 'etc' ]:
@@ -770,7 +813,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     def endElement(self, name):
         '''Once the element is fully populated, call back the simplified
            interface on the handler.'''
-        if name == self.tagControl:
+        if name == self.tagBuild:
             self.handler.control(self.type, self.url)
         elif name == self.tagDepend:
             self.handler.dependency(self.depName, self.deps,self.excludes)
@@ -791,6 +834,7 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.src = None
         elif name == self.tagUrl:
             self.url = self.text
+            self.type = self.depName
         elif name == self.tagVersion:
             self.handler.version(self.text)
 
@@ -1234,7 +1278,6 @@ def findPrerequisites(deps, excludes=[]):
 
 def fetch(filenames, cacheDir=None, force=False):
     '''download file from remote server.'''
-    print "fetch: " + ' '.join(filenames)
     if len(filenames) > 0:
         if force:
             downloads = filenames
@@ -1252,15 +1295,20 @@ def fetch(filenames, cacheDir=None, force=False):
             cacheDir = context.cachePath('')
             cmdline = cmdline + 'R'
         remotePath = context.remoteCachePath('')
-        if  remotePath.find(':') > 0:
-            remotePath = remotePath[remotePath.find(':') + 1:]
-        sources = context.remoteCachePath('') + './' \
-                +' ./'.join(downloads).replace(' ',' ' + remotePath + os.sep)
-        if context.remoteCachePath('').find(':') > 0:
-            cmdline = cmdline + " --rsh=ssh '" \
-                + username + "@" + sources + "' " + cacheDir
+        look = re.match('(\S+@)?(\S+):(\S+)',remotePath)
+        if look:
+            username = look.group(1)
+            hostname = look.group(2)
+            dirname = look.group(3)
+            sources = "'" + context.remoteCachePath('') + './' \
+                +' ./'.join(downloads).replace(' ',' ' + dirname + os.sep) + "'"
+            cmdline = cmdline + " --rsh=ssh"
+            if username:
+                cmdline = cmdline + username
         else:
-            cmdline = cmdline + ' ' + sources + ' ' + cacheDir
+            sources = context.remoteCachePath('') + './' \
+                +' ./'.join(downloads).replace(' ',' ' + remotePath + os.sep)
+        cmdline = cmdline + ' ' + sources + ' ' + cacheDir
         shellCommand(cmdline)
 
 def installDarwinPkg(image,target,pkg=None):
@@ -1398,7 +1446,8 @@ def makeProject(project,targets):
             os.makedirs(objDir)
         os.chdir(objDir)
     try:
-        cmdline = 'make -f ' + makefile
+        cmdline = 'export PATH=' + context.value('binDir') \
+            + ':${PATH} ; make -f ' + makefile
         if len(targets) > 0:
             cmdline = cmdline + ' ' + ' '.join(targets)
             shellCommand(cmdline)
@@ -1550,14 +1599,10 @@ def validateControls(repositories,dbindex=None):
         dbindex = index
     dbindex.validate()
     dgen = MakeGenerator(repositories,excludePats) # excludePats is global.
-    missingControls = []
     missingPackages = []
-
-    # Make sure that at least all projects specified as input for
-    # make will be present in *srcTop*.
+    missingControls = []
     for project in repositories:
-        if not os.path.isdir(context.srcDir(project)):
-            os.makedirs(context.srcDir(project))
+        if not context.isControlled(project):
             missingControls += [ project ]
 
     # Add deep dependencies
@@ -1572,9 +1617,13 @@ def validateControls(repositories,dbindex=None):
             # be added to the *cut* list.
             controls, packages = dgen.candidates()
             controls, packages = selectCheckout(controls,packages)
-            missingControls += controls
-            missingPackages += packages
-        dgen.nextLevel(controls)
+            for control in controls:
+                if not control in missingControls:
+                    missingControls += [ control ]
+            for package in packages:
+                if not package in missingPackages:
+                    missingPackages += [ package ]
+        dgen.nextLevel(missingControls)
     # Checkout missing source controlled projects
     # and install missing packages.
     makeSrcDirs(missingControls)
@@ -1582,7 +1631,7 @@ def validateControls(repositories,dbindex=None):
     # Executables, headers and libraries for recently installed 
     # packages need to be fully resolved.
     # \todo !!! cannot do the link until projects are built in some cases
-    linkDependencies(dgen.projects,dgen.cuts)
+    # linkDependencies(dgen.projects,dgen.cuts)
     return dgen.topological(), dgen.projects
 
 
@@ -1674,6 +1723,7 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
     or will install a new binary package through the local package manager.
     *extraFetches* is a list of extra files to fetch from the remote machine,
     usually a list of compressed source tar files.'''
+    print 'update: ' + ' '.join(projects)
     if not dbindex:
         dbindex = index
     dbindex.validate(force)
@@ -1686,34 +1736,6 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
             controls += [ name ]
         else:
             packages += [ name ]
-
-    for name in controls:
-        # The project is present in *srcTop*, so we will update the source 
-        # code from a repository. 
-        control = handler.asProject(name).control
-        if not control:
-            raise Error('project exists in *srcTop* but as no control structure.')
-        if control.type == 'git':
-            if not os.path.exists(os.path.join(context.srcDir(name),'.git')):
-                shutil.rmtree(context.srcDir(name))
-                # If the path to the remote repository is not absolute,
-                # derive it from *remoteTop*. Binding any sooner will trigger
-                # a potentially unnecessary prompt for remotePath.
-                if not ':' in control.url and context:
-                    control.url = context.remoteSrcPath(control.url)
-                cmdline = 'git clone ' + control.url \
-                    + ' ' + context.srcDir(name)
-                shellCommand(cmdline)
-            else:
-                cwd = os.getcwd()
-                os.chdir(context.srcDir(name))
-                cmdline = 'git pull'
-                shellCommand(cmdline)
-                cmdline = 'git checkout'
-                shellCommand(cmdline)
-                os.chdir(cwd)
-        else:
-            raise Error("unknown source control system '"  + control.type + "'")
 
     # Install executables, includes, libraries, etc. which are necessary 
     # to build the projects in *srcTop* but are not themselves in active 
@@ -1734,11 +1756,43 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
             for image in filenames:
                 installDarwinPkg(context.cachePath(image),
                                  context.value('darwinTargetVolume'))
+        elif context.host() == 'Ubuntu':
+            fetch(extraFetches)
+            if len(packages) > 0:
+                shellCommand('sudo apt-get -y install ' + ' '.join(packages))
         else:
             fetch(extraFetches)
             if len(packages) > 0:
                 raise Error("Use of package manager for '" \
                         + context.host() + " not yet implemented.'")
+
+    for name in controls:
+        # The project is present in *srcTop*, so we will update the source 
+        # code from a repository. 
+        control = handler.asProject(name).control
+        if not control:
+            raise Error('project exists in *srcTop* but as no control structure.')
+        if control.type == 'git-core':
+            if not os.path.exists(os.path.join(context.srcDir(name),'.git')):
+                shutil.rmtree(context.srcDir(name))
+                # If the path to the remote repository is not absolute,
+                # derive it from *remoteTop*. Binding any sooner will trigger
+                # a potentially unnecessary prompt for remotePath.
+                if not ':' in control.url and context:
+                    control.url = context.remoteSrcPath(control.url)
+                cmdline = 'git clone ' + control.url \
+                    + ' ' + context.srcDir(name)
+                shellCommand(cmdline)
+            else:
+                cwd = os.getcwd()
+                os.chdir(context.srcDir(name))
+                cmdline = 'git pull'
+                shellCommand(cmdline)
+                cmdline = 'git checkout'
+                shellCommand(cmdline)
+                os.chdir(cwd)
+        else:
+            raise Error("unknown source control system '"  + control.type + "'")
                              
             
 def upstream(srcdir,pchdir):
@@ -1919,7 +1973,7 @@ def pubUpstream(args):
         upstream(srcdir,pchdir)
 
 
-def selectCheckout(controlCandidates,packageCondidates=[]):
+def selectCheckout(controlCandidates,packageCandidates=[]):
     '''Interactive prompt for a selection of projects to checkout.
     *controlCandidates* contains a list of rows describing projects available
     for selection. This function will return a list of projects to checkout
@@ -1939,7 +1993,7 @@ have  the choice to install them from binary package or not at all.''',
         for row in controlCandidates:
             if not row[0] in controls:
                 packageCandidates += [ row ]
-        packages = selectInstall(packageCandidates)
+    packages = selectInstall(packageCandidates)
     return controls, packages
 
 

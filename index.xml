@@ -1,8 +1,11 @@
 <?xml version="1.0" ?>
 <book>
   <section id="drop">
-    <sccs name="git">
-      <url>drop</url>
-    </sccs>
+    <build>
+      <xref linkend="git-core">
+	<bin name="git" />
+	<url>drop</url>
+      </xref>      
+    </build>
   </section>
 </book>
