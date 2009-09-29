@@ -10,7 +10,7 @@
 #     * Redistributions in binary form must reproduce the above copyright
 #       notice, this list of conditions and the following disclaimer in the
 #       documentation and/or other materials provided with the distribution.
-#     * Neither the name of codespin nor the
+#     * Neither the name of fortylines nor the
 #       names of its contributors may be used to endorse or promote products
 #       derived from this software without specific prior written permission.
 
@@ -74,7 +74,7 @@ if __name__ == '__main__':
     else:
         replicateTops = [ 'Library/Application\ Support/Firefox/Profiles/bookmarks.html',
                           'Library/Application\ Support/AddressBook',
-                          'workspace/codeSpin',
+                          'workspace/fortylines',
                           'workspace/machines' ]
         firstReplicatePath = '/Users/smirolo'
         secondReplicatePath = '/Volumes/DIESEL'

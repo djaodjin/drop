@@ -9,7 +9,7 @@
 #     * Redistributions in binary form must reproduce the above copyright
 #       notice, this list of conditions and the following disclaimer in the
 #       documentation and/or other materials provided with the distribution.
-#     * Neither the name of codespin nor the
+#     * Neither the name of fortylines nor the
 #       names of its contributors may be used to endorse or promote products
 #       derived from this software without specific prior written permission.
 
@@ -83,6 +83,9 @@ dist-src: $(project)-$(version).tar.bz2
 #	make dist
 $(project)-$(version).tar.bz2:
 	cp -rf $(srcDir) $(basename $(basename $@))
+	sed -e s,$(project),$(project)-$(version),g \
+		$(srcDir)/index.xml > $(basename $(basename $@))/index.xml 
+	$(installDirs) $(basename $(basename $@))/etc
 	mv $(basename $(basename $@))/Makefile \
 		$(basename $(basename $@))/Makefile.in
 	$(installExecs) $(shell dws context configure.sh) \
@@ -90,7 +93,7 @@ $(project)-$(version).tar.bz2:
 	$(installExecs) $(shell which dws) $(basename $(basename $@))
 	$(installFiles) $(shell dws context prefix.mk) \
 			$(shell dws context suffix.mk) \
-		$(basename $(basename $@))
+		$(basename $(basename $@))/etc
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
 		-f $@ $(basename $(basename $@))
 

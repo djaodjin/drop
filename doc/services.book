@@ -1,0 +1,374 @@
+<h2>Services</h2>
+<!-------------->
+<p>
+At least, the following technical components should be understood in order to establish a professional presence on the internet. Good practice requires to review pre-installed configuration files and read the associated documentation carefully. Examples in the following sections refer to Fortylines solutions' setup of its Ubuntu 8.10 server.
+<table>
+<tr><th>name</th><th>application of choice</th><th>standard ports</th><th>details</th></tr>
+<tr><td>Domain Name Sever (DNS)</td>
+    <td><a href="http://www.isc.org/products/BIND">bind</a></td>
+    <td>53</td><td>RFC1034, RFC1035</td></tr>
+<tr><td>Internet Message Access Protocol (IMAP)</td>
+    <td><a href="http://www.dovecot.org/">dovecot</a></td>
+    <td>143, 993</td><td>RFC3501</td></tr>
+<tr><td>Message Transfer Agent (MTA)</td>
+    <td><a href="http://www.postfix.org/">postfix</a></td>
+    <td>25, 587</td><td>RFC821, RFC2821</td></tr>
+<tr><td>Secure Shell (SSH)</td>
+    <td><a href="http://www.openssh.com/">openssh</a></td>
+    <td>22</td><td>RFC4252-RFC4255</td></tr>
+<tr><td>Hypertext Transfer Protocol (HTTP)</td>
+    <td><a href="http://www.apache.org/">apache</a></td>
+    <td>80, 443</td><td>RFC2616, RFC2818</td></tr>
+</table>
+</p>
+<p>Tip: You will most times need to figure out what is going on. &quot;ls -lrt /var/log&quot; will show last log modified. If there is any information worth looking at, it will most likely show up there.</p>
+
+<h2>Firewall</h2>
+<!-------------->
+<p>
+Communication services are either used to
+</p>
+<ul>
+<li>1. Reach out to the community
+<li>2. Coordinate trusted developpers
+</ul>
+<p>
+Services in the first category are accessible by anyone and everyone. Technically they will require to open and forward a dedicated port in the firewall. Services in the second category require <a href="access.book#authentication">authentication</a>. A single dedicated port to a Virtual Private Network (VPN) is open in the firewall and services are only allowed to run on the VPN. We thus opened ports 22, 25 and 80 in the firewall facing the outside world.   
+</p>
+
+<h2>Secure Shell Login</h2>
+<!------------------------>
+<p>
+<li>Installation: apt-get install openssh-server<br />
+<li>Configuration: /etc/ssh/sshd_config (see also /etc/pam.d/sshd)<br />
+<li>Restarting: /etc/init.d/ssh restart<br />
+<li>Logs: /var/log/auth.log<br />
+</p>
+
+<p>Once sshd is installed on the server, there are two things to do. First, from the local console, use the <b>ssh-keygen</b> command to retrieve the server ssh key fingerprint and publish it to the people that will be allowed to remotely login into the server. For example:</p>
+<pre>
+<b>ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub</b>
+2048 c2:0d:b3:19:bf:cf:c8:09:f7:bd:76:dc:67:cd:59:7b /etc/ssh/ssh_host_rsa_key.pub (RSA)
+</pre>
+<p>Second, review the configuration file (/etc/ssh/sshd_config) and edit the settings to match your requirements. The sshd daemon offers to <a href="access.book#authentication">authenticate</a> a user using one of many schemes. It is important to note that, so far, it does not offer to authenticate through a <b>combinaison</b> of schemes. Each scheme has advantages and drawbacks that you need to take into concideration while designing the <a href="access.book">access policy</a>. For example</p>
+<table>
+<tr><th></th><th>Public/Private Key</th><th>Password</th></tr>
+<tr><th>Major threat</th><td>Compromised client</td><td>Brute force cracking</td></tr>
+<tr><th>Server administrator stance</th><td>Unaware of breach attempts before reported or actively exploited.</td><td>Pro-actively evaluate weaknesses and detect breach attempts.</td></tr>
+</table>
+<p>The risk of a compromised client is very real when all contributors have just enough skills to administrate their own machines, a laptop they carry around everywhere. Ideally, both are valuable and should be used together by the sshd daemon.</p>
+<p>The steps to configure an ssh server and client to use RSA public/private key for authentication.</p>
+<table style="text-align: left;">
+<tr><th>Client</th><th>Server (i.e. <i>hostname</i>)</th></tr>
+<tr><td><pre>man ssh-keygen
+man ssh_config
+</pre></td><td><pre>man sshd_config</pre></td></tr>
+<tr><td><pre>ssh-keygen -q -f ~/.ssh/id_rsa -t rsa</pre></td><td>
+<pre>sudo apt-get upgrade sshd
+diff -u sshd_config.prev /etc/sshd_config
++ Protocol 2
++ PasswordAuthentication no
++ PubkeyAuthentication yes
++ AuthorizedKeysFile     %h/.ssh/authorized_keys
+sudo /etc/init.d/ssh restart</pre></td></tr>
+<tr><td colspan="2"><b>Append the content of the client's file id_rsa.pub to the server's file /home/<i>username</i>/.ssh/authorized_keys</b></td></tr>
+<tr><td><pre>
+ls -la ~/.ssh
+drwx------   .
+-rw-r--r--   config
+-rw-------   id_rsa
+-rw-r--r--   id_rsa.pub
+-rw-r--r--   known_hosts
+</pre>
+</td>
+<td>
+<pre>
+ls -la ~/.ssh
+drwx------ .
+-rw------- authorized_keys</td></tr>
+</pre>
+<tr><td><pre>
+ssh -v <i>hostname</i>
+...
+debug1: Next authentication method: publickey
+debug1: Offering public key: /Users/<i>username</i>/.ssh/id_rsa
+debug1: Server accepts key: pkalg ssh-rsa blen 277
+debug1: Authentication succeeded (publickey).
+...
+</pre></td><td><pre>
+diff sshd_config.org /etc/ssh/sshd_config
++ LogLevel VERBOSE
+tail -f /var/log/auth.log
+...
+... Found matching RSA key ...
+... Accepted publickey for <i>username</i> from <i>client</i> port 50818 ssh2
+... pam_unix(sshd:session): session opened for user <i>username</i> by (uid=0)
+... User child is on pid ...
+</pre></td></tr>
+</table>
+<p><b>Tip:</b> At some point, you might be temped to update sshd or its configuration through a secure shell connection instead of at the local console. In that case, it is recommended to add a cron job that will restore previously known working configuration after a few minutes before logging out. Just in case.</p>
+
+<h2>Secure Shell Tunnels</h2>
+<!-------------------------->
+<p>
+Port 22 is open in the firewall for secure shell login. We will also use it to <a href="https://help.ubuntu.com/community/SSH_VPN ">tunnel</a> all traffic to services on the Virtual Private Network. This also has the advantage of encrypting all traffic regardless of services provided. The server needs to permit tunnels or you will see &quot;permission denied&quot; messages.   
+</p>
+<table style="text-align: left;">
+<tr><th>Client</th><th>Server (i.e. <i>hostname</i>)</th></tr>
+<tr><td></td><td><pre>diff sshd_config.org /etc/ssh/sshd_config
++PermitTunnel yes</pre></td></tr>
+<tr><td><pre>ssh -f -L <i>localport</i>:<i>hostname</i>:<i>hostport</i> -N <i>hostname</i></pre></td><td><pre>tail -f /var/log/auth.log</pre></td></tr>
+</table>
+<p>
+At that point, you can open any secure shell tunnel you want. Two tunnels are open to access e-mails, one for IMAP and one for SMTP. The following code is thus added in the client ~/.bash_profile.
+</p>
+<pre>
+# http://wiki.metawerx.net/wiki/SSHTunnelTroubleshooting
+function <i>hostname</i>_tunnels {
+    ssh -f -L 9930:localhost:993 -L 5870:localhost:587 -N <i>hostname</i>
+}
+</pre>
+<p>
+Invoking <i>hostname</i>_tunnels from a terminal command line will create the tunnels. Those tunnels will be open until the ssh process is killed. It is possible to also create <a href="http://www.g-loaded.eu/2006/11/24/auto-closing-ssh-tunnels/">auto closing ssh tunnels</a> with some more shell scripting if required.
+</p>
+<p>
+The Mail client is configured with the following parameters.
+<table>
+<tr><th>IMAP</th><td>Incoming Mail Server</td><td>127.0.0.1</td></tr>
+<tr><th></th><td>User Name</td><td><i>username</i> on <i>hostname</i></td></tr>
+<tr><th></th><td>password</td><td><i>password</i> for <i>username</i> on <i>hostname</i></td></tr>
+<tr><th>SMTP</th><td>Server Name</td><td>127.0.0.1</td></tr>
+<tr><th></th><td>Custom port</td><td>5870</td></tr>
+<tr><th></th><td>Use Secure Sockets</td><td>yes</td></tr>
+<tr><th></th><td>Authentication</td><td>password</td></tr>
+<tr><th></th><td>User Name</td><td><i>username</i> on <i>hostname</i></td></tr>
+<tr><th></th><td>password</td><td><i>password</i> for <i>username</i> on <i>hostname</i></td></tr>
+</table>
+</p>
+
+<p>Tip: test tunnel with webserver</p>
+http://www.ok-labs.com/blog/entry/ssh-tunneling-smtp-on-mac-os-x/
+
+<h2>Dynamic DNS</h2>
+<!----------------->
+<p>The modem that connects the server to the internet through your ISP surely does not use a static IP address but rather a dynamic address assigned through DHCP, the same way, most likely, your local network is configured.</p>
+<p><a href="http://www.broadband-help.com/articles/guest/domain_name_for_your_pc/">Dynamic DNS</a> is very simple. Everytime your modem renew its DHCP lease and gets a new IP address, this address needs to be forwarded to the DNS server responsible to locate your modem. Either the modem can do that for you or a software daemon running on your server wakes up at regular intervals and generate a specifically crafted update query to the DNS server. On Ubuntu, you can <a href="https://help.ubuntu.com/community/DynamicDNS">setup dynamic DNS</a> with ddclient.</p>
+<p>There are a lot of companies offering dynamic DNS for free. As an example, you can easily register with <a href="http://www.dyndns.com">dynDNS</a> and get the url <i>hostname</i>.is-a-geek.com for free in a couple clicks. A direct professional <i>domainname</i>.com url will not cost much through &quot;Custom DNS service&quot; and is definitely worth it once you got everything up-and-running. There is a quota on the monthly DNS query volume and if you either reach it, most likely your business is successful enough to upgrade to a more professional infrastructure. Here is an example to setup ddclient together with dynDNS.</p>
+<pre>
+sudo apt-get install ddclient
+ls -la /etc/ddclient.conf
+-rw------- 1 root root <i>...</i> /etc/ddclient.conf
+sudo cat /etc/ddclient.conf
+# Example for /etc/ddclient.conf
+
+pid=/var/run/ddclient.pid
+protocol=dyndns2
+use=web, if=eth1
+server=members.dyndns.org
+login=<i>dynDNS login</i>
+password=<i>dynDNS password</i>
+<i>hostname</i>.is-a-geek.com, <i>domainname</i>.com
+</pre>
+
+<p>
+For mail delivery, you might also want to setup MX records with your dynamic DNS provider. If your mail server never goes down, it will work without them. 
+</p>
+
+<h2>Web service</h2>
+<!----------------->
+<p>
+<li>Installation: apt-get install apache2<br />
+<li>Configuration: /etc/apache2/apache2.conf, /etc/apache2/httpd.conf<br />
+<li>Restarting: /etc/init.d/apache2 restart<br />
+<li>Logs: /var/log/apache2/access.log, /var/log/apache2/error.log<br />
+</p>
+<p>
+Looking at the configuration file, Ubuntu apache2 setup is configured to use a directory /etc/apache2/sites-enabled with links to files in /etc/apache2/sites-available. You most likely want to /etc/apache2/sites-enabled/000-default to point to your own configuration snipset or edit /etc/apache2/sites-available/default directly. You will also want to add a ServerName directive to /etc/apache2/apache2.conf in order to get rid of the warning &quot;Could not reliably determine the server's fully qualified domain name...&quot; message.
+</p>
+<pre>
+diff apache2.conf.org /etc/apache2/apache2.conf
++ ServerName <i>domainname</i>
+</pre>
+<p>Another directive you might want to take a close look at is <b>DirectoryIndex</b>. All urls pointing to the directory will try to load a specified default file.
+</p>
+
+<h2>E-mail Service</h2>
+<!-------------------->
+<p>
+<li>Installation: apt-get install postfix<br />
+<li>Configuration: /etc/postfix/master.cf /etc/postfix/main.cf<br />
+<li>Restarting: /etc/init.d/postfix restart<br />
+<li>Logs: /var/log/syslog, /var/log/mail.log<br />
+</p>
+<p>
+A good point to start reading are the <a href="https://help.ubuntu.com/community/Postfix">Ubuntu Postix Tutorials</a> and <a href="http://souptonuts.sourceforge.net/postfix_tutorial.html">Gmail on Home Linux Box using Postfix and Fetchmail</a>.</p>
+<p>
+It is not straightforward to figure what is going on when e-mails do not work as expected. For <a href="http://www.postfix.com/DEBUG_README.html">debugging postfix</a>, you might want to append <b>-v</b> to the smtp line in /etc/postfix/master.cf as a first step.
+</p>
+<pre>
+diff main.cf.org /etc/postfix/main.cf
++smtp_tls_loglevel = 1
++smtpd_tls_loglevel = 1
+</pre>
+<p>Identification of the mail server:</p>
+<pre>
++myorigin = /etc/mailname
++mydestination = <i>domainname</i>, <i>hostname</i>, localhost
++home_mailbox= Maildir/
+</pre>
+<p>You first will want to enable Transport Layer Security (TLS) to avoid usernames, passwords and messages to travel in clear text.</p>
+<pre>
+diff main.cf.org /etc/postfix/main.cf
+ # TLS parameters
++smtp_use_tls=yes
++smtp_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
++smtp_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
++smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
++smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
++
++smtpd_use_tls=yes
++smtpd_tls_received_header = yes
++smtpd_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
++smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
++smtpd_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
++smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
++
++tls_random_source = dev:/dev/urandom
+</pre>
+
+<h3>Outgoing Mail</h3>
+<p>
+Mail servers send each other messages on port 25. Most Internet Service Providers (ISP) block outbound port 25 as a way to prevent spam relays. Port 587 remains open for submission of messages by users that can authenticate with an outgoing mail server.</p>
+<p>Thus, setting up postfix as the outgoing message agent might require to use a relay mail transfer agent to send outgoing e-mails. To do that, you can use any mail server allowed to talk on port 25, and on which you have an account. For example, you can use a gmail account.</p>
+<pre>
+diff main.cf.org /etc/postfix/main.cf
++# Gmail Relay
++relayhost = [smtp.gmail.com]:587
++disable_dns_lookups = yes
+
++smtp_sasl_auth_enable = yes
++smtp_sasl_security_options= noanonymous
++smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
++smtp_sasl_type = cyrus
++
++smtpd_sasl_auth_enable= yes
++smtpd_sasl_local_domain= 
++smtpd_sasl_security_options= noanonymous
++smtpd_sasl_type = dovecot
++smtpd_sasl_path = private/auth-client
++smtpd_sender_restrictions = 
++    permit_mynetworks,
++    permit_sasl_authenticated,
++    reject_non_fqdn_sender,
++    reject_unknown_sender_domain
++smtpd_recipient_restrictions= 
++    permit_sasl_authenticated,
++    permit_mynetworks,
++    reject_unauth_destination
+
+diff master.cf.org /etc/postfix/master.cf
++submission inet n       -       -       -       -       smtpd
+ # When relaying mail as backup MX, disable fallback_relay to avoid MX loops
+ relay     unix  -       -       -       -       -       smtp
+ 	 -o smtp_fallback_relay=
++        -o smtp_generic_maps=
+
+diff sasl_passwd.org /etc/postfix/sasl_passwd
++[smtp.gmail.com]:587            <i>username</i>@gmail.com:<i>password</i>
+</pre>
+
+<pre>
+postmap sasl_passwd
+</pre>
+
+<p>Gmail will rewrite your outgoing message to read &quot;from <i>username</i>@gmail.com&quot; as a way to also prevent spam and false identities. Fortunately, you can use <a href="http://email.about.com/od/gmailtips/qt/et112605.htm">any &quot;from&quot; address</a> while relaying mail through gmail as long as you can receive e-mail at that address. All you need is to login in your gmail account and go through &quot;Settings > Accounts and Imports > Send Mail from another address&quot;. From a login on your server, test outgoing messages by using the following command:</p>
+<pre>
+echo "Email relayed by gmail" | mail -s 'test of relay' <i>username</i>@gmail.com
+</pre>
+
+<!-- \todo remove on clean up:
+     http://www.irbs.net/internet/postfix/0410/1520.html -->
+
+<h3>Incoming Mail</h3>
+<p>Mbox, the default format for e-mail storage by postfix is simple and straightforward but incompatible with POP3/IMAP services. Those services can only retrieved e-mails stored locally as Maildir mailboxes. One of the first thing is to set Maildir as the type of mailboxes used by postfix. 
+</p>
+<p>
+Locate the line starting with <b>myorigin</b> and update the referenced file. On Ubuntu, it is currently /etc/mailname. Edit this file and set the first line to <i>domainname</i>.   
+</p>
+<p>Restart the server and try sending mail to an account on the server. The logs and /home/<i><username</i>/Maildir/new/ should show some acitivity.</p>
+<p>To access your mail through your normal mail client, you will want to install an <a href="http://saturn.med.nyu.edu/it/help/email/imap/index.html">POP or IMAP server</a>.</p>
+<p>
+<li>Installation: apt-get install dovecot-imapd<br />
+<li>Configuration: /etc/dovecot/dovecot.conf<br />
+<li>Restarting: /etc/init.d/dovecot restart<br />
+<li>Logs: /var/log/syslog, /var/log/mail.log<br />
+</p>
+<pre>
+diff -u dovecot.org /etc/dovecot/dovecot.conf
++  mechanisms = plain login
++  socket listen {
++    client {
++      path = /var/spool/postfix/private/auth-client
++      mode = 0660
++      user = postfix
++      group = postfix 
++    }
++  }
+</pre>
+
+<h3>Mailing Aliases</h3>
+<p>
+Locate lines begining with alias in /etc/postfix/main.cf, edit the referenced file (/etc/aliases on Ubuntu) to add aliases and run the <b>newaliases</b> command to rebuild the fast-lookup database.
+</p>
+<pre>
++ info: <i>username</i>
+</pre>
+
+<!-- use a mailing list manager (sympa, mailman, ...). -->
+
+<!--
+<h5>Git repository</h5>
+<p>
+After creating a new group (fortylines) and a home/fortylines folder, I moved my repository over with scp, then change file ownership to be owned by root and in the fortylines group. After all, it might not have been a great idea.
+</p>
+<p>
+By default, git assumes that you are going to work with the files in the repository. To create a remote shared repository, we will use the --bare option. We will further use the --shared option to set the users that can access the repository.
+</p>
+<p>
+"A short aside about what git means by bare: A default git repository assumes that you’ll be using it as your working directory, so git stores the actual bare repository files in a .git directory alongside all the project files. Remote repositories don’t need copies of the files on the filesystem unlike working copies, all they need are the deltas and binary what-nots of the repository itself. This is what “bare” means to git. Just the repository itself."
+</p>
+<p>Note that group is actually spelled group. as opposite to user and world.
+<pre>
+git --bare init --shared=group
+</pre>
+
+I edited /home/fortylines/seed/.git/config such that it looks like:
+[core]
+        repositoryformatversion = 0
+        filemode = true
+        bare = false
+        logallrefupdates = true
+and I edited *workspace*/seed/.git/config such that it looks like:
+
+[core]
+        repositoryformatversion = 0
+        filemode = true
+        bare = false
+        logallrefupdates = true
+[remote "origin"]        url = ssh://fortylines.is-a-geek.com/home/fortylines/seed/.git
+        fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "master"]
+        remote = origin
+        merge = refs/heads/master
+
+git clone foo.com:/pub/repo.git/ my-project
+http://www.urbanpuddle.com/articles/2008/07/11/installing-git-on-a-server-ubuntu-or-debian
+
+
+
+\todo section on audit (nmap)
+
+\todo section on "How to start contributing"
+      + section on getting started (i.e. an account on the server)
+-->
+

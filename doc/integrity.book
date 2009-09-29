@@ -54,7 +54,7 @@ Apart from integrity, the difference between two fingerprinting of a system can 
 </tr>
 <tr>
     <th>backupTops</th><td>all directory hierarchies to backup</td>
-    <td>/home, /var/codespin/reps, /var/log</td>
+    <td>/home, /var/fortylines/reps, /var/log</td>
 </tr>
 <tr>
     <th>excludeTops</th><td>all directory hierarchies to exclude from fingerprinting</td>
@@ -70,7 +70,7 @@ Apart from integrity, the difference between two fingerprinting of a system can 
 </tr>
 <tr>
     <th>replicateTops</th><td>all directory hierarchies to replicate</td>
-    <td>/var/backup, /var/codespin/data</td>
+    <td>/var/backup, /var/fortylines/data</td>
 </tr>
 </table>
 

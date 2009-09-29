@@ -11,7 +11,7 @@ Before you can deploy technology to support access control of your machine, you 
 
 <h2>Partitioning</h2>
 <p>
-One of the first principle of controlling information is partitioning. For example,A same person will have different passwords for different roles and systems. Partitioning restricts compromised information to a specific subsystem.
+One of the first principle of controlling information is partitioning. For example, a same person will have different passwords for different roles and systems. Partitioning restricts compromised information to a specific subsystem.
 </p>
 
 <a name="auditing"><h2>Auditing</h2></a>
@@ -21,6 +21,7 @@ It is better to discover and address a vulnerability before taken advantage of b
 <p>
 Another category of auditing tools focus on intrusion detection. This sets the delay between a system being actually compromised and the intrusion detected. Activity logging and analysis are a big part of this kind of auditing.
 </p>
+<!-- \todo temper resistance section -->
 
 <h2>Physical Access</h2>
 <p>
@@ -34,4 +35,28 @@ The same way encryption is used for preventing unauthorized physical access to i
 <p>
 A remote machine provides services on open ports. Since each open ports is potentially a vector of attacks, the most tighten access control policy is to only have one port publicly open for the openssh daemon and use the local forward mechanism to redirect traffic to other services.
 </p>
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>
+
+<a name="authentication"><h2>Authentication</h2></a>
+<p>
+Users have restricted permissions to access files and services. Authentication consists for a system to verify a user is who he claims to be. In every day life, you might be asked to present your driver's licence before you can access your bank account. This is authentication. Usually, pieces of information to provide the system to authenticate fall in one of the following categories:
+<ul>
+<li><i>What you know</i>, for example, a password
+<li><i>What you have</i>, for example, a key
+<li><i>What you are</i>, for example, a fingerprint
+</ul>
+</p>
+<p>
+On today computer systems, public/private key cryptography is concidered one of the most sure way of authentication and thus heavily used. ssh and gpg, both, use public/private keys for authentication. Keys are typically very long and thus a shorter fingerprint is usually used to validate the authenticity of the key itself. To obtain fingerprints for ssh and gpg keys, use the following commands respectively.
+</p>
+<pre>
+ssh-keygen -lf <i>keyfile</i>
+gpg --fingerprint <i>username</i>
+</pre>
+<p>
+</p>
+<!--
+http://aplawrence.com/Basics/understandingpam.html 
+http://www.packtpub.com/article/development-with-pluggable-authentication-modules-pam
+    many scheme -> PAM
+http://www.cyberciti.biz/tips/howto-deny-allow-linux-user-group-login.html
+-->

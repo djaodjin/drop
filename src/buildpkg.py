@@ -6,7 +6,7 @@ This is an experimental command-line tool for building packages to be
 installed with the Mac OS X Installer.app application. 
 
 Sebastien Mirolo, 
-smirolo@hotmail.com
+smirolo@fortylines.com
 June 2009
 
 Based on work from 
@@ -276,7 +276,7 @@ class PackageMaker:
 	<key>CFBundleGetInfoString</key>
 	<string>1.0, buildpkg, Inc</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.is-a-geek.codespin.application</string>
+	<string>com.fortylines.application</string>
 	<key>CFBundleName</key>
 	<string>buildpkg</string>
 	<key>CFBundleShortVersionString</key>
