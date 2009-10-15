@@ -27,6 +27,7 @@
 
 .DEFAULT_GOAL 	:=	all
 
+ibtool          :=      /Developer/usr/bin/ibtool
 installDirs 	:=	install -d
 installFiles	:=	install -m 644
 installExecs	:=	install -m 755
@@ -48,6 +49,7 @@ vpath %.a 	$(libDir)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
 vpath %.c 	$(srcDir)/src
+vpath %.m 	$(srcDir)/src
 
 
 define bldUnitTest

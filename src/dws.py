@@ -298,24 +298,28 @@ class Context:
                 self.save()
         return self.environ[name].value
 
-# http://groups.google.com/group/comp.lang.python/browse_thread/thread/6df6e6b541a15bc2/09f28e26af0699b1
-# http://www.alexonlinux.com/pythons-optparse-for-human-beings
-# http://code.google.com/p/argparse/
-class IndentedHelpFormatterWithNL(optparse.IndentedHelpFormatter):
+# Formats help for script commands. The necessity for this class 
+# can be understood by the following posts on the internet:
+# - http://groups.google.com/group/comp.lang.python/browse_thread/thread/6df6e6b541a15bc2/09f28e26af0699b1
+# - http://www.alexonlinux.com/pythons-optparse-for-human-beings
+#
+# \todo The argparse (http://code.google.com/p/argparse/) might be part
+#       of the standard python library and address the issue at some point.
+class CommandsFormatter(optparse.IndentedHelpFormatter):
   def format_epilog(self, description):
     import textwrap
-    if not description: return ""
-    desc_width = self.width - self.current_indent
-    indent = " "*self.current_indent
-# the above is still the same
-    bits = description.split('\n')
-    formatted_bits = [
-      textwrap.fill(bit,
-        desc_width,
-        initial_indent=indent,
-        subsequent_indent=indent)
-      for bit in bits]
-    result = "\n".join(formatted_bits) + "\n"
+    result = "\nCommands:\n"
+    if description: 
+        desc_width = self.width - self.current_indent
+        indent = " "*self.current_indent
+        bits = description.split('\n')
+        formatted_bits = [
+          textwrap.fill(bit,
+            desc_width,
+            initial_indent=indent,
+            subsequent_indent=indent)
+          for bit in bits]
+        result = result + "\n".join(formatted_bits) + "\n"
     return result         
 
 
@@ -364,9 +368,9 @@ class IndexProjects:
                 if selection == 'indexing':
                     pubCollect([])
             if force:
-                fetch([os.path.join(self.context.host(),
-                                    os.path.basename(self.filename))],
-                      context.value('etcDir'))
+                fetch({os.path.join(self.context.host(),
+                                    os.path.basename(self.filename)):None},
+                      context.value('etcDir'),force)
         elif not os.path.exists(self.filename):
             raise Error(self.filename + ' does not exist.')
 
@@ -1311,6 +1315,8 @@ def findPrerequisites(deps, excludes=[]):
 
 def fetch(filenames, cacheDir=None, force=False):
     '''download file from remote server.'''
+    print "fetch:"
+    print filenames
     if len(filenames) > 0:
         if force:
             downloads = filenames
@@ -1431,52 +1437,48 @@ def linkPathLib(path):
 
 def make(names, targets):
     '''invoke the make utility to build a set of projects.'''
-    recurse = 'recurse' in targets
     if 'recurse' in targets:
         targets.remove('recurse')
-
-    # Find build information
-    if recurse:
+        # Recurse through projects that need to be rebuilt first 
+        # If no targets have been specified, the default target is to build
+        # projects. Each project in turn has thus to be installed in order
+        # to build the next one in the topological chain.
+        recursiveTargets = targets
+        if len(recursiveTargets) == 0:
+            recursiveTargets = [ 'install' ]
         names, projects = validateControls(names)
         # We will generate a "make install" for all projects which are 
         # a prerequisite. Those Makefiles expects bin, include, lib, etc.
         # to be defined.
         for dir in [ 'bin', 'include', 'lib', 'etc', 'log' ]:
             name = context.value(dir + 'Dir')
+        last = names.pop()
+        for name in names:
+            # Dependencies which are concidered to be packages have files 
+            # located anywhere on the local system and only links to those
+            # files end-up in build{Bin,Lib,etc.}. 
+            # Those links cannot be created in validateControls though since
+            # we also have "package patches projects", i.e. projects which
+            # are only there as temporary workarounds for packages which 
+            # will be coming out of the local system package manager at some
+            # point in the future.
+            linkDependencies({ name: projects[name]})
+            makeProject(name,recursiveTargets)
+        # Make current project
+        if len(targets) > 0:
+            linkDependencies({ last: projects[last]})
+            makeProject(last,targets)
     else:
-        handler = Unserializer(names)
-        index.parse(handler)
-        projects = handler.projects
- 
-    last = names.pop()
-    # Recurse through projects that need to be rebuilt first 
-    # If no targets have been specified, the default target is to build
-    # projects. Each project in turn has thus to be installed in order
-    # to build the next one in the topological chain.
-    recursiveTargets = targets
-    if len(recursiveTargets) == 0:
-        recursiveTargets = [ 'install' ]
-    for name in names:
-        makeProject(projects[name],recursiveTargets)
-
-    # Make current project
-    if not recurse or len(targets) > 0:
-        makeProject(projects[last],targets)
+        for name in names:
+            makeProject(name,targets)
 
 
-def makeProject(project,targets):
-    '''find and soft link direct dependencies when necessary,
-    then issue make command and log output.
-    *project* is an instance of Project which describes the project 
-    to be made.'''
+def makeProject(name,targets):
+    '''Issue make command and log output.'''
     status = 'compile'
-    log.header(project.name)
-    # \todo This should move. The problem is that if it only appears
-    # in validateControls, contrib/boost won't be linked before it needs
-    # to be built first.
-    linkDependencies({ project.name: project})
-    makefile = context.srcDir(os.path.join(project.name,'Makefile'))
-    objDir = context.objDir(project.name)
+    log.header(name)
+    makefile = context.srcDir(os.path.join(name,'Makefile'))
+    objDir = context.objDir(name)
     if objDir != os.getcwd():
         if not os.path.exists(objDir):
             os.makedirs(objDir)
@@ -1762,6 +1764,8 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
     or will install a new binary package through the local package manager.
     *extraFetches* is a list of extra files to fetch from the remote machine,
     usually a list of compressed source tar files.'''
+    print "update:"
+    print projects
     if not dbindex:
         dbindex = index
     dbindex.validate(force)
@@ -1827,7 +1831,7 @@ def update(projects, extraFetches={}, dbindex = None, force=False):
                 os.chdir(context.srcDir(name))
                 cmdline = 'git pull'
                 shellCommand(cmdline)
-                cmdline = 'git checkout'
+                cmdline = 'git checkout -m'
                 shellCommand(cmdline)
                 os.chdir(cwd)
         else:
@@ -1850,9 +1854,15 @@ def upstream(srcdir,pchdir):
 
 
 def pubBuild(args):
-    '''build  [remoteTop [localTop]]      
-           Download all projects from a remote machine 
-           and rebuild everything.
+    '''build                  [remoteTop [localTop]]
+                        This bootstrap command will download the index 
+                        database from *remoteTop* and starts rebuilding 
+                        every project listed. When both *remoteTop* and 
+                        *localTop*, the root on the local machine where 
+                        sources and object files are stored, are specified, 
+                        the script runs to completion with no interactive 
+                        prompt. It is a useful feature for using the script 
+                        in cron jobs on build servers.
     '''
     if len(args) > 0:
         context.remoteCacheTop.default = args[0]
@@ -1869,9 +1879,10 @@ def pubBuild(args):
 
 
 def pubCollect(args):
-    '''collect    Consolidate local dependencies information into a glabal
-                  dependency database. Copy all distribution packages built
-                  into a platform distribution directory.
+    '''collect                Consolidate local dependencies information 
+                       into a glabal dependency database. Copy all 
+                       distribution packages built into a platform 
+                       distribution directory.
     '''
 
     # Create the distribution directory, i.e. where packages are stored.
@@ -1907,8 +1918,9 @@ def pubCollect(args):
 
 
 def pubConfigure(args):
-    '''configure     Configure the local machine with direct dependencies
-                     of a project such that the project can be built later on.
+    '''configure              Configure the local machine with direct 
+                       dependencies of a project such that the project 
+                       can be built later on.
     '''
     global log 
     log = LogFile(context.logname())
@@ -1919,10 +1931,11 @@ def pubConfigure(args):
 
 
 def pubContext(args):
-    '''context      Prints the absolute pathname to a file.
-                    If the filename cannot be found from the current directory 
-                    up to the workspace root (i.e where ws.mk is located), 
-                    it assumes the file is in *etcDir*.'''
+    '''context                Prints the absolute pathname to a file.
+                       If the filename cannot be found from the current 
+                       directory up to the workspace root (i.e where ws.mk 
+                       is located), it assumes the file is in *etcDir*.
+    '''
     pathname = context.configFilename
     if len(args) >= 1:
         try:
@@ -1934,8 +1947,9 @@ def pubContext(args):
 
 
 def pubInit(args):
-    '''init     Prompt for variables which have not been 
-                initialized in ws.mk. Fetch the project index.'''
+    '''init                   Prompt for variables which have not been 
+                       initialized in ws.mk. Fetch the project index.
+    '''
     found = False
     for d in context.environ.values():
         found |= selectVariable(d)
@@ -1944,14 +1958,13 @@ def pubInit(args):
     index.validate()
 
 def pubInstall(args):
-    '''install  Install a package on the local system.
-                \todo currently inconditionally only supports Darwin.
+    '''install                Install a package on the local system.
     ''' 
     for image in args:
         installDarwinPkg(image,'LocalSystem')
 
 def pubIntegrate(args):
-    '''integrate    Integrate a patch into a source package
+    '''integrate              Integrate a patch into a source package
     '''
     while len(sys.argv) > 0:
         srcdir = sys.argv.pop(0)
@@ -1960,9 +1973,10 @@ def pubIntegrate(args):
 
 
 def pubHost(args):
-    '''host       host platform used to build the workspace.
-                  This will print the distribution name on
-                  stdout.'''
+    '''host                   Host platform used to build the workspace.
+                       This will print the distribution name on
+                       stdout.
+    '''
     print context.host()
 
 
@@ -1979,15 +1993,17 @@ class ListPdbHandler(PdbHandler):
 
 
 def pubList(args):
-    '''list    list available packages
+    '''list                   List available projects
     '''
     parser = xmlDbParser()
     parser.parse(context.dbPathname(),ListPdbHandler())
 
 
 def pubMake(args):
-    '''make    Make projects. "make recurse" will build all dependencies
-               required before a project can be itself built.'''
+    '''make                   Make projects. "make recurse" will build 
+                       all dependencies required before a project 
+                       can be itself built.
+    '''
     global log 
     log = LogFile(context.logname())
     repositories = [ context.cwdProject() ]
@@ -1995,16 +2011,21 @@ def pubMake(args):
 
 
 def pubUpdate(args):
-    '''update    Update projects installed in the workspace
+    '''update                 Update projects installed in the workspace
     '''
-    if len(args) == 0:
-        args = [ context.cwdProject() ]
+    global log 
+    log = LogFile(context.logname())
+    reps = args
+    if len(reps) == 0:
+        for repdir in findFiles(os.getcwd(),'\.git'):
+            reps += [ os.path.dirname(repdir.replace(os.getcwd() + os.sep,'')) ]
     update(args,force=True)
 
 
 def pubUpstream(args):
-    '''upstream    Generate a patch to submit to upstream maintainer out of 
-                   a source package and a repository
+    '''upstream               Generate a patch to submit to upstream 
+                       maintainer out of a source package and 
+                       a repository.
     '''
     while len(sys.argv) > 0:
         srcdir = sys.argv.pop(0)
@@ -2238,11 +2259,14 @@ if __name__ == '__main__':
 
         epilog= ''
         d = __main__.__dict__
-        for command in d.keys():
+        keys = d.keys()
+        keys.sort()
+        for command in keys:
             if command.startswith('pub'):
                 epilog += __main__.__dict__[command].__doc__ + '\n'
 
-	parser = optparse.OptionParser(formatter=IndentedHelpFormatterWithNL() ,
+	parser = optparse.OptionParser(usage="Usage: %prog [options] command",
+                                       formatter=CommandsFormatter(),
                                        epilog=epilog)
 	parser.add_option('--default', dest='default', action='store_true',
 	    help='Use default answer for every interactive prompt.')
