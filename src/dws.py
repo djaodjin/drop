@@ -247,9 +247,12 @@ class Context:
                                        os.path.basename(path))
             if not os.path.exists(os.path.dirname(install)):
                 os.makedirs(os.path.dirname(install))
+            # In the following two 'if' statements, we are very careful
+            # to only remove/update symlinks and leave other files 
+            # present in [bin|lib|...]Dir 'as is'.
             if os.path.islink(install):
                 os.remove(install)
-            if os.path.exists(path):
+            if not os.path.exists(install) and os.path.exists(path):
                 os.symlink(path,install)
 
     def locate(self):
@@ -488,7 +491,8 @@ class Unserializer(PdbHandler):
         self.project = None
         if (not self.builds) or (name in self.builds):
             self.project = name
-            self.projects[name] = Project(name)
+            if not name in self.projects:
+                self.projects[name] = Project(name)
 
 
 class DependencyGenerator(Unserializer):
@@ -619,8 +623,8 @@ class DependencyGenerator(Unserializer):
         for package in self.prerequisites:
             if not package in filtered:
                 self.cuts += [ package ]
-        self.prereqDeps = {}
-        self.prereqExcludes = {}
+        #self.prereqDeps = {}
+        #self.prereqExcludes = {}
         self.prerequisites = []
         self.vertices = []
         for newEdge in self.levels[0]:
@@ -1047,6 +1051,10 @@ def findBin(names,excludes=[]):
     results = []
     version = None
     for name in names:
+        if name.startswith(os.sep):
+            # absolute paths only occur when the search has already been
+            # executed and completed successfuly.
+            continue
         log.write(name + '... ')
         log.flush()
         found = False
@@ -1179,6 +1187,10 @@ def findData(dir,names,excludes=[]):
        where bin was replaced by *dir*.'''
     results = []
     for name in names:
+        if name.startswith(os.sep):
+            # absolute paths only occur when the search has already been
+            # executed and completed successfuly.
+            continue
         log.write(name + '... ')
         log.flush()
         linkNum = 0
@@ -1221,6 +1233,10 @@ def findInclude(names,excludes=[]):
     version = None
     includeSysDirs = derivedRoots('include')
     for name in names:
+        if name.startswith(os.sep):
+            # absolute paths only occur when the search has already been
+            # executed and completed successfuly.
+            continue
         log.write(name + '... ')
         log.flush()
         found = False
@@ -1298,6 +1314,10 @@ def findLib(names,excludes=[]):
     results = []
     version = None
     for name in names:
+        if name.startswith(os.sep):
+            # absolute paths only occur when the search has already been
+            # executed and completed successfuly.
+            continue
         log.write(name + '... ')
         log.flush()
         found = False
@@ -1509,6 +1529,10 @@ def linkDependencies(projects, cuts=[]):
     for project in projects:
         for prereq in projects[project].buildDeps:
             if not prereq in cuts:
+                # First, we will check if findPrerequisites needs to be rerun.
+                # It is the case if the link in [bin|include|lib|...]Dir does
+                # not exist and the pathname for it in buildDeps is not 
+                # an absolute path.  
                 complete = True
                 deps = projects[project].buildDeps[prereq]
                 for dir in deps:
@@ -1517,18 +1541,21 @@ def linkDependencies(projects, cuts=[]):
                         if dir == 'lib':
                             path = 'lib' + path + '.a'
                         linkName = __main__.__dict__[command](path)
-                        if not os.path.exists(linkName):
+                        if not (path.startswith(os.sep)
+                                or os.path.exists(linkName)):
                             complete = False
                 if not complete:
-                    deps, complete = findPrerequisites(
+                    projects[project].buildDeps[prereq], 
+                    complete = findPrerequisites(
                         projects[project].buildDeps[prereq],
                         projects[project].buildExcludes[prereq])
-                    if complete:
-                        for install in deps:
-                            context.linkPath(deps[install],install + 'Dir')
-                    else:
-                        if not prereq in missings:
-                            missings += [ prereq ]
+                if not complete and not prereq in missings:
+                    missings += [ prereq ]
+                else:
+                    for install in projects[project].buildDeps[prereq]:
+                        context.linkPath(
+                            projects[project].buildDeps[prereq][install],
+                            install + 'Dir')
     if len(missings) > 0:
         raise Error("incomplete prerequisites for " + ' '.join(missings),1)
 
