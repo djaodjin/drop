@@ -40,7 +40,7 @@ srcDir	:=	$(srcTop)/drop
 
 include $(srcTop)/drop/src/prefix.mk
 
-bins	:=	buildpkg dintegrity dmake dregress dstamp dsync dws
+bins	:=	buildpkg dmake dregress dstamp dsync dws
 
 include $(srcTop)/drop/src/suffix.mk
 

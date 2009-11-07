@@ -1456,8 +1456,13 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
 
     if len(managed) > 0:
         if context.host() == 'Ubuntu':
+            # Add DEBIAN_FRONTEND=noninteractive such that interactive
+            # configuration of packages do not pop up in the middle 
+            # of installation. We are going to update the configuration
+            # in /etc afterwards anyway.
             shellCommand('apt-get update', admin=True)
-            shellCommand('apt-get -y install ' + ' '.join(packages),admin=True)
+            shellCommand('DEBIAN_FRONTEND=noninteractive apt-get -y install '\
+                             + ' '.join(packages),admin=True)
         elif context.host() == 'Darwin':
             shellCommand('port install ' + ' '.join(packages),admin=True)
         else:
@@ -2107,8 +2112,14 @@ def pubUpdate(args):
         recurse = True
         reps.remove('recurse')
     if len(reps) == 0:
-        for repdir in findFiles(os.getcwd(),'\.git'):
-            reps += [ os.path.dirname(repdir.replace(os.getcwd() + os.sep,'')) ]
+        # We try to derive project names from the current directory whever 
+        # it is a subdirectory of buildTop or srcTop.
+        srcDir = os.path.realpath(os.getcwd()).replace(
+            context.value('buildTop'),
+            context.value('srcTop'))
+        for repdir in findFiles(srcDir,'\.git'):
+            reps += [ os.path.dirname(repdir.replace(context.value('srcTop') \
+                                                         + os.sep,'')) ]
     if recurse:
         names, projects = validateControls(reps,force=True)
     else:
@@ -2375,6 +2386,10 @@ if __name__ == '__main__':
         useDefaultAnswer = options.default
         if options.excludePats:
             excludePats = options.excludePats
+
+        if len(args) < 1:
+            parser.print_help()
+            sys.exit(1)
 
         # Find the build information
         arg = args.pop(0)

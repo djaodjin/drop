@@ -1,6 +1,9 @@
 <?xml version="1.0" ?>
 <book>
   <section id="drop">
+    <xref linkend="make">
+      <bin name="make" excludes="<3.81" />
+    </xref>
     <build>
       <xref linkend="git-core">
 	<bin name="git" />
