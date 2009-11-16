@@ -45,6 +45,14 @@ CXXFLAGS	:=	-g -MMD
 CPPFLAGS	+=	-I$(srcDir)/include -I$(includeDir)
 LDFLAGS		+=	-L$(libDir)
 
+# Configuration for distribution packages
+distExtDarwin	:=	.dmg
+distExtFedora	:=	.rpm
+distExtUbuntu	:=	_amd64.deb
+distHost	:=	$(shell dws host)
+project		:=	$(notdir $(srcDir))
+version		?=	$(shell date +%Y-%m-%d-%H-%M-%S)
+
 vpath %.a 	$(libDir)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src

@@ -64,20 +64,11 @@ install:: $(bins) $(libs) $(includes) $(logs)
 # 	git checkout -b branchname tag
 #	make dist
 
-hostdist	:=	$(shell dws host)
-project		:=	$(notdir $(srcDir))
-version		?=	$(shell date +%Y-%m-%d-%H-%M-%S)
 buildInstallDir	:= 	$(CURDIR)/install/usr/local
+dists		?=	$(project)-$(version)$(distExt$(distHost)) \
+			$(project)-$(version).tar.bz2
 
-dist: $(hostdist)-dist
-
-Darwin-dist: $(project)-$(version).dmg
-
-Fedora-dist: $(project)-$(version).rpm
-
-Ubuntu-dist: $(project)-$(version).deb
-
-dist-src: $(project)-$(version).tar.bz2
+dist:: $(dists)
 
 # 	git archive -b branchname tag
 #	make dist
@@ -127,7 +118,7 @@ vpath %.spec $(srcDir)/src
 	echo $(includes) >> $@
 	echo $(libs) >> $@
 
-vpath %.deb $(srcDir)/src
+#vpath %.deb $(srcDir)/src
 
 # alternative:
 #   apt-get install pbuilder
@@ -137,9 +128,14 @@ vpath %.deb $(srcDir)/src
 # debuild will try to install the packages in /usr/local so it needs
 # permission access to the directory.
 # Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
-%.deb: pkgdeb
-	cd $</$(basename $@) && debuild
 
+%.deb: %.tar.bz2
+	bzip2 -dc $< | gzip -c -
+	mv $(subst .bz2,.gz,$<) $(subst -,_,$(subst .tar.bz2,orig.tar.gz,$<))
+	tar jxf $<
+	$(installDirs) $(basename $@)/debian
+	cd $(basename $@)/debian && dws spec
+	cd $(basename $@) && debuild
 
 # Rules to build unit test logs
 # -----------------------------
@@ -149,7 +145,10 @@ check:
 	echo "ok to get positive error code" > /dev/null
 	cd test && $(MAKE) -f $(srcDir)/test/Makefile regression.book
 
-regression.book: regression.log $(srcDir)/src/book.xsl
+# \todo book.xsl might have to move into drop but since it is used
+#       for interaction with the website, it might also have to move
+#	to the themeDir, though it might not be directly theme related...
+regression.book: regression.log $(srcTop)/seed/test/src/book.xsl
 	xsltproc $(word 2,$^) $< > $@
 
 regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)

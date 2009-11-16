@@ -48,9 +48,9 @@ dmake:
 	echo '#!/bin/sh' > $@
 	echo 'dws make $$*' >> $@
 
-install:: dws.py $(srcTop)/drop/src/prefix.mk \
+install:: dws.py dstamp.py $(srcTop)/drop/src/prefix.mk \
 		$(srcTop)/drop/src/suffix.mk \
 		$(srcTop)/drop/src/configure.sh
 	$(installFiles) $(filter %.py,$^) $(binDir)
-	$(installDirs)  $(etcDir)
-	$(installFiles) $(filter %.sh %.mk,$^) $(etcDir)
+	$(installDirs)  $(etcDir)/dws
+	$(installFiles) $(filter %.sh %.mk,$^) $(etcDir)/dws

@@ -92,14 +92,6 @@ def cleanUpAgedStamps(dates,keepPerYear,keepPerMonth,keepPerWeek):
     for w in weeks.values():
         keep += keepDates(w,keepPerWeek)
     return keep
-
-def stamp(filename,date=datetime.datetime.now()):
-    base, ext = os.path.splitext(filename)
-    return base + '-' + str(date.year) \
-               + ('_%02d' % (date.month)) \
-               + ('_%02d' % (date.day)) \
-               + ('-%02d' % (date.hour)) + ext
-    
         
 # Removes files through an aging process such as to only keep
 # a maximum amount of temporaries.
@@ -180,8 +172,8 @@ selftest          Run the selftest that checks the algorithm is implemented
                 sys.stdout.write('* ')
             else:
                 sys.stdout.write('  ')
-            sys.stdout.write(stamp("dummy.log",d) + ' >' + str(delta.days) + ' days\n')
+            sys.stdout.write(dws.stamp("dummy.log",d) + ' >' + str(delta.days) + ' days\n')
     else:
         # stamp file with current date
-        print stamp(sys.argv[1])
+        print dws.stamp(sys.argv[1])
         

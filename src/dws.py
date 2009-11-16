@@ -45,14 +45,16 @@
 
 __version__ = '0.1'
 
-import hashlib
+import datetime, hashlib
 import re, os, optparse, shutil
 import socket, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
 
 log = None
+doNotExecute = False
 useDefaultAnswer = False
 excludePats = []
+libSuffix = '.a'                  # Always selects static libraries
 
 class Error(Exception):
     '''This type of exception is used to identify "expected" 
@@ -108,7 +110,7 @@ class Context:
                                             self.cacheTop),
                          'etcDir': Pathname('etcDir',
              'Root of the tree where extra files are installed',
-                                            self.cacheTop,'etc/dws'),
+                                            self.cacheTop,'etc'),
                          'shareDir': Pathname('shareDir',
              'Root of the tree where shared files are installed',
                                             self.cacheTop),
@@ -162,10 +164,18 @@ class Context:
         directory hierarchy.'''
         return os.path.join(self.value('cacheTop'),name)
 
+    def hostCachePath(self,name):
+        '''Absolute path to a file in the host cached packages 
+        directory hierarchy.'''
+        return os.path.join(self.value('cacheTop'),host(),name)
 
     def remoteCachePath(self,name):
         '''Absolute path to access a cached file on the remote machine.''' 
         return os.path.join(self.value('remoteCacheTop'),name)
+
+    def remoteHostCachePath(self,name):
+        '''Absolute path to access a cached host file on the remote machine.''' 
+        return os.path.join(self.value('remoteCacheTop'),host(),name)
 
     def remoteSrcPath(self,name):
         '''Absolute path to access a repository file on the remote machine.''' 
@@ -199,7 +209,7 @@ class Context:
         '''Absolute pathname to the project index file.'''
         if remote:
             return self.remoteCachePath('db.xml')
-        return os.path.join(self.value('etcDir'),'db.xml')
+        return os.path.join(self.value('etcDir'),'dws','db.xml')
 
     def host(self):
         '''Returns the distribution on which the script is running.'''
@@ -277,7 +287,7 @@ class Context:
                 None
 
     def logname(self):
-        filename = os.path.join(self.value('etcDir'),'dws.log')
+        filename = os.path.join(self.value('logDir'),'dws.log')
         if not os.path.exists(os.path.dirname(filename)):
             os.makedirs(os.path.dirname(filename))
         return filename
@@ -382,9 +392,11 @@ class IndexProjects:
                 if selection == 'indexing':
                     pubCollect([])
             if force:
+                if not os.path.exists(os.path.dirname(self.filename)):
+                    os.makedirs(os.path.dirname(self.filename))
                 fetch({os.path.join(self.context.host(),
                                     os.path.basename(self.filename)):None},
-                      context.value('etcDir'),force)
+                      os.path.dirname(self.filename),force)
         elif not os.path.exists(self.filename):
             raise Error(self.filename + ' does not exist.')
 
@@ -507,7 +519,7 @@ class DependencyGenerator(Unserializer):
         # of the project otherwise.
         self.source = None
         # This contains a list of list of edges. When levels is traversed last 
-        # to first and each edge's source vertex is printed, it displays 
+        # to first and each edge's source vertex is outputed, it displays 
         # a topological ordering of the selected projects.
         # In other words, levels holds each recursing of a breadth-first search
         # algorithm through the graph of projects from the roots.
@@ -816,30 +828,51 @@ class Project:
             + '\tcontrol: ' + str(self.control) + '\n' \
             + '\tpackage: ' + str(self.package) + '\n' \
 
-class UbuntuIndexWriter(PdbHandler):
+class UbuntuSpecWriter(PdbHandler):
     '''As the index file parser generates callback, an instance of this class
     will rewrite the exact same information in a format compatible with apt.'''
-    def __init__(self, out):
-        self.out = out
+
+#example of control file:
+#Source: boost
+#Homepage: http://www.boost.org/
+#Section: libs
+#Priority: optional
+#Maintainer: Ubuntu MOTU Developers <ubuntu-motu@lists.ubuntu.com>
+#XSBC-Original-Maintainer: Debian Boost Team <pkg-boost-devel@lists.alioth.debian.org>
+#Uploaders: Steve M. Robbins <smr@debian.org>, Domenico Andreoli <cavok@debian.org>, Christophe Prud'homme <prudhomm@debian.org>
+#Build-Depends: debhelper (>= 4), quilt, bison, flex, docbook-to-man, xsltproc, doxygen, zlib1g-dev, libbz2-dev, libicu-dev, python-all-dev, python-support (>= 0.6), g++-4.3
+#XS-Python-Version: 2.5, 2.6
+#Standards-Version: 3.7.3
+
+#example of changelog file:
+#boost (1.39.0-0ubuntu3) jaunty; urgency=low
+#
+#  * debian/rtupdate: Update for boost-1_39
+#
+# -- Sebastien Mirolo <smirolo@gmail.com>  Sun, 21 Jun 2009 11:14:35 +0000
+
+    def __init__(self, control, changelog):
+        self.control = control
+        self.changelog = changelog
 
     def startProject(self, name):
-        self.out.write('Package: ' + name + '\n')
+        self.control.write('Package: ' + name + '\n')
 
     def dependency(self, name, deps, excludes=[]):
-        self.out.write('Depends: ' + ','.join(deps.keys()) + '\n')
+        self.control.write('Depends: ' + ','.join(deps.keys()) + '\n')
 
     def description(self, text):
-        self.out.write('Description:' + text)
+        self.control.write('Description:' + text)
     
     def endProject(self):
-        self.out.write('\n')
+        self.control.write('\n')
 
     def control(self, type, url):
-        self.out.write('ControlType:' + type + '\n')
-        self.out.write('ControlUrl:' + url + '\n')
+        self.control.write('ControlType:' + type + '\n')
+        self.control.write('ControlUrl:' + url + '\n')
 
     def version(self, text):
-        self.out.write('Version:' + text)
+        self.control.write('Version:' + text)
 
 
 class xmlDbParser(xml.sax.ContentHandler):
@@ -994,6 +1027,16 @@ class xmlDbParser(xml.sax.ContentHandler):
            the final file.'''
         dbNext.write(self.trailerTxt)
 
+def mark(filename,suffix):    
+    base, ext = os.path.splitext(filename)
+    return base + '-' + suffix + ext
+
+def stamp(filename,date=datetime.datetime.now()):
+    base, ext = os.path.splitext(filename)
+    return base + '-' + str(date.year) \
+               + ('_%02d' % (date.month)) \
+               + ('_%02d' % (date.day)) \
+               + ('-%02d' % (date.hour)) + ext
 
 def createIndexPathname( dbIndexPathname, dbPathnames ):
     '''create a global dependency database (i.e. project index file) out of
@@ -1058,53 +1101,61 @@ def findBin(names,excludes=[]):
         log.write(name + '... ')
         log.flush()
         found = False
-        for p in [ context.value('binDir') ] + os.environ['PATH'].split(':'):
-            bin = os.path.join(p,name)
-            if (os.path.isfile(bin) 
-                and os.access(bin, os.X_OK)):
-                # We found an executable with the appropriate name,
-                # let's find out if we can retrieve a version number.
-                for flag in [ '--version', '-V' ]:
-                    numbers = []
-                    cmdline = [ bin, flag ]
-                    cmd = subprocess.Popen(cmdline,
-                                           stdout=subprocess.PIPE,
-                                           stderr=subprocess.STDOUT)
-                    line = cmd.stdout.readline()
-                    while line != '':
-                        numbers += versionCandidates(line)
-                        line = cmd.stdout.readline()
-                    cmd.wait()
-                    if cmd.returncode != 0:
-                        # When the command returns with an error code,
-                        # we assume we passed an incorrect flag to retrieve
-                        # the version number.
-                        numbers = []
-                    if len(numbers) > 0:
-                        break
-                # At this point *numbers* contains a list that can
-                # interpreted as versions. Hopefully, there is only
-                # one candidate.
-                if len(numbers) == 1:
-                    excluded = False
-                    for exclude in excludes:
-                        if ((not exclude[0] 
-                             or versionCompare(exclude[0],numbers[0]) <= 0)
-                            and (not exclude[1] 
-                                 or versionCompare(numbers[0],exclude[1]) < 0)):
-                            excluded = True
-                            break
-                    if not excluded:
-                        version = numbers[0]
-                        log.write(str(version) + '\n')
-                        results.append(bin)
-                    else:
-                        log.write('excluded (' + str(numbers[0]) + ')\n')
-                else:
-                    log.write('yes\n')
-                    results.append(bin)
+        if name.endswith('.app'):
+            bin = os.path.join('/Applications',name)
+            if os.path.isdir(bin):
                 found = True
-                break
+                log.write('yes\n')
+                results.append(bin)
+        else:
+            for p in [ context.value('binDir') ] \
+                    + os.environ['PATH'].split(':'):
+                bin = os.path.join(p,name)
+                if (os.path.isfile(bin) 
+                    and os.access(bin, os.X_OK)):
+                    # We found an executable with the appropriate name,
+                    # let's find out if we can retrieve a version number.
+                    for flag in [ '--version', '-V' ]:
+                        numbers = []
+                        cmdline = [ bin, flag ]
+                        cmd = subprocess.Popen(cmdline,
+                                               stdout=subprocess.PIPE,
+                                               stderr=subprocess.STDOUT)
+                        line = cmd.stdout.readline()
+                        while line != '':
+                            numbers += versionCandidates(line)
+                            line = cmd.stdout.readline()
+                        cmd.wait()
+                        if cmd.returncode != 0:
+                            # When the command returns with an error code,
+                            # we assume we passed an incorrect flag to retrieve
+                            # the version number.
+                            numbers = []
+                        if len(numbers) > 0:
+                            break
+                    # At this point *numbers* contains a list that can
+                    # interpreted as versions. Hopefully, there is only
+                    # one candidate.
+                    if len(numbers) == 1:
+                        excluded = False
+                        for exclude in excludes:
+                            if ((not exclude[0] 
+                                 or versionCompare(exclude[0],numbers[0]) <= 0)
+                                and (not exclude[1] 
+                                 or versionCompare(numbers[0],exclude[1]) < 0)):
+                                excluded = True
+                                break
+                        if not excluded:
+                            version = numbers[0]
+                            log.write(str(version) + '\n')
+                            results.append(bin)
+                        else:
+                            log.write('excluded (' + str(numbers[0]) + ')\n')
+                    else:
+                        log.write('yes\n')
+                        results.append(bin)
+                    found = True
+                    break
         if not found:
             log.write('no\n')
     return results, version
@@ -1142,13 +1193,14 @@ def findFiles(base,namePat):
        and returns a list of absolute pathnames to those files.'''
     result = []
     try:
-        for p in os.listdir(base):
-            path = os.path.join(base,p)
-            look = re.match('.*' + namePat + '$',path)
-            if look:
-                result += [ path ]
-            elif os.path.isdir(path):
-                result += findFiles(path,namePat)
+        if os.path.exists(base):
+            for p in os.listdir(base):
+                path = os.path.join(base,p)
+                look = re.match('.*' + namePat + '$',path)
+                if look:
+                    result += [ path ]
+                elif os.path.isdir(path):
+                    result += findFiles(path,namePat)
     except OSError:
         # In case permission to execute os.listdir is denied.
         None
@@ -1165,18 +1217,20 @@ def findFirstFiles(base,namePat,subdir=''):
     results = []
     patNumSubDirs = len(namePat.split(os.sep))
     subNumSubDirs = len(subdir.split(os.sep))
-    for p in os.listdir(os.path.join(base,subdir)):
-        relative = os.path.join(subdir,p)
-        path = os.path.join(base,relative)
-        look = re.match(namePat.replace('.' + os.sep,'(.*)' + os.sep),relative)
-        if look != None:
-            results += [ relative ]
-        elif (((('.' + os.sep) in namePat) 
-               or (subNumSubDirs < patNumSubDirs))
-              and os.path.isdir(path)):
-            # When we see ./, it means we are looking for a pattern 
-            # that can be matched by files in subdirectories of the base. 
-            subdirs += [ relative ]
+    if os.path.exists(os.path.join(base,subdir)):
+        for p in os.listdir(os.path.join(base,subdir)):
+            relative = os.path.join(subdir,p)
+            path = os.path.join(base,relative)
+            look = re.match(namePat.replace('.' + os.sep,'(.*)' + os.sep),
+                            relative)
+            if look != None:
+                results += [ relative ]
+            elif (((('.' + os.sep) in namePat) 
+                   or (subNumSubDirs < patNumSubDirs))
+                  and os.path.isdir(path)):
+                # When we see ./, it means we are looking for a pattern 
+                # that can be matched by files in subdirectories of the base.
+                subdirs += [ relative ]
     if len(results) == 0:
         for subdir in subdirs:
             results += findFirstFiles(base,namePat,subdir)
@@ -1310,7 +1364,6 @@ def findLib(names,excludes=[]):
     search algorithm. findLib() might generate a breadth search based 
     out of a derived root of $PATH. It uses the full library name
     in order to deduce a version number if possible.'''
-    suffix = '.*\.a'                  # Always selects static libraries
     results = []
     version = None
     for name in names:
@@ -1323,7 +1376,8 @@ def findLib(names,excludes=[]):
         found = False
         for libSysDir in derivedRoots('lib'):
             libs = []
-            for libname in findFirstFiles(libSysDir,'lib' + name + suffix):
+            for libname in findFirstFiles(libSysDir,
+                                          'lib' + name + '.*(\\.a|\\.so)'):
                 numbers = versionCandidates(libname)
                 if len(numbers) == 1:
                     excluded = False
@@ -1394,14 +1448,16 @@ def findPrerequisites(deps, excludes=[]):
                 excludes = [ (None,version), (versionIncr(version),None) ]
             if len(installed[dir]) != len(deps[dir]):
                 complete = False
-
     return installed, complete
 
 def findShare(names,excludes=[]):
     return findData('share',names,excludes)
 
 def fetch(filenames, cacheDir=None, force=False):
-    '''download file from remote server.'''
+    '''download *filenames*, typically a list of distribution packages, 
+    from the remote server into *cacheDir*. See the upload function 
+    for uploading files to the remote server.
+    '''
     if len(filenames) > 0:
         if force:
             downloads = filenames
@@ -1414,25 +1470,13 @@ def fetch(filenames, cacheDir=None, force=False):
                     if not os.path.exists(dir):
                         os.makedirs(dir)
                     downloads += [ filename ]
-        cmdline = "rsync -avuzb"
-        if not cacheDir:
-            cacheDir = context.cachePath('')
-            cmdline = cmdline + 'R'
-        remotePath = context.remoteCachePath('')
-        look = re.match('(\S+@)?(\S+):(\S+)',remotePath)
-        if look:
-            username = look.group(1)
-            hostname = look.group(2)
-            dirname = look.group(3)
-            sources = "'" + context.remoteCachePath('') + './' \
-                +' ./'.join(downloads).replace(' ',' ' + dirname + os.sep) + "'"
-            cmdline = cmdline + " --rsh=ssh"
-            if username:
-                cmdline = cmdline + username
-        else:
-            sources = context.remoteCachePath('') + './' \
-                +' ./'.join(downloads).replace(' ',' ' + remotePath + os.sep)
-        cmdline = cmdline + ' ' + sources + ' ' + cacheDir
+        cmdline, cachePath, remotePath = remoteSyncCommand(cacheDir)
+        dirname, hostname, username = splitRemotePath(remotePath)
+        if username:
+            sources = username        
+        sources = "'" + remotePath + './' \
+            +' ./'.join(downloads).replace(' ',' ' + dirname + os.sep) + "'"
+        cmdline = cmdline + ' ' + sources + ' ' + cachePath
         shellCommand(cmdline)
 
 
@@ -1466,6 +1510,9 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                 elif context.host() == 'Ubuntu':
                     shellCommand('dpkg -i ' + context.cachePath(package.name),
                                  admin=True)
+                elif context.host() == 'Fedora':
+                    shellCommand('rpm -i ' + context.cachePath(package.name),
+                                 admin=True)
                 else:
                     raise Error("Does not know how to install '" \
                                     + package.name + "'" )
@@ -1485,6 +1532,8 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                              + ' '.join(packages),admin=True)
         elif context.host() == 'Darwin':
             shellCommand('port install ' + ' '.join(packages),admin=True)
+        elif context.host() == 'Fedora':
+            shellCommand('yum install ' + ' '.join(packages),admin=True)
         else:
             raise Error("Use of package manager for '" \
                             + context.host() + " not yet implemented.'")
@@ -1517,7 +1566,6 @@ def installDarwinPkg(image,target,pkg=None):
     shellCommand(cmdline,admin)
     shellCommand('hdiutil detach ' + volume)
 
-
 def linkDependencies(projects, cuts=[]):
     '''All projects which are dependencies but are not part of *srcTop*
     are not under development in the current workspace. Links to 
@@ -1538,23 +1586,19 @@ def linkDependencies(projects, cuts=[]):
                 for dir in deps:
                     for path in deps[dir]:
                         command = 'linkPath' + dir.capitalize()
-                        if dir == 'lib':
-                            path = 'lib' + path + '.a'
                         linkName = __main__.__dict__[command](path)
                         if not (path.startswith(os.sep)
                                 or os.path.exists(linkName)):
                             complete = False
                 if not complete:
-                    projects[project].buildDeps[prereq], 
-                    complete = findPrerequisites(
+                    deps, complete = findPrerequisites(
                         projects[project].buildDeps[prereq],
                         projects[project].buildExcludes[prereq])
                 if not complete and not prereq in missings:
                     missings += [ prereq ]
                 else:
-                    for install in projects[project].buildDeps[prereq]:
-                        context.linkPath(
-                            projects[project].buildDeps[prereq][install],
+                    for install in deps:
+                        context.linkPath(deps[install],
                             install + 'Dir')
     if len(missings) > 0:
         raise Error("incomplete prerequisites for " + ' '.join(missings),1)
@@ -1575,8 +1619,17 @@ def linkPathInclude(path):
     return os.path.join(context.value('includeDir'),header)
 
 def linkPathLib(path):
-    libname, libext = os.path.splitext(os.path.basename(path))
+    '''Normalize a library name to a name that will be used to create
+    a link in buildLib later referenced from Makefiles.'''
+    parts = os.path.basename(path).split('.')
+    libname = parts[0]
+    if len(parts) < 2:
+        libext = libSuffix
+    else:
+        libext = '.' + parts[1]
     libname = libname.split('-')[0]
+    if not libname.startswith('lib'):
+        libname = 'lib' + libname
     libname = libname + libext
     return os.path.join(context.value('libDir'),libname)
 
@@ -1697,6 +1750,34 @@ def mergeBuildConf(dbPrev,dbUpd,parser):
         parser.trailer(dbNext)
         return dbNext
 
+def remoteSyncCommand(cacheDir=None):
+    '''returns a triplet (rsync, cachePath, remoteCachePath) that can be
+    used to build a command that will either fetch or upload files
+    from or to the remote server to the local machine.
+    '''
+    cmdline = "rsync -avuzb"
+    cachePath = cacheDir
+    if not cacheDir:
+        cachePath = context.cachePath('')
+        cmdline = cmdline + 'R'
+    remotePath = context.remoteCachePath('')
+    dirname, hostname, username = splitRemotePath(remotePath)
+    if hostname:
+        cmdline = cmdline + " --rsh=ssh"
+    return cmdline, cachePath, remotePath
+
+
+def upload(filenames, cacheDir=None):
+    '''upload *filenames*, typically a list of result logs, 
+    to the remote server. See the fetch function for downloading
+    files from the remote server.
+    '''
+    cmdline, cachePath, remoteCachePath = remoteSyncCommand(cacheDir)
+    os.chdir(cachePath)
+    cmdline = cmdline + ' ././' + ' ././'.join(filenames) \
+        + ' ' + remoteCachePath
+    shellCommand(cmdline)
+
 
 def searchBackToRoot(filename,root=os.sep):
     '''Search recursively from the current directory to the *root*
@@ -1728,19 +1809,20 @@ def shellCommand(commandLine, admin=False):
         log.flush()
     else:
         sys.stdout.write(cmdline + '\n')
-    cmd = subprocess.Popen(cmdline,shell=True,
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT)
-    line = cmd.stdout.readline()
-    while line != '':
-        if log:
-            log.write(line)
-        else:
-            sys.stdout.write(line)
+    if not doNotExecute:
+        cmd = subprocess.Popen(cmdline,shell=True,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
         line = cmd.stdout.readline()
-    cmd.wait()
-    if cmd.returncode != 0:
-        raise Error("unable to complete: " + cmdline + '\n',cmd.returncode)
+        while line != '':
+            if log:
+                log.write(line)
+            else:
+                sys.stdout.write(line)
+            line = cmd.stdout.readline()
+        cmd.wait()
+        if cmd.returncode != 0:
+            raise Error("unable to complete: " + cmdline + '\n',cmd.returncode)
 
 
 def sortBuildConfList(dbPathnames,parser):
@@ -1764,6 +1846,22 @@ def sortBuildConfList(dbPathnames,parser):
     dbPrev.close()
     dbUpd.close()
     return dbNext
+
+
+def splitRemotePath(remoteDir=None):
+    '''returns a triplet (dirname, hostname, username) extracted 
+    out of a *remoteDir*'''
+    username = None
+    hostname = None
+    dirname = remoteDir
+    if not remoteDir:
+        dirname = context.remoteCachePath('')
+    look = re.match('(\S+@)?(\S+):(\S+)',dirname)
+    if look:
+        username = look.group(1)
+        hostname = look.group(2)
+        dirname = look.group(3)
+    return dirname, hostname, username
 
 
 def validateControls(repositories, dbindex=None, force=False):
@@ -1982,18 +2080,28 @@ def pubBuild(args):
                         prompt. It is a useful feature for using the script 
                         in cron jobs on build servers.
     '''
-    if len(args) > 0:
-        context.remoteCacheTop.default = args[0]
-    if len(args) > 1:
-        context.cacheTop.default = args[1]
-    global useDefaultAnswer
-    useDefaultAnswer = True
-    global log
-    log = LogFile(context.logname())
-    rgen = DerivedSetsGenerator()
-    index.parse(rgen)
-    make(rgen.repositories,[ 'recurse', 'install', 'dist-src' ])
-    pubCollect([])
+    if None:
+        if len(args) > 0:
+            context.remoteCacheTop.default = args[0]
+        if len(args) > 1:
+            context.cacheTop.default = args[1]
+        global useDefaultAnswer
+        useDefaultAnswer = True
+        global log
+        log = LogFile(context.logname())
+        rgen = DerivedSetsGenerator()
+        index.parse(rgen)
+        make(rgen.repositories,[ 'recurse', 'install', 'dist-src' ])
+        pubCollect([])
+        log.close()
+    # Once we have built the repository, let's report the results
+    # back to the remote server. We stamp the logfile such that
+    # it gets a unique name before uploading it.
+    logstamp = os.path.join(context.host(),os.path.basename(context.logname()))
+    logstamp = stamp(mark(logstamp,socket.gethostname()))
+    shellCommand('install -m 644 ' + context.logname() \
+                     + ' ' + context.cachePath(logstamp))
+    upload([ logstamp ])
 
 
 def pubCollect(args):
@@ -2061,7 +2169,7 @@ def pubContext(args):
             dir, pathname = searchBackToRoot(args[0],
                    os.path.dirname(context.configFilename))
         except IOError:
-            pathname = os.path.join(context.value('etcDir'),args[0])
+            pathname = os.path.join(context.value('etcDir'),'dws',args[0])
     sys.stdout.write(pathname)
 
 
@@ -2127,6 +2235,25 @@ def pubMake(args):
     repositories = [ context.cwdProject() ]
     make(repositories,args)
 
+
+def pubSpec(args):
+    '''spec                   Writes out the specification files used 
+                              to build a distribution package.
+    '''
+    dist = context.host()
+    if dist == 'Ubuntu':
+        control = open('control','w')
+        changelog = open('changelog','w')
+        parser = xmlDbParser()
+        parser.parse(context.dbPathname(),UbuntuSpecWriter(control,changelog))
+        control.close()
+        changelog.close()
+        rules = open('rules','w')
+        rules.close()
+        copyright = open('copyright','w')
+        copyright.close()
+    else:
+        raise
 
 def pubUpdate(args):
     '''update                 Update projects installed in the workspace
@@ -2421,6 +2548,7 @@ if __name__ == '__main__':
         # Find the build information
         arg = args.pop(0)
         context = Context()
+
         index = IndexProjects(context)
         command = 'pub' + arg.capitalize()
         if command in __main__.__dict__:

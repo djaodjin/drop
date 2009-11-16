@@ -2,7 +2,9 @@
 <book>
   <section id="drop">
     <xref linkend="make">
-      <bin name="make" excludes="<3.81" />
+      <!-- For some reason the Python XML parser throws up a not well-formed
+	   exception on "<3.81" -->
+      <bin name="make" excludes="3.80" />
     </xref>
     <build>
       <xref linkend="git-core">
