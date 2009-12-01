@@ -32,7 +32,7 @@ echo installEtcDir=${prefix}/etc >> ws.mk
 echo installIncludeDir=${prefix}/include >> ws.mk
 echo installLibDir=${prefix}/lib >> ws.mk
 
-${srcDir}/dws configure
+${srcDir}/dws --default configure
 
 sed -e s',$(shell dws context),ws.mk,' \
     -e s',$(shell dws context \(.*\)),$(etcDir)/\1,' \

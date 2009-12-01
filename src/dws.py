@@ -359,7 +359,7 @@ class IndexProjects:
     def closure(self, dgen):
         '''Find out all dependencies from a root set of projects as defined 
         by the dependency generator *dgen*.'''
-        while len(dgen.vertices) > 0:
+        while len(dgen.builds) > 0:
             self.parse(dgen)
             dgen.nextLevel()
         return dgen.topological()
@@ -440,13 +440,16 @@ class PdbHandler:
     def __init__(self):
         None
 
-    def startProject(self, name):
-        None
-
     def dependency(self, name, deps, excludes=[]):
         None
 
     def description(self, text):
+        None
+
+    def endAlternate(self):
+        None
+
+    def endAlternates(self):
         None
 
     def endParse(self):
@@ -464,6 +467,15 @@ class PdbHandler:
     def sources(self, name, patched):
         None
 
+    def startAlternate(self):
+        None
+
+    def startAlternates(self):
+        None
+
+    def startProject(self, name):
+        None
+
     def version(self, text):
         '''This can only be added from package'''
         None
@@ -475,9 +487,11 @@ class Unserializer(PdbHandler):
 
     def __init__(self, builds=None):
         PdbHandler.__init__(self)
-        self.project = None
         self.projects = {}
         self.builds = builds
+        self.project = None
+        self.buildDeps = []
+        self.buildIndices = []
 
     def asProject(self, name):
         return self.projects[name]
@@ -488,19 +502,46 @@ class Unserializer(PdbHandler):
 
     def dependency(self, name, deps, excludes=[]):
         if self.project:
-            self.projects[self.project].buildDeps[name] = deps
-            self.projects[self.project].buildExcludes[name] = excludes
-
+            self.buildDeps += [ Dependency(name,deps,excludes) ]
+ 
     def description(self, text):
         if self.project:
             self.projects[self.project].description = text
+
+    def endAlternate(self):
+        if self.project:
+            first = self.buildIndices.pop()
+            self.buildDeps = self.buildDeps[:first] + [ self.buildDeps[first:] ]
+
+    def endAlternates(self):
+        if self.project:
+            self.projects[self.project].buildDeps \
+                += [ AlternatesDependency(self.buildDeps) ]
+        self.buildDeps = []
+
+    def endProject(self):
+        if self.project:
+            self.projects[self.project].buildDeps += self.buildDeps
+        self.buildDeps = []
+        self.project = None
 
     def package(self, filename, sha1):
         if self.project:
             self.projects[self.project].package = Package(filename,sha1)        
 
+    def startAlternate(self):
+        if self.project:
+            self.buildIndices += [len(self.buildDeps) ]
+
+    def startAlternates(self):
+        if self.project:
+            self.projects[self.project].buildDeps += self.buildDeps
+        self.buildDeps = []
+
     def startProject(self, name):
+        print "!!! start project " + name
         self.project = None
+        self.buildDeps = []
         if (not self.builds) or (name in self.builds):
             self.project = name
             if not name in self.projects:
@@ -514,10 +555,7 @@ class DependencyGenerator(Unserializer):
         '''*projects* is a list of root projects used to generate
         the dependency graph. *excludePats* is a list of projects which
         should be removed from the final topological order.'''
-        Unserializer.__init__(self)
-        # None if we don't record dependencies for a project and the name 
-        # of the project otherwise.
-        self.source = None
+        Unserializer.__init__(self, projects)
         # This contains a list of list of edges. When levels is traversed last 
         # to first and each edge's source vertex is outputed, it displays 
         # a topological ordering of the selected projects.
@@ -531,7 +569,6 @@ class DependencyGenerator(Unserializer):
         for p in projects:         
             roots += [ [ None, p ] ]
         self.levels = [ roots ]
-        self.vertices = projects
         # *cuts* is a list of Project(). Each instance contains resolution
         # for links on the local machine.
         self.cuts = []
@@ -542,7 +579,6 @@ class DependencyGenerator(Unserializer):
         self.missings = []
         self.prerequisites = []
         self.prereqDeps = {}
-        self.prereqExcludes = {}
         self.nextLevel()
 
     def candidates(self, filtered=[]):
@@ -571,11 +607,10 @@ class DependencyGenerator(Unserializer):
         return controls, packages
  
     def dependency(self, name, deps, excludes=[]):
-        if self.source:
-            self.projects[self.source].buildDeps[name] = deps
-            self.projects[self.source].buildExcludes[name] = excludes
+        Unserializer.dependency(self, name, deps, excludes)
+        if self.project:
             if self.addDep(name,deps,excludes):
-                self.levels[0] += [ [ self.source, name ] ]
+                self.levels[0] += [ [ self.project, name ] ]
             else:
                 # The parsing pass will gather all unique prerequisites.
                 # Prerequisites will be searched on the local system
@@ -584,41 +619,36 @@ class DependencyGenerator(Unserializer):
                     for key in deps:
                         if key in self.prereqDeps[name]:
                            for value in deps[key]:
-                               if not value in self.prereqDeps[name][key]:
-                                   self.prereqDeps[name][key] += [ value ]
+                               if not value in self.prereqDeps[name].files[key]:
+                                   self.prereqDeps[name].files[key] += [ value ]
                         else:
-                            self.prereqDeps[name][key] = deps[key]
+                            self.prereqDeps[name].files[key] = deps[key]
                     for exclude in excludes:
-                        if not exclude in self.prereqExcludes[name]:
-                            self.prereqExcludes[name] += [ exclude ]
+                        if not exclude in self.prereqDeps[name].excludes:
+                            self.prereqDeps[name].excludes += [ exclude ]
                 else:
-                    self.prereqDeps[name] = deps
-                    self.prereqExcludes[name] = excludes
+                    self.prereqDeps[name] = Dependency(name,deps,excludes)
 
     def endParse(self):
         # Search for prerequisites on the local system
         buildDeps = {}
         for name in self.prereqDeps:
-            buildDeps[name], complete = findPrerequisites(self.prereqDeps[name],
-                                                    self.prereqExcludes[name])
+            buildDeps[name], complete \
+                = findPrerequisites(self.prereqDeps[name].files,
+                                    self.prereqDeps[name].excludes)
             if complete:
                 self.cuts += [ name ]
-            else:
-                if not name in self.prerequisites:
-                    self.prerequisites += [ name ]
         # Update project dependencies that can be satisfied
-        for source in self.projects:
-            for name in self.projects[source].buildDeps:
-                if name in self.cuts:
-                    # In case the superset of dependencies for all projects 
-                    # that depend on a prerequisite is satisfied, we safely 
-                    # extend the subset of dependencies of such project.
-                    # This avoids complexity generating accurate intermediate 
-                    # results when the end result will be identical. 
-                    self.projects[source].buildDeps[name] = buildDeps[name]
-                else:
-                    if not [ source, name ] in self.missings:
-                        self.missings += [ [ source, name ] ]
+        print "builds: " + str(self.builds)
+        print "projects: " + str(self.projects)
+        for source in self.builds:
+            self.projects[source].populate(buildDeps)
+            for prereq in self.projects[source].prerequisites():
+                if not prereq.name in self.cuts:
+                    if not prereq.name in self.prerequisites:
+                        self.prerequisites += [ prereq.name ]
+                    if not [ source, prereq.name ] in self.missings:
+                        self.missings += [ [ source, prereq.name ] ]
 
     def nextLevel(self, filtered=[]):
         '''Going one step further in the breadth-first recursion introduces 
@@ -628,6 +658,11 @@ class DependencyGenerator(Unserializer):
         will be added as cut points. From this time, *cuts* contains 
         *complete*d projects as well as projects that still need to be 
         resolved before links are created.'''
+        print "nextLevel:"
+        print "  vertices=" + str(self.builds)
+        print "  missings=" + str(self.missings)
+        print "  prerequisites=" + str(self.prerequisites)
+        print "  levels=" + str(self.levels)
         for newEdge in self.missings:
             if newEdge[1] in filtered:
                 self.levels[0] += [ newEdge ]
@@ -636,9 +671,8 @@ class DependencyGenerator(Unserializer):
             if not package in filtered:
                 self.cuts += [ package ]
         #self.prereqDeps = {}
-        #self.prereqExcludes = {}
         self.prerequisites = []
-        self.vertices = []
+        self.builds = []
         for newEdge in self.levels[0]:
             # We first walk the tree of previously recorded edges to find out 
             # if we detected a cycle.
@@ -647,16 +681,16 @@ class DependencyGenerator(Unserializer):
                     for edge in level:
                         if edge[0] == newEdge[0] and edge[1] == newEdge[1]:
                             raise CircleError(edge[0],edge[1])
-            if not newEdge[1] in self.vertices:
+            if not newEdge[1] in self.builds:
                 # Insert each vertex once. 
-                self.vertices += [ newEdge[1] ]
+                self.builds += [ newEdge[1] ]
         # If an edge's source is matching a vertex added 
         # to the next level, obviously, it was too "late"
         # in the topological order.
         newLevel = []
         for edge in self.levels[0]:
             found = False
-            for vertex in self.vertices:
+            for vertex in self.builds:
                 if edge[0] == vertex:
                     found = True
                     break
@@ -664,12 +698,6 @@ class DependencyGenerator(Unserializer):
                 newLevel += [ edge ] 
         self.levels[0] = newLevel            
         self.levels.insert(0,[])
-
-    def startProject(self, name):
-        Unserializer.startProject(self,name)
-        self.source = None
-        if name in self.vertices:
-            self.source = name
 
     def addDep(self, name, deps, excludes=[]):
         return True
@@ -726,7 +754,7 @@ class MakeGenerator(DependencyGenerator):
         return False
     
     def sources(self, name, patched={}):
-        if self.source:
+        if self.project:
             found, version = findCache(patched)
             for source in patched:
                 if not context.cachePath(source) in found:
@@ -793,6 +821,60 @@ class Control:
         self.type = type
         self.url = url
 
+class Dependency:
+
+    def __init__(self, name, files, excludes=[]):
+        self.name = name
+        self.files = files
+        self.excludes = excludes
+
+    def __str__(self):
+        return str(self.files) + ', excludes:' + str(self.excludes)
+
+    def populate(self, buildDeps = {}):
+        if self.name in buildDeps:
+            deps = buildDeps[self.name]
+            for d in deps:
+                files = []
+                for look in self.files[d]:
+                    found = False
+                    for path in deps[d]:
+                        if path.endswith(os.path.basename(look)):
+                            files += [ path ]
+                            found = True
+                            break
+                    if not found:
+                        files += [ look ]
+                self.files[d] = files
+
+    def prerequisites(self):
+        return [ self ]
+
+
+class AlternatesDependency(Dependency):
+    '''Provides a set of dependencies where one of them is enough
+    to fullfil the prerequisite condition. This is used first to
+    allow differences in packaging between distributions.'''
+
+    def __init__(self, depset):
+        '''*depset* is organized as a list of lists of Dependency
+        where one of those list will form the actual prerequisite
+        of the project as returned by *prerequisites*.'''
+        self.depset = depset
+
+    def __str__(self):
+        return 'alternates: ' + str(self.depset)
+
+    def populate(self, buildDeps = {}):
+        for deplist in self.depset:
+            for dep in deplist:
+                dep.populate(buildDeps)
+
+    def prerequisites(self):
+        # \todo return the set that makes most sense on the current 
+        # local system.
+        return self.depset[0]
+
 class Package:
 
     def __init__(self, filename, sha1):
@@ -808,8 +890,7 @@ class Project:
 
     def __init__(self, name):
         self.name = name
-        self.buildDeps = {}
-        self.buildExcludes = {}
+        self.buildDeps = []
         self.description = None
         self.complete = False
         self.control = None
@@ -823,10 +904,19 @@ class Project:
             + '\tfound version ' + str(self.installedVersion) \
             + ' installed locally\n' \
             + '\tbuildDeps: ' + str(self.buildDeps) + '\n' \
-            + '\tbuildExcludes: ' + str(self.buildExcludes) + '\n' \
             + '\tcomplete: ' + str(self.complete) + '\n' \
             + '\tcontrol: ' + str(self.control) + '\n' \
             + '\tpackage: ' + str(self.package) + '\n' \
+
+    def populate(self, buildDeps = {}):
+        for buildDep in self.buildDeps:
+            buildDep.populate(buildDeps)
+
+    def prerequisites(self):
+        prereqs = []
+        for buildDep in self.buildDeps:
+            prereqs += buildDep.prerequisites()
+        return prereqs
 
 class UbuntuSpecWriter(PdbHandler):
     '''As the index file parser generates callback, an instance of this class
@@ -843,36 +933,51 @@ class UbuntuSpecWriter(PdbHandler):
 #Build-Depends: debhelper (>= 4), quilt, bison, flex, docbook-to-man, xsltproc, doxygen, zlib1g-dev, libbz2-dev, libicu-dev, python-all-dev, python-support (>= 0.6), g++-4.3
 #XS-Python-Version: 2.5, 2.6
 #Standards-Version: 3.7.3
-
-#example of changelog file:
-#boost (1.39.0-0ubuntu3) jaunty; urgency=low
 #
-#  * debian/rtupdate: Update for boost-1_39
-#
-# -- Sebastien Mirolo <smirolo@gmail.com>  Sun, 21 Jun 2009 11:14:35 +0000
+#Package: boost-dev
+#Homepage: http://www.boost.org/
+#Architecture: any
+#Section: libdevel
+#Depends: libstdc++-dev
+#Description: Boost C++ Libraries development files
+# The Boost web site provides free, peer-reviewed, portable C++ source
+# libraries. The emphasis is on libraries which work well with the C++
+# Standard Library. One goal is to establish "existing practice" and
+# provide reference implementations so that the Boost libraries are
+# suitable for eventual standardization. Some of the libraries have
+# already been proposed for inclusion in the C++ Standards Committee's
+# upcoming C++ Standard Library Technical Report.
 
     def __init__(self, control, changelog):
-        self.control = control
+        self.depends = []
+        self.projectName = None
+        self.controlf = control
         self.changelog = changelog
 
     def startProject(self, name):
-        self.control.write('Package: ' + name + '\n')
+        self.controlf.write('Source: ' + name + '\n')
+        self.controlf.write('Maintainer: Sebastien Mirolo <smirolo@fortylines.com>\n\n')
+        self.controlf.write('Package: ' + name + '\n')
+        self.controlf.write('Architecture: any\n')
+        self.projectName = name
 
     def dependency(self, name, deps, excludes=[]):
-        self.control.write('Depends: ' + ','.join(deps.keys()) + '\n')
+        self.depends += [ name ]
 
     def description(self, text):
-        self.control.write('Description:' + text)
+        self.controlf.write('Description: ' + text)
     
     def endProject(self):
-        self.control.write('\n')
+        self.controlf.write('Depends: ' + ','.join(self.depends) + '\n')
+        self.controlf.write('\n')
 
     def control(self, type, url):
-        self.control.write('ControlType:' + type + '\n')
-        self.control.write('ControlUrl:' + url + '\n')
+        None
+        #self.controlf.write('ControlType: ' + type + '\n')
+        #self.controlf.write('ControlUrl: ' + url + '\n')
 
     def version(self, text):
-        self.control.write('Version:' + text)
+        self.controlf.write('Version:' + text)
 
 
 class xmlDbParser(xml.sax.ContentHandler):
@@ -882,6 +987,8 @@ class xmlDbParser(xml.sax.ContentHandler):
        '''
 
     # Global Constants for the database parser
+    tagAlternate = 'alternate'
+    tagAlternates = 'alternates'
     tagDb = 'book'
     tagBuild = 'build'
     tagDepend = 'xref'
@@ -908,7 +1015,11 @@ class xmlDbParser(xml.sax.ContentHandler):
     def startElement(self, name, attrs):
         '''Start populating an element.'''
         self.text = ''
-        if name == self.tagBuild:
+        if name == self.tagAlternate:
+            self.handler.startAlternate()
+        elif name == self.tagAlternates:
+            self.handler.startAlternates()
+        elif name == self.tagBuild:
             self.url = None
         elif name == self.tagProject:
             self.patchedSourcePackages = {}
@@ -944,6 +1055,10 @@ class xmlDbParser(xml.sax.ContentHandler):
            interface on the handler.'''
         if name == self.tagDb:
             self.handler.endParse()
+        elif name == self.tagAlternate:
+            self.handler.endAlternate()
+        elif name == self.tagAlternates:
+            self.handler.endAlternates()
         elif name == self.tagBuild:
             self.handler.control(self.type, self.url)
         elif name == self.tagDepend:
@@ -1098,6 +1213,12 @@ def findBin(names,excludes=[]):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             continue
+        # First time ever *findBin* is called, binDir will surely not defined
+        # in ws.mk and thus we will trigger interactive input from the user.
+        # We want to make sure the output of the interactive session does not
+        # mangle the search for an executable so we preemptively trigger 
+        # an interactive session.
+        context.value('binDir')
         log.write(name + '... ')
         log.flush()
         found = False
@@ -1371,6 +1492,12 @@ def findLib(names,excludes=[]):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             continue
+        # First time ever *findLib* is called, libDir will surely not defined
+        # in ws.mk and thus we will trigger interactive input from the user.
+        # We want to make sure the output of the interactive session does not
+        # mangle the search for a library so we preemptively trigger 
+        # an interactive session.
+        context.value('libDir')
         log.write(name + '... ')
         log.flush()
         found = False
@@ -1575,14 +1702,14 @@ def linkDependencies(projects, cuts=[]):
 
     missings = []
     for project in projects:
-        for prereq in projects[project].buildDeps:
-            if not prereq in cuts:
+        for prereq in projects[project].prerequisites():
+            if not prereq.name in cuts:
                 # First, we will check if findPrerequisites needs to be rerun.
                 # It is the case if the link in [bin|include|lib|...]Dir does
                 # not exist and the pathname for it in buildDeps is not 
                 # an absolute path.  
                 complete = True
-                deps = projects[project].buildDeps[prereq]
+                deps = prereq.files
                 for dir in deps:
                     for path in deps[dir]:
                         command = 'linkPath' + dir.capitalize()
@@ -1592,10 +1719,10 @@ def linkDependencies(projects, cuts=[]):
                             complete = False
                 if not complete:
                     deps, complete = findPrerequisites(
-                        projects[project].buildDeps[prereq],
-                        projects[project].buildExcludes[prereq])
+                        prereq.files,
+                        prereq.excludes)
                 if not complete and not prereq in missings:
-                    missings += [ prereq ]
+                    missings += [ prereq.name ]
                 else:
                     for install in deps:
                         context.linkPath(deps[install],
@@ -1889,7 +2016,7 @@ def validateControls(repositories, dbindex=None, force=False):
             missingControls += [ project ]
 
     # Add deep dependencies
-    while len(dgen.vertices) > 0:
+    while len(dgen.builds) > 0:
         controls = []
         dbindex.parse(dgen)
         if len(dgen.missings) > 0:
@@ -2071,29 +2198,30 @@ def upstream(srcdir,pchdir):
 
 def pubBuild(args):
     '''build                  [remoteTop [localTop]]
-                        This bootstrap command will download the index 
-                        database from *remoteTop* and starts rebuilding 
-                        every project listed. When both *remoteTop* and 
-                        *localTop*, the root on the local machine where 
-                        sources and object files are stored, are specified, 
-                        the script runs to completion with no interactive 
-                        prompt. It is a useful feature for using the script 
-                        in cron jobs on build servers.
+                        This bootstrap command will download an index 
+                        database file from *remoteTop* and starts rebuilding 
+                        every project listed in it.
+                        This command is meant to be used as part of cron
+                        jobs on build servers and thus designed to run 
+                        to completion with no human interaction. In order
+                        to be really useful in an automatic build system,
+                        authentication to the remote server should also
+                        be setup to run with no human interaction.
     '''
-    if None:
-        if len(args) > 0:
-            context.remoteCacheTop.default = args[0]
-        if len(args) > 1:
-            context.cacheTop.default = args[1]
-        global useDefaultAnswer
-        useDefaultAnswer = True
-        global log
-        log = LogFile(context.logname())
-        rgen = DerivedSetsGenerator()
-        index.parse(rgen)
-        make(rgen.repositories,[ 'recurse', 'install', 'dist-src' ])
-        pubCollect([])
-        log.close()
+    if len(args) > 0:
+        context.remoteCacheTop.default = args[0]
+    if len(args) > 1:
+        context.cacheTop.default = args[1]
+    global useDefaultAnswer
+    useDefaultAnswer = True
+    global log
+    log = LogFile(context.logname())
+    rgen = DerivedSetsGenerator()
+    index.parse(rgen)
+    make(rgen.repositories,[ 'recurse', 'install', 'dist' ])
+    pubCollect([])
+    log.close()
+    log = None
     # Once we have built the repository, let's report the results
     # back to the remote server. We stamp the logfile such that
     # it gets a unique name before uploading it.
@@ -2106,7 +2234,7 @@ def pubBuild(args):
 
 def pubCollect(args):
     '''collect                Consolidate local dependencies information 
-                       into a glabal dependency database. Copy all 
+                       into a global dependency database. Copy all 
                        distribution packages built into a platform 
                        distribution directory.
     '''
@@ -2122,7 +2250,8 @@ def pubCollect(args):
     # Create the project index file
     # and copy the packages in the distribution directory.
     extensions = { 'Darwin': ('\.dsx', '\.dmg'),
-                   'Fedora': ('.spec', '\.rpm'), 
+                   'Fedora': ('\.spec', '\.rpm'),
+                   'Ubuntu': ('\.dsc', '\.deb')
                  }
     indices = []
     # collect source packages
@@ -2151,10 +2280,13 @@ def pubConfigure(args):
     global log 
     log = LogFile(context.logname())
     projectName = context.cwdProject()
+    #look = re.match('([^-]+)-.*',projectName)
+    #if look:
+    #    projectName = look.group(1)
     # \todo should report missing *direct* dependencies without install them. 
     validateControls([ projectName ],
                      IndexProjects(context,
-                     context.srcDir(os.path.join(projectName,'index.xml'))))
+                     context.srcDir(os.path.join(context.cwdProject(),'index.xml'))))
 
 
 def pubContext(args):
@@ -2244,16 +2376,49 @@ def pubSpec(args):
     if dist == 'Ubuntu':
         control = open('control','w')
         changelog = open('changelog','w')
+        writer = UbuntuSpecWriter(control,changelog)
         parser = xmlDbParser()
-        parser.parse(context.dbPathname(),UbuntuSpecWriter(control,changelog))
+        parser.parse(context.dbPathname(),writer)
         control.close()
+        changelog.write(writer.projectName + ' (' + args[0] + '-ubuntu1' + ') jaunty; urgency=low\n\n')
+        changelog.write('  * debian/rules: generate ubuntu package\n\n')
+        changelog.write(' -- ' + 'Sebastien Mirolo <smirolo@gmail.com>  ' + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
         changelog.close()
         rules = open('rules','w')
+        rules.write('''#! /usr/bin/make -f
+
+export DH_OPTIONS
+
+#include /usr/share/quilt/quilt.make
+
+PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
+
+build:
+\t./configure --prefix=$(PREFIX)
+\tmake
+
+clean:
+\techo "make clean"
+
+install:
+\tdh_testdir
+\tdh_testroot
+\tdh_clean -k
+\tmake install
+
+binary: install
+\tdh_installdeb
+\tdh_gencontrol
+\tdh_md5sums
+\tdh_builddeb
+
+''')
         rules.close()
         copyright = open('copyright','w')
         copyright.close()
     else:
         raise
+
 
 def pubUpdate(args):
     '''update                 Update projects installed in the workspace
@@ -2507,6 +2672,7 @@ def showMultiple(description,choices):
             sys.stdout.write(col.ljust(widths[c]))
             c = c + 1
         sys.stdout.write('\n')
+    sys.stdout.flush()
 
 
 # Main Entry Point

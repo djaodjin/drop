@@ -23,20 +23,20 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# -*- Makefile -*-
-
 .DEFAULT_GOAL 	:=	all
 
+dws		:=	$(binDir)/dws
 ibtool          :=      /Developer/usr/bin/ibtool
-installDirs 	:=	install -d
-installFiles	:=	install -m 644
-installExecs	:=	install -m 755
+installDirs 	:=	/usr/bin/install -d
+installFiles	:=	/usr/bin/install -m 644
+installExecs	:=	/usr/bin/install -m 755
+SED		:=	/bin/sed
 
 # \note For some reason when a '\' is inserted in the following line in order
 #       to keep a maximum of 80 characters per line, the sed command 
 #       in contributors/smirolo/Makefile complains about an extra 
 #       '\n' character.
-srcDir		?=	$(subst $(dir $(shell dws context)),$(srcTop)/,$(realpath $(shell pwd)))
+srcDir		?=	$(subst $(buildTop)/,$(srcTop)/,$(realpath $(shell pwd)))
 
 includes	:=	$(wildcard $(srcDir)/include/*.hh \
 	                           $(srcDir)/include/*.tcc)
@@ -46,12 +46,20 @@ CPPFLAGS	+=	-I$(srcDir)/include -I$(includeDir)
 LDFLAGS		+=	-L$(libDir)
 
 # Configuration for distribution packages
+
+distHost	:=	$(shell $(dws) host)
 distExtDarwin	:=	.dmg
 distExtFedora	:=	.rpm
-distExtUbuntu	:=	_amd64.deb
-distHost	:=	$(shell dws host)
+distExtUbuntu	:=	_i386.deb
 project		:=	$(notdir $(srcDir))
 version		?=	$(shell date +%Y-%m-%d-%H-%M-%S)
+
+ifeq ($(distHost),Ubuntu)
+# cat /etc/lsb-release
+ifeq ($(shell getconf LONG_BIT),32)
+distExtUbuntu	:=	_amd64.deb
+endif
+endif
 
 vpath %.a 	$(libDir)
 vpath %.cc 	$(srcDir)/src

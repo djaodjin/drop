@@ -86,3 +86,15 @@ int main( int argc, char *argv[] ) {
 </p>
 
 <p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on September 27th, 2009</p>
+
+<!-- \todo <p>
+Policies:
+Search through freshmeat, sourceforge, wikipedia
+Select candidates:
+first by License (free first)
+second activity 
+because evaluation time, cost contribution perspective.
+contribute to projects which are not company core technologies.
+<li>implementation through contribution to free software projects.<br />
+</p>
+-->

@@ -1,4 +1,3 @@
-# -*- Makefile -*-
 # Copyright (c) 2009, Sebastien Mirolo
 #   All rights reserved.
 #
@@ -73,17 +72,19 @@ dist:: $(dists)
 # 	git archive -b branchname tag
 #	make dist
 $(project)-$(version).tar.bz2:
-	cp -rf $(srcDir) $(basename $(basename $@))
-	sed -e s,$(project),$(project)-$(version),g \
+	rsync -r --exclude=.git $(srcDir)/* $(basename $(basename $@))
+	$(SED) -e s,$(project),$(subst .tar.bz2,,$@),g \
 		$(srcDir)/index.xml > $(basename $(basename $@))/index.xml 
+	$(SED) -e 's,$$(shell dws context),ws.mk,' \
+	    -e 's,$$(shell dws context \(..*\)),etc/\1,' \
+		$(srcDir)/Makefile > $(basename $(basename $@))/Makefile.in
+	rm $(basename $(basename $@))/Makefile
 	$(installDirs) $(basename $(basename $@))/etc
-	mv $(basename $(basename $@))/Makefile \
-		$(basename $(basename $@))/Makefile.in
 	$(installExecs) $(shell dws context configure.sh) \
 		$(basename $(basename $@))/configure
-	$(installExecs) $(shell which dws) $(basename $(basename $@))
-	$(installFiles) $(shell dws context prefix.mk) \
-			$(shell dws context suffix.mk) \
+	$(installExecs) $(dws) $(basename $(basename $@))
+	$(installFiles) $(shell $(dws) context prefix.mk) \
+			$(shell $(dws) context suffix.mk) \
 		$(basename $(basename $@))/etc
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
 		-f $@ $(basename $(basename $@))
@@ -129,13 +130,15 @@ vpath %.spec $(srcDir)/src
 # permission access to the directory.
 # Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
 
-%.deb: %.tar.bz2
-	bzip2 -dc $< | gzip -c -
-	mv $(subst .bz2,.gz,$<) $(subst -,_,$(subst .tar.bz2,orig.tar.gz,$<))
+# Can only find example in man pages of debuild but cannot 
+# find description of options: "-i -us -uc -b".
+%$(distExtUbuntu): %.tar.bz2
+	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
-	$(installDirs) $(basename $@)/debian
-	cd $(basename $@)/debian && dws spec
-	cd $(basename $@) && debuild
+	$(installDirs) $(basename $(basename $<))/debian
+	cd $(basename $(basename $<))/debian && dws spec $(shell echo $@ | $(SED) -e 's,[^-][^-]*-\(.*\)_amd64.deb,\1,')
+	cd $(basename $(basename $<)) && debuild -i -us -uc -b
+
 
 # Rules to build unit test logs
 # -----------------------------
