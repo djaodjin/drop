@@ -30,13 +30,13 @@ ibtool          :=      /Developer/usr/bin/ibtool
 installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -m 644
 installExecs	:=	/usr/bin/install -m 755
-SED		:=	/bin/sed
+SED		:=	sed
 
 # \note For some reason when a '\' is inserted in the following line in order
 #       to keep a maximum of 80 characters per line, the sed command 
 #       in contributors/smirolo/Makefile complains about an extra 
 #       '\n' character.
-srcDir		?=	$(subst $(buildTop)/,$(srcTop)/,$(realpath $(shell pwd)))
+srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
 
 includes	:=	$(wildcard $(srcDir)/include/*.hh \
 	                           $(srcDir)/include/*.tcc)

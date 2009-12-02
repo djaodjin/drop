@@ -89,18 +89,15 @@ $(project)-$(version).tar.bz2:
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
 		-f $@ $(basename $(basename $@))
 
-install-from-srctar:: $(project)-$(version).tar.bz2
-
 
 # This rule is used to create a OSX distribution package
 # \todo It certainly should move to an *host* specific part of the Makefiles
 $(project)-$(version).dmg: $(project)-$(version).tar.bz2
-	${MAKE} -f $(srcDir)/Makefile install-from-srctar    \
-		installBinDir=${buildInstallDir}/bin         \
-		installIncludeDir=${buildInstallDir}/include \
-		installLibDir=${buildInstallDir}/lib
-	buildpkg --version=${version} \
-			 --spec=$(srcDir)/index.xml ${buildInstallDir}
+	tar jxf $<
+	cd $(basename $(basename $<)) && ./configure --prefix=${buildInstallDir}
+	cd $(basename $(basename $<)) && ${MAKE} install
+	buildpkg --version=$(subst $(project)-,,$(basename $(basename $<))) \
+	         --spec=$(srcDir)/index.xml ${buildInstallDir}
 
 
 vpath %.spec $(srcDir)/src
