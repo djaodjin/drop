@@ -368,7 +368,14 @@ http://www.urbanpuddle.com/articles/2008/07/11/installing-git-on-a-server-ubuntu
 
 \todo section on audit (nmap)
 
-\todo section on "How to start contributing"
-      + section on getting started (i.e. an account on the server)
+<h2>Hardware platform</h2>
+<p>
+<ul>
+<li>#1 It can be loaned from a virtual server provider
+<li>#2 It can be sold with the server installed
+<li>#3 It can be a prerequisite
+</ul>
+</p>
+
 -->
 

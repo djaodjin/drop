@@ -154,18 +154,18 @@ regression.book: regression.log $(srcTop)/seed/test/src/book.xsl
 regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^ 
 
-results.log: $(wildcard *Test.cout)
+# \todo Why does that trigger a recompile when building regression.book?
+# $(wildcard *Test.cout)
+results.log: 
 	echo "<config name=\"$(version)\">" >> $@
 	dws host >> $@
 	echo "</config>" >> $@
 	for testunit in $(testunits) ; do \
 		echo "@@ test: $$testunit @@" >> $@ ; \
-		if [ ! -f $$testunit ] ; then \
-			echo "<status>compile error</status>" >> $@ ; \
+		if [ ! -f $${testunit}.cout ] ; then \
+			echo "error: No output file for $${testunit}" >> $@ ; \
 		else \
-			if [ -f $${testunit}.cout ] ; then \
-				cat $${testunit}.cout >> $@ ; \
-			fi ; \
+			cat $${testunit}.cout >> $@ ; \
 		fi ; \
 	done
 

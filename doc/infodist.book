@@ -1,0 +1,82 @@
+Title: Information Distribution
+
+<li><a href="DocumentsAndPresentations">Documents and Presentations</a>
+<li>Accounting: tracking developer hours<br />
+
+<p>
+<li>#1 source repository<br />
+<li>#5 online repository browser<br />
+<li>#7 calendar<br />
+<li>#2 bug tracking<br />
+<li>#3 wiki (I like what's new and collaborative drawing as addition)
+	automatic upload of generating HTML from SXC documents
+	import export of generated doc.<br />
+<li>#4 mailing list<br />
+* percentage of lines authored by each developer on a file, wiki page, etc.<br />
+* effective page layout tools for wiki in order to provide “conference paper” PDFs in one click<br /> 
+search engine:
+tags on pages: special todo tag for bug reports.
+</p>
+
+<h2>User Interface</h2>
+<p>
+<ul>
+<li>#1 Single sign-on<br />
+<li>#2 One page management of user accessibility rights<br />
+<li>#3 Integrated “education notes” (ie. why use ssh, etc.) with each page.<br />
+</ul>
+</p>
+
+<li>company look and feel customization through style-sheets.<br />
+<li>searching through everything on the development server<br />
+<li>automatic reports through intelligent data mining<br />
+<li>developer client tool for todo list managements<br />
+<li>support online/offline development and updates<br />
+<li>wiki tags in source code<br />
+<li>white board handling of feature.<br />
+
+<p>
+The Backbone product brings together disparate software engineering tools into a simple framework with a single coherent look-and-feel entirely accessible through a web browser interface.
+</p>
+
+<h1>Technologies</h1>
+<p>
+DocBook, XSL, HTML. Unified diff
+DocBook
+<li><a href="http://www.docbook.org/tdg5/en/html/docbook.html">docbook</a>
+<li><a href="http://docbook.sourceforge.net/">docbook</a>
+<li><a href="http://opensource.bureau-cornavin.com/crash-course/en/index.html">Writing documentation</a>
+<li><a href="http://www.dbdoclet.org/">dbdoclet</a>
+
+XML, HTML
+<li><a href="http://murka.sourceforge.net/">Caching of generated pages - Murka</a>
+<li><a href="http://axkit.org/">Caching of generated pages - Apache AxKit</a>
+<li><a href="https://addons.mozilla.org/da/firefox/addon/4522">XML Digital Signature Tool</a>
+<li>Xalan XSLT
+</p>
+<p>
+WebDAV
+http://en.wikipedia.org/wiki/WebDAV
+Briefly: WebDAV stands for "Web-based Distributed Authoring and Versioning". It is a set of extensions to the HTTP protocol which allows users to collaboratively edit and manage files on remote web servers.
+</p>
+
+RSS
+<li><a href="http://github.com/stef/grindr/wikis">grindr</a>
+
+Web Programming
+<li><a href="http://www.cs.tut.fi/~jkorpela/forms/cgic.html">CGI Getting Started</a>
+<li><a href="http://www.walterzorn.com/dragdrop/dragdrop_e.htm">Javascript Drag-n-Drop</a>
+<li><a href="http://www.webreference.com/programming/javascript/mk/column2/">Javascript Drag-n-Drop</a>
+
+Web-based editors
+<li><a href="http://www.freedomeditor.com/">Freedom editor</a>
+TinyMCE
+
+website templates
+
+PDF
+<li><a href="http://www.jagpdf.com/">JagPDF library</a>
+
+XML
+<li><a href="http://www.oreillynet.com/pub/a/oreilly/xml/news/dontlearn_0701.html">XML</a>
+<li><a href="http://rapidxml.sourceforge.net/">RapidXML</a>

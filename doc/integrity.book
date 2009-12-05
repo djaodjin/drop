@@ -86,3 +86,9 @@ Some tools that could be interesting to look at.
 </ul>
 
 <p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>
+
+<!-- \todo
+#5 Automated backups with discard over time
+#6 One button download to a different machine
+<li>disk imaging for backups, create ec2 image after install?<br />
+-->

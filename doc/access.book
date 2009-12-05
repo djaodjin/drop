@@ -55,3 +55,11 @@ gpg --fingerprint <i>username</i>
 <p>
 Each service typically came with its own custom-built authentication mechanism. That not only increased the risk of a system to be compromised but also created management headaches for IT staffs. In Linux, slowing <a href="http://www.installationwiki.org/PAM">PAM</a> as emerged as a unifying standard for authentication. Each service that cares about authentication can use <a href="http://www.packtpub.com/article/development-with-pluggable-authentication-modules-pam">PAM's simple programming interface</a> to leverage a well-behaved authentication library. 
 </p>
+
+<!--
+\todo:
+	#1 Harddrive encryption
+	#2 ssh tunnels
+	#3 PGP signed e-mails?
+	#4 automated audits of touched files, open ports, etc.
+-->

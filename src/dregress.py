@@ -73,10 +73,10 @@ if __name__ == '__main__':
         parser.print_help()
         sys.exit(1)
 
-    elif len(args) == 1:
+#    elif len(args) == 1:
         # There are reference files to check against
-        shutil.copy(args[0],options.output)
-        logfile = args[0]
+#        shutil.copy(args[0],options.output)
+#        logfile = args[0]
 
     else:
         logfile = args[0]
@@ -196,7 +196,13 @@ if __name__ == '__main__':
                 tests[testName].write(']]>\n')
                 tests[testName].write('</output>\n')
 
-        # 2. All temporary files have been created, it is time to merge 
+        # 2. Write the reference files against which comparaison is done.
+        for reffile in reffiles:
+            id = os.path.splitext(os.path.basename(reffile))[0]
+            out.write('<reference id="' + id \
+                          + '"name="' + reffile + '"/>')
+
+        # 3. All temporary files have been created, it is time to merge 
         #    them back together.
         for testName in sorted(tests): 
             out.write('<test name="' + testName + '">\n')

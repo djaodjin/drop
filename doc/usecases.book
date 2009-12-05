@@ -1,0 +1,59 @@
+Title: Use cases of the infrastructure
+<h1>Use Cases</h1>
+<h2>New Account</h2>
+\todo section on "How to start contributing"
+      + section on getting started (i.e. an account on the server)
+
+<h2>Night build</h2>
+
+
+
+
+Competition?
+<li><a href="http://www.jumpbox.com/app/mantis">jumpbox</a>(see mantis)
+
+<h2>Tools</h2>
+<p>
+All the tools are implemented with a server-side (CGI-like) executable and a browser-only executable (Javascript) component. [Emacs based local machine, fully off-line].
+The <a href="http://httpd.apache.org/docs/2.0/suexec.html">suEXEC</a> feature provides Apache users the ability to run CGI and SSI programs under user IDs different from the user ID of the calling web server.
+</p>
+<p>
+Since all tools are running through the web interface, MySql authentication mecanism could be used. There is no need to give ssh access to all users onto the remote machine.
+</p>
+<p>
+The QueryTool gets a (XLink and XPointer) as input and generates a DocBook output after a few queries onto the repository. Active modules (queries).
+The role of the QueryTool is to a layer between patched code and provide a simple DocBook layer to the PresentationTool.
+</p>
+<p>
+The PresentationTool takes a docbook snipsets produced by the QueryTool or other mailing list analyzer, etc. and generates html for online browsing or pdf for printing.
+</p>
+<p>
+The CheckoutTool creates a workspace on the local machine from the information stored on the remote site. By default the head of the main branch in the remote repository is generated on the local machine as a directory structure into the local file system.
+</p>
+<p>
+It might be worth to implement the CheckoutTool on top of the QueryTool with a specific back-end PresentationTool (C++ as Text file). CheckTool could run on the remote server and make a zip archives that could be downloaded.
+</p>
+<p>
+Whether the entire site should be downloaded from the remote machine to the local machine is questionable.
+</p>
+<p>
+The DiffTool generates unified diff between two workspaces. By default, DiffTool uses the local workspace as left side and the head of the associated branch on the remote machine as right side. Ideally DiffTool would run through the web interface. Using the upload feature and some make-like algorithms (based on sha hashes), the functionality might be implemented with reasonable network traffic.
+</p>
+<p>
+The CheckinTool takes an unified diff, creates a unique check-in number which it associates to the unified diff is what is known as a ChangeList. The ChangeList is then commited into the repository+calendar.
+</p>
+<p>
+The EditorTool is an online repository editor that runs into a browser. It is similar to most wikis with two major differences. First, because doc snipsets and source code are accessed through a unified interface, it is possible to edit code online and link seemlessly between doc and source code (through links into source code comments).
+</p>
+<p>
+Second, the EditorTool does not have a "preview" and "save" button. The editor works on the "web shopping card" model, logically creating a ChangeList between a virtual workspace and the repository. The CheckinTool is then invoked to atomically commit the ChangeList such that there is no difference between offline and online editions.
+</p>
+<p>
+The AccountTool is used to add/remove users, mailing lists, projects, etc. The AccountTool is used to update different access rights. The AccountTool also needs to be able to configure the mail server.
+</p>
+<p>
+The MergeTool is used to review and edit unified diffs. It is the primary tool to solve conflicts. Even though critical, it does not have to be implemented in version 1 for the whole system to be functional.
+</p>
+<p>
+The WhiteboardTool. This is an experimental tool that can be used to pin milestones, tasks, etc. It definitely does not need to be in version one.
+</p>

@@ -60,3 +60,14 @@ It is the topic of the next chapters.
 </p>
 
 <p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>
+
+<!-- \todo 
+<li>Install of necessary packages on development platform (apt-get, pkgadd, ...)<br />
+<li>upload of build logs onto the development server<br />
+<li>provide different choices of software (cvs, svn, etc.) or already chosen by us?<br />
+<li>add tools for release management (version number) ?<br />
+</ul>
+</p> 
+<li><a href="distributedServers">Distributed Servers</a>
+<li><a href="revision">Source Revision Control</a>
+-->

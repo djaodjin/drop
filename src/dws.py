@@ -33,15 +33,8 @@
 # (edit/build/run) on a local machine.
 #
 # example: 
-# dws --exclude 'contrib' build ~/workspace/fortylines ~/build/fortylines/install
-#
-# http://www.kernel.org/pub/software/scm/git/docs/everyday.html
-#
-# http://www.gelato.unsw.edu.au/archives/git/0511/11390.html
-# If the only thing you would want to do is to build it, then you
-# could 'git-tar-tree v2.6.14' and extract that on your notebook.
-# The output is just a tar so there will no history, though.
-
+#   dws --exclude 'contrib' build ~/workspace/fortylines \
+#     ~/build/fortylines/install
 
 __version__ = '0.1'
 
@@ -87,7 +80,6 @@ class Context:
     configName = 'ws.mk'
 
     def __init__(self):
-        # \todo default used to be os.path.dirname(os.path.dirname(os.getcwd()))
         self.cacheTop = Pathname('cacheTop',
                           'Root of the tree where cached packages are fetched',
                           default=os.getcwd())
@@ -158,7 +150,6 @@ class Context:
         except:
             raise
 
-
     def cachePath(self,name):
         '''Absolute path to a file in the cached packages 
         directory hierarchy.'''
@@ -193,7 +184,9 @@ class Context:
                                                self.configName)
             self.save()
             self.locate()
-        return self.buildTopRelativeCwd
+        prefix = os.path.commonprefix([self.value('buildTop'), os.getcwd()])    
+        return os.getcwd()[len(prefix):]
+        # return self.buildTopRelativeCwd
 
     def isControlled(self,name):
         '''Returns True if the source directory associated with project *name*
@@ -461,6 +454,9 @@ class PdbHandler:
     def control(self, type, url):
         None
 
+    def maintainer(self, name, email):
+        None
+
     def package(self, filename, sha1):
         None
 
@@ -539,7 +535,6 @@ class Unserializer(PdbHandler):
         self.buildDeps = []
 
     def startProject(self, name):
-        print "!!! start project " + name
         self.project = None
         self.buildDeps = []
         if (not self.builds) or (name in self.builds):
@@ -639,8 +634,6 @@ class DependencyGenerator(Unserializer):
             if complete:
                 self.cuts += [ name ]
         # Update project dependencies that can be satisfied
-        print "builds: " + str(self.builds)
-        print "projects: " + str(self.projects)
         for source in self.builds:
             self.projects[source].populate(buildDeps)
             for prereq in self.projects[source].prerequisites():
@@ -658,11 +651,11 @@ class DependencyGenerator(Unserializer):
         will be added as cut points. From this time, *cuts* contains 
         *complete*d projects as well as projects that still need to be 
         resolved before links are created.'''
-        print "nextLevel:"
-        print "  vertices=" + str(self.builds)
-        print "  missings=" + str(self.missings)
-        print "  prerequisites=" + str(self.prerequisites)
-        print "  levels=" + str(self.levels)
+#        print "nextLevel:"
+#        print "  vertices=" + str(self.builds)
+#        print "  missings=" + str(self.missings)
+#        print "  prerequisites=" + str(self.prerequisites)
+#        print "  levels=" + str(self.levels)
         for newEdge in self.missings:
             if newEdge[1] in filtered:
                 self.levels[0] += [ newEdge ]
@@ -736,15 +729,6 @@ class MakeGenerator(DependencyGenerator):
     '''
     
     def __init__(self, projects, excludePats = []):
-        # \todo add pre-built packages in download list.
-        # images = {}
-        #    filenames = []
-        #    for name in packages:
-        #        package = handler.asProject(name).package
-        #        images[ os.path.join(context.host(),package.filename) ] \
-        #            = package.sha1
-        #        filenames += [ package.filename ]
-        #    images.update(extraFetches)
         self.extraFetches = {}
         DependencyGenerator.__init__(self,projects,excludePats)
 
@@ -922,43 +906,16 @@ class UbuntuSpecWriter(PdbHandler):
     '''As the index file parser generates callback, an instance of this class
     will rewrite the exact same information in a format compatible with apt.'''
 
-#example of control file:
-#Source: boost
-#Homepage: http://www.boost.org/
-#Section: libs
-#Priority: optional
-#Maintainer: Ubuntu MOTU Developers <ubuntu-motu@lists.ubuntu.com>
-#XSBC-Original-Maintainer: Debian Boost Team <pkg-boost-devel@lists.alioth.debian.org>
-#Uploaders: Steve M. Robbins <smr@debian.org>, Domenico Andreoli <cavok@debian.org>, Christophe Prud'homme <prudhomm@debian.org>
-#Build-Depends: debhelper (>= 4), quilt, bison, flex, docbook-to-man, xsltproc, doxygen, zlib1g-dev, libbz2-dev, libicu-dev, python-all-dev, python-support (>= 0.6), g++-4.3
-#XS-Python-Version: 2.5, 2.6
-#Standards-Version: 3.7.3
-#
-#Package: boost-dev
-#Homepage: http://www.boost.org/
-#Architecture: any
-#Section: libdevel
-#Depends: libstdc++-dev
-#Description: Boost C++ Libraries development files
-# The Boost web site provides free, peer-reviewed, portable C++ source
-# libraries. The emphasis is on libraries which work well with the C++
-# Standard Library. One goal is to establish "existing practice" and
-# provide reference implementations so that the Boost libraries are
-# suitable for eventual standardization. Some of the libraries have
-# already been proposed for inclusion in the C++ Standards Committee's
-# upcoming C++ Standard Library Technical Report.
-
     def __init__(self, control, changelog):
         self.depends = []
         self.projectName = None
+        self.maintainerName = None
+        self.maintainerEmail = None
         self.controlf = control
         self.changelog = changelog
 
     def startProject(self, name):
         self.controlf.write('Source: ' + name + '\n')
-        self.controlf.write('Maintainer: Sebastien Mirolo <smirolo@fortylines.com>\n\n')
-        self.controlf.write('Package: ' + name + '\n')
-        self.controlf.write('Architecture: any\n')
         self.projectName = name
 
     def dependency(self, name, deps, excludes=[]):
@@ -968,6 +925,8 @@ class UbuntuSpecWriter(PdbHandler):
         self.controlf.write('Description: ' + text)
     
     def endProject(self):
+        self.controlf.write('\nPackage: ' + name + '\n')
+        self.controlf.write('Architecture: any\n')
         self.controlf.write('Depends: ' + ','.join(self.depends) + '\n')
         self.controlf.write('\n')
 
@@ -975,6 +934,12 @@ class UbuntuSpecWriter(PdbHandler):
         None
         #self.controlf.write('ControlType: ' + type + '\n')
         #self.controlf.write('ControlUrl: ' + url + '\n')
+
+    def maintainer(self, name, email):
+        self.maintainerName = name
+        self.maintainerEmail = email
+        self.controlf.write('Maintainer: ' + name \
+                                + ' <' + email + '>\n')
 
     def version(self, text):
         self.controlf.write('Version:' + text)
@@ -995,6 +960,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagDescription = 'description'
     tagHash = 'sha1'
     tagInstall = 'install'
+    tagMaintainer = 'maintainer'
     tagPackage = 'package'
     tagProject = 'section'
     tagSrc = 'src'
@@ -1021,6 +987,8 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.handler.startAlternates()
         elif name == self.tagBuild:
             self.url = None
+        elif name == self.tagMaintainer:
+            self.handler.maintainer(attrs['name'],attrs['email'])
         elif name == self.tagProject:
             self.patchedSourcePackages = {}
             self.filename = None
@@ -2197,7 +2165,7 @@ def upstream(srcdir,pchdir):
 
 
 def pubBuild(args):
-    '''build                  [remoteTop [localTop]]
+    '''build              [remoteTop [localTop]]
                         This bootstrap command will download an index 
                         database file from *remoteTop* and starts rebuilding 
                         every project listed in it.
@@ -2321,11 +2289,13 @@ def pubInstall(args):
     '''
     install(args)
 
+
 def pubIntegrate(args):
-    '''integrate              Integrate a patch into a source package
+    '''integrate          [ srcDir ... ]   
+                       Integrate a patch into a source package
     '''
-    while len(sys.argv) > 0:
-        srcdir = sys.argv.pop(0)
+    while len(args) > 0:
+        srcdir = args.pop(0)
         pchdir = srcdir + '-patch'
         integrate(srcdir,pchdir)
 
@@ -2370,7 +2340,7 @@ def pubMake(args):
 
 def pubSpec(args):
     '''spec                   Writes out the specification files used 
-                              to build a distribution package.
+                       to build a distribution package.
     '''
     dist = context.host()
     if dist == 'Ubuntu':
@@ -2382,7 +2352,9 @@ def pubSpec(args):
         control.close()
         changelog.write(writer.projectName + ' (' + args[0] + '-ubuntu1' + ') jaunty; urgency=low\n\n')
         changelog.write('  * debian/rules: generate ubuntu package\n\n')
-        changelog.write(' -- ' + 'Sebastien Mirolo <smirolo@gmail.com>  ' + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
+        changelog.write(' -- ' + writer.maintainerName \
+                            + ' <' + writer.maintainerEmail + '>  ' \
+                            + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
         changelog.close()
         rules = open('rules','w')
         rules.write('''#! /usr/bin/make -f
@@ -2446,12 +2418,13 @@ def pubUpdate(args):
     
 
 def pubUpstream(args):
-    '''upstream               Generate a patch to submit to upstream 
+    '''upstream          [ srcDir ... ]     
+                             Generate a patch to submit to upstream 
                        maintainer out of a source package and 
                        a repository.
     '''
-    while len(sys.argv) > 0:
-        srcdir = sys.argv.pop(0)
+    while len(args) > 0:
+        srcdir = args.pop(0)
         pchdir = srcdir + '-patch'
         upstream(srcdir,pchdir)
 
