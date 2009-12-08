@@ -1,82 +1,44 @@
-Title: Information Distribution
+title: Information Distribution
 
-<li><a href="DocumentsAndPresentations">Documents and Presentations</a>
-<li>Accounting: tracking developer hours<br />
-
-<p>
-<li>#1 source repository<br />
-<li>#5 online repository browser<br />
-<li>#7 calendar<br />
-<li>#2 bug tracking<br />
-<li>#3 wiki (I like what's new and collaborative drawing as addition)
-	automatic upload of generating HTML from SXC documents
-	import export of generated doc.<br />
-<li>#4 mailing list<br />
-* percentage of lines authored by each developer on a file, wiki page, etc.<br />
-* effective page layout tools for wiki in order to provide “conference paper” PDFs in one click<br /> 
-search engine:
-tags on pages: special todo tag for bug reports.
-</p>
-
-<h2>User Interface</h2>
-<p>
-<ul>
-<li>#1 Single sign-on<br />
-<li>#2 One page management of user accessibility rights<br />
-<li>#3 Integrated “education notes” (ie. why use ssh, etc.) with each page.<br />
-</ul>
-</p>
-
-<li>company look and feel customization through style-sheets.<br />
-<li>searching through everything on the development server<br />
-<li>automatic reports through intelligent data mining<br />
-<li>developer client tool for todo list managements<br />
-<li>support online/offline development and updates<br />
-<li>wiki tags in source code<br />
-<li>white board handling of feature.<br />
-
-<p>
-The Backbone product brings together disparate software engineering tools into a simple framework with a single coherent look-and-feel entirely accessible through a web browser interface.
-</p>
+<h1>Purpose</h1>
+<p>The purpose of information distribution is efficiently complete a project that require interaction of many individuals as well as tracking the status of a project and the contributions made so far to it.</p>
 
 <h1>Technologies</h1>
-<p>
-DocBook, XSL, HTML. Unified diff
-DocBook
-<li><a href="http://www.docbook.org/tdg5/en/html/docbook.html">docbook</a>
-<li><a href="http://docbook.sourceforge.net/">docbook</a>
-<li><a href="http://opensource.bureau-cornavin.com/crash-course/en/index.html">Writing documentation</a>
-<li><a href="http://www.dbdoclet.org/">dbdoclet</a>
+<p>The technologies usually involved in information distribution are</p>
+<li>source repository browser
+<li>mailing lists
+<li>online postings (wiki, blog, etc.)
+<li>mechanically generated reports (build, tests, etc.)
+<li>notification mechanism
+<li>tracking developer contributions (hour logs, bug trackers, etc.)
+<li>online calendars and schedules
 
-XML, HTML
-<li><a href="http://murka.sourceforge.net/">Caching of generated pages - Murka</a>
-<li><a href="http://axkit.org/">Caching of generated pages - Apache AxKit</a>
-<li><a href="https://addons.mozilla.org/da/firefox/addon/4522">XML Digital Signature Tool</a>
-<li>Xalan XSLT
-</p>
-<p>
-WebDAV
-http://en.wikipedia.org/wiki/WebDAV
-Briefly: WebDAV stands for "Web-based Distributed Authoring and Versioning". It is a set of extensions to the HTTP protocol which allows users to collaboratively edit and manage files on remote web servers.
-</p>
+<h1>Features</h1>
+<p>To distribute information efficiently, the support technologies should have the following features</p>
 
-RSS
-<li><a href="http://github.com/stef/grindr/wikis">grindr</a>
+<li>Single sign-on
+<li>One page management of user accessibility rights
+<li>Automated integration of mechanically generated reports
+<li>automatic reports through intelligent data mining
+* percentage of lines authored by each developer on a file, wiki page, etc.<br />
+<li>Search engine through all postings, code, etc.
+*searching through everything on the development server
+* tags on pages: special todo tag for bug reports.
+* developer client tool for todo list managements
+<li>Link between source and doc.
+* wiki tags in source code
+<li>Collaborative drawing whiteboard
+*white board handling of feature.
+<li>Import/export of documents from/to standard formats (.sxc, .pdf, etc.)
+* effective page layout tools for wiki in order to provide “conference paper” PDFs in one click.
+<li>Integrated “education notes” (ie. why use ssh, etc.) with each page.
 
-Web Programming
-<li><a href="http://www.cs.tut.fi/~jkorpela/forms/cgic.html">CGI Getting Started</a>
-<li><a href="http://www.walterzorn.com/dragdrop/dragdrop_e.htm">Javascript Drag-n-Drop</a>
-<li><a href="http://www.webreference.com/programming/javascript/mk/column2/">Javascript Drag-n-Drop</a>
+<h1>Implementation</h1>
+<p>HTML remains central for presentation of a web interface and PDF remains central for printed documentation. As a result, content is usually stored in a server repository as a presentation independent file which is processed by appropriate transformation tools on request.</p>
+<p><a href="http://www.docbook.org/tdg5/en/html/docbook.html">DocBook</a> is a popular format to store documentation content. When the documentation is embed into source code comments, tools such as <a href="http://www.dbdoclet.org/">dbdoclet</a> can be used to extract it into a docbook document.</p>
+<p>The XSL language and XSL processors (\todo url: Xalan for example) are typically used to transform XML documents in general. DocBook documents can be turned into either HTML or PDF through XSL based <a href="http://docbook.sourceforge.net/">docbook tools</a>. Using directly an XML parser (<a href="http://rapidxml.sourceforge.net/">RapidXML</a>), PDF C++ libraries (<a href="http://www.jagpdf.com/">JagPDF</a>), custom tools can also be implemented to transform content documents. The result can be served directly to the client or some sort of caching framework (<a href="http://murka.sourceforge.net/">Murka</a>, <a href="http://axkit.org/">Apache AxKit</a>) can be used to handle requests more efficiently.</p>  
+<p>The structure of resulting HTML pages will be generated through the XSL processing and specific company look and feel customization will be done through CSS style-sheets.</p> 
+<p>(\todo link) RSS is a popular standard for notification of website updates. <a href="http://github.com/stef/grindr/wikis">grindr</a></p>
 
-Web-based editors
-<li><a href="http://www.freedomeditor.com/">Freedom editor</a>
-TinyMCE
-
-website templates
-
-PDF
-<li><a href="http://www.jagpdf.com/">JagPDF library</a>
-
-XML
-<li><a href="http://www.oreillynet.com/pub/a/oreilly/xml/news/dontlearn_0701.html">XML</a>
-<li><a href="http://rapidxml.sourceforge.net/">RapidXML</a>
+<p>Web 2.0 technologies enable contributors to use a web browser as a text editor to create and modify remote files stored on a server. Heavy client-side Javascript are involved to implement full editors (<a href="http://www.freedomeditor.com/">Freedom editor</a>, \todo TinyMCE) and other UI interactions such as <a href="http://www.walterzorn.com/dragdrop/dragdrop_e.htm">Javascript Drag-n-Drop</a>, <a href="http://www.webreference.com/programming/javascript/mk/column2/">Javascript Drag-n-Drop</a>. HTTP extension protocols such as <a href="http://en.wikipedia.org/wiki/WebDAV">WebDAV</a>, a "Web-based Distributed Authoring and Versioning", allow contributors to collaboratively edit and manage files on remote web servers.</p>
+<p>Detailed explanation on setting up web, mail, etc. servers can be found in <a href="services.book">services</a>.</p>

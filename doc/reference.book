@@ -1,7 +1,14 @@
 title: Reference Manuals
 
+<h1>Reference Manuals</h1>
 <p>
 <li><a href="http://www.cplusplus.com/reference/">C++ Reference</a>
+<li><a href="http://www.docbook.org/tdg5/en/html/docbook.html">The DocBook definive guide</a>
 <li><a href="http://www.gnu.org/software/make/manual/make.html">GNU make reference manual</a>
 <li><a href="http://docs.python.org/">Python documentation</a>
+</p>
+<h1>Tutorials</h1>
+<p>
+<li><a href="http://www.cs.tut.fi/~jkorpela/forms/cgic.html">CGI Getting Started</a>
+<li><a href="http://opensource.bureau-cornavin.com/crash-course/en/index.html">Writing documentation using DocBook</a>
 </p>
