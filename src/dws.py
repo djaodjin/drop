@@ -111,6 +111,9 @@ class Context:
                                             self.cacheTop,'log'),
                          'cacheTop': self.cacheTop,
                          'remoteCacheTop': self.remoteCacheTop,
+                         'remoteIndex': Pathname('remoteIndex',
+             'Index file with projects dependencies information',
+                                          self.remoteCacheTop,'db.xml'),
                          'remoteSrcTop': Pathname('remoteSrcTop',
              'Root the remote tree where repositories are located',
                                           self.remoteCacheTop,'reps'),
@@ -120,6 +123,7 @@ class Context:
                          'install packages on the system root for all users'],
                         ['CurrentUserHomeDirectory', 
                          'install packages for the current user only'] ]),
+                         'distHost': HostPlatform('distHost'),
               # These pathnames are not used for building code. They are used
               # by the integrity (i.e project "machines") scripts to backup
               # and replicate important files.
@@ -184,8 +188,9 @@ class Context:
                                                self.configName)
             self.save()
             self.locate()
-        prefix = os.path.commonprefix([self.value('buildTop'), os.getcwd()])    
-        return os.getcwd()[len(prefix):]
+        prefix = os.path.commonprefix([os.path.realpath(self.value('buildTop')),
+                                       os.getcwd()])    
+        return os.getcwd()[len(prefix) + 1:]
         # return self.buildTopRelativeCwd
 
     def isControlled(self,name):
@@ -200,63 +205,15 @@ class Context:
 
     def dbPathname(self,remote=False):
         '''Absolute pathname to the project index file.'''
+        remoteIndex = self.value('remoteIndex')
         if remote:
-            return self.remoteCachePath('db.xml')
-        return os.path.join(self.value('etcDir'),'dws','db.xml')
+            return remoteIndex
+        return os.path.join(self.value('etcDir'),'dws',
+                            os.path.basename(remoteIndex))
 
     def host(self):
         '''Returns the distribution on which the script is running.'''
-        dist = None
-        # \todo This code was working on python 2.5 but not in 2.6
-        #   hostname = socket.gethostbyaddr(socket.gethostname())
-        #   hostname = hostname[0]
-        # replaced by the following line
-        hostname = socket.gethostname()
-        sysname, nodename, release, version, machine = os.uname()
-        if sysname == 'Darwin':
-            dist = 'Darwin'
-        elif sysname == 'Linux':
-            version = open('/proc/version')
-            line = version.readline()
-            while line != '':
-                for d in [ 'Ubuntu', 'fedora' ]:
-                    look = re.match('.*' + d + '.*',line)
-                    if look:
-                        dist = d
-                        break
-                if dist:
-                    break
-                line = version.readline()
-            version.close()
-            if dist:
-                dist = dist.capitalize()
-        return dist
-
-    def linkPath(self,paths,installName):
-        '''Link a set of files in paths into the installName directory.'''
-        for path in paths:
-            install = None
-            if installName == 'libDir':
-                install = linkPathLib(path)
-            elif installName == 'includeDir':
-                # install = linkPathInclude(path)
-                dirname, header = os.path.split(path)
-                if dirname != 'include':
-                    install = os.path.join(self.value(installName),
-                                           os.path.basename(dirname))
-                    path = os.path.dirname(path)
-            if not install:
-                install = os.path.join(self.value(installName),
-                                       os.path.basename(path))
-            if not os.path.exists(os.path.dirname(install)):
-                os.makedirs(os.path.dirname(install))
-            # In the following two 'if' statements, we are very careful
-            # to only remove/update symlinks and leave other files 
-            # present in [bin|lib|...]Dir 'as is'.
-            if os.path.islink(install):
-                os.remove(install)
-            if not os.path.exists(install) and os.path.exists(path):
-                os.symlink(path,install)
+        return self.value('distHost')
 
     def locate(self):
         '''Locate the workspace configuration file and derive the project
@@ -472,6 +429,9 @@ class PdbHandler:
     def startProject(self, name):
         None
 
+    def tag(self, name):
+        None
+
     def version(self, text):
         '''This can only be added from package'''
         None
@@ -486,8 +446,10 @@ class Unserializer(PdbHandler):
         self.projects = {}
         self.builds = builds
         self.project = None
+        self.tags = []
         self.buildDeps = []
         self.buildIndices = []
+        self.buildTags = []
 
     def asProject(self, name):
         return self.projects[name]
@@ -508,11 +470,12 @@ class Unserializer(PdbHandler):
         if self.project:
             first = self.buildIndices.pop()
             self.buildDeps = self.buildDeps[:first] + [ self.buildDeps[first:] ]
+            self.buildTags += [ self.tags ]
 
     def endAlternates(self):
         if self.project:
             self.projects[self.project].buildDeps \
-                += [ AlternatesDependency(self.buildDeps) ]
+                += [ AlternatesDependency(self.buildDeps, self.buildTags) ]
         self.buildDeps = []
 
     def endProject(self):
@@ -526,6 +489,7 @@ class Unserializer(PdbHandler):
             self.projects[self.project].package = Package(filename,sha1)        
 
     def startAlternate(self):
+        self.tags = []
         if self.project:
             self.buildIndices += [len(self.buildDeps) ]
 
@@ -533,6 +497,7 @@ class Unserializer(PdbHandler):
         if self.project:
             self.projects[self.project].buildDeps += self.buildDeps
         self.buildDeps = []
+        self.buildTags = []
 
     def startProject(self, name):
         self.project = None
@@ -541,6 +506,9 @@ class Unserializer(PdbHandler):
             self.project = name
             if not name in self.projects:
                 self.projects[name] = Project(name)
+
+    def tag(self, name):
+        self.tags += [ name ]
 
 
 class DependencyGenerator(Unserializer):
@@ -605,6 +573,7 @@ class DependencyGenerator(Unserializer):
         Unserializer.dependency(self, name, deps, excludes)
         if self.project:
             if self.addDep(name,deps,excludes):
+                self.cuts += [ name ]
                 self.levels[0] += [ [ self.project, name ] ]
             else:
                 # The parsing pass will gather all unique prerequisites.
@@ -612,7 +581,7 @@ class DependencyGenerator(Unserializer):
                 # after parsing is completed.
                 if name in self.prereqDeps:
                     for key in deps:
-                        if key in self.prereqDeps[name]:
+                        if key in self.prereqDeps[name].files:
                            for value in deps[key]:
                                if not value in self.prereqDeps[name].files[key]:
                                    self.prereqDeps[name].files[key] += [ value ]
@@ -634,13 +603,14 @@ class DependencyGenerator(Unserializer):
             if complete:
                 self.cuts += [ name ]
         # Update project dependencies that can be satisfied
+        tags = [ context.host() ]
         for source in self.builds:
             self.projects[source].populate(buildDeps)
-            for prereq in self.projects[source].prerequisites():
+            for prereq in self.projects[source].prerequisites(tags):
                 if not prereq.name in self.cuts:
-                    if not prereq.name in self.prerequisites:
+                     if not prereq.name in self.prerequisites:
                         self.prerequisites += [ prereq.name ]
-                    if not [ source, prereq.name ] in self.missings:
+                     if not [ source, prereq.name ] in self.missings:
                         self.missings += [ [ source, prereq.name ] ]
 
     def nextLevel(self, filtered=[]):
@@ -651,11 +621,11 @@ class DependencyGenerator(Unserializer):
         will be added as cut points. From this time, *cuts* contains 
         *complete*d projects as well as projects that still need to be 
         resolved before links are created.'''
-#        print "nextLevel:"
-#        print "  vertices=" + str(self.builds)
-#        print "  missings=" + str(self.missings)
-#        print "  prerequisites=" + str(self.prerequisites)
-#        print "  levels=" + str(self.levels)
+        #print "nextLevel:"
+        #print "  vertices=" + str(self.builds)
+        #print "  missings=" + str(self.missings)
+        #print "  prerequisites=" + str(self.prerequisites)
+        #print "  levels=" + str(self.levels)
         for newEdge in self.missings:
             if newEdge[1] in filtered:
                 self.levels[0] += [ newEdge ]
@@ -786,6 +756,38 @@ class Variable:
         self.descr = descr
         self.value = None
 
+class HostPlatform(Variable):
+
+    def __init__(self,name,descr=None):
+        Variable.__init__(self,name,descr)
+
+    def configure(self):
+        '''Returns the distribution on which the script is running.'''
+        # \todo This code was working on python 2.5 but not in 2.6
+        #   hostname = socket.gethostbyaddr(socket.gethostname())
+        #   hostname = hostname[0]
+        # replaced by the following line
+        hostname = socket.gethostname()
+        sysname, nodename, release, version, machine = os.uname()
+        if sysname == 'Darwin':
+            self.value = 'Darwin'
+        elif sysname == 'Linux':
+            version = open('/proc/version')
+            line = version.readline()
+            while line != '':
+                for d in [ 'Ubuntu', 'fedora' ]:
+                    look = re.match('.*' + d + '.*',line)
+                    if look:
+                        self.value = d
+                        break
+                if self.value:
+                    break
+                line = version.readline()
+            version.close()
+            if self.value:
+                self.value = self.value.capitalize()
+        return self.value
+
 class Pathname(Variable):
     
     def __init__(self,name,descr=None,base=None,default=None):
@@ -831,7 +833,7 @@ class Dependency:
                         files += [ look ]
                 self.files[d] = files
 
-    def prerequisites(self):
+    def prerequisites(self,tags):
         return [ self ]
 
 
@@ -840,24 +842,33 @@ class AlternatesDependency(Dependency):
     to fullfil the prerequisite condition. This is used first to
     allow differences in packaging between distributions.'''
 
-    def __init__(self, depset):
+    def __init__(self, depset, tagset):
         '''*depset* is organized as a list of lists of Dependency
         where one of those list will form the actual prerequisite
         of the project as returned by *prerequisites*.'''
         self.depset = depset
+        self.tagset = tagset
 
     def __str__(self):
-        return 'alternates: ' + str(self.depset)
+        return 'alternates: ' + str(self.depset) + ', ' + str(self.tagset)
 
     def populate(self, buildDeps = {}):
         for deplist in self.depset:
             for dep in deplist:
                 dep.populate(buildDeps)
 
-    def prerequisites(self):
+    def prerequisites(self,tags):
         # \todo return the set that makes most sense on the current 
         # local system.
-        return self.depset[0]
+        i = 0
+        for tagset in self.tagset:
+            for t in tagset:
+                if t in tags:
+                    return self.depset[i]
+            i = i + 1
+        # If no tag is matching, then the prerequisites are assumed
+        # to be unnecessary for the local platform.
+        return []
 
 class Package:
 
@@ -896,15 +907,56 @@ class Project:
         for buildDep in self.buildDeps:
             buildDep.populate(buildDeps)
 
-    def prerequisites(self):
+    def prerequisites(self,tags):
+        '''returns a set of prerequisites for the project based 
+        on the provided tags. It is thus possible to choose 
+        between alternate prerequisites set based on the local
+        machine operating system, etc.'''
         prereqs = []
         for buildDep in self.buildDeps:
-            prereqs += buildDep.prerequisites()
+            prereqs += buildDep.prerequisites(tags)
         return prereqs
 
+
+class FedoraSpecWriter(PdbHandler):
+    '''As the index file parser generates callback, an instance 
+    of this class will rewrite the exact same information in a format 
+    compatible with rpmbuild.'''
+
+    def __init__(self, specfile):
+        self.specfile = specfile
+
+    def startProject(self, name):
+        self.specfile.write('Name: ' + name.replace(os.sep,'_') + '\n')
+        self.specfile.write('Distribution: Fedora\n')
+        self.specfile.write('Release: 0\n')
+        self.specfile.write('Summary: None\n')
+        self.specfile.write('License: Unknown\n')
+
+    def description(self, text):
+        self.specfile.write('\n%description\n' + text + '\n')
+
+    def endProject(self):
+        self.specfile.write('''\n%build
+./configure --prefix=/usr/local
+make
+
+%install
+make install
+''')
+
+    def maintainer(self, name, email):
+        self.specfile.write('Packager: ' + name \
+                                + ' <' + email + '>\n')
+
+    def version(self, text):
+        self.specfile.write('Version:' + text + '\n')
+
+
 class UbuntuSpecWriter(PdbHandler):
-    '''As the index file parser generates callback, an instance of this class
-    will rewrite the exact same information in a format compatible with apt.'''
+    '''As the index file parser generates callback, an instance 
+    of this class will rewrite the exact same information in a format 
+    compatible with debuild.'''
 
     def __init__(self, control, changelog):
         self.depends = []
@@ -954,6 +1006,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     # Global Constants for the database parser
     tagAlternate = 'alternate'
     tagAlternates = 'alternates'
+    tagTag = 'tag'
     tagDb = 'book'
     tagBuild = 'build'
     tagDepend = 'xref'
@@ -1027,6 +1080,8 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.handler.endAlternate()
         elif name == self.tagAlternates:
             self.handler.endAlternates()
+        elif name == self.tagTag:
+            self.handler.tag(self.text)
         elif name == self.tagBuild:
             self.handler.control(self.type, self.url)
         elif name == self.tagDepend:
@@ -1180,6 +1235,7 @@ def findBin(names,excludes=[]):
         if name.startswith(os.sep):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
+            results.append(name)
             continue
         # First time ever *findBin* is called, binDir will surely not defined
         # in ws.mk and thus we will trigger interactive input from the user.
@@ -1333,6 +1389,7 @@ def findData(dir,names,excludes=[]):
         if name.startswith(os.sep):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
+            results.append(name)
             continue
         log.write(name + '... ')
         log.flush()
@@ -1379,6 +1436,7 @@ def findInclude(names,excludes=[]):
         if name.startswith(os.sep):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
+            results.append(name)
             continue
         log.write(name + '... ')
         log.flush()
@@ -1389,6 +1447,12 @@ def findInclude(names,excludes=[]):
                 # Open the header file and search for all defines
                 # that end in VERSION.
                 numbers = []
+                # First parse the pathname for a version number...
+                parts = os.path.dirname(header).split(os.sep)
+                parts.reverse()
+                for part in parts:
+                    numbers += versionCandidates(part)
+                # Second open the file and search for a version identifier...
                 header = os.path.join(includeSysDir,header)
                 f = open(header,'rt')
                 line = f.readline()
@@ -1459,6 +1523,7 @@ def findLib(names,excludes=[]):
         if name.startswith(os.sep):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
+            results.append(name)
             continue
         # First time ever *findLib* is called, libDir will surely not defined
         # in ws.mk and thus we will trigger interactive input from the user.
@@ -1628,7 +1693,23 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
         elif context.host() == 'Darwin':
             shellCommand('port install ' + ' '.join(packages),admin=True)
         elif context.host() == 'Fedora':
-            shellCommand('yum install ' + ' '.join(packages),admin=True)
+            fedoraNames = {
+                # \todo translation of docbook-to-man package name is not
+                #       enough since Fedora also renamed the executable
+                #       from docbook-to-man to db2x_docbook2man...
+                'docbook-to-man': 'docbook2X', 
+                'libbz2-dev': 'bzip2-devel',
+                'python-all-dev': 'python-devel',
+                'zlib1g-dev': 'zlib-devel' }
+            fedoraPkgs = []
+            for p in packages:
+                if p in fedoraNames:
+                    fedoraPkgs += [ fedoraNames[p] ]
+                elif p.endswith('-dev'):
+                    fedoraPkgs += [ p + 'el' ]
+                else:
+                    fedoraPkgs += [ p ]
+            shellCommand('yum -y install ' + ' '.join(fedoraPkgs),admin=True)
         else:
             raise Error("Use of package manager for '" \
                             + context.host() + " not yet implemented.'")
@@ -1669,8 +1750,9 @@ def linkDependencies(projects, cuts=[]):
     import __main__
 
     missings = []
+    tags = [ context.host() ]
     for project in projects:
-        for prereq in projects[project].prerequisites():
+        for prereq in projects[project].prerequisites(tags):
             if not prereq.name in cuts:
                 # First, we will check if findPrerequisites needs to be rerun.
                 # It is the case if the link in [bin|include|lib|...]Dir does
@@ -1682,6 +1764,7 @@ def linkDependencies(projects, cuts=[]):
                     for path in deps[dir]:
                         command = 'linkPath' + dir.capitalize()
                         linkName = __main__.__dict__[command](path)
+                        linkContext(path,linkName)
                         if not (path.startswith(os.sep)
                                 or os.path.exists(linkName)):
                             complete = False
@@ -1689,15 +1772,37 @@ def linkDependencies(projects, cuts=[]):
                     deps, complete = findPrerequisites(
                         prereq.files,
                         prereq.excludes)
-                if not complete and not prereq in missings:
-                    missings += [ prereq.name ]
+                    # print "was not complete first time around..."
+                    # print str(deps) +  ' => ' + str(complete) 
+                if not complete:
+                    if not prereq in missings:
+                        missings += [ prereq.name ]
                 else:
-                    for install in deps:
-                        context.linkPath(deps[install],
-                            install + 'Dir')
+                    for dir in deps:
+                        for path in deps[dir]:
+                            command = 'linkPath' + dir.capitalize()
+                            linkName = __main__.__dict__[command](path)
+                            linkContext(path,linkName)
+                            if not (path.startswith(os.sep)
+                                    or os.path.exists(linkName)):
+                                complete = False
     if len(missings) > 0:
         raise Error("incomplete prerequisites for " + ' '.join(missings),1)
 
+
+def linkContext(path,linkName):
+    '''link a *path* into the workspace.'''
+    if os.path.realpath(path) == os.path.realpath(linkName):
+        return
+    if not os.path.exists(os.path.dirname(linkName)):
+        os.makedirs(os.path.dirname(linkName))
+    # In the following two 'if' statements, we are very careful
+    # to only remove/update symlinks and leave other files 
+    # present in [bin|lib|...]Dir 'as is'.
+    if os.path.islink(linkName):
+        os.remove(linkName)
+    if not os.path.exists(linkName) and os.path.exists(path):
+        os.symlink(path,linkName)
 
 def linkPathBin(path):
     return os.path.join(context.value('binDir'),
@@ -1709,7 +1814,7 @@ def linkPathEtc(path):
 
 def linkPathInclude(path):
     dirname, header = os.path.split(path)
-    if dirname != 'include':
+    if not dirname.endswith('include'):
         header = os.path.basename(dirname)
     return os.path.join(context.value('includeDir'),header)
 
@@ -1734,6 +1839,7 @@ def linkPathShare(path):
 
 def make(names, targets):
     '''invoke the make utility to build a set of projects.'''
+    distHost = context.value('distHost')
     if 'recurse' in targets:
         targets.remove('recurse')
         # Recurse through projects that need to be rebuilt first 
@@ -2165,7 +2271,7 @@ def upstream(srcdir,pchdir):
 
 
 def pubBuild(args):
-    '''build              [remoteTop [localTop]]
+    '''build              [remoteIndexFile [localTop]]
                         This bootstrap command will download an index 
                         database file from *remoteTop* and starts rebuilding 
                         every project listed in it.
@@ -2177,7 +2283,8 @@ def pubBuild(args):
                         be setup to run with no human interaction.
     '''
     if len(args) > 0:
-        context.remoteCacheTop.default = args[0]
+        context.environ['remoteIndex'].default = args[0]
+        context.remoteCacheTop.default = os.path.dirname(args[0])
     if len(args) > 1:
         context.cacheTop.default = args[1]
     global useDefaultAnswer
@@ -2222,11 +2329,13 @@ def pubCollect(args):
                    'Ubuntu': ('\.dsc', '\.deb')
                  }
     indices = []
-    # collect source packages
-    copySrcPackages = 'rsync ' + context.dbPathname() + ' ' \
+    # collect index and packages
+    copyIndex = ' '.join([ 'rsync', context.dbPathname(), 
+                           context.cachePath('') ])
+    copySrcPackages = 'rsync ' \
                  + ' '.join(findFiles(context.value('buildTop'),'.tar.bz2')) \
                  + ' ' + srcPackageDir
-    copyBinPackages = 'rsync ' + context.dbPathname() + ' '
+    copyBinPackages = 'rsync '
     if context.host() in extensions:
         ext = extensions[context.host()]
         indices = findFiles(context.value('buildTop'),ext[0])
@@ -2236,6 +2345,7 @@ def pubCollect(args):
     indices += findFiles(context.value('srcTop'),'index.xml')
     createIndexPathname(context.dbPathname(),indices)
     # We should only copy the index file after we created it.
+    shellCommand(copyIndex)
     shellCommand(copyBinPackages)
     shellCommand(copySrcPackages)
 
@@ -2300,14 +2410,6 @@ def pubIntegrate(args):
         integrate(srcdir,pchdir)
 
 
-def pubHost(args):
-    '''host                   Host platform used to build the workspace.
-                       This will display the distribution name on
-                       stdout.
-    '''
-    print context.host()
-
-
 class ListPdbHandler(PdbHandler):
 
     def startProject(self, name):
@@ -2343,12 +2445,19 @@ def pubSpec(args):
                        to build a distribution package.
     '''
     dist = context.host()
-    if dist == 'Ubuntu':
+    name = context.cwdProject() 
+    if dist == 'Fedora':
+        specfile = open(args[0] + '.spec','w')
+        writer = FedoraSpecWriter(specfile)
+        parser = xmlDbParser()
+        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
+        specfile.close()
+    elif dist == 'Ubuntu':
         control = open('control','w')
         changelog = open('changelog','w')
         writer = UbuntuSpecWriter(control,changelog)
         parser = xmlDbParser()
-        parser.parse(context.dbPathname(),writer)
+        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
         control.close()
         changelog.write(writer.projectName + ' (' + args[0] + '-ubuntu1' + ') jaunty; urgency=low\n\n')
         changelog.write('  * debian/rules: generate ubuntu package\n\n')
@@ -2548,7 +2657,9 @@ def selectVariable(d):
     if not d.value:
         found = True
         sys.stdout.write('\n' + d.name + ':\n')
-        if isinstance(d,Pathname):
+        if isinstance(d,HostPlatform):
+            d.value = d.configure()
+        elif isinstance(d,Pathname):
             sys.stdout.write(d.descr + '\n')
             # compute the default leaf directory from the variable name 
             leafDir = d.name

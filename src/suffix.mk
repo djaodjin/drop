@@ -99,24 +99,19 @@ $(project)-$(version).dmg: $(project)-$(version).tar.bz2
 	buildpkg --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/index.xml ${buildInstallDir}
 
-
-vpath %.spec $(srcDir)/src
-#vpath %.tar.bz2 $(srcDir)/src
-
-%-$(version).rpm: %.spec \
-		$(wildcard $(srcDir)/src/$(project)*.tar.bz2) \
+%-$(version).rpm: $(srcDir)/index.xml $(project)-$(version).tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
+	$(dws) spec $(basename $@)
 	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
-	rpmbuild -bb --clean $<
+	rpmbuild -bb --clean $(basename $@)
 
-%.spec: $(srcDir)/index.xml
-	echo '%files' > $@ 
-	echo $(bins) >> $@
-	echo $(includes) >> $@
-	echo $(libs) >> $@
-
-#vpath %.deb $(srcDir)/src
+#%.spec: $(srcDir)/index.xml
+#	$(dws) spec $(basename $@)
+#	echo '%files' >> $@ 
+#	echo $(bins) >> $@
+#	echo $(includes) >> $@
+#	echo $(libs) >> $@
 
 # alternative:
 #   apt-get install pbuilder
@@ -133,7 +128,9 @@ vpath %.spec $(srcDir)/src
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
 	$(installDirs) $(basename $(basename $<))/debian
-	cd $(basename $(basename $<))/debian && dws spec $(shell echo $@ | $(SED) -e 's,[^-][^-]*-\(.*\)_amd64.deb,\1,')
+	cd $(basename $(basename $<))/debian \
+		&& $(dws) spec $(shell echo $@ | \
+			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
 	cd $(basename $(basename $<)) && debuild -i -us -uc -b
 
 

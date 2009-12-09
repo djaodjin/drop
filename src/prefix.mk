@@ -47,7 +47,6 @@ LDFLAGS		+=	-L$(libDir)
 
 # Configuration for distribution packages
 
-distHost	:=	$(shell $(dws) host)
 distExtDarwin	:=	.dmg
 distExtFedora	:=	.rpm
 distExtUbuntu	:=	_i386.deb

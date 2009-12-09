@@ -12,5 +12,24 @@
 	<url>drop</url>
       </xref>      
     </build>
+    <!-- How to express >=4 when the python XML parser 
+	 throws malformed exceptions? -->
+    <alternates>
+      <alternate>
+	<tag>Ubuntu</tag>
+	<xref linkend="debhelper">
+	  <bin name="dh_builddeb" /> 
+	</xref>
+	<xref linkend="devscripts">
+	  <bin name="debuild" />
+	</xref>
+      </alternate>
+      <alternate>
+	<tag>Fedora</tag>
+	<xref linkend="rpmdevtools">
+	  <bin name="rpmdev-setuptree" /> 
+	</xref>  
+      </alternate>
+    </alternates>
   </section>
 </book>
