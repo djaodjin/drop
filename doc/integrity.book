@@ -39,7 +39,7 @@ We organize <b>all</b> of our data into four categories. Each category represent
 
 <h2>How it works</h2>
 <p>
-The <a href="../src/dintegrity.py">integrity tool</a> generates a fingerprint of the system, replicate and backups. Those fingerprints are stored into logDir. The backupTops, which includes logDir, are archives into backupDir. The backupDir is trimmed-down out of archives through a <a href="../src/dstamp.py">stamping</a> mechanism. The replicateTops, which includes backupDir, are synchronized to a remote path (replicatePath).
+The <a href="/machines/src/dintegrity.py">integrity tool</a> generates a fingerprint of the system, replicate and backups. Those fingerprints are stored into logDir. The backupTops, which includes logDir, are archives into backupDir. The backupDir is trimmed-down out of archives through a <a href="../src/dstamp.py">stamping</a> mechanism. The replicateTops, which includes backupDir, are synchronized to a remote path (replicatePath).
 </p>
 <p>
 Apart from integrity, the difference between two fingerprinting of a system can also be used for <a href="access.book#auditing">auditing</a>. 

@@ -69,8 +69,10 @@ dists		?=	$(project)-$(version)$(distExt$(distHost)) \
 
 dist:: $(dists)
 
-# 	git archive -b branchname tag
-#	make dist
+# \todo From http://www.gelato.unsw.edu.au/archives/git/0511/11390.html,
+# 'git-tar-tree branchname' can be an alternative to the rsync command.
+#  git archive -b branchname tag
+#  make dist
 $(project)-$(version).tar.bz2:
 	rsync -r --exclude=.git $(srcDir)/* $(basename $(basename $@))
 	$(SED) -e s,$(project),$(subst .tar.bz2,,$@),g \

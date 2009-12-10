@@ -44,7 +44,7 @@ If all else breaks, the installation will have to be done manually.
 <h2>Make</h2>
 <p>
 The <a href="http://www.gnu.org/software/make/manual/make.html">GNU Make Reference Manual</a> is very well written and contains the detailed information on how make works, thus the place to look when debugging Makefiles. Of course, as a reference manual, it has very little on writing Makefiles for large maintainable source code bases.
-</p> 
+</p>
 
 <!--
 It is the topic of the next chapters.
@@ -52,22 +52,4 @@ It is the topic of the next chapters.
 <h2>Running regression tests</h2> 
 -->
 
-<h2>References</h2>
-<p>
-<li><a href="http://book.git-scm.com/">The Git Community Book</a>
-<li><a href="http://www.gnu.org/software/make/manual/make.html">GNU Make Reference Manual</a>
-<li><a href="http:/docs.python.org">Python documentation</a>
-</p>
-
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on July 25th, 2009</p>
-
-<!-- \todo 
-<li>Install of necessary packages on development platform (apt-get, pkgadd, ...)<br />
-<li>upload of build logs onto the development server<br />
-<li>provide different choices of software (cvs, svn, etc.) or already chosen by us?<br />
-<li>add tools for release management (version number) ?<br />
-</ul>
-</p> 
-<li><a href="distributedServers">Distributed Servers</a>
-<li><a href="revision">Source Revision Control</a>
--->
+<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on December 9th, 2009</p>

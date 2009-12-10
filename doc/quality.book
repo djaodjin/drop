@@ -1,31 +1,36 @@
-Title: Source Code Quality
+title: Source Code Quality
 
 <h1>Conventions</h1>
-<p>The purpose of conventions is to make it faster for developpers to use pre-existing general knowledge and start contributing to specific projects they were unfamiliar with. Conventions also help create automated tools and an infrastructure to build code, run tests and generate status reports (see <a href="workspace.book">workspace</a>).</p>
-<p>Project directory structure:</p>
+<p>The purpose of conventions is to make it faster for developers to use pre-existing general knowledge and start contributing to specific projects they were unfamiliar with. Conventions also help create automated tools and an infrastructure to build code, run tests and generate status reports (see <a href="workspace.book">workspace</a>).</p>
+<p>Each project in fortylines source repository is organized as follow</p>
 <ul>
 <li>index.xml
 <p>Project description and inter-projects dependency information.</p>
 <li>Makefile
 <p>GNU Makefile used to build and install a project files on the local system.</p>
 <li>data/
-<p>Files necessary to build and run project executables but which are not concidered source files.</p>
+<p>Files necessary to build and run project executables but which are not considered source files.</p>
 <li>doc/
 <p>General documentation for the project which cannot be extracted from the source files.</p>
 <li>include/
-<p>Public header files that are installed in /usr/local/include.</p>
+<p>Public header files (.hh, .tcc) that are installed in <i>includeDir</i> (ex. /usr/local/include).</p>
 <li>src/
-<p>Source code in the form of C++, .cc, and Python, .py, files.</p>
+<p>Source code in the form of C++ (.cc) and Python (.py) files.</p>
 <li>test/
-<p>Unit tests for the project. The organization of a test/ subdirectory follows the organization of a project directory, though mostly consisting of Makefile, src/ and data/ directories.</p>
+<p>Unit tests for the project. The organization of a test/ sub-directory follows the organization of a project directory, though mostly consisting of Makefile, src/ and data/ directories.</p>
 </ul>
-<p>Source files conventions:</p>
-<li>Each source file starts with a license paragraph. 
+<p>All files in fortylines source repository should respect the following conventions
+<li>Each source file starts with a few license paragraphs. 
 <li>Identifiers use camelCase with a leading lowercase letter.
-
+<li>Each file name follows the camelCase identifier convention.
+</p>
+<p>
+A <a href="/seed/src/checkstyle.py">checkstyle</a> script runs through the top-level <i>srcTop</i> and outputs a detailed report about projects broking those conventions.
+</p>
 <h1>Unit tests</h1>
-<p>The purpose of unit tests is to insure first that functionality is inmplemented correctly. Later in the life cycle of a project, unit tests are often relabelled regression tests and insure that changes to the source code did not break existing functionality.</p>
+<p>The purpose of unit tests is to insure first that functionality is implemented correctly. Later in the life cycle of a project, unit tests are often relabeled regression tests and insure that changes to the source code did not break existing functionality.</p>
 
 <h1>Conclusion</h1>
-<p>As projects grow in size, it becomes cubersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process. Unit tests will also start breaking and become deprecated as a project moves forward. So, as a result, relevent unit tests are the ones that can be run by an automated tool as part of the build process.</p>
+<p>As projects grow in size, it becomes cumbersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process. Unit tests will also start breaking and become deprecated as a project moves forward. So, as a result, relevant unit tests are the ones that can be run by an automated tool as part of the <a href="usecases.book#snapshotBuilds">build process</a>.</p>
 
+<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on December 9th, 2009</p>
