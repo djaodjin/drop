@@ -153,7 +153,10 @@ regression.book: regression.log $(srcTop)/seed/test/src/book.xsl
 regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^ 
 
-# \todo Why does that trigger a recompile when building regression.book?
+.PHONY: results.log
+
+# \todo Why does the following dependency code triggers 
+#       a recompile when building regression.book?
 # $(wildcard *Test.cout)
 results.log: 
 	echo "<config name=\"$(version)\">" >> $@

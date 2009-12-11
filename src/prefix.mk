@@ -61,6 +61,7 @@ endif
 endif
 
 vpath %.a 	$(libDir)
+vpath %.so	$(libDir)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
 vpath %.c 	$(srcDir)/src
