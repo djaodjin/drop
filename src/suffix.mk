@@ -28,12 +28,12 @@ installIncludeDir	?=	$(includeDir)
 installLibDir		?=	$(libDir)
 installLogDir		?=	$(logDir)
 
-.PHONY:	all install check
+.PHONY:	all install check dist
 
 all::	$(bins) $(libs) $(includes) $(logs)
 
 clean::
-	rm -rf install-stamp $(bins) $(libs) *.o *.d *.dSYM
+	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
 
 install:: $(bins) $(libs) $(includes) $(logs)
 	$(if $(bins),$(installDirs) $(installBinDir))
@@ -49,13 +49,15 @@ install:: $(bins) $(libs) $(includes) $(logs)
 	$(AR) $(ARFLAGS) $@ $^
 
 %: %.cc
-	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) \
+		$(LOADLIBES) $(LDLIBS) -o $@
 
 %: %.py
 	$(installFiles)	$< $@
 
 
-# Builds packages for distribution
+# Rules to build packages for distribution
+# ----------------------------------------
 #
 # The source package will be made of the current source tree
 # so a shell script to distribute a specific tag would actually
@@ -63,7 +65,8 @@ install:: $(bins) $(libs) $(includes) $(logs)
 # 	git checkout -b branchname tag
 #	make dist
 
-buildInstallDir	:= 	$(CURDIR)/install/usr/local
+buildInstallDir	:= 	$(CURDIR)/install
+buildUsrLocalDir:=	$(buildInstallDir)/usr/local
 dists		?=	$(project)-$(version)$(distExt$(distHost)) \
 			$(project)-$(version).tar.bz2
 
@@ -74,6 +77,10 @@ dist:: $(dists)
 #  git archive -b branchname tag
 #  make dist
 $(project)-$(version).tar.bz2:
+	$(if $(patchedSources),                                  \
+		$(installDirs) $(basename $(basename $@))/cache \
+		&& rsync -aR $(patchedSources)                   \
+			$(basename $(basename $@))/cache)
 	rsync -r --exclude=.git $(srcDir)/* $(basename $(basename $@))
 	$(SED) -e s,$(project),$(subst .tar.bz2,,$@),g \
 		$(srcDir)/index.xml > $(basename $(basename $@))/index.xml 
@@ -94,14 +101,15 @@ $(project)-$(version).tar.bz2:
 
 # This rule is used to create a OSX distribution package
 # \todo It certainly should move to an *host* specific part of the Makefiles
-$(project)-$(version).dmg: $(project)-$(version).tar.bz2
+%$(distExtDarwin): %.tar.bz2
 	tar jxf $<
-	cd $(basename $(basename $<)) && ./configure --prefix=${buildInstallDir}
+	cd $(basename $(basename $<)) \
+		&& ./configure --prefix=${buildUsrLocalDir}
 	cd $(basename $(basename $<)) && ${MAKE} install
 	buildpkg --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/index.xml ${buildInstallDir}
 
-%-$(version).rpm: $(srcDir)/index.xml $(project)-$(version).tar.bz2 \
+%$(distExtFedora): %.tar.bz2 $(srcDir)/index.xml \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
 	$(dws) spec $(basename $@)
@@ -160,7 +168,7 @@ regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 # $(wildcard *Test.cout)
 results.log: 
 	echo "<config name=\"$(version)\">" >> $@
-	dws host >> $@
+	echo $(distHost) >> $@
 	echo "</config>" >> $@
 	for testunit in $(testunits) ; do \
 		echo "@@ test: $$testunit @@" >> $@ ; \

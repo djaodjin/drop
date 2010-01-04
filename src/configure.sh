@@ -15,22 +15,24 @@ while [ $# -gt 0 ] ; do
 	esac
 done
 
-buildTop=`pwd`
+buildDir=`pwd`
+buildTop=`dirname $buildDir`
 srcDir=`echo $0 | sed -e 's,\(.*\)/.*$,\\1,'`
 srcDir=`cd $srcDir ; pwd`
 srcTop=`dirname $srcDir`
 
 echo buildTop=${buildTop} > ws.mk
-echo srcTop=$srcTop >> ws.mk
-echo srcDir=$srcDir >> ws.mk
-echo binDir=${buildTop} >> ws.mk
-echo etcDir=${buildTop}/etc >> ws.mk
-echo libDir=${buildTop}/lib >> ws.mk
-echo includeDir=${buildTop}/include >> ws.mk
+echo srcTop=${srcTop} >> ws.mk
+echo cacheTop=${buildDir}/cache >> ws.mk
+echo binDir=${buildDir}/bin >> ws.mk
+echo etcDir=${buildDir}/etc >> ws.mk
+echo libDir=${buildDir}/lib >> ws.mk
+echo includeDir=${buildDir}/include >> ws.mk
 echo installBinDir=${prefix}/bin >> ws.mk
 echo installEtcDir=${prefix}/etc >> ws.mk
 echo installIncludeDir=${prefix}/include >> ws.mk
 echo installLibDir=${prefix}/lib >> ws.mk
+#echo srcDir=$srcDir >> ws.mk
 
 ${srcDir}/dws --default configure
 

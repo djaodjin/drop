@@ -89,7 +89,7 @@ class ImageMaker:
     a directory tree."""
 
     def __init__(self, project, version, sourceDir):
-        self.name = project.name + '-' + version
+        self.name = os.path.basename(project.name) + '-' + version
         self.sourceDir = sourceDir
         self.image = self.name + '.dmg'
  
@@ -169,13 +169,13 @@ class PackageMaker:
     def __init__(self, project, version, installTop):
         "Init. with mandatory title/version/description arguments."
 
-        info = {"Title": project.name + "-" + version, 
+        info = {"Title": os.path.basename(project.name) + "-" + version, 
                 "Version": version, 
                 "Description": project.description }
         self.packageInfo = copy.deepcopy(self.packageInfoDefaults)
         self.packageInfo.update(info)
         self.sourceFolder = installTop
-        self.packageName = project.name + '-' + version
+        self.packageName = info["Title"]
 
         # variables set later
         self.packageRootFolder = None
