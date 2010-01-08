@@ -148,15 +148,7 @@ $(project)-$(version).tar.bz2:
 # -----------------------------
 check:
 	$(installDirs) test
-	cd test && $(MAKE) -k -f $(srcDir)/test/Makefile results ; \
-	echo "ok to get positive error code" > /dev/null
-	cd test && $(MAKE) -f $(srcDir)/test/Makefile regression.book
-
-# \todo book.xsl might have to move into drop but since it is used
-#       for interaction with the website, it might also have to move
-#	to the themeDir, though it might not be directly theme related...
-regression.book: regression.log $(srcTop)/seed/test/src/book.xsl
-	xsltproc $(word 2,$^) $< > $@
+	cd test && $(MAKE) -f $(srcDir)/test/Makefile
 
 regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^ 
@@ -164,9 +156,11 @@ regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 .PHONY: results.log
 
 # \todo Why does the following dependency code triggers 
-#       a recompile when building regression.book?
+#       a recompile when building regression.log?
 # $(wildcard *Test.cout)
 results.log: 
+	$(MAKE) -k -f $(srcDir)/Makefile results ; \
+		echo "ok to get positive error code" > /dev/null
 	echo "<config name=\"$(version)\">" >> $@
 	echo $(distHost) >> $@
 	echo "</config>" >> $@
@@ -186,5 +180,11 @@ results: $(patsubst %,%.cout,$(testunits))
 
 %.log:	%.cout $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^
+
+# \todo book.xsl might have to move into drop but since it is used
+#       for interaction with the website, it might also have to move
+#	to the themeDir, though it might not be directly theme related...
+%.book: %.log $(srcTop)/seed/test/src/book.xsl
+	xsltproc $(word 2,$^) $< > $@
 
 -include *.d

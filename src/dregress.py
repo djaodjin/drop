@@ -204,11 +204,14 @@ if __name__ == '__main__':
 
         # 3. All temporary files have been created, it is time to merge 
         #    them back together.
+        nbFailures = 0
         for testName in sorted(tests): 
             out.write('<test name="' + testName + '">\n')
             # Write the set of regressions for the test
             for reffile in reffiles:
                 out.write('<compare name="' + reffile + '">')
+                if regressions[testName][reffile] == 'fail':
+                    nbFailures = nbFailures + 1
                 out.write(regressions[testName][reffile])
                 out.write('</compare>\n')
             testFile = tests[testName]
@@ -222,7 +225,9 @@ if __name__ == '__main__':
         out.write('</tests>\n')
         out.close()
         shutil.move(outname,options.output)
-
+        print str(nbFailures) + ' failures'
+        sys.exit(nbFailures)
+        
     # dregress -o regression.log results.log /Volumes/DIESEL/workspace/fortylines/dev/reps/seed/test/data/results-golden.log 
 
 

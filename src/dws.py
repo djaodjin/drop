@@ -364,9 +364,12 @@ class LogFile:
         if not self.nolog:
             self.logfile.write(text)
 
-    def footer(self,status):
+    def footer(self,status,errcode=0):
         if not self.nolog:
-            self.logfile.write(']]>\n<status>' + status + '</status>\n')
+            self.logfile.write(']]>\n<status')
+            if errcode > 0:
+                self.logfile.write(' error="' + str(errcode) + '"')
+            self.logfile.write('>' + status + '</status>\n')
             self.logfile.write('</section>\n')
 
     def header(self, text):
@@ -1998,7 +2001,6 @@ def make(names, targets):
 
 def makeProject(name,targets):
     '''Issue make command and log output.'''
-    status = 'compile'
     log.header(name)
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
@@ -2006,21 +2008,21 @@ def makeProject(name,targets):
         if not os.path.exists(objDir):
             os.makedirs(objDir)
         os.chdir(objDir)
+    errcode = 0
+    cmdline = 'export PATH=' + context.value('binDir') \
+        + ':${PATH} ; make -f ' + makefile
     try:
-        cmdline = 'export PATH=' + context.value('binDir') \
-            + ':${PATH} ; make -f ' + makefile
+        status = 'default'
         if len(targets) > 0:
-            cmdline = cmdline + ' ' + ' '.join(targets)
-            shellCommand(cmdline)
-            status = targets[0]
-            if len(targets) > 1:
-                status = status + '...'
+            for target in targets:
+                status = target
+                shellCommand(cmdline + ' ' + target)
         else:
             shellCommand(cmdline)
-            status = 'build'
     except Error, e:
+        errcode = e.code
         log.error(str(e))
-    log.footer(status)
+    log.footer(status,errcode)
 
 
 def mergeBuildConf(dbPrev,dbUpd,parser):
