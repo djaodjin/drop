@@ -696,17 +696,16 @@ class DerivedSetsGenerator(PdbHandler):
     def __init__(self):
         self.roots = []
         self.nonroots = []
-        self.repositories = []
-
-    def repository(self, url, fetches):
-        self.repositories += [ self.curProjName ]
 
     def project(self, p):
-        for dep in p.deps:
-            if dep.name in self.roots:
-                self.roots.remove(dep.name)
-            if not dep.name in self.nonroots:
-                self.nonroots += [ dep.name ]
+        for depName in p.prerequisiteNames([ context.host() ]):
+            if depName in self.roots:
+                self.roots.remove(depName)
+            if not depName in self.nonroots:
+                self.nonroots += [ depName ]
+        if (not p.name in self.nonroots 
+            and not p.name in self.roots):
+            self.roots += [ p.name ]
 
 
 class Variable:
@@ -2450,7 +2449,7 @@ def pubBuild(args):
     log = LogFile(context.logname(),nolog)
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    make(rgen.repositories,[ 'recurse', 'install', 'check' ])
+    make(rgen.roots,[ 'recurse', 'install', 'check' ])
     pubCollect([])
     log.close()
     log = None

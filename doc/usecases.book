@@ -76,6 +76,8 @@ dws collect
 In order to do extensive testing, it should be straightforward to build the repository from an ISO installation of any operating system. <b>dws build</b> will fetch fortylines' repository, compile it and report the results to the server. It is accomplished with a single command run on the local machine:
 </p>
 <pre>
+mkdir -p ~/build/fortylines/night
+cd ~/build/fortylines/night
 dws build fortylines.com:/var/fortylines/db.xml
 </pre>
 
@@ -84,7 +86,12 @@ dws build fortylines.com:/var/fortylines/db.xml
 When an project's local index.xml file has been modified, a collect command needs to be run in order to integrate that change into the intra-projects dependency database used by everyone. Following are the commands to rebuild the intra-projects dependency databases currently available on fortylines server.
 </p>
 <pre>
-dws --exclude machines collect
+# 1. Excludes 'test[0-9]' such that the unit tests for the drop project itself 
+# do not end-up as first-class projects.
+# 2. Excludes 'machines' such that the scripts used to configure different 
+# machines in fortylines IT infrastructure do not end-up being executed
+# and repurpose a build machine.
+dws --exclude 'test[0-9]' --exclude machines collect
 scp <i>cacheTop</i>/db.xml fortylines.com:/var/fortylines
 </pre>
 
