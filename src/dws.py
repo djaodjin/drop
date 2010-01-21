@@ -534,9 +534,13 @@ class DependencyGenerator(Unserializer):
         print "    patches:  " + str(self.patches)
         print "    packages: " + str(self.packages)
         for newEdge in self.missings:
-            if (newEdge[1] in self.repositories 
+            if ((newEdge[1] in self.repositories 
                 or newEdge[1] in self.patches
-                or newEdge[1] in self.packages):
+                or newEdge[1] in self.packages)
+                and  newEdge[1] in self.projects):
+                # If the prerequisite is not a project, it will be installed 
+                # by the distribution's package manager on the local machine
+                # and we do not track those dependencies explicitely.
                 self.levels[0] += [ newEdge ]
             else:
                 self.excludePats |= set([ newEdge[1] ])
