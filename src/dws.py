@@ -509,11 +509,11 @@ class DependencyGenerator(Unserializer):
         return repositories, patches, packages
  
     def endParse(self):
-        print "* endParse:"
-        print "     includes: " + str(self.includePats) 
-        print "     excludes: " + str(self.excludePats) 
-        print "     levels:   " + str(self.levels)
-        print "     missings: " + str(self.missings)
+        # print "* endParse:"
+        # print "     includes: " + str(self.includePats) 
+        # print "     excludes: " + str(self.excludePats) 
+        # print "     levels:   " + str(self.levels)
+        # print "     missings: " + str(self.missings)
         # This is an opportunity to prompt for missing dependencies.
         # After installing both, source controlled and packaged
         # projects, the checked-out projects will be added to 
@@ -530,9 +530,9 @@ class DependencyGenerator(Unserializer):
 
         # First establish a list of all prerequisites to be found for this step
         # of the breath-first search.
-        print "    reps:     " + str(self.repositories)
-        print "    patches:  " + str(self.patches)
-        print "    packages: " + str(self.packages)
+        # print "    reps:     " + str(self.repositories)
+        # print "    patches:  " + str(self.patches)
+        # print "    packages: " + str(self.packages)
         for newEdge in self.missings:
             if ((newEdge[1] in self.repositories 
                 or newEdge[1] in self.patches
@@ -681,10 +681,10 @@ class DependencyGenerator(Unserializer):
             if not found:
                 newLevel += [ edge ] 
         self.levels[0] = newLevel   
-        print "  => levels:   " + str(self.levels)
-        print "  => missings: " + str(self.missings)
-        print "  => includes: " + str(self.includePats) 
-        print "  => excludes: " + str(self.excludePats) 
+        # print "  => levels:   " + str(self.levels)
+        # print "  => missings: " + str(self.missings)
+        # print "  => includes: " + str(self.includePats) 
+        # print "  => excludes: " + str(self.excludePats) 
 
     def more(self):
         '''True if there are more iteration of the breath-first 
@@ -707,7 +707,11 @@ class DependencyGenerator(Unserializer):
                     break
             if not found:
                 results += [ name ]
-        return results
+        packages = []
+        for p in self.packages:
+            if self.filters(p):
+                packages += [ p ]
+        return results, packages, self.extraFetches
 
 
 class DerivedSetsGenerator(PdbHandler):
@@ -1954,8 +1958,6 @@ def linkDependencies(projects, cuts=[]):
                     deps, complete = findPrerequisites(
                         prereq.files,
                         prereq.excludes)
-                    # print "was not complete first time around..."
-                    # print str(deps) +  ' => ' + str(complete) 
                 if not complete:
                     if not prereq in missings:
                         missings += [ prereq.name ]
@@ -2286,19 +2288,19 @@ def validateControls(repositories, dbindex=None, force=False):
     dgen = DependencyGenerator(repositories,[],[],excludePats) 
 
     # Add deep dependencies
-    dbindex.closure(dgen)
+    reps, packages, fetches = dbindex.closure(dgen)
 
     # Checkout missing source controlled projects
     # and install missing packages.
-    install(dgen.packages,dgen.extraFetches,dbindex)
+    install(packages,fetches,dbindex)
     if force:
         # Force update all projects under revision control
-        update(dgen.topological(),dgen.extraFetches,dbindex,force)
+        update(reps,fetches,dbindex,force)
     else:
         # Update only projects which are missing from *srcTop*
         # and leave other projects in whatever state they are in.
-        update(dgen.extraSyncs,dgen.extraFetches,dbindex,force)
-    return dgen.topological(), dgen.projects
+        update(dgen.extraSyncs,fetches,dbindex,force)
+    return reps, dgen.projects
 
 
 def versionCandidates(line):
