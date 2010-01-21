@@ -486,34 +486,51 @@ class DependencyGenerator(Unserializer):
         repositories = []
         patches = []
         packages = []
+        targets = set([])
         for miss in self.missings:
-            # If a prerequisite project is not defined as an explicit
-            # package, we will assume the prerequisite name is
-            # enough to install the required tools for the prerequisite.
-            name = miss[1]
-            row = [ name ]
-            if name in self.projects:
-                if self.projects[name].installedVersion:
-                    row += [ self.projects[name].installedVersion ]
-                if self.projects[name].repository:
-                    repositories += [ row ]
-                if self.projects[name].patch:
-                    patches += [ row ]
-                if not (self.projects[name].repository 
-                        or self.projects[name].patch):
+            targets |= set([ miss[1] ])
+        for name in targets:      
+            if not os.path.isdir(context.srcDir(name)):      
+                # If a prerequisite project is not defined as an explicit
+                # package, we will assume the prerequisite name is
+                # enough to install the required tools for the prerequisite.
+                row = [ name ]
+                if name in self.projects:                
+                    if self.projects[name].installedVersion:
+                        row += [ self.projects[name].installedVersion ]
+                    if self.projects[name].repository:
+                        repositories += [ row ]
+                    if self.projects[name].patch:
+                        patches += [ row ]
+                    if not (self.projects[name].repository 
+                            or self.projects[name].patch):
+                        packages += [ row ]
+                else:
                     packages += [ row ]
-            else:
-                packages += [ row ]
         return repositories, patches, packages
  
     def endParse(self):
+        # This is an opportunity to prompt for missing dependencies.
+        # After installing both, source controlled and packaged
+        # projects, the checked-out projects will be added to 
+        # the dependency graph while the packaged projects will
+        # be added to the *cut* list.
+        reps, patches, packages = self.candidates()
+        reps, patches, packages = selectCheckout(reps,patches,packages)
+        # The user's selection will decide when available, if the project
+        # should be installed from a repository, a patch, a binary package
+        # or just purely skipped. 
+        self.repositories |= set(reps)
+        self.patches |= set(patches)
+        self.packages |= set(packages)
+
         # First establish a list of all prerequisites to be found for this step
         # of the breath-first search.
-        # print "* endParse:"
-        # print "    levels:   " + str(self.levels)
-        # print "    reps:     " + str(self.repositories)
-        # print "    patches:  " + str(self.patches)
-        # print "    packages: " + str(self.packages)
+        #print "* endParse:"
+        #print "    levels:   " + str(self.levels)
+        #print "    reps:     " + str(self.repositories)
+        #print "    patches:  " + str(self.patches)
+        #print "    packages: " + str(self.packages)
         locals = []
         fetches = {}
         syncs = []
@@ -615,21 +632,16 @@ class DependencyGenerator(Unserializer):
             self.projects[ p ].populate(self.buildDeps)
         self.levels.insert(0,newLevel)
 
-
-    def nextLevel(self, repositories=[], patches=[], packages=[]):
-        '''Going one step further in the breadth-first recursion introduces 
-        a new level. All missing edges whose target is in *filtered* will 
-        be added to the dependency graph.
-        By definition, all missing projects which are not in *filtered* 
-        will be added as cut points. From this time, *cuts* contains 
-        *complete*d projects as well as projects that still need to be 
-        resolved before links are created.'''
+        # Going one step further in the breadth-first recursion introduces 
+        # a new level. All missing edges whose target is in *filtered* will 
+        # be added to the dependency graph.
+        # By definition, all missing projects which are not in *filtered* 
+        # will be added as cut points. From this time, *cuts* contains 
+        # *complete*d projects as well as projects that still need to be 
+        # resolved before links are created.'''
         # print "nextLevel:"
         # print "  missings=" + str(self.missings)
         # print "  levels=" + str(self.levels)
-        self.repositories |= set(repositories)
-        self.patches |= set(patches)
-        self.packages |= set(packages)
         self.includePats |= self.repositories | self.patches | self.packages
         for newEdge in self.missings:
             if self.filters(newEdge[1]):
@@ -662,8 +674,8 @@ class DependencyGenerator(Unserializer):
             if not found:
                 newLevel += [ edge ] 
         self.levels[0] = newLevel            
-        # print "  => includes: " + str(self.includePats) 
-        # print "  => excludes: " + str(self.excludePats) 
+        #print "  => includes: " + str(self.includePats) 
+        #print "  => excludes: " + str(self.excludePats) 
 
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
@@ -1541,7 +1553,13 @@ def findInclude(names,excludes=[]):
                 # At this point *numbers* contains a list that can
                 # interpreted as versions. Hopefully, there is only
                 # one candidate.
-                if len(numbers) == 1:
+                if len(numbers) >= 1:
+                    # With more than one version number, we assume the first
+                    # one found is the most relevent and use it regardless.
+                    # This is different from previously assumption that more 
+                    # than one number was an error in the version detection 
+                    # algorithm. As it turns out, boost packages sources
+                    # in a -1_41_0.tar.gz file while version.hpp says 1_41.
                     excluded = False
                     for exclude in excludes:
                         if ((not exclude[0] 
@@ -1559,9 +1577,8 @@ def findInclude(names,excludes=[]):
                             index = index + 1
                         includes.insert(index,(header,numbers[0]))
                 else:
-                    # If we find no version number of find more than one 
-                    # version number, we append the header at the end 
-                    # of the list with 'None' for version.
+                    # If we find no version number, we append the header 
+                    # at the end of the list with 'None' for version.
                     includes.append((header,None))
             if len(includes) > 0:
                 if includes[0][1]:
@@ -2246,17 +2263,6 @@ def validateControls(repositories, dbindex=None, force=False):
     # Add deep dependencies
     while len(dgen.levels[0]) > 0:
         dbindex.parse(dgen)
-        # This is an opportunity to prompt for missing dependencies.
-        # After installing both, source controlled and packaged
-        # projects, the checked-out projects will be added to 
-        # the dependency graph while the packaged projects will
-        # be added to the *cut* list.
-        reps, patches, packages = dgen.candidates()
-        reps, patches, packages = selectCheckout(reps,patches,packages)
-        # The user's selection will decide when available, if the project
-        # should be installed from a repository, a patch, a binary package
-        # or just purely skipped. 
-        dgen.nextLevel(reps,patches,packages)
     # Checkout missing source controlled projects
     # and install missing packages.
     install(dgen.packages,dgen.extraFetches,dbindex)

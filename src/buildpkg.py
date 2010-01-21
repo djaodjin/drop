@@ -557,9 +557,9 @@ def buildPackageSpecification(project,packageName):
     package.write('\t\t\t<md5>' + hashlib.md5(f.read()).hexdigest() \
                       + '</md5>\n')
     f.seek(0)
-    package.write('\t\t\t<' + dws.xmlDbParser.tagSha1 + '>' \
+    package.write('\t\t\t<' + dws.xmlDbParser.tagHash + '>' \
                       + hashlib.sha1(f.read()).hexdigest() \
-                      + '</' + dws.xmlDbParser.tagSha1 + '>\n')
+                      + '</' + dws.xmlDbParser.tagHash + '>\n')
     f.seek(0)
     package.write('\t\t\t<sha256>' + hashlib.sha256(f.read()).hexdigest() \
                       + '</sha256>\n')
