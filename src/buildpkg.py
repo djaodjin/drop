@@ -546,7 +546,7 @@ def buildPackageSpecification(project,packageName):
     packageSpec = os.path.splitext(packageName)[0] + '.dsx'
     package = open(packageSpec,'w')
     package.write('<?xml version="1.0" ?>\n')
-    package.write(dws.xmlDbParser.tagDb + '\n')
+    package.write('<' + dws.xmlDbParser.tagDb + '>\n')
     package.write('\t<' + dws.xmlDbParser.tagProject \
                       + ' name="' + project.name + '">\n')
     package.write('\t\t<' + dws.xmlDbParser.tagPackage \

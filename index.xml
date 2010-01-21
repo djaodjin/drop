@@ -4,7 +4,6 @@
     <description>inter-project dependencies tool</description>
     <maintainer name="Sebastien Mirolo" email="smirolo@fortylines.com" />
     <repository>
-      <sync>drop</sync>
       <dep name="make">
 	<!-- For some reason the Python XML parser throws up a not well-formed
 	     exception on "<3.81" -->

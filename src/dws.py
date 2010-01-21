@@ -304,9 +304,8 @@ class IndexProjects:
     def closure(self, dgen):
         '''Find out all dependencies from a root set of projects as defined 
         by the dependency generator *dgen*.'''
-        while len(dgen.levels[0]) > 0:
+        while dgen.more():
             self.parse(dgen)
-            dgen.nextLevel()
         return dgen.topological()
         
 
@@ -373,7 +372,7 @@ class LogFile:
             self.logfile.write('</section>\n')
 
     def header(self, text):
-        sys.stdout.write('make ' + text + '...\n')
+        sys.stdout.write('### make ' + text + '...\n')
         if not self.nolog:
             self.logfile.write('<section id="' + text + '">\n')
             self.logfile.write('<![CDATA[')
@@ -471,7 +470,7 @@ class DependencyGenerator(Unserializer):
         self.missings = []
         for p in self.includePats:
             self.missings += [ [ None, p ] ]
-        self.levels = [ self.missings ]            
+        self.levels = [ [] ]            
         self.buildDeps = {}
         self.extraSyncs = []
         self.extraFetches = {}
@@ -510,6 +509,11 @@ class DependencyGenerator(Unserializer):
         return repositories, patches, packages
  
     def endParse(self):
+        print "* endParse:"
+        print "     includes: " + str(self.includePats) 
+        print "     excludes: " + str(self.excludePats) 
+        print "     levels:   " + str(self.levels)
+        print "     missings: " + str(self.missings)
         # This is an opportunity to prompt for missing dependencies.
         # After installing both, source controlled and packaged
         # projects, the checked-out projects will be added to 
@@ -526,11 +530,16 @@ class DependencyGenerator(Unserializer):
 
         # First establish a list of all prerequisites to be found for this step
         # of the breath-first search.
-        #print "* endParse:"
-        #print "    levels:   " + str(self.levels)
-        #print "    reps:     " + str(self.repositories)
-        #print "    patches:  " + str(self.patches)
-        #print "    packages: " + str(self.packages)
+        print "    reps:     " + str(self.repositories)
+        print "    patches:  " + str(self.patches)
+        print "    packages: " + str(self.packages)
+        for newEdge in self.missings:
+            if (newEdge[1] in self.repositories 
+                or newEdge[1] in self.patches
+                or newEdge[1] in self.packages):
+                self.levels[0] += [ newEdge ]
+            else:
+                self.excludePats |= set([ newEdge[1] ])
         locals = []
         fetches = {}
         syncs = []
@@ -605,6 +614,7 @@ class DependencyGenerator(Unserializer):
                         # projects locally checked out.
                         newLevel += [ [ source, name ] ]
                         self.repositories |= set([ name ])
+                        self.includePats |= set([ name ])
                     elif complete:
                         # All bin. lib, etc. prerequisites have been found
                         # so we do not look further down the dependency graph.
@@ -613,11 +623,13 @@ class DependencyGenerator(Unserializer):
                         # Can't find something, we will prompt the user
                         # for installation from appropriate options.
                         self.missings += [ [ source, name ] ]
+                        self.includePats |= set([ name ])
+
         # Third check for the presence of a local checkout of required source
         # control repositories. If it is present, we'll do a recursive make.
         for name in syncs:
             if not os.path.isdir(context.srcDir(name)):
-                self.extraSyncs += name
+                self.extraSyncs += [ name ]
         # Fourth check the extra packaged files required such as source
         # distribution (.tar.bz2) are in the local cache.
         found, version = findCache(fetches)
@@ -639,16 +651,7 @@ class DependencyGenerator(Unserializer):
         # will be added as cut points. From this time, *cuts* contains 
         # *complete*d projects as well as projects that still need to be 
         # resolved before links are created.'''
-        # print "nextLevel:"
-        # print "  missings=" + str(self.missings)
-        # print "  levels=" + str(self.levels)
-        self.includePats |= self.repositories | self.patches | self.packages
-        for newEdge in self.missings:
-            if self.filters(newEdge[1]):
-                self.levels[0] += [ newEdge ]
-            else:
-                self.excludePats |= set([ newEdge[1] ])
-        self.missings = []
+
         roots = []
         for newEdge in self.levels[0]:
             # We first walk the tree of previously recorded edges to find out 
@@ -673,9 +676,16 @@ class DependencyGenerator(Unserializer):
                     break
             if not found:
                 newLevel += [ edge ] 
-        self.levels[0] = newLevel            
-        #print "  => includes: " + str(self.includePats) 
-        #print "  => excludes: " + str(self.excludePats) 
+        self.levels[0] = newLevel   
+        print "  => levels:   " + str(self.levels)
+        print "  => missings: " + str(self.missings)
+        print "  => includes: " + str(self.includePats) 
+        print "  => excludes: " + str(self.excludePats) 
+
+    def more(self):
+        '''True if there are more iteration of the breath-first 
+        search to conduct.'''
+        return len(self.levels[0]) > 0 or len(self.missings) > 0
 
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
@@ -725,6 +735,8 @@ class Variable:
     def __init__(self,name,descr=None):
         self.name = name
         self.descr = descr
+        if descr:
+            self.descr = descr.strip()
         self.value = None
 
 
@@ -968,8 +980,8 @@ class Repository(Configure):
     '''Dependencies to install a project from a source control system.''' 
 
     def __init__(self, sync, fetches, locals, vars):
-        Configure.__init__(self,fetches,locals,vars)        
-        self.sync = sync
+        Configure.__init__(self,fetches,locals,vars)
+        self.sync, self.type = os.path.splitext(sync)
         self.fetches = fetches
         self.vars = vars
         self.locals = locals
@@ -1155,12 +1167,12 @@ class xmlDbParser(xml.sax.ContentHandler):
                 self.project.packages[tag] = package
         elif name == self.tagPatch:
             if not self.sync:
-                self.sync = self.project.name
+                self.sync = self.project.name + '.git'
             self.project.patch = Patch(self.sync,
                                        self.fetches,self.locals,self.vars)
         elif name == self.tagRepository:
             if not self.sync:
-                self.sync = self.project.name            
+                self.sync = self.project.name + '.git'            
             self.project.repository = Repository(self.sync,
                                                  self.fetches,self.locals,
                                                  self.vars)
@@ -1780,11 +1792,12 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
             # *name* is definitely handled by the local system package manager
             # whenever there is no associated project.
             if name in handler.projects:
-                package = handler.asProject(name).package
-                if package and os.path.exists(context.cachePath(package.name)):
-                    # The package is not part of the local system package 
-                    # manager so it has to have been pre-built.
-                    installLocalPackage(context.cachePath(package.name))
+                package = handler.asProject(name).packages[context.host()]
+                if package:
+                    for filename in package.fetches:
+                        # The package is not part of the local system package 
+                        # manager so it has to have been pre-built.
+                        installLocalPackage(context.cachePath(filename))
                 else:
                     managed += [ name ]
             else:
@@ -1928,10 +1941,11 @@ def linkDependencies(projects, cuts=[]):
                         linkName, linkPath \
                             = __main__.__dict__[command](namePat,
                                                          absolutePath)
-                        linkContext(linkPath,linkName)
-                        if not (absolutePath
+                        if not (linkPath
                                 or os.path.exists(linkName)):
                             complete = False
+                        else:
+                            linkContext(linkPath,linkName)
                 if not complete:
                     deps, complete = findPrerequisites(
                         prereq.files,
@@ -1949,7 +1963,7 @@ def linkDependencies(projects, cuts=[]):
                                 = __main__.__dict__[command](namePat,
                                                              absolutePath)
                             linkContext(linkPath,linkName)
-                            if not (absolutePath
+                            if not (linkPath
                                     or os.path.exists(linkName)):
                                 complete = False
     if len(missings) > 0:
@@ -1958,6 +1972,9 @@ def linkDependencies(projects, cuts=[]):
 
 def linkContext(path,linkName):
     '''link a *path* into the workspace.'''
+    if not path:
+        log.error('There is no target for link ' + linkName + '\n')
+        return
     if os.path.realpath(path) == os.path.realpath(linkName):
         return
     if not os.path.exists(os.path.dirname(linkName)):
@@ -2010,13 +2027,15 @@ def linkPathLib(namePat, absolutePath):
     return os.path.join(context.value('libDir'),libname), absolutePath
 
 
-def linkPathShare(path):
+def linkPathShare(namePat, absolutePath):
     linkName, linkPath = linkPatPath(namePat, absolutePath) 
     return os.path.join(context.value('shareDir'),linkName), linkPath 
 
 
 def make(names, targets):
     '''invoke the make utility to build a set of projects.'''
+    log.write('### make projects "' + ', '.join(names) \
+                  + '" with targets "' + ', '.join(targets) + '"\n')
     distHost = context.value('distHost')
     if 'recurse' in targets:
         targets.remove('recurse')
@@ -2043,20 +2062,22 @@ def make(names, targets):
             # are only there as temporary workarounds for packages which 
             # will be coming out of the local system package manager at some
             # point in the future.
+            log.header(name)
             linkDependencies({ name: projects[name]})
             makeProject(name,recursiveTargets)
         # Make current project
         linkDependencies({ last: projects[last]})
         if len(targets) > 0:
+            log.header(last)
             makeProject(last,targets)
     else:
         for name in names:
+            log.header(name)
             makeProject(name,targets)
 
 
 def makeProject(name,targets):
     '''Issue make command and log output.'''
-    log.header(name)
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
     if objDir != os.getcwd():
@@ -2261,8 +2282,8 @@ def validateControls(repositories, dbindex=None, force=False):
     dgen = DependencyGenerator(repositories,[],[],excludePats) 
 
     # Add deep dependencies
-    while len(dgen.levels[0]) > 0:
-        dbindex.parse(dgen)
+    dbindex.closure(dgen)
+
     # Checkout missing source controlled projects
     # and install missing packages.
     install(dgen.packages,dgen.extraFetches,dbindex)
@@ -2377,7 +2398,7 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
     for name in reps:
         # The project is present in *srcTop*, so we will update the source 
         # code from a repository. 
-        rep = handler.asProject(name).rep
+        rep = handler.asProject(name).repository
         if rep:
             # Not every project is made a first-class citizen. If there are 
             # no rep structure for a project, it must depend on a project
@@ -2385,15 +2406,15 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
             # This is a simple way to specify inter-related projects 
             # with complex dependency set and barely any code. 
             log.write('######## updating project ' + name + '...\n')
-            if rep.type == 'git-core':
+            if rep.type == '.git':
                 if not os.path.exists(
                           os.path.join(context.srcDir(name),'.git')):
                     # If the path to the remote repository is not absolute,
                     # derive it from *remoteTop*. Binding any sooner will 
                     # trigger a potentially unnecessary prompt for remotePath.
-                    if not ':' in rep.url and context:
-                        rep.url = context.remoteSrcPath(rep.url)
-                    cmdline = 'git clone ' + rep.url \
+                    if not ':' in rep.sync and context:
+                        rep.sync = context.remoteSrcPath(rep.sync)
+                    cmdline = 'git clone ' + rep.sync \
                         + ' ' + context.srcDir(name)
                     shellCommand(cmdline)
                 else:
@@ -2406,7 +2427,7 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
                     os.chdir(cwd)
             else:
                 raise Error("unknown source control system '"  \
-                                + rep.type + "'")
+                                + rep.type + "' for " + rep.sync)
         else:
             sys.stdout.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
                              
@@ -2635,6 +2656,51 @@ def pubMake(args):
     log = LogFile(context.logname(),nolog)
     repositories = [ context.cwdProject() ]
     make(repositories,args)
+
+
+def pubStatus(args):
+    '''status                 Show status of projects checked out 
+                       in the workspace with regards to commits.
+    '''
+    global log 
+    log = LogFile(context.logname(),nolog)
+    reps = args
+    recurse = False
+    if 'recurse' in args:
+        recurse = True
+        reps.remove('recurse')
+    if len(reps) == 0:
+        # We try to derive project names from the current directory whever 
+        # it is a subdirectory of buildTop or srcTop.
+        cwd = os.path.realpath(os.getcwd())
+        buildTop = os.path.realpath(context.value('buildTop'))
+        srcTop = os.path.realpath(context.value('srcTop'))
+        srcDir = srcTop
+        srcPrefix = os.path.commonprefix([ cwd,srcTop ])
+        buildPrefix = os.path.commonprefix([ cwd, buildTop ])
+        if srcPrefix == srcTop:
+            srcDir = cwd
+        elif buildPrefix == buildTop:
+            srcDir = cwd.replace(buildTop,srcTop)
+        if os.path.exists(srcDir):
+            for repdir in findFiles(srcDir,'\.git'):
+                reps += [ os.path.dirname(repdir.replace(srcTop + os.sep,'')) ]
+        else:
+            reps = [ context.cwdProject() ]
+    if recurse:
+        raise NotYetImplemented()
+    else:
+        prev = os.getcwd()
+        for r in reps:
+            log.write('######## status in ' + r + '...\n')
+            os.chdir(context.srcDir(r))
+            try:
+                shellCommand('git status')
+            except Error, e:
+                # It is ok. git will return error code 1 when no changes
+                # are to be committed.
+                None
+        os.chdir(prev)
 
 
 def pubUpdate(args):
