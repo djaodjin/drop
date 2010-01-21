@@ -52,7 +52,7 @@ doNotExecute = False
 uploadResults = False
 useDefaultAnswer = False
 excludePats = []
-libSuffix = '.a'                  # Always selects static libraries
+
 
 class Error(Exception):
     '''This type of exception is used to identify "expected" 
@@ -73,7 +73,7 @@ class CircleError(Error):
     a topological traversal of a graph.'''
     def __init__(self,source,target):
         Error.__init__(self,msg="circle exception while traversing edge from " \
-                           + source + " to " + target)
+                           + str(source) + " to " + str(target))
 
 
 class Context:
@@ -304,7 +304,7 @@ class IndexProjects:
     def closure(self, dgen):
         '''Find out all dependencies from a root set of projects as defined 
         by the dependency generator *dgen*.'''
-        while len(dgen.builds) > 0:
+        while len(dgen.levels[0]) > 0:
             self.parse(dgen)
             dgen.nextLevel()
         return dgen.topological()
@@ -395,50 +395,10 @@ class PdbHandler:
     def __init__(self):
         None
 
-    def dependency(self, name, deps, excludes=[]):
-        None
-
-    def description(self, text):
-        None
-
-    def endAlternate(self):
-        None
-
-    def endAlternates(self):
-        None
-
     def endParse(self):
         None
 
-    def endProject(self):
-        None
-
-    def control(self, type, url):
-        None
-
-    def maintainer(self, name, email):
-        None
-
-    def package(self, filename, sha1):
-        None
-
-    def sources(self, name, patched):
-        None
-
-    def startAlternate(self):
-        None
-
-    def startAlternates(self):
-        None
-
-    def startProject(self, name):
-        None
-
-    def tag(self, name):
-        None
-
-    def version(self, text):
-        '''This can only be added from package'''
+    def project(self, project):
         None
 
 
@@ -446,84 +406,57 @@ class Unserializer(PdbHandler):
     '''Aggregate dependencies for a set of projects only when prerequisites
     can not be found on the system.'''
 
-    def __init__(self, builds=None):
+    def __init__(self, includePats=[], excludePats=[]):
         PdbHandler.__init__(self)
+        self.includePats = set(includePats)
+        self.excludePats = set(excludePats)
         self.projects = {}
-        self.builds = builds
-        self.project = None
-        self.tags = []
-        self.buildDeps = []
-        self.buildIndices = []
-        self.buildTags = []
 
     def asProject(self, name):
         return self.projects[name]
 
-    def control(self, type, url):
-        if self.project:
-            self.projects[self.project].control = Control(type,url)
+    def filters(self, projectName):
+        for inc in self.includePats:
+            if re.match(inc,projectName):
+                for exc in self.excludePats:
+                    if re.match(exc,projectName):
+                        return False
+                return True
+        return False
 
-    def dependency(self, name, deps, excludes=[]):
-        if self.project:
-            self.buildDeps += [ Dependency(name,deps,excludes) ]
- 
-    def description(self, text):
-        if self.project:
-            self.projects[self.project].description = text
-
-    def endAlternate(self):
-        if self.project:
-            first = self.buildIndices.pop()
-            self.buildDeps = self.buildDeps[:first] + [ self.buildDeps[first:] ]
-            self.buildTags += [ self.tags ]
-
-    def endAlternates(self):
-        if self.project:
-            self.projects[self.project].buildDeps \
-                += [ AlternatesDependency(self.buildDeps, self.buildTags) ]
-        self.buildDeps = []
-
-    def endProject(self):
-        if self.project:
-            self.projects[self.project].buildDeps += self.buildDeps
-        self.buildDeps = []
-        self.project = None
-
-    def package(self, filename, sha1):
-        if self.project:
-            self.projects[self.project].package = Package(filename,sha1)        
-
-    def startAlternate(self):
-        self.tags = []
-        if self.project:
-            self.buildIndices += [len(self.buildDeps) ]
-
-    def startAlternates(self):
-        if self.project:
-            self.projects[self.project].buildDeps += self.buildDeps
-        self.buildDeps = []
-        self.buildTags = []
-
-    def startProject(self, name):
-        self.project = None
-        self.buildDeps = []
-        if (not self.builds) or (name in self.builds):
-            self.project = name
-            if not name in self.projects:
-                self.projects[name] = Project(name)
-
-    def tag(self, name):
-        self.tags += [ name ]
+    def project(self, p):        
+        if (not p.name in self.projects) and self.filters(p.name):
+            self.projects[p.name] = p
 
 
 class DependencyGenerator(Unserializer):
     '''Aggregate dependencies for a set of projects'''
+    '''As other dependency generators, *MakeGenerator* is initialized
+    with a set of projects. All prerequisite projects necessary to **build** 
+    that set which have an associated directory in *srcTop* will be added
+    to the *found* list.
+    For other prerequisiste projects, the script will search for necessary 
+    executables, headers, libraries, etc. on the local machine. If they
+    all can be found, the prerequisiste project will be added to 
+    the *installed* list, else the prerequisiste project will be added to
+    the *missing* list.
+    It is the responsability of the owner of the MakeGenerator instance
+    to check there are no *missing* prerequisites and act appropriately.
+    '''
 
-    def __init__(self, projects, excludePats = []):
+    def __init__(self, repositories, patches, packages, excludePats = []):
         '''*projects* is a list of root projects used to generate
         the dependency graph. *excludePats* is a list of projects which
         should be removed from the final topological order.'''
-        Unserializer.__init__(self, projects)
+        Unserializer.__init__(self, packages + patches + repositories,
+                              excludePats)
+        self.packages = set(packages)
+        self.patches = set(patches)
+        self.repositories = set(repositories)
+        # Project which either fullfil all prerequisites or that have been 
+        # explicitely excluded from installation by the user will be added 
+        # to *excludePats*.
+
         # This contains a list of list of edges. When levels is traversed last 
         # to first and each edge's source vertex is outputed, it displays 
         # a topological ordering of the selected projects.
@@ -532,93 +465,158 @@ class DependencyGenerator(Unserializer):
         # We store edges in each level rather than simply the source vertex 
         # such that we can detect cycles. That is when an edge would be 
         # traversed again.
-        roots = []
-        self.excludePats = excludePats
-        for p in projects:         
-            roots += [ [ None, p ] ]
-        self.levels = [ roots ]
-        # *cuts* is a list of Project(). Each instance contains resolution
-        # for links on the local machine.
-        self.cuts = []
-        # *missings* contains a list of dependencies which cannot be fullfiled
-        # with the current configuration of the local machine.
-        # *prerequisites* contains a list of missing projects, which is to say
-        # projects which are targets of *missings* dependencies.
+        # *missings* contains a list of dependency edges (source,target) where
+        # prerequisites required by source and installed by target cannot be 
+        # fullfiled with the current configuration of the local machine.
         self.missings = []
-        self.prerequisites = []
-        self.prereqDeps = {}
-        self.nextLevel()
+        for p in self.includePats:
+            self.missings += [ [ None, p ] ]
+        self.levels = [ self.missings ]            
+        self.buildDeps = {}
+        self.extraSyncs = []
+        self.extraFetches = {}
 
-    def candidates(self, filtered=[]):
-        '''Returns a list of rows where each row contains expanded information
-        for each missing project. Only projects which do not appear in filtered
-        will be part of the returned list.'''
-        controls = []
+    def candidates(self):
+        '''Returns a triple (repositories, patches, packages) where each element
+        is a list of rows, each row describes a missing project. When a missing
+        project can be installed from either a repository, a patch 
+        or a package, it will be described in each element of the triplet 
+        as appropriate. Projects which appear in *filtered* will be filtered
+        out of the missing projects and thus not part of returned results.'''
+        repositories = []
+        patches = []
         packages = []
-        for name in self.prerequisites:
-            if not name in filtered:
-                # If the prerequisites is not defined as an explicit
-                # package, we will assume the prerequisite name is
-                # enough to install the required tools for the prerequisite.
-                row = [ name ]
-                if name in self.projects:
-                    if self.projects[name].installedVersion:
-                        row += [ self.projects[name].installedVersion ]
-                    if self.projects[name].control:
-                        controls += [ row ]
-                    elif self.projects[name].package:
-                        packages += [ row ]
-                    else:
-                        packages += [ row ]
-                else:
+        for miss in self.missings:
+            # If a prerequisite project is not defined as an explicit
+            # package, we will assume the prerequisite name is
+            # enough to install the required tools for the prerequisite.
+            name = miss[1]
+            row = [ name ]
+            if name in self.projects:
+                if self.projects[name].installedVersion:
+                    row += [ self.projects[name].installedVersion ]
+                if self.projects[name].repository:
+                    repositories += [ row ]
+                if self.projects[name].patch:
+                    patches += [ row ]
+                if not (self.projects[name].repository 
+                        or self.projects[name].patch):
                     packages += [ row ]
-        return controls, packages
- 
-    def dependency(self, name, deps, excludes=[]):
-        Unserializer.dependency(self, name, deps, excludes)
-        if self.project:
-            if self.addDep(name,deps,excludes):
-                self.cuts += [ name ]
-                self.levels[0] += [ [ self.project, name ] ]
             else:
-                # The parsing pass will gather all unique prerequisites.
-                # Prerequisites will be searched on the local system
-                # after parsing is completed.
-                if name in self.prereqDeps:
-                    for key in deps:
-                        if key in self.prereqDeps[name].files:
-                           for value in deps[key]:
-                               if not value in self.prereqDeps[name].files[key]:
-                                   self.prereqDeps[name].files[key] += [ value ]
-                        else:
-                            self.prereqDeps[name].files[key] = deps[key]
-                    for exclude in excludes:
-                        if not exclude in self.prereqDeps[name].excludes:
-                            self.prereqDeps[name].excludes += [ exclude ]
-                else:
-                    self.prereqDeps[name] = Dependency(name,deps,excludes)
-
+                packages += [ row ]
+        return repositories, patches, packages
+ 
     def endParse(self):
-        # Search for prerequisites on the local system
-        buildDeps = {}
-        for name in self.prereqDeps:
-            buildDeps[name], complete \
-                = findPrerequisites(self.prereqDeps[name].files,
-                                    self.prereqDeps[name].excludes)
-            if complete:
-                self.cuts += [ name ]
-        # Update project dependencies that can be satisfied
+        # First establish a list of all prerequisites to be found for this step
+        # of the breath-first search.
+        # print "* endParse:"
+        # print "    levels:   " + str(self.levels)
+        # print "    reps:     " + str(self.repositories)
+        # print "    patches:  " + str(self.patches)
+        # print "    packages: " + str(self.packages)
+        locals = []
+        fetches = {}
+        syncs = []
+        vars = []
         tags = [ context.host() ]
-        for source in self.builds:
-            self.projects[source].populate(buildDeps)
-            for prereq in self.projects[source].prerequisites(tags):
-                if not prereq.name in self.cuts:
-                     if not prereq.name in self.prerequisites:
-                        self.prerequisites += [ prereq.name ]
-                     if not [ source, prereq.name ] in self.missings:
-                        self.missings += [ [ source, prereq.name ] ]
+        for edge in self.levels[0]:
+            target = edge[1]
+            if (target in self.repositories
+                and not self.projects[target].repository):
+                # Miscategorized, it is actually a patch.
+                self.repositories -= set([target])
+                self.patches |= set([target])
+            if target in self.repositories:
+                syncs += [ target ]
+                locals += self.projects[target].repository.prerequisites(tags)
+                for f in self.projects[target].repository.fetches:
+                    fetches[f] = self.projects[target].repository.fetches[f]
+                vars += self.projects[target].repository.vars
+            elif target in self.patches:
+                syncs += [ target ]
+                locals += self.projects[target].patch.prerequisites(tags)
+                for f in self.projects[target].patch.fetches:
+                    fetches[f] = self.projects[target].patch.fetches[f]
+                vars += self.projects[target].patch.vars
+            elif target in self.packages:
+                locals += self.projects[target].packages[tags].prerequisites(tags)
+                for f in self.projects[target].packages[tags].fetches:
+                    fetches[f] = self.projects[target].packages[tags].fetches[f]
+                vars += self.projects[target].packages[tags].vars
+        # Second find all executables, libraries, etc. that are already 
+        # installed on the local system.
+        aggDeps = self.buildDeps
+        for local in locals:
+            if local.name in aggDeps:
+                for key in local.files:
+                    if key in aggDeps[local.name].files:
+                       for filePat, filePath in local.files[key]:
+                           found = False
+                           for prevPat, prevPath \
+                                   in aggDeps[local.name].files[key]:
+                               if filePat == prevPat:
+                                   # This prerequisite as a pattern has already
+                                   # been searched before so let's not search
+                                   # for it on the local system again.
+                                   found = True
+                                   break
+                           if not found:
+                               aggDeps[local.name].files[key] \
+                                   += [ (filePat, filePath) ]
+                    else:
+                        aggDeps[local.name].files[key] = local.files[key]
+                for exclude in local.excludes:
+                    if not exclude in aggDeps[local.name].excludes:
+                        aggDeps[local.name].excludes += [ exclude ]
+            else:
+                aggDeps[local.name] = Dependency(local.name,
+                                                 local.files,local.excludes)
+        newLevel = []
+        self.missings = []
+        for name in aggDeps:
+            files, complete \
+                = findPrerequisites(aggDeps[name].files,aggDeps[name].excludes)
+            self.buildDeps[name] = Dependency(name,files,aggDeps[name].excludes)
+            for edge in self.levels[0]:
+                source = edge[1]
+                if (source in self.projects
+                    and name in self.projects[source].prerequisiteNames(tags)):
+                    if os.path.isdir(context.srcDir(name)):
+                        # Here we will force add the dependencies when 
+                        # a repository is locally checked out such that 
+                        # a "make recurse" rebuilds every prerequisite 
+                        # projects locally checked out.
+                        newLevel += [ [ source, name ] ]
+                        self.repositories |= set([ name ])
+                    elif complete:
+                        # All bin. lib, etc. prerequisites have been found
+                        # so we do not look further down the dependency graph.
+                        self.excludePats |= set([ name ])
+                    else:
+                        # Can't find something, we will prompt the user
+                        # for installation from appropriate options.
+                        self.missings += [ [ source, name ] ]
+        # Third check for the presence of a local checkout of required source
+        # control repositories. If it is present, we'll do a recursive make.
+        for name in syncs:
+            if not os.path.isdir(context.srcDir(name)):
+                self.extraSyncs += name
+        # Fourth check the extra packaged files required such as source
+        # distribution (.tar.bz2) are in the local cache.
+        found, version = findCache(fetches)
+        for source in fetches:
+            if not context.cachePath(source) in found:
+                self.extraFetches[source] = fetches[source]
+        # Fith configure environment variables that need to be present
+        # in ws.mk
+        configVar(vars)
+        # Update project prerequisites that can be satisfied
+        for p in self.projects:
+            self.projects[ p ].populate(self.buildDeps)
+        self.levels.insert(0,newLevel)
 
-    def nextLevel(self, filtered=[]):
+
+    def nextLevel(self, repositories=[], patches=[], packages=[]):
         '''Going one step further in the breadth-first recursion introduces 
         a new level. All missing edges whose target is in *filtered* will 
         be added to the dependency graph.
@@ -626,21 +624,20 @@ class DependencyGenerator(Unserializer):
         will be added as cut points. From this time, *cuts* contains 
         *complete*d projects as well as projects that still need to be 
         resolved before links are created.'''
-        #print "nextLevel:"
-        #print "  vertices=" + str(self.builds)
-        #print "  missings=" + str(self.missings)
-        #print "  prerequisites=" + str(self.prerequisites)
-        #print "  levels=" + str(self.levels)
+        # print "nextLevel:"
+        # print "  missings=" + str(self.missings)
+        # print "  levels=" + str(self.levels)
+        self.repositories |= set(repositories)
+        self.patches |= set(patches)
+        self.packages |= set(packages)
+        self.includePats |= self.repositories | self.patches | self.packages
         for newEdge in self.missings:
-            if newEdge[1] in filtered:
+            if self.filters(newEdge[1]):
                 self.levels[0] += [ newEdge ]
+            else:
+                self.excludePats |= set([ newEdge[1] ])
         self.missings = []
-        for package in self.prerequisites:
-            if not package in filtered:
-                self.cuts += [ package ]
-        #self.prereqDeps = {}
-        self.prerequisites = []
-        self.builds = []
+        roots = []
         for newEdge in self.levels[0]:
             # We first walk the tree of previously recorded edges to find out 
             # if we detected a cycle.
@@ -649,26 +646,24 @@ class DependencyGenerator(Unserializer):
                     for edge in level:
                         if edge[0] == newEdge[0] and edge[1] == newEdge[1]:
                             raise CircleError(edge[0],edge[1])
-            if not newEdge[1] in self.builds:
+            if not newEdge[1] in roots:
                 # Insert each vertex once. 
-                self.builds += [ newEdge[1] ]
+                roots += [ newEdge[1] ]
         # If an edge's source is matching a vertex added 
         # to the next level, obviously, it was too "late"
         # in the topological order.
         newLevel = []
         for edge in self.levels[0]:
             found = False
-            for vertex in self.builds:
+            for vertex in roots:
                 if edge[0] == vertex:
                     found = True
                     break
             if not found:
                 newLevel += [ edge ] 
         self.levels[0] = newLevel            
-        self.levels.insert(0,[])
-
-    def addDep(self, name, deps, excludes=[]):
-        return True
+        # print "  => includes: " + str(self.includePats) 
+        # print "  => excludes: " + str(self.excludePats) 
 
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
@@ -689,38 +684,6 @@ class DependencyGenerator(Unserializer):
         return results
 
 
-class MakeGenerator(DependencyGenerator):
-    '''As other dependency generators, *MakeGenerator* is initialized
-    with a set of projects. All prerequisite projects necessary to **build** 
-    that set which have an associated directory in *srcTop* will be added
-    to the *found* list.
-    For other prerequisiste projects, the script will search for necessary 
-    executables, headers, libraries, etc. on the local machine. If they
-    all can be found, the prerequisiste project will be added to 
-    the *installed* list, else the prerequisiste project will be added to
-    the *missing* list.
-    It is the responsability of the owner of the MakeGenerator instance
-    to check there are no *missing* prerequisites and act appropriately.
-    '''
-    
-    def __init__(self, projects, excludePats = []):
-        self.extraFetches = {}
-        DependencyGenerator.__init__(self,projects,excludePats)
-
-    def addDep(self, name, deps, excludes=[]):
-        if os.path.isdir(context.srcDir(name)):
-            return True
-        return False
-    
-    def sources(self, name, patched={}):
-        if self.project:
-            found, version = findCache(patched)
-            for source in patched:
-                if not context.cachePath(source) in found:
-                    self.extraFetches[source] \
-                        = os.path.join('srcs',patched[source])
-
-
 class DerivedSetsGenerator(PdbHandler):
     '''Generate different sets of projects which are of interests 
     to the workspace management algorithms.
@@ -734,24 +697,16 @@ class DerivedSetsGenerator(PdbHandler):
         self.roots = []
         self.nonroots = []
         self.repositories = []
-        self.curProjName = None
 
-    def control(self, type, url):
+    def repository(self, url, fetches):
         self.repositories += [ self.curProjName ]
 
-    def dependency(self, name, deps, excludes=[]):
-        if name in self.roots:
-            self.roots.remove(name)
-        if not name in self.nonroots:
-            self.nonroots += [ name ]
-
-    def endProject(self):
-        self.curProjName = None
-
-    def startProject(self, name):
-        self.curProjName = name
-        if not name in self.nonroots:
-            self.roots += [ name ]
+    def project(self, p):
+        for dep in p.deps:
+            if dep.name in self.roots:
+                self.roots.remove(dep.name)
+            if not dep.name in self.nonroots:
+                self.nonroots += [ dep.name ]
 
 
 class Variable:
@@ -887,12 +842,6 @@ class SingleChoice(Variable):
         return True
 
 
-class Control:
-
-    def __init__(self, type, url):
-        self.type = type
-        self.url = url
-
 class Dependency:
 
     def __init__(self, name, files, excludes=[]):
@@ -901,66 +850,131 @@ class Dependency:
         self.excludes = excludes
 
     def __str__(self):
-        return str(self.files) + ', excludes:' + str(self.excludes)
+        result = self.name + ': ' + str(self.files)
+        if len(self.excludes) > 0:
+            result = result + ', excludes:' + str(self.excludes)
+        return result
 
     def populate(self, buildDeps = {}):
         if self.name in buildDeps:
-            deps = buildDeps[self.name]
+            deps = buildDeps[self.name].files
             for d in deps:
                 files = []
-                for look in self.files[d]:
+                for lookPat, lookPath in self.files[d]:
                     found = False
-                    for path in deps[d]:
-                        if path.endswith(os.path.basename(look)):
-                            files += [ path ]
-                            found = True
-                            break
+                    if not lookPath:
+                        for pat, path in deps[d]:
+                            if pat == lookPat:
+                                files += [ (lookPat, path) ]
+                                found = True
+                                break
                     if not found:
-                        files += [ look ]
+                        files += [ (lookPat, lookPath) ]
                 self.files[d] = files
 
     def prerequisites(self,tags):
-        return [ self ]
+        return [ self ]    
 
 
-class AlternatesDependency(Dependency):
+class Alternates(Dependency):
     '''Provides a set of dependencies where one of them is enough
     to fullfil the prerequisite condition. This is used first to
     allow differences in packaging between distributions.'''
 
-    def __init__(self, depset, tagset):
+    def __init__(self):
         '''*depset* is organized as a list of lists of Dependency
         where one of those list will form the actual prerequisite
         of the project as returned by *prerequisites*.'''
-        self.depset = depset
-        self.tagset = tagset
+        self.byTags = {}
 
     def __str__(self):
-        return 'alternates: ' + str(self.depset) + ', ' + str(self.tagset)
+        return 'alternates: ' + str(self.byTags)
 
     def populate(self, buildDeps = {}):
-        for deplist in self.depset:
-            for dep in deplist:
+        for tag in self.byTags:
+            for dep in self.byTags[tag]:
                 dep.populate(buildDeps)
 
-    def prerequisites(self,tags):
-        # \todo return the set that makes most sense on the current 
-        # local system.
-        i = 0
-        for tagset in self.tagset:
-            for t in tagset:
-                if t in tags:
-                    return self.depset[i]
-            i = i + 1
-        # If no tag is matching, then the prerequisites are assumed
-        # to be unnecessary for the local platform.
-        return []
+    def prerequisites(self, tags):
+        prereqs = []
+        for tag in tags:
+            if tag in self.byTags:
+                for dep in self.byTags[tag]:
+                    prereqs += dep.prerequisites(tags)
+        return prereqs
 
-class Package:
 
-    def __init__(self, filename, sha1):
-        self.filename = filename
-        self.sha1 = sha1
+class Maintainer:
+    '''Information about the maintainer of a project.'''
+
+    def __init__(self, fullname, email):
+        self.fullname = fullname
+        self.email = email
+
+class Configure:
+    '''Dependencies to check in order to install a project.'''
+
+    def __init__(self, fetches, locals, vars):
+        self.fetches = fetches
+        self.vars = vars
+        self.locals = locals
+
+    def __str__(self):
+        result = ''
+        if len(self.fetches) > 0:
+            result = result + '\t\tfetch archives\n'
+            for archive in self.fetches:
+                result = result + '\t\t\t' + archive + '\n'
+        if len(self.locals) > 0:
+            result = result + '\t\tdependencies from local system\n'
+            for dep in self.locals:
+                result = result + '\t\t\t' + str(dep) + '\n'
+        if len(self.vars) > 0:
+            result = result + '\t\tenvironment variables\n'
+            for var in self.vars:
+                result = result + '\t\t\t' + str(var) + '\n'
+        return result
+
+    def populate(self, buildDeps = {}):
+        for local in self.locals:
+            local.populate(buildDeps)
+
+    def prerequisites(self, tags):
+        prereqs = []
+        for local in self.locals:
+            prereqs += local.prerequisites(tags)
+        return prereqs
+
+
+class Package(Configure):
+    '''Dependencies to install a project from a package.'''
+
+    def __init__(self, fetches, locals, vars):
+        Configure.__init__(self,fetches,locals,vars)
+
+
+class Repository(Configure):
+    '''Dependencies to install a project from a source control system.''' 
+
+    def __init__(self, sync, fetches, locals, vars):
+        Configure.__init__(self,fetches,locals,vars)        
+        self.sync = sync
+        self.fetches = fetches
+        self.vars = vars
+        self.locals = locals
+
+    def __str__(self):
+        result = '\t\tsync repository from ' + self.sync + '\n'
+        result = result + Configure.__str__(self) 
+        return result
+        
+
+class Patch(Repository):
+    '''Dependencies to install a project from a patch 
+       in an upstream distribution.'''
+
+    def __init__(self, sync, fetches, locals, vars):
+        Repository.__init__(self,sync,fetches,locals,vars)
 
 
 class Project:
@@ -971,116 +985,61 @@ class Project:
 
     def __init__(self, name):
         self.name = name
-        self.buildDeps = []
         self.description = None
+        self.maintainer = None
         self.complete = False
-        self.control = None
-        self.package = None
-        self.patched = []
+        # *packages* maps a set of tags to *Package* instances. A *Package*
+        # contains dependencies to install a project from a binary distribution.
+        self.packages = {}
+        self.patch = None
+        self.repository = None
         self.installedVersion = None
 
     def __str__(self):
-        return 'project ' + self.name + '\n' \
+        result = 'project ' + self.name + '\n' \
             + '\t' + str(self.description) + '\n' \
             + '\tfound version ' + str(self.installedVersion) \
             + ' installed locally\n' \
-            + '\tbuildDeps: ' + str(self.buildDeps) + '\n' \
-            + '\tcomplete: ' + str(self.complete) + '\n' \
-            + '\tcontrol: ' + str(self.control) + '\n' \
-            + '\tpackage: ' + str(self.package) + '\n' \
+            + '\tcomplete: ' + str(self.complete) + '\n'
+        if len(self.packages) > 0:
+            result = result + '\tpackages\n'
+            for p in self.packages:
+                result = result + '\t[' + p + ']\n'
+                result = result + str(self.packages[p]) + '\n'
+        if self.patch:
+            result = result + '\tpatch\n' + str(self.patch) + '\n'
+        if self.repository:
+            result = result + '\trepository\n' + str(self.repository) + '\n'
+        return result
 
     def populate(self, buildDeps = {}):
-        for buildDep in self.buildDeps:
-            buildDep.populate(buildDeps)
+        if self.repository:
+            self.repository.populate(buildDeps)
+        if self.patch:
+            self.patch.populate(buildDeps)
+        for p in self.packages:
+            self.packages[p].populate(buildDeps)
 
-    def prerequisites(self,tags):
+    def prerequisites(self, tags):
         '''returns a set of prerequisites for the project based 
         on the provided tags. It is thus possible to choose 
         between alternate prerequisites set based on the local
         machine operating system, etc.'''
         prereqs = []
-        for buildDep in self.buildDeps:
-            prereqs += buildDep.prerequisites(tags)
+        if self.repository:
+            prereqs += self.repository.prerequisites(tags)
+        if self.patch:
+            prereqs += self.patch.prerequisites(tags)
+        for tag in self.packages:
+            if tag in tags:
+                prereqs += self.packages[tag].prerequisites(tags)
         return prereqs
 
-
-class FedoraSpecWriter(PdbHandler):
-    '''As the index file parser generates callback, an instance 
-    of this class will rewrite the exact same information in a format 
-    compatible with rpmbuild.'''
-
-    def __init__(self, specfile):
-        self.specfile = specfile
-
-    def startProject(self, name):
-        self.specfile.write('Name: ' + name.replace(os.sep,'_') + '\n')
-        self.specfile.write('Distribution: Fedora\n')
-        self.specfile.write('Release: 0\n')
-        self.specfile.write('Summary: None\n')
-        self.specfile.write('License: Unknown\n')
-
-    def description(self, text):
-        self.specfile.write('\n%description\n' + text + '\n')
-
-    def endProject(self):
-        self.specfile.write('''\n%build
-./configure --prefix=/usr/local
-make
-
-%install
-make install
-''')
-
-    def maintainer(self, name, email):
-        self.specfile.write('Packager: ' + name \
-                                + ' <' + email + '>\n')
-
-    def version(self, text):
-        self.specfile.write('Version:' + text + '\n')
-
-
-class UbuntuSpecWriter(PdbHandler):
-    '''As the index file parser generates callback, an instance 
-    of this class will rewrite the exact same information in a format 
-    compatible with debuild.'''
-
-    def __init__(self, control, changelog):
-        self.depends = []
-        self.projectName = None
-        self.maintainerName = None
-        self.maintainerEmail = None
-        self.controlf = control
-        self.changelog = changelog
-
-    def startProject(self, name):
-        self.controlf.write('Source: ' + name + '\n')
-        self.projectName = name
-
-    def dependency(self, name, deps, excludes=[]):
-        self.depends += [ name ]
-
-    def description(self, text):
-        self.controlf.write('Description: ' + text)
-    
-    def endProject(self):
-        self.controlf.write('\nPackage: ' + name + '\n')
-        self.controlf.write('Architecture: any\n')
-        self.controlf.write('Depends: ' + ','.join(self.depends) + '\n')
-        self.controlf.write('\n')
-
-    def control(self, type, url):
-        None
-        #self.controlf.write('ControlType: ' + type + '\n')
-        #self.controlf.write('ControlUrl: ' + url + '\n')
-
-    def maintainer(self, name, email):
-        self.maintainerName = name
-        self.maintainerEmail = email
-        self.controlf.write('Maintainer: ' + name \
-                                + ' <' + email + '>\n')
-
-    def version(self, text):
-        self.controlf.write('Version:' + text)
+    def prerequisiteNames(self, tags):
+        names = []
+        for prereq in self.prerequisites(tags):
+            names += [ prereq.name ]
+        return names
 
 
 class xmlDbParser(xml.sax.ContentHandler):
@@ -1093,70 +1052,64 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagAlternate = 'alternate'
     tagAlternates = 'alternates'
     tagTag = 'tag'
-    tagDb = 'book'
-    tagBuild = 'build'
-    tagDepend = 'xref'
+    tagDb = 'projects'
+    tagDepend = 'dep'
     tagDescription = 'description'
+    tagFetch = 'fetch'
     tagHash = 'sha1'
-    tagInstall = 'install'
     tagMaintainer = 'maintainer'
     tagPackage = 'package'
+    tagPatch = 'patch'
     tagPathname = 'pathname'
-    tagProject = 'section'
-    tagSrc = 'src'
-    tagUrl = 'url'
-    tagVersion = 'version'
-    tagPattern = '.*<' + tagProject + '\s+id="(.*)"'
-    trailerTxt = '</book>'
+    tagProject = 'project'
+    tagRepository = 'repository'
+    tagSync = 'sync'
+    tagPattern = '.*<' + tagProject + '\s+name="(.*)"'
+    trailerTxt = '</projects>'
 
-    def __init__(self, context=None, build=True):
+    def __init__(self, context, build=True):
         self.build = build
         self.context = context
         self.handler = None
-        self.depName = None
-        self.deps = {}
-        self.src = None
-        self.patchedSourcePackages = {}
-        self.pathname = None
-
+ 
     def startElement(self, name, attrs):
         '''Start populating an element.'''
         self.text = ''
         if name == self.tagAlternate:
-            self.handler.startAlternate()
+            self.tagIndices += [ len(self.tags) ]
+            self.locIndices += [ len(self.locals) ]
         elif name == self.tagAlternates:
-            self.handler.startAlternates()
-        elif name == self.tagBuild:
-            self.url = None
-        elif name == self.tagMaintainer:
-            self.handler.maintainer(attrs['name'],attrs['email'])
+            self.locals += [ Alternates() ]
+            self.tagIndices += [ len(self.tags) ]
+            self.locIndices += [ len(self.locals) ]
+        elif name == self.tagFetch:
+            self.filename = attrs['name']
         elif name == self.tagProject:
-            self.patchedSourcePackages = {}
-            self.filename = None
-            self.sha1 = None
-            self.src = None
-            self.handler.startProject(attrs['id'])
+            self.var = None
+            self.project = Project(attrs['name'])
+        elif name == self.tagMaintainer:
+            self.project.maintainer = Maintainer(attrs['name'],attrs['email'])
+        elif name in [ self.tagPackage, self.tagPatch, self.tagRepository ]: 
+            # We manage an explicit stack of local dependencies 
+            # in order to build alternates.
+            self.tagIndices = []
+            self.locIndices = []  
+            self.tags = []
+            self.fetches = {}
+            self.locals = []
+            self.vars = []
+            self.sync = None
         elif name == self.tagDepend:
-            self.depName = attrs['linkend']
+            self.depName = attrs['name']
             self.deps = {}
             self.excludes = []
-        elif name == self.tagInstall:
-            if 'version' in attrs:
-                self.handler.install(attrs['mode'],attrs['version'])
-            else:
-                self.handler.install(attrs['mode'])
-        elif name == self.tagPackage:
-            self.filename = attrs['name']
         elif name == self.tagPathname:
-            self.pathname = Pathname(attrs['name'])
+            self.var = Pathname(attrs['name'])
+            if self.var.name in self.context.environ:
+                self.var.value = self.context.environ[self.var.name]
         elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
-            if not name in self.deps:
-                self.deps[name] = []
-            self.deps[name] += [ attrs['name'] ]
             if 'excludes' in attrs:
                 self.excludes += attrs['excludes'].split(',')
-        elif name == self.tagSrc:
-            self.src = os.path.join('srcs',attrs['name'])
  
     def characters(self, ch):
         self.text += ch
@@ -1167,43 +1120,61 @@ class xmlDbParser(xml.sax.ContentHandler):
         if name == self.tagDb:
             self.handler.endParse()
         elif name == self.tagAlternate:
-            self.handler.endAlternate()
+            depFirst = self.locIndices.pop()
+            tagFirst = self.tagIndices.pop()
+            alternateSet = self.locals[depFirst:]
+            alternates = self.locals[depFirst - 1]
+            if len(self.tags[tagFirst:]) == 0:
+                alternates.byTags['any'] = alternateSet
+            for tag in self.tags[tagFirst:]:
+                alternates.byTags[tag] = alternateSet
+            self.tags = self.tags[:tagFirst]
+            self.locals = self.locals[:depFirst]
         elif name == self.tagAlternates:
-            self.handler.endAlternates()
+            depFirst = self.locIndices.pop()
+            tagFirst = self.tagIndices.pop()
+            self.tags = self.tags[:tagFirst]
         elif name == self.tagTag:
-            self.handler.tag(self.text)
-        elif name == self.tagBuild:
-            self.handler.control(self.type, self.url)
+            self.tags += [ self.text ]
+        elif name == self.tagPackage:
+            package = Package(self.fetches,self.locals,self.vars)
+            if len(self.tags) == 0:
+                self.tags += [ 'any' ]
+            for tag in self.tags:
+                self.project.packages[tag] = package
+        elif name == self.tagPatch:
+            if not self.sync:
+                self.sync = self.project.name
+            self.project.patch = Patch(self.sync,
+                                       self.fetches,self.locals,self.vars)
+        elif name == self.tagRepository:
+            if not self.sync:
+                self.sync = self.project.name            
+            self.project.repository = Repository(self.sync,
+                                                 self.fetches,self.locals,
+                                                 self.vars)
         elif name == self.tagDepend:
-            self.handler.dependency(self.depName, self.deps,self.excludes)
-            self.depName = None
+            self.locals += [ Dependency(self.depName,self.deps,self.excludes) ]
         elif name == self.tagDescription:
-            if self.pathname:
-                self.pathname.descr = self.text
+            if self.var:
+                self.var.descr = self.text
             else:
-                self.handler.description(self.text)
+                self.project.description = self.text.strip()
         elif name == self.tagProject:
-            self.handler.sources(name,self.patchedSourcePackages)
-            if self.filename:
-                self.handler.package(self.filename,self.sha1)
-            self.handler.endProject()
+            self.handler.project(self.project)
         elif name == self.tagHash:
-            if self.src:
-                self.patchedSourcePackages[ self.src ] = self.text.strip()
-            else:
-                self.sha1 = self.text
+            self.fetches[ self.filename ] = self.text.strip()
         elif name == self.tagPathname:
-            if not 'var' in self.deps:
-                self.deps['var'] = []
-            self.deps['var'] += [ self.pathname ]            
-            self.pathname = None
-        elif name == self.tagSrc:
-            self.src = None
-        elif name == self.tagUrl:
-            self.url = self.text
-            self.type = self.depName
-        elif name == self.tagVersion:
-            self.handler.version(self.text)
+            self.vars += [ self.var ]            
+            self.var = None
+        elif name == self.tagFetch:
+            self.filename = None
+        elif name == self.tagSync:
+            self.sync = self.text
+        elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
+            if not name in self.deps:
+                self.deps[name] = []
+            self.deps[name] += [ (self.text,None) ]
 
     def parse(self, pathname, handler):
         '''This is the public interface for one pass through the database
@@ -1254,7 +1225,7 @@ class xmlDbParser(xml.sax.ContentHandler):
         return name
 
     def startProject(self, dbNext, name):
-        dbNext.write('  <' + self.tagProject + ' id="' + name + '">\n')
+        dbNext.write('  <' + self.tagProject + ' name="' + name + '">\n')
         None
 
     def trailer(self, dbNext):  
@@ -1277,7 +1248,7 @@ def stamp(filename,date=datetime.datetime.now()):
 def createIndexPathname(dbIndexPathname,dbPathnames):
     '''create a global dependency database (i.e. project index file) out of
     a set local dependency index files.'''
-    parser = xmlDbParser()
+    parser = xmlDbParser(context)
     dir = os.path.dirname(dbIndexPathname)
     if not os.path.isdir(dir):
         os.makedirs(dir)
@@ -1303,9 +1274,11 @@ def derivedRoots(name):
 def findBin(names,excludes=[]):
     '''Search for a list of binaries that can be executed from $PATH.
 
-       *names* is a list of exectuable names. *excludes* is a list
-       of versions that are concidered false positive and need to be 
-       excluded, usually as a result of incompatibilities.
+       *names* is a list of (pattern,absolutePath) pairs where the absolutePat
+       can be None and in which case pattern will be used to search 
+       for an executable. *excludes* is a list of versions that are concidered 
+       false positive and need to be excluded, usually as a result 
+       of incompatibilities.
 
        This function returns a list of absolute paths for the executables
        found and a version number. The version number is retrieved 
@@ -1329,11 +1302,11 @@ def findBin(names,excludes=[]):
     '''
     results = []
     version = None
-    for name in names:
-        if name.startswith(os.sep):
+    for namePat, absolutePath in names:
+        if absolutePath:
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
-            results.append(name)
+            results.append((namePat, absolutePath))
             continue
         # First time ever *findBin* is called, binDir will surely not defined
         # in ws.mk and thus we will trigger interactive input from the user.
@@ -1341,19 +1314,19 @@ def findBin(names,excludes=[]):
         # mangle the search for an executable so we preemptively trigger 
         # an interactive session.
         context.value('binDir')
-        log.write(name + '... ')
+        log.write(namePat + '... ')
         log.flush()
         found = False
-        if name.endswith('.app'):
-            bin = os.path.join('/Applications',name)
+        if namePat.endswith('.app'):
+            bin = os.path.join('/Applications',namePat)
             if os.path.isdir(bin):
                 found = True
                 log.write('yes\n')
-                results.append(bin)
+                results.append((namePat, bin))
         else:
             for p in [ context.value('binDir') ] \
                     + os.environ['PATH'].split(':'):
-                bin = os.path.join(p,name)
+                bin = os.path.realpath(os.path.join(p,namePat))
                 if (os.path.isfile(bin) 
                     and os.access(bin, os.X_OK)):
                     # We found an executable with the appropriate name,
@@ -1391,12 +1364,12 @@ def findBin(names,excludes=[]):
                         if not excluded:
                             version = numbers[0]
                             log.write(str(version) + '\n')
-                            results.append(bin)
+                            results.append((namePat, bin))
                         else:
                             log.write('excluded (' + str(numbers[0]) + ')\n')
                     else:
                         log.write('yes\n')
-                        results.append(bin)
+                        results.append((namePat, bin))
                     found = True
                     break
         if not found:
@@ -1464,11 +1437,10 @@ def findFirstFiles(base,namePat,subdir=''):
         for p in os.listdir(os.path.join(base,subdir)):
             relative = os.path.join(subdir,p)
             path = os.path.join(base,relative)
-            look = re.match(namePat.replace('.' + os.sep,'(.*)' + os.sep),
-                            relative)
+            look = re.match(namePat + '$',relative)
             if look != None:
                 results += [ relative ]
-            elif (((('.' + os.sep) in namePat) 
+            elif (((('.*' + os.sep) in namePat) 
                    or (subNumSubDirs < patNumSubDirs))
                   and os.path.isdir(path)):
                 # When we see ./, it means we are looking for a pattern 
@@ -1479,29 +1451,30 @@ def findFirstFiles(base,namePat,subdir=''):
             results += findFirstFiles(base,namePat,subdir)
     return results
 
+
 def findData(dir,names,excludes=[]):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by *dir*.'''
     results = []
-    for name in names:
-        if name.startswith(os.sep):
+    for namePat, absolutePath in names:
+        if absolutePath:
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
-            results.append(name)
+            results.append((namePat, absolutePath))
             continue
-        log.write(name + '... ')
+        log.write(namePat + '... ')
         log.flush()
         linkNum = 0
-        if name.startswith('.' + os.sep):
-            linkNum = len(name.split(os.sep)) - 2
+        if namePat.startswith('.*' + os.sep):
+            linkNum = len(namePat.split(os.sep)) - 2
         found = False
         for base in derivedRoots(dir):
-            fullNames = findFiles(base,name)
+            fullNames = findFiles(base,namePat)
             if len(fullNames) > 0:
                 log.write('yes\n')
                 tokens = fullNames[0].split(os.sep)
                 linked = os.sep.join(tokens[:len(tokens) - linkNum])
-                results += [ linked ]
+                results.append((namePat,linked))
                 found = True
                 break
         if not found:
@@ -1515,7 +1488,9 @@ def findInclude(names,excludes=[]):
     '''Search for a list of libraries that can be found from $PATH
        where bin was replaced by include.
 
-    *names* is list of header filename patterns. *excludes* is a list
+     *names* is a list of (pattern,absolutePath) pairs where the absolutePat
+     can be None and in which case pattern will be used to search 
+     for a header filename patterns. *excludes* is a list
     of versions that are concidered false positive and need to be 
     excluded, usually as a result of incompatibilities.
     
@@ -1530,18 +1505,18 @@ def findInclude(names,excludes=[]):
     results = []
     version = None
     includeSysDirs = derivedRoots('include')
-    for name in names:
-        if name.startswith(os.sep):
+    for namePat, absolutePath in names:
+        if absolutePath:
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
-            results.append(name)
+            results.append((namePat, absolutePath))
             continue
-        log.write(name + '... ')
+        log.write(namePat + '... ')
         log.flush()
         found = False
         for includeSysDir in includeSysDirs:
             includes = []
-            for header in findFirstFiles(includeSysDir,name):
+            for header in findFirstFiles(includeSysDir,namePat):
                 # Open the header file and search for all defines
                 # that end in VERSION.
                 numbers = []
@@ -1549,7 +1524,9 @@ def findInclude(names,excludes=[]):
                 parts = os.path.dirname(header).split(os.sep)
                 parts.reverse()
                 for part in parts:
-                    numbers += versionCandidates(part)
+                    for v in versionCandidates(part):
+                        if not v in numbers:
+                            numbers += [ v ]
                 # Second open the file and search for a version identifier...
                 header = os.path.join(includeSysDir,header)
                 f = open(header,'rt')
@@ -1557,7 +1534,9 @@ def findInclude(names,excludes=[]):
                 while line != '':
                     look = re.match('\s*#define.*VERSION\s+(\S+)',line)
                     if look != None:
-                        numbers += versionCandidates(look.group(1))
+                        for v in versionCandidates(look.group(1)):
+                            if not v in numbers:
+                                numbers += [ v ]
                     line = f.readline()
                 f.close()
                 # At this point *numbers* contains a list that can
@@ -1578,6 +1557,7 @@ def findInclude(names,excludes=[]):
                             if ((not include[1]) 
                                 or versionCompare(include[1],numbers[0]) < 0):
                                 break
+                            index = index + 1
                         includes.insert(index,(header,numbers[0]))
                 else:
                     # If we find no version number of find more than one 
@@ -1590,7 +1570,7 @@ def findInclude(names,excludes=[]):
                     log.write(version + '\n')
                 else:
                     log.write('yes\n')
-                results.append(includes[0][0])
+                results.append((namePat, includes[0][0]))
                 includeSysDirs = [ os.path.dirname(includes[0][0]) ]
                 found = True
                 break
@@ -1603,7 +1583,9 @@ def findLib(names,excludes=[]):
     '''Search for a list of libraries that can be found from $PATH
        where bin was replaced by lib.
 
-    *names* is list of library names with neither a 'lib' prefix 
+    *names* is a list of (pattern,absolutePath) pairs where the absolutePat
+    can be None and in which case pattern will be used to search 
+    for library names with neither a 'lib' prefix 
     nor a '.a', '.so', etc. suffix. *excludes* is a list
     of versions that are concidered false positive and need to be 
     excluded, usually as a result of incompatibilities.
@@ -1617,11 +1599,12 @@ def findLib(names,excludes=[]):
     in order to deduce a version number if possible.'''
     results = []
     version = None
-    for name in names:
-        if name.startswith(os.sep):
+    suffix = '.*(\\' + libStaticSuffix() + '|\\' + libDynSuffix() + ')'
+    for namePat, absolutePath in names:
+        if absolutePath:
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
-            results.append(name)
+            results.append((namePat, absolutePath))
             continue
         # First time ever *findLib* is called, libDir will surely not defined
         # in ws.mk and thus we will trigger interactive input from the user.
@@ -1629,13 +1612,13 @@ def findLib(names,excludes=[]):
         # mangle the search for a library so we preemptively trigger 
         # an interactive session.
         context.value('libDir')
-        log.write(name + '... ')
+        log.write(namePat + '... ')
         log.flush()
         found = False
         for libSysDir in derivedRoots('lib'):
             libs = []
             for libname in findFirstFiles(libSysDir,
-                                          'lib' + name + '.*(\\.a|\\.so)'):
+                                          libPrefix() + namePat + suffix):
                 numbers = versionCandidates(libname)
                 if len(numbers) == 1:
                     excluded = False
@@ -1652,6 +1635,7 @@ def findLib(names,excludes=[]):
                             if ((not lib[1]) 
                                 or versionCompare(lib[1],numbers[0]) < 0):
                                 break
+                            index = index + 1
                         libs.insert(index,(os.path.join(libSysDir,libname),
                                            numbers[0]))
                 else:
@@ -1659,13 +1643,14 @@ def findLib(names,excludes=[]):
             if len(libs) > 0:
                 if libs[0][1]:
                     version = libs[0][1] 
-                    look = re.match('.*lib' + name + '(.+)',libs[0][0])
+                    look = re.match('.*' + libPrefix() + namePat + '(.+)',
+                                    libs[0][0])
                     if look:
                         suffix = look.group(1)
                     log.write(suffix + '\n')
                 else:
                     log.write('yes\n')
-                results.append(libs[0][0])
+                results.append((namePat, libs[0][0]))
                 found = True
                 break
         if not found:
@@ -1713,7 +1698,7 @@ def findShare(names,excludes=[]):
     return findData('share',names,excludes)
 
 
-def findVar(vars,excludes=[]):
+def configVar(vars):
     '''Look up the workspace configuration file ws.mk for definition
     of variables *vars*, instances of classes derived from Variable 
     (ex. Pathname, SingleChoice). 
@@ -1799,13 +1784,22 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                 shellCommand('DEBIAN_FRONTEND=noninteractive apt-get -y ' \
                                  + 'install ' + ' '.join(projects),admin=True)
             elif context.host() == 'Darwin':
-                shellCommand('port install ' + ' '.join(projects),admin=True)
+                darwinNames = {
+                    # translation of package names. It is simpler than
+                    # creating an <alternates> node even if it look more hacky.
+                    'libicu-dev': 'icu' }
+                darwinPkgs = []
+                for p in projects:
+                    if p in darwinNames:
+                        darwinPkgs += [ darwinNames[p] ]
+                    else:
+                        darwinPkgs += [ p ]
+                shellCommand('port install ' + ' '.join(darwinPkgs),admin=True)
             elif context.host() == 'Fedora':
                 fedoraNames = {
                     # \todo translation of docbook-to-man package name is not
                     #       enough since Fedora also renamed the executable
                     #       from docbook-to-man to db2x_docbook2man...
-                    'docbook-to-man': 'docbook2X', 
                     'libbz2-dev': 'bzip2-devel',
                     'python-all-dev': 'python-devel',
                     'zlib1g-dev': 'zlib-devel' }
@@ -1864,6 +1858,35 @@ def installLocalPackage(filename):
         raise Error("Does not know how to install '" \
                         + filename + "' on " + context.host())
 
+def libPrefix():
+    '''Returns the prefix for library names.'''
+    libPrefixes = {
+        'Cygwin': ''
+        }
+    if context.host() in libPrefixes:
+        return libPrefixes[context.host()]
+    return 'lib'
+
+
+def libStaticSuffix():
+    '''Returns the static for static library names.'''
+    libStaticSuffixes = {
+        }
+    if context.host() in libStaticSuffixes:
+        return libStaticSuffixes[context.host()]
+    return '.a'
+
+
+def libDynSuffix():
+    '''Returns the static for dynamic library names.'''
+    libDynSuffixes = {
+        'Cygwin': '.dll',
+        'Darwin': '.dylib'
+        }
+    if context.host() in libDynSuffixes:
+        return libDynSuffixes[context.host()]
+    return '.so'
+
 
 def linkDependencies(projects, cuts=[]):
     '''All projects which are dependencies but are not part of *srcTop*
@@ -1883,12 +1906,14 @@ def linkDependencies(projects, cuts=[]):
                 # an absolute path.  
                 complete = True
                 deps = prereq.files
-                for dir in deps:
-                    for path in deps[dir]:
+                for dir in deps:                    
+                    for namePat, absolutePath in deps[dir]:
                         command = 'linkPath' + dir.capitalize()
-                        linkName = __main__.__dict__[command](path)
-                        linkContext(path,linkName)
-                        if not (path.startswith(os.sep)
+                        linkName, linkPath \
+                            = __main__.__dict__[command](namePat,
+                                                         absolutePath)
+                        linkContext(linkPath,linkName)
+                        if not (absolutePath
                                 or os.path.exists(linkName)):
                             complete = False
                 if not complete:
@@ -1902,11 +1927,13 @@ def linkDependencies(projects, cuts=[]):
                         missings += [ prereq.name ]
                 else:
                     for dir in deps:
-                        for path in deps[dir]:
+                        for namePat, absolutePath in deps[dir]:
                             command = 'linkPath' + dir.capitalize()
-                            linkName = __main__.__dict__[command](path)
-                            linkContext(path,linkName)
-                            if not (path.startswith(os.sep)
+                            linkName, linkPath \
+                                = __main__.__dict__[command](namePat,
+                                                             absolutePath)
+                            linkContext(linkPath,linkName)
+                            if not (absolutePath
                                     or os.path.exists(linkName)):
                                 complete = False
     if len(missings) > 0:
@@ -1927,38 +1954,50 @@ def linkContext(path,linkName):
     if not os.path.exists(linkName) and os.path.exists(path):
         os.symlink(path,linkName)
 
-def linkPathBin(path):
-    return os.path.join(context.value('binDir'),
-                        os.path.basename(path))
+def linkPatPath(namePat, absolutePath):
+    # Yeah, looking for g++ might be a little bit of trouble. 
+    regex = re.compile(namePat.replace('+','\+') + '$')
+    if regex.groups == 0:
+        linkPath = absolutePath
+        linkName = namePat
+        parts = namePat.split(os.sep)
+        if len(parts) > 0:
+            linkName = parts[len(parts) - 1]
+    else:
+        look = regex.search(absolutePath)
+        linkName = look.group(1)
+        parts = absolutePath[look.end(1):].split(os.sep)
+        linkPath = absolutePath[:look.end(1)] + parts[0]
+    return linkName, linkPath
 
-def linkPathEtc(path):
-    return os.path.join(context.value('etcDir'),
-                        os.path.basename(path))
 
-def linkPathInclude(path):
-    dirname, header = os.path.split(path)
-    if not dirname.endswith('include'):
-        header = os.path.basename(dirname)
-    return os.path.join(context.value('includeDir'),header)
+def linkPathBin(namePat, absolutePath):
+    linkName, linkPath = linkPatPath(namePat, absolutePath) 
+    return os.path.join(context.value('binDir'),linkName), linkPath 
 
-def linkPathLib(path):
+
+def linkPathEtc(namePat, absolutePath):
+    linkName, linkPath = linkPatPath(namePat, absolutePath) 
+    return os.path.join(context.value('etcDir'),linkName), linkPath 
+
+
+def linkPathInclude(namePat, absolutePath):
+    linkName, linkPath = linkPatPath(namePat, absolutePath) 
+    return os.path.join(context.value('includeDir'),linkName), linkPath 
+
+
+def linkPathLib(namePat, absolutePath):
     '''Normalize a library name to a name that will be used to create
     a link in buildLib later referenced from Makefiles.'''
-    parts = os.path.basename(path).split('.')
-    libname = parts[0]
-    if len(parts) < 2:
-        libext = libSuffix
-    else:
-        libext = '.' + parts[1]
-    libname = libname.split('-')[0]
-    if not libname.startswith('lib'):
-        libname = 'lib' + libname
-    libname = libname + libext
-    return os.path.join(context.value('libDir'),libname)
+    pathname, ext = os.path.splitext(absolutePath)
+    libname = libPrefix() + namePat + ext 
+    return os.path.join(context.value('libDir'),libname), absolutePath
+
 
 def linkPathShare(path):
-    return os.path.join(context.value('shareDir'),
-                        os.path.basename(path))
+    linkName, linkPath = linkPatPath(namePat, absolutePath) 
+    return os.path.join(context.value('shareDir'),linkName), linkPath 
+
 
 def make(names, targets):
     '''invoke the make utility to build a set of projects.'''
@@ -2124,6 +2163,7 @@ def searchBackToRoot(filename,root=os.sep):
 def shellCommand(commandLine, admin=False):
     '''Execute a shell command and throws an exception when the command fails'''
     if admin:
+        # ex: su username -c 'sudo port install icu'
         cmdline = 'sudo ' + commandLine
     else:
         cmdline = commandLine
@@ -2201,44 +2241,33 @@ def validateControls(repositories, dbindex=None, force=False):
     if not dbindex:
         dbindex = index
     dbindex.validate(force)
-    dgen = MakeGenerator(repositories,excludePats) # excludePats is global.
-    missingPackages = []
-    missingControls = []
-    for project in repositories:
-        # Check only for existance of directory, else "make dist-src"
-        # will try to download repository from server.
-        # if not context.isControlled(project):
-        if not os.path.exists(context.srcDir(project)):
-            missingControls += [ project ]
+    # note that *excludePats* is global.
+    dgen = DependencyGenerator(repositories,[],[],excludePats) 
 
     # Add deep dependencies
-    while len(dgen.builds) > 0:
-        controls = []
+    while len(dgen.levels[0]) > 0:
         dbindex.parse(dgen)
-        if len(dgen.missings) > 0:
-            # This is an opportunity to prompt for missing dependencies.
-            # After installing both, source controlled and packaged
-            # projects, the checked-out projects will be added to 
-            # the dependency graph while the packaged projects will
-            # be added to the *cut* list.
-            controls, packages = dgen.candidates(missingControls \
-                                                     + missingPackages)
-            controls, packages = selectCheckout(controls,packages)
-            for control in controls:
-                missingControls += [ control ]
-            for package in packages:
-                missingPackages += [ package ]
-        dgen.nextLevel(missingControls)
+        # This is an opportunity to prompt for missing dependencies.
+        # After installing both, source controlled and packaged
+        # projects, the checked-out projects will be added to 
+        # the dependency graph while the packaged projects will
+        # be added to the *cut* list.
+        reps, patches, packages = dgen.candidates()
+        reps, patches, packages = selectCheckout(reps,patches,packages)
+        # The user's selection will decide when available, if the project
+        # should be installed from a repository, a patch, a binary package
+        # or just purely skipped. 
+        dgen.nextLevel(reps,patches,packages)
     # Checkout missing source controlled projects
     # and install missing packages.
-    install(missingPackages,dgen.extraFetches,dbindex)
+    install(dgen.packages,dgen.extraFetches,dbindex)
     if force:
         # Force update all projects under revision control
         update(dgen.topological(),dgen.extraFetches,dbindex,force)
     else:
         # Update only projects which are missing from *srcTop*
         # and leave other projects in whatever state they are in.
-        update(missingControls,dgen.extraFetches,dbindex,force)
+        update(dgen.extraSyncs,dgen.extraFetches,dbindex,force)
     return dgen.topological(), dgen.projects
 
 
@@ -2249,8 +2278,7 @@ def versionCandidates(line):
     part = line
     candidates = []
     while part != '':
-        # numbers should be full, including '.'
-        # look = re.match('[^0-9]*([0-9][0-9_\.]*)+(.*)',part)
+        # numbers should be full, i.e. including '.'
         look = re.match('[^0-9]*([0-9].*)',part)
         if look:
             part = look.group(1)
@@ -2324,16 +2352,16 @@ def integrate(srcdir,pchdir):
                     os.symlink(os.path.relpath(pchname),srcname)
 
 
-def update(controls, extraFetches={}, dbindex = None, force=False):
+def update(reps, extraFetches={}, dbindex = None, force=False):
     '''Update a list of *projects* within the workspace. The update will either 
-    sync with a source control repository if the project is present in *srcTop*
+    sync with a source rep repository if the project is present in *srcTop*
     or will install a new binary package through the local package manager.
     *extraFetches* is a list of extra files to fetch from the remote machine,
     usually a list of compressed source tar files.'''
     if not dbindex:
         dbindex = index
     dbindex.validate(force)
-    handler = Unserializer(controls)
+    handler = Unserializer(reps)
     dbindex.parse(handler)
 
     if len(extraFetches) > 0:
@@ -2341,26 +2369,26 @@ def update(controls, extraFetches={}, dbindex = None, force=False):
 
     # If an error occurs, at least save previously configured variables.
     context.save()
-    for name in controls:
+    for name in reps:
         # The project is present in *srcTop*, so we will update the source 
         # code from a repository. 
-        control = handler.asProject(name).control
-        if control:
+        rep = handler.asProject(name).rep
+        if rep:
             # Not every project is made a first-class citizen. If there are 
-            # no control structure for a project, it must depend on a project
-            # that does in order to have a source controlled repository.
+            # no rep structure for a project, it must depend on a project
+            # that does in order to have a source repled repository.
             # This is a simple way to specify inter-related projects 
             # with complex dependency set and barely any code. 
             log.write('######## updating project ' + name + '...\n')
-            if control.type == 'git-core':
+            if rep.type == 'git-core':
                 if not os.path.exists(
                           os.path.join(context.srcDir(name),'.git')):
                     # If the path to the remote repository is not absolute,
                     # derive it from *remoteTop*. Binding any sooner will 
                     # trigger a potentially unnecessary prompt for remotePath.
-                    if not ':' in control.url and context:
-                        control.url = context.remoteSrcPath(control.url)
-                    cmdline = 'git clone ' + control.url \
+                    if not ':' in rep.url and context:
+                        rep.url = context.remoteSrcPath(rep.url)
+                    cmdline = 'git clone ' + rep.url \
                         + ' ' + context.srcDir(name)
                     shellCommand(cmdline)
                 else:
@@ -2373,7 +2401,7 @@ def update(controls, extraFetches={}, dbindex = None, force=False):
                     os.chdir(cwd)
             else:
                 raise Error("unknown source control system '"  \
-                                + control.type + "'")
+                                + rep.type + "'")
         else:
             sys.stdout.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
                              
@@ -2485,7 +2513,11 @@ def pubCollect(args):
                 break
         if not found:
             indices += [ index ]
+    # Create the index and checks it is valid according to the schema. 
     createIndexPathname(context.dbPathname(),indices)
+    shellCommand('xmllint --noout --schema ' \
+                     + context.srcDir(os.path.join('drop','src','index.xsd')) \
+                     + ' ' + context.dbPathname())
     # We should only copy the index file after we created it.
     shellCommand(copyIndex)
     shellCommand(copyBinPackages)
@@ -2543,9 +2575,12 @@ def pubFind(args):
     log = LogFile(context.logname(),True)
     dir = args[0]
     command = 'find' + dir.capitalize()
+    searches = []
+    for arg in args[1:]:
+        searches += [ (arg,None) ]
     installed, installedVersion = \
-        __main__.__dict__[command](args[1:])
-    if len(installed) != len(args[1:]):
+        __main__.__dict__[command](searches)
+    if len(installed) != len(searches):
         sys.exit(1)
     # print '\n\t'.join(installed)
 
@@ -2553,7 +2588,7 @@ def pubInit(args):
     '''init                   Prompt for variables which have not been 
                        initialized in ws.mk. Fetch the project index.
     '''
-    findVar(context.environ.values())
+    configVar(context.environ.values())
     index.validate()
 
 def pubInstall(args):
@@ -2575,20 +2610,14 @@ def pubIntegrate(args):
 
 class ListPdbHandler(PdbHandler):
 
-    def startProject(self, name):
-        sys.stdout.write(name)
-
-    def description(self, text):
-        sys.stdout.write(text)
-
-    def endProject(self):
-        sys.stdout.write('\n')
+    def project(self, p):
+        sys.stdout.write(str(p))
 
 
 def pubList(args):
     '''list                   List available projects
     '''
-    parser = xmlDbParser()
+    parser = xmlDbParser(context)
     parser.parse(context.dbPathname(),ListPdbHandler())
 
 
@@ -2601,71 +2630,6 @@ def pubMake(args):
     log = LogFile(context.logname(),nolog)
     repositories = [ context.cwdProject() ]
     make(repositories,args)
-
-
-def pubSpec(args):
-    '''spec                   Writes out the specification files used 
-                       to build a distribution package.
-    '''
-    dist = context.host()
-    name = context.cwdProject() 
-    if dist == 'Darwin':
-        # For OSX, there does not seem to be an official packaging script
-        # so we use buildpkg.py and the index file directly.
-        None
-    elif dist == 'Fedora':
-        specfile = open(args[0] + '.spec','w')
-        writer = FedoraSpecWriter(specfile)
-        parser = xmlDbParser()
-        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
-        specfile.close()
-    elif dist == 'Ubuntu':
-        control = open('control','w')
-        changelog = open('changelog','w')
-        writer = UbuntuSpecWriter(control,changelog)
-        parser = xmlDbParser()
-        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
-        control.close()
-        changelog.write(writer.projectName + ' (' + args[0] + '-ubuntu1' + ') jaunty; urgency=low\n\n')
-        changelog.write('  * debian/rules: generate ubuntu package\n\n')
-        changelog.write(' -- ' + writer.maintainerName \
-                            + ' <' + writer.maintainerEmail + '>  ' \
-                            + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
-        changelog.close()
-        rules = open('rules','w')
-        rules.write('''#! /usr/bin/make -f
-
-export DH_OPTIONS
-
-#include /usr/share/quilt/quilt.make
-
-PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
-
-build:
-\t./configure --prefix=$(PREFIX)
-\tmake
-
-clean:
-\techo "make clean"
-
-install:
-\tdh_testdir
-\tdh_testroot
-\tdh_clean -k
-\tmake install
-
-binary: install
-\tdh_installdeb
-\tdh_gencontrol
-\tdh_md5sums
-\tdh_builddeb
-
-''')
-        rules.close()
-        copyright = open('copyright','w')
-        copyright.close()
-    else:
-        raise
 
 
 def pubUpdate(args):
@@ -2715,28 +2679,38 @@ def pubUpstream(args):
         upstream(srcdir,pchdir)
 
 
-def selectCheckout(controlCandidates,packageCandidates=[]):
+def selectCheckout(repCandidates, patchCandidates, packageCandidates=[]):
     '''Interactive prompt for a selection of projects to checkout.
-    *controlCandidates* contains a list of rows describing projects available
+    *repCandidates* contains a list of rows describing projects available
     for selection. This function will return a list of projects to checkout
     from a source repository and a list of projects to install through 
     a package manager.'''
-    controls = []
-    packages = []
-    if len(controlCandidates) > 0:
-        controls = selectMultiple(
+    reps = []
+    if len(repCandidates) > 0:
+        reps = selectMultiple(
 '''The following dependencies need to be present on your system. 
 You have now the choice to install them from a source repository. You will later
-have  the choice to install them from binary package or not at all.''',
-        controlCandidates)
-
-        # Filters out the dependencies that should be installed from a source 
-        # repository from the list of candidates to install as binary packages.
-        for row in controlCandidates:
-            if not row[0] in controls:
-                packageCandidates += [ row ]
-    packages = selectInstall(packageCandidates)
-    return controls, packages
+have  the choice to install them from either a patch, a binary package or not at all.''',
+        repCandidates)
+    # Filters out the dependencies which the user has decided to install
+    # from a repository.
+    patches = []
+    for row in patchCandidates:
+        if not row[0] in reps:
+            patches += [ row ]
+    if len(patches) > 0:
+        patches = selectMultiple(
+'''The following dependencies need to be present on your system. 
+You have now the choice to install them from a patch from a known source distribution. You will later have the choice to install them from binary package or not at all.''',
+        patches)
+    # Filters out the dependencies which the user has decided to install
+    # from a repository.
+    packages = []
+    for row in packageCandidates:
+        if not row[0] in reps + patches:
+            packages += [ row ]
+    packages = selectInstall(packages)
+    return reps, patches, packages
 
 
 def selectInstall(packageCandidates):

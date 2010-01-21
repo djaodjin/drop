@@ -1,35 +1,38 @@
 <?xml version="1.0" ?>
-<book>
-  <section id="drop">
-    <xref linkend="make">
-      <!-- For some reason the Python XML parser throws up a not well-formed
-	   exception on "<3.81" -->
-      <bin name="make" excludes="3.80" />
-    </xref>
-    <build>
-      <xref linkend="git-core">
-	<bin name="git" />
-	<url>drop</url>
-      </xref>      
-    </build>
-    <!-- How to express >=4 when the python XML parser 
-	 throws malformed exceptions? -->
-    <alternates>
-      <alternate>
-	<tag>Ubuntu</tag>
-	<xref linkend="debhelper">
-	  <bin name="dh_builddeb" /> 
-	</xref>
-	<xref linkend="devscripts">
-	  <bin name="debuild" />
-	</xref>
-      </alternate>
-      <alternate>
-	<tag>Fedora</tag>
-	<xref linkend="rpmdevtools">
-	  <bin name="rpmdev-setuptree" /> 
-	</xref>  
-      </alternate>
-    </alternates>
-  </section>
-</book>
+<projects>
+  <project name="drop">
+    <description>inter-project dependencies tool</description>
+    <maintainer name="Sebastien Mirolo" email="smirolo@fortylines.com" />
+    <repository>
+      <sync>drop</sync>
+      <dep name="make">
+	<!-- For some reason the Python XML parser throws up a not well-formed
+	     exception on "<3.81" -->
+	<bin excludes="3.80">make</bin>
+      </dep>
+      <dep name="git-core">
+	<bin>git</bin>
+      </dep>      
+
+      <!-- How to express >=4 when the python XML parser 
+	   throws malformed exceptions? -->
+      <alternates>
+	<alternate>
+	  <tag>Ubuntu</tag>
+	  <dep name="debhelper">
+	    <bin>dh_builddeb</bin>
+	  </dep>
+	  <dep name="devscripts">
+	    <bin>debuild</bin>
+	  </dep>
+	</alternate>
+	<alternate>
+	  <tag>Fedora</tag>
+	  <dep name="rpmdevtools">
+	    <bin>rpmdev-setuptree</bin> 
+	  </dep>  
+	</alternate>
+      </alternates>
+    </repository>
+  </project>
+</projects>

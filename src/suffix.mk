@@ -112,7 +112,8 @@ $(project)-$(version).tar.bz2:
 %$(distExtFedora): %.tar.bz2 $(srcDir)/index.xml \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
-	$(dws) spec $(basename $@)
+	buildpkg --version=$(subst $(project)-,,$(basename $@)) \
+	         --spec=$(srcDir)/index.xml $(basename $@)
 	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
 	rpmbuild -bb --clean $(basename $@)
 
@@ -139,7 +140,8 @@ $(project)-$(version).tar.bz2:
 	tar jxf $<
 	$(installDirs) $(basename $(basename $<))/debian
 	cd $(basename $(basename $<))/debian \
-		&& $(dws) spec $(shell echo $@ | \
+		&& buildpkg --version=$(subst $(project)-,,$(basename $@)) \
+	         --spec=$(srcDir)/index.xml $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
 	cd $(basename $(basename $<)) && debuild -i -us -uc -b
 
@@ -186,5 +188,10 @@ results: $(patsubst %,%.cout,$(testunits))
 #	to the themeDir, though it might not be directly theme related...
 %.book: %.log $(srcTop)/seed/test/src/book.xsl
 	xsltproc $(word 2,$^) $< > $@
+
+# Rules to validate the intra-projects dependency file
+# ----------------------------------------------------
+validate: index.xml
+	xmllint --noout --schema $(srcTop)/drop/src/index.xsd $<
 
 -include *.d

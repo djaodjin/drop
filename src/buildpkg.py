@@ -50,6 +50,118 @@ InstallFat\
 # Helpers
 ######################################################################
 
+class FedoraSpecWriter(dws.PdbHandler):
+    '''As the index file parser generates callback, an instance 
+    of this class will rewrite the exact same information in a format 
+    compatible with rpmbuild.'''
+
+    def __init__(self, specfile):
+        self.specfile = specfile
+
+    def project(self, p):
+        self.specfile.write('Name: ' + p.name.replace(os.sep,'_') + '\n')
+        self.specfile.write('Distribution: Fedora\n')
+        self.specfile.write('Release: 0\n')
+        self.specfile.write('Summary: None\n')
+        self.specfile.write('License: Unknown\n')
+        self.specfile.write('\n%description\n' + p.description + '\n')
+        self.specfile.write('Packager: ' + p.maintainer.name \
+                                + ' <' + p.maintainer.email + '>\n')
+        self.specfile.write('''\n%build
+./configure --prefix=/usr/local
+make
+
+%install
+make install
+''')
+
+
+class UbuntuSpecWriter(dws.PdbHandler):
+    '''As the index file parser generates callback, an instance 
+    of this class will rewrite the exact same information in a format 
+    compatible with debuild.'''
+
+    def __init__(self, control, changelog):
+        self.controlf = control
+        self.changelog = changelog
+    
+    def project(self, p):
+        self.controlf.write('Version:' + p.version)
+        self.controlf.write('Source: ' + p.name + '\n')
+        self.controlf.write('Description: ' + p.description)
+        self.controlf.write('Maintainer: ' + p.maintainer.name \
+                                + ' <' + p.maintainer.email + '>\n')
+        self.controlf.write('\nPackage: ' + p.name + '\n')
+        self.controlf.write('Architecture: any\n')
+        self.controlf.write('Depends: ' + ','.join(p.depends) + '\n')
+        self.controlf.write('\n')
+
+
+def pubSpec(args):
+    '''spec                   Writes out the specification files used 
+                       to build a distribution package.
+    '''
+    dist = context.host()
+    name = context.cwdProject() 
+    if dist == 'Darwin':
+        # For OSX, there does not seem to be an official packaging script
+        # so we use buildpkg.py and the index file directly.
+        None
+    elif dist == 'Fedora':
+        specfile = open(args[0] + '.spec','w')
+        writer = FedoraSpecWriter(specfile)
+        parser = xmlDbParser()
+        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
+        specfile.close()
+    elif dist == 'Ubuntu':
+        control = open('control','w')
+        changelog = open('changelog','w')
+        writer = UbuntuSpecWriter(control,changelog)
+        parser = xmlDbParser()
+        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
+        control.close()
+        changelog.write(writer.projectName + ' (' + args[0] + '-ubuntu1' + ') jaunty; urgency=low\n\n')
+        changelog.write('  * debian/rules: generate ubuntu package\n\n')
+        changelog.write(' -- ' + writer.maintainerName \
+                            + ' <' + writer.maintainerEmail + '>  ' \
+                            + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
+        changelog.close()
+        rules = open('rules','w')
+        rules.write('''#! /usr/bin/make -f
+
+export DH_OPTIONS
+
+#include /usr/share/quilt/quilt.make
+
+PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
+
+build:
+\t./configure --prefix=$(PREFIX)
+\tmake
+
+clean:
+\techo "make clean"
+
+install:
+\tdh_testdir
+\tdh_testroot
+\tdh_clean -k
+\tmake install
+
+binary: install
+\tdh_installdeb
+\tdh_gencontrol
+\tdh_md5sums
+\tdh_builddeb
+
+''')
+        rules.close()
+        copyright = open('copyright','w')
+        copyright.close()
+    else:
+        raise
+
+
 # Convenience class, as suggested by /F.
 
 class GlobDirectoryWalker:
@@ -434,24 +546,27 @@ def buildPackageSpecification(project,packageName):
     packageSpec = os.path.splitext(packageName)[0] + '.dsx'
     package = open(packageSpec,'w')
     package.write('<?xml version="1.0" ?>\n')
-    package.write('<book>\n')
-    package.write('\t<section id="' + project.name + '">\n')
-    package.write('\t\t<package name="' + packageName + '">\n')
+    package.write(dws.xmlDbParser.tagDb + '\n')
+    package.write('\t<' + dws.xmlDbParser.tagProject \
+                      + ' name="' + project.name + '">\n')
+    package.write('\t\t<' + dws.xmlDbParser.tagPackage \
+                      + ' name="' + packageName + '">\n')
     package.write('\t\t\t<size>' + str(os.path.getsize(packageName)) \
                       + '</size>\n')        
     f = open(packageName,'rb')
     package.write('\t\t\t<md5>' + hashlib.md5(f.read()).hexdigest() \
                       + '</md5>\n')
     f.seek(0)
-    package.write('\t\t\t<sha1>' + hashlib.sha1(f.read()).hexdigest() \
-                      + '</sha1>\n')
+    package.write('\t\t\t<' + dws.xmlDbParser.tagSha1 + '>' \
+                      + hashlib.sha1(f.read()).hexdigest() \
+                      + '</' + dws.xmlDbParser.tagSha1 + '>\n')
     f.seek(0)
     package.write('\t\t\t<sha256>' + hashlib.sha256(f.read()).hexdigest() \
                       + '</sha256>\n')
     f.close()
-    package.write('\t\t</package>\n')
-    package.write('\t</section>\n')
-    package.write('</book>\n')
+    package.write('\t\t</' + dws.xmlDbParser.tagPackage + '>\n')
+    package.write('\t</' + dws.xmlDbParser.tagProject + '>\n')
+    package.write('</' + dws.xmlDbParser.tagDb + '>\n')
     package.close()
 
 
@@ -460,7 +575,7 @@ if __name__ == "__main__":
 
     parser = OptionParser(description=
 '''builds an OSX package
-    Usage: %s <opts1> [<opts2>] <root> [<resources>]"
+    Usage: %s [options] <root> [<resources>]"
     with arguments:
            (mandatory) root:         the package root folder
            (optional)  resources:    the package resources folder
@@ -474,7 +589,7 @@ if __name__ == "__main__":
 
     context = dws.Context()
     index = dws.IndexProjects(context,options.spec)
-    handler = dws.Unserializer()
+    handler = dws.Unserializer([ '.*' ])
     index.parse(handler)
     project = handler.projects[handler.projects.keys()[0]]
 

@@ -79,6 +79,15 @@ In order to do extensive testing, it should be straightforward to build the repo
 dws build fortylines.com:/var/fortylines/db.xml
 </pre>
 
+<h1>Rebuilding the intra-projects dependency database</h1></a>
+<p>
+When an project's local index.xml file has been modified, a collect command needs to be run in order to integrate that change into the intra-projects dependency database used by everyone. Following are the commands to rebuild the intra-projects dependency databases currently available on fortylines server.
+</p>
+<pre>
+dws --exclude machines collect
+scp <i>cacheTop</i>/db.xml fortylines.com:/var/fortylines
+</pre>
+
 <h1>Tracking contributor's hours</h1>
 <p>Time tracking has never been a precise nor relevant way to measure contributions but it is the most accepted way of billing for services. Fortylines as a service and sweat equity company needs to track each contributor's hours in order to generate invoices and pay its employees. In order to facilitate tracking, a line formatted <b>hours</b> text file is present in each contributor's project. This file can be edited manually or through the following commands.
 <pre>

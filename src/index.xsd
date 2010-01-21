@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:annotation>
+    <xs:documentation>
+      Schema for intra-projects dependencies
+    </xs:documentation>
+  </xs:annotation>
+
+  <xs:element name="maintainer">
+  <xs:complexType>
+    <xs:simpleContent>      
+      <xs:extension base="xs:string">
+        <xs:attribute name="name" type="xs:string"/>
+        <xs:attribute name="email" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="depType">
+    <xs:simpleContent>      
+      <xs:extension base="xs:string">
+        <xs:attribute name="excludes" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:element name="fetch">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="sha1" type="xs:string"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="pathname">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="description" type="xs:string"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="dep">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="bin" type="depType"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element name="include" type="depType"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element name="etc" type="depType"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element name="lib" type="depType"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element name="share" type="depType"
+		    minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+  
+  <xs:element name="alternate">  
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="tag" type="xs:string"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="fetch"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="dep"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  
+  <xs:element name="alternates">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="alternate" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  
+  <xs:complexType name="packageType">
+    <xs:sequence>
+	<xs:element name="tag" type="xs:string"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="fetch"
+		    minOccurs="0" maxOccurs="unbounded"/>	
+	<xs:element ref="pathname" 
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="dep"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="alternates" minOccurs="0" maxOccurs="unbounded"/>	
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="repositoryType">
+    <xs:sequence>
+	<xs:element name="sync" type="xs:string"
+		    minOccurs="0"/>
+	<xs:element ref="fetch"
+		    minOccurs="0" maxOccurs="unbounded"/>	
+	<xs:element ref="pathname" 
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="dep"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="alternates" minOccurs="0" maxOccurs="unbounded"/>	
+    </xs:sequence>
+  </xs:complexType>
+  
+  <xs:element name="project">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="version" type="xs:string" minOccurs="0"/>
+	<xs:element name="description" type="xs:string"/>
+	<xs:element ref="maintainer"/>
+	<xs:element name="url" type="xs:string" minOccurs="0"/>
+	<xs:element name="package" type="packageType"
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element name="patch" type="repositoryType"
+		    minOccurs="0" maxOccurs="unbounded"/>	
+	<xs:element name="repository" type="repositoryType" 
+		    minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required" />
+    </xs:complexType>
+  </xs:element>
+  
+  <!-- The top level node for the inter-project dependencies 
+       is a list of projects -->
+  <xs:element name="projects">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element ref="project" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  
+</xs:schema>
