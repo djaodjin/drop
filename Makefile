@@ -50,7 +50,8 @@ dmake:
 
 install:: dws.py dstamp.py $(srcTop)/drop/src/prefix.mk \
 		$(srcTop)/drop/src/suffix.mk \
-		$(srcTop)/drop/src/configure.sh
+		$(srcTop)/drop/src/configure.sh \
+		$(srcTop)/drop/src/index.xsd
 	$(installFiles) $(filter %.py,$^) $(binDir)
 	$(installDirs)  $(etcDir)/dws
-	$(installFiles) $(filter %.sh %.mk,$^) $(etcDir)/dws
+	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(etcDir)/dws

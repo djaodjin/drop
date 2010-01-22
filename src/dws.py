@@ -2548,8 +2548,8 @@ def pubCollect(args):
     # Create the index and checks it is valid according to the schema. 
     createIndexPathname(context.dbPathname(),indices)
     shellCommand('xmllint --noout --schema ' \
-                     + context.srcDir(os.path.join('drop','src','index.xsd')) \
-                     + ' ' + context.dbPathname())
+                   + os.path.join(context.value('etcDir'),'dws','index.xsd') \
+                   + ' ' + context.dbPathname())
     # We should only copy the index file after we created it.
     shellCommand(copyIndex)
     shellCommand(copyBinPackages)
@@ -2568,7 +2568,7 @@ def pubConfigure(args):
     #if look:
     #    projectName = look.group(1)
     # \todo should report missing *direct* dependencies without install them. 
-    dgen = MakeGenerator([ projectName ])
+    dgen = DependencyGenerator([ projectName ],[],[])
     dbindex = IndexProjects(context,
                             context.srcDir(os.path.join(context.cwdProject(),
                                                         'index.xml')))

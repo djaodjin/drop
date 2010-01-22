@@ -60,6 +60,8 @@ distExtUbuntu	:=	_amd64.deb
 endif
 endif
 
+nonZeroExit	=	echo "$@:$$?: error: non-zero exit code"
+
 vpath %.a 	$(libDir)
 vpath %.so	$(libDir)
 vpath %.cc 	$(srcDir)/src

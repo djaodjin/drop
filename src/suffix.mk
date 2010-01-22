@@ -167,11 +167,17 @@ results.log:
 	echo $(distHost) >> $@
 	echo "</config>" >> $@
 	for testunit in $(testunits) ; do \
-		echo "@@ test: $$testunit @@" >> $@ ; \
 		if [ ! -f $${testunit}.cout ] ; then \
-			echo "error: No output file for $${testunit}" >> $@ ; \
+		  echo "@@ test: $$testunit fail @@" >> $@ ; \
+		  echo "$${testunit}: error: Cannot find .cout file" >> $@ ; \
 		else \
-			cat $${testunit}.cout >> $@ ; \
+		grep "error:" $${testunit}.cout > /dev/null 2>&1 ; \
+		if [ $$? -eq 0 ] ; then \
+		  echo "@@ test: $$testunit fail @@" >> $@ ; \
+		else \
+		  echo "@@ test: $$testunit pass @@" >> $@ ; \
+		fi ; \
+		  cat $${testunit}.cout >> $@ ; \
 		fi ; \
 	done
 

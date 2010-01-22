@@ -166,21 +166,23 @@ if __name__ == '__main__':
         #    associated with a test ends up under the same tag.'''
         tests = {}
         testFile = None
+        nbFailures = 0
         (outno, outname) = tempfile.mkstemp()
         os.close(outno)
         out = open(outname,'w')
         out.write('<tests>\n')
+        firstIteration = True
         for filename in args:
-            for testName in tests:
-                tests[testName].write('<output name="' + filename + '">\n')
-                tests[testName].write('<![CDATA[\n')
             f = open(filename,'r')
             line = f.readline()
             while line != '':
-                look = re.match('@@ test: (\S+) @@',line)
+                look = re.match('@@ test: (\S+) (\S+) @@',line)
                 if look:
                     # found information associated with a test
                     testName = look.group(1)
+                    testStatus = look.group(2)
+                    if firstIteration and testStatus != 'pass':
+                        nbFailures = nbFailures + 1
                     if not testName in tests:
                         tests[testName] = tempfile.TemporaryFile()
                         tests[testName].write('<output name="'+filename+'">\n')
@@ -195,6 +197,7 @@ if __name__ == '__main__':
             for testName in tests:
                 tests[testName].write(']]>\n')
                 tests[testName].write('</output>\n')
+            firstIteration = False
 
         # 2. Write the reference files against which comparaison is done.
         for reffile in reffiles:
@@ -204,14 +207,14 @@ if __name__ == '__main__':
 
         # 3. All temporary files have been created, it is time to merge 
         #    them back together.
-        nbFailures = 0
+        nbRegressions = 0
         for testName in sorted(tests): 
             out.write('<test name="' + testName + '">\n')
             # Write the set of regressions for the test
             for reffile in reffiles:
                 out.write('<compare name="' + reffile + '">')
                 if regressions[testName][reffile] == 'fail':
-                    nbFailures = nbFailures + 1
+                    nbRegressions = nbRegressions + 1
                 out.write(regressions[testName][reffile])
                 out.write('</compare>\n')
             testFile = tests[testName]
@@ -226,7 +229,8 @@ if __name__ == '__main__':
         out.close()
         shutil.move(outname,options.output)
         print str(nbFailures) + ' failures'
-        sys.exit(nbFailures)
+        print str(nbRegressions) + ' regressions'
+        sys.exit(max(nbFailures,nbRegressions))
         
     # dregress -o regression.log results.log /Volumes/DIESEL/workspace/fortylines/dev/reps/seed/test/data/results-golden.log 
 
