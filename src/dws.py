@@ -31,26 +31,31 @@
 # with third-party prerequisites and source code under revision
 # control such that it is possible to execute a development cycle
 # (edit/build/run) on a local machine.
-#
-# example: 
-#   dws --exclude 'contrib' build ~/workspace/fortylines \
-#     ~/build/fortylines/install
 
 __version__ = '0.1'
 
-import datetime, hashlib
-import re, os, optparse, shutil
+import datetime, hashlib, re, os, optparse, shutil
 import socket, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
 
+# Object that implements logging into an XML formatted file 
+# what gets printed on sys.stdout.
 log = None
+# When True, the log object is not used and output is only
+# done on sys.stdout.
 nolog = False
+# When True, all commands invoked through shellCommand() are printed
+# but not executed.
 doNotExecute = False
 # *uploadResults* is false by default such that everyone can download and build
 # the source repository locally but only users with an account can upload to
 # to the forum server.
 uploadResults = False
+# When True, the script runs in batch mode and assumes the default answer
+# for every question where it would have prompted the user for an answer.
 useDefaultAnswer = False
+# When processing a project dependency index file, all project names matching 
+# one of the *excludePats* will be considered non-existant.
 excludePats = []
 
 
@@ -61,12 +66,17 @@ class Error(Exception):
     and an internal stack trace will be displayed. Exceptions
     which are not *Error*s are concidered bugs in the workspace 
     management script.'''
-    def __init__(self,msg="error",code=1):
+    def __init__(self, msg='unknow error', code=1, projectName=None):
         self.code = code
         self.msg = msg
+        self.projectName = projectName
 
     def __str__(self):
-        return 'error ' + str(self.code) + ': ' + self.msg + '\n'
+        if self.projectName:
+            return ':'.join([self.projectName,str(self.code),' error']) \
+                + ' ' + self.msg + '\n'
+        return 'error: ' + self.msg + ' (error ' + str(self.code) + ')\n' 
+
 
 class CircleError(Error):
     '''Thrown when a circle has been detected while doing
@@ -76,21 +86,28 @@ class CircleError(Error):
                            + str(source) + " to " + str(target))
 
 
+class MissingError(Error):
+    '''This error is thrown whenever a project has missing prerequisites.'''
+    def __init__(self, projectName, prerequisites):
+        Error.__init__(self,'The following prerequisistes are missing: ' \
+                           + ' '.join(prerequisites),2,projectName)
+
+
 class Context:
     '''The workspace configuration file contains environment variables used
     to update, build and package projects. The environment variables are roots
-    of the dependency graph as most other routines depend at the least 
+    of the general dependency graph as most other routines depend at the least 
     on srcTop and buildTop.'''
 
     configName = 'ws.mk'
 
     def __init__(self):
         self.cacheTop = Pathname('cacheTop',
-                          'Root of the tree where cached packages are fetched',
+                          'Root of the tree where the directory structure of *remoteCacheTop* is cached on the local system',
                           default=os.getcwd())
         self.remoteCacheTop = Pathname('remoteCacheTop',
-             'Root of the remote tree where packages are located',
-                  default='fortylines.com:/var/fortylines')
+             'Root of the remote tree the workspace is built out-of (ex: url:/var/cache).',
+                  default='')
         self.environ = { 'buildTop': Pathname('buildTop',
              'Root of the tree where intermediate files are created.',
                                               self.cacheTop,default='build'), 
@@ -120,7 +137,7 @@ class Context:
              'Index file with projects dependencies information',
                                           self.remoteCacheTop,'db.xml'),
                          'remoteSrcTop': Pathname('remoteSrcTop',
-             'Root the remote tree where repositories are located',
+             'Root of the tree on the remote machine where repositories are located',
                                           self.remoteCacheTop,'reps'),
                         'darwinTargetVolume': SingleChoice('darwinTargetVolume',
               'Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
@@ -151,29 +168,30 @@ class Context:
             raise
 
     def cachePath(self,name):
-        '''Absolute path to a file in the cached packages 
+        '''Absolute path to a file in the local system cache
         directory hierarchy.'''
         return os.path.join(self.value('cacheTop'),name)
 
     def hostCachePath(self,name):
-        '''Absolute path to a file in the host cached packages 
-        directory hierarchy.'''
+        '''Absolute path to a file in the local system cache for host 
+        specific packages.'''
         return os.path.join(self.value('cacheTop'),host(),name)
 
     def remoteCachePath(self,name):
-        '''Absolute path to access a cached file on the remote machine.''' 
+        '''Absolute path to access a file on the remote machine.''' 
         return os.path.join(self.value('remoteCacheTop'),name)
 
     def remoteHostCachePath(self,name):
-        '''Absolute path to access a cached host file on the remote machine.''' 
+        '''Absolute path to access a host specific file 
+        on the remote machine.''' 
         return os.path.join(self.value('remoteCacheTop'),host(),name)
 
     def remoteSrcPath(self,name):
-        '''Absolute path to access a repository file on the remote machine.''' 
+        '''Absolute path to access a repository on the remote machine.''' 
         return os.path.join(self.value('remoteSrcTop'),name)        
 
     def cwdProject(self):
-        '''Returns a project name based on the current directory.'''
+        '''Returns a project name derived out of the current directory.'''
         if not self.buildTopRelativeCwd:
             self.environ['buildTop'].default = os.path.dirname(os.getcwd())
             log.write('no workspace configuration file could be ' \
@@ -189,23 +207,12 @@ class Context:
         return os.getcwd()[len(prefix) + 1:]
         # return self.buildTopRelativeCwd
 
-    def isControlled(self,name):
-        '''Returns True if the source directory associated with project *name*
-           contains information about a revision control system (i.e. CVS/, 
-           .git/, etc.).'''
-        if os.path.exists(os.path.join(context.srcDir(name),'.git')):
-            return True
-        if os.path.exists(os.path.join(context.srcDir(name),'CVS')):
-            return True
-        return False
-
     def dbPathname(self,remote=False):
         '''Absolute pathname to the project index file.'''
         remoteIndex = self.value('remoteIndex')
         if remote:
             return remoteIndex
-        return os.path.join(self.value('etcDir'),'dws',
-                            os.path.basename(remoteIndex))
+        return self.cachePath(os.path.basename(remoteIndex))
 
     def host(self):
         '''Returns the distribution on which the script is running.'''
@@ -226,6 +233,7 @@ class Context:
             self.buildTopRelativeCwd = None
         if self.buildTopRelativeCwd == '.':
             self.buildTopRelativeCwd = os.path.basename(os.getcwd())
+            # \todo is this code still relevent?
             look = re.match('([^-]+)-.*',self.buildTopRelativeCwd)
             if look:
                 # Change of project name in index.xml on "make dist-src".
@@ -233,6 +241,7 @@ class Context:
                 None
 
     def logname(self):
+        '''Name of the XML tagged log file where sys.stdout is captured.''' 
         filename = os.path.join(self.value('logDir'),'dws.log')
         if not os.path.exists(os.path.dirname(filename)):
             os.makedirs(os.path.dirname(filename))
@@ -299,7 +308,6 @@ class IndexProjects:
         self.context = context
         self.parser = xmlDbParser(context)
         self.filename = filename
-
  
     def closure(self, dgen):
         '''Find out all dependencies from a root set of projects as defined 
@@ -308,27 +316,25 @@ class IndexProjects:
             self.parse(dgen)
         return dgen.topological()
         
-
     def parse(self, dgen):
         '''Parse the project index and generates callbacks to *dgen*'''
         self.validate()
         self.parser.parse(self.filename,dgen)
-
 
     def validate(self,force=False):
         '''Create the project index file if it does not exist
         either by fetching it from a remote server or collecting
         projects indices locally.'''
         if not self.filename:
-            self.filename = self.context.dbPathname()
+            self.filename = self.context.dbPathname()     
         if not os.path.exists(self.filename) or force:
             selection = ''
             if not force:
                 # index or copy.
                 selection = selectOne('The project index file could not '
                                       + 'be found at ' + self.filename \
-                                          + '. It can be regenerated through one ' \
-                                          + 'of the two following method:',
+                                      + '. It can be regenerated through one ' \
+                                      + 'of the two following method:',
                                       [ [ 'fetching', 'from remote server' ],
                                         [ 'indexing', 
                                           'local projects in the workspace' ] ])
@@ -345,7 +351,9 @@ class IndexProjects:
 
 
 class LogFile:
-    
+    '''Logging into an XML formatted file of sys.stdout and sys.stderr
+    output while the script runs.'''
+
     def __init__(self,logfilename,nolog):
         self.nolog = nolog
         if not self.nolog:
@@ -359,6 +367,8 @@ class LogFile:
             self.logfile.close()        
 
     def error(self,text):
+        sys.stdout.flush()
+        self.logfile.flush()
         sys.stderr.write(text)
         if not self.nolog:
             self.logfile.write(text)
@@ -387,8 +397,9 @@ class LogFile:
         if not self.nolog:
             self.logfile.write(text)
 
+
 class PdbHandler:
-    '''Callback interface for a project index as generated by a PdbParser.
+    '''Callback interface for a project index as generated by an *xmlDbParser*.
        The generic handler does not do anything. It is the responsability of
        implementing classes to filter callback events they care about.'''
     def __init__(self):
@@ -402,8 +413,8 @@ class PdbHandler:
 
 
 class Unserializer(PdbHandler):
-    '''Aggregate dependencies for a set of projects only when prerequisites
-    can not be found on the system.'''
+    '''Builds *Project* instances for every project that matches *includePats*
+    and not *excludePats*. See *filters*() for implementation.'''
 
     def __init__(self, includePats=[], excludePats=[]):
         PdbHandler.__init__(self)
@@ -424,29 +435,32 @@ class Unserializer(PdbHandler):
         return False
 
     def project(self, p):        
+        '''Callback for the parser.'''
         if (not p.name in self.projects) and self.filters(p.name):
             self.projects[p.name] = p
 
 
 class DependencyGenerator(Unserializer):
-    '''Aggregate dependencies for a set of projects'''
-    '''As other dependency generators, *MakeGenerator* is initialized
-    with a set of projects. All prerequisite projects necessary to **build** 
-    that set which have an associated directory in *srcTop* will be added
-    to the *found* list.
-    For other prerequisiste projects, the script will search for necessary 
-    executables, headers, libraries, etc. on the local machine. If they
-    all can be found, the prerequisiste project will be added to 
-    the *installed* list, else the prerequisiste project will be added to
-    the *missing* list.
-    It is the responsability of the owner of the MakeGenerator instance
-    to check there are no *missing* prerequisites and act appropriately.
+    '''*DependencyGenerator* implements a breath-first search of the project
+    dependencies index with a specific twist.
+    At each iteration, if all prerequisites for a project can be found 
+    on the local system, the dependency edge is cut from the next iteration.
+    Missing prerequisite executables, headers and libraries require 
+    the installation of prerequisite projects as stated by the *missings*
+    list of edges. The user will be prompt for *candidates*() and through
+    the options available will choose to install prerequisites through
+    compiling them out of a source controlled repository or a binary 
+    distribution package.
+    *DependencyGenerator.endParse*() is at the heart of the workspace
+    bootstrapping and other "recurse" features.
     '''
 
     def __init__(self, repositories, patches, packages, excludePats = []):
-        '''*projects* is a list of root projects used to generate
-        the dependency graph. *excludePats* is a list of projects which
-        should be removed from the final topological order.'''
+        '''*repositories* and *patches* will be installed from compiling
+        a source controlled repository while *packages* will be installed
+        from a binary distribution package. 
+        *excludePats* is a list of projects which should be removed from 
+        the final topological order.'''
         Unserializer.__init__(self, packages + patches + repositories,
                               excludePats)
         self.packages = set(packages)
@@ -477,11 +491,10 @@ class DependencyGenerator(Unserializer):
 
     def candidates(self):
         '''Returns a triple (repositories, patches, packages) where each element
-        is a list of rows, each row describes a missing project. When a missing
-        project can be installed from either a repository, a patch 
-        or a package, it will be described in each element of the triplet 
-        as appropriate. Projects which appear in *filtered* will be filtered
-        out of the missing projects and thus not part of returned results.'''
+        is a list of rows, each row describes a missing prerequisite project. 
+        When a missing project can be installed from either a repository, 
+        a patch or a package, it will be described in each element 
+        of the triplet as appropriate.'''
         repositories = []
         patches = []
         packages = []
@@ -509,30 +522,25 @@ class DependencyGenerator(Unserializer):
         return repositories, patches, packages
  
     def endParse(self):
+        # !!! Debugging Prints !!!
         # print "* endParse:"
         # print "     includes: " + str(self.includePats) 
         # print "     excludes: " + str(self.excludePats) 
         # print "     levels:   " + str(self.levels)
         # print "     missings: " + str(self.missings)
+
         # This is an opportunity to prompt for missing dependencies.
-        # After installing both, source controlled and packaged
-        # projects, the checked-out projects will be added to 
-        # the dependency graph while the packaged projects will
-        # be added to the *cut* list.
         reps, patches, packages = self.candidates()
         reps, patches, packages = selectCheckout(reps,patches,packages)
-        # The user's selection will decide when available, if the project
+        # The user's selection will decide, when available, if the project
         # should be installed from a repository, a patch, a binary package
         # or just purely skipped. 
         self.repositories |= set(reps)
         self.patches |= set(patches)
         self.packages |= set(packages)
 
-        # First establish a list of all prerequisites to be found for this step
-        # of the breath-first search.
-        # print "    reps:     " + str(self.repositories)
-        # print "    patches:  " + str(self.patches)
-        # print "    packages: " + str(self.packages)
+        # We now know what to do with the missing dependency edges, 
+        # so let's add the ones we have to track. 
         for newEdge in self.missings:
             if ((newEdge[1] in self.repositories 
                 or newEdge[1] in self.patches
@@ -540,7 +548,8 @@ class DependencyGenerator(Unserializer):
                 and  newEdge[1] in self.projects):
                 # If the prerequisite is not a project, it will be installed 
                 # by the distribution's package manager on the local machine
-                # and we do not track those dependencies explicitely.
+                # and we do not track its prerequisites explicitely. We leave
+                # this work to the distribution package manager.
                 self.levels[0] += [ newEdge ]
             else:
                 self.excludePats |= set([ newEdge[1] ])
@@ -573,7 +582,7 @@ class DependencyGenerator(Unserializer):
                 for f in self.projects[target].packages[tags].fetches:
                     fetches[f] = self.projects[target].packages[tags].fetches[f]
                 vars += self.projects[target].packages[tags].vars
-        # Second find all executables, libraries, etc. that are already 
+        # Find all executables, libraries, etc. that are already 
         # installed on the local system.
         aggDeps = self.buildDeps
         for local in locals:
@@ -629,19 +638,19 @@ class DependencyGenerator(Unserializer):
                         self.missings += [ [ source, name ] ]
                         self.includePats |= set([ name ])
 
-        # Third check for the presence of a local checkout of required source
+        # Check for the presence of a local checkout of required source
         # control repositories. If it is present, we'll do a recursive make.
         for name in syncs:
             if not os.path.isdir(context.srcDir(name)):
                 self.extraSyncs += [ name ]
-        # Fourth check the extra packaged files required such as source
-        # distribution (.tar.bz2) are in the local cache.
+        # Check that the extra files required (such as .tar.bz2 source
+        # distribution) are in the local cache.
         found, version = findCache(fetches)
         for source in fetches:
             if not context.cachePath(source) in found:
                 self.extraFetches[source] = fetches[source]
-        # Fith configure environment variables that need to be present
-        # in ws.mk
+        # Configure environment variables required by a project 
+        # and that need to be present in ws.mk
         configVar(vars)
         # Update project prerequisites that can be satisfied
         for p in self.projects:
@@ -649,13 +658,7 @@ class DependencyGenerator(Unserializer):
         self.levels.insert(0,newLevel)
 
         # Going one step further in the breadth-first recursion introduces 
-        # a new level. All missing edges whose target is in *filtered* will 
-        # be added to the dependency graph.
-        # By definition, all missing projects which are not in *filtered* 
-        # will be added as cut points. From this time, *cuts* contains 
-        # *complete*d projects as well as projects that still need to be 
-        # resolved before links are created.'''
-
+        # a new level.
         roots = []
         for newEdge in self.levels[0]:
             # We first walk the tree of previously recorded edges to find out 
@@ -681,13 +684,9 @@ class DependencyGenerator(Unserializer):
             if not found:
                 newLevel += [ edge ] 
         self.levels[0] = newLevel   
-        # print "  => levels:   " + str(self.levels)
-        # print "  => missings: " + str(self.missings)
-        # print "  => includes: " + str(self.includePats) 
-        # print "  => excludes: " + str(self.excludePats) 
 
     def more(self):
-        '''True if there are more iteration of the breath-first 
+        '''True if there are more iterations of the breath-first 
         search to conduct.'''
         return len(self.levels[0]) > 0 or len(self.missings) > 0
 
@@ -715,13 +714,8 @@ class DependencyGenerator(Unserializer):
 
 
 class DerivedSetsGenerator(PdbHandler):
-    '''Generate different sets of projects which are of interests 
-    to the workspace management algorithms.
-    - roots          set of projects which are not dependency 
-                     for any other project.
-    - repositories   set of projects which are managed under a source 
-                     revision control system.
-    '''
+    '''Generate the set of projects which are not dependency 
+    for any other project.'''
    
     def __init__(self):
         self.roots = []
@@ -739,7 +733,8 @@ class DerivedSetsGenerator(PdbHandler):
 
 
 class Variable:
-    
+    '''Variable that ends up being defined in ws.mk and thus in Makefile.'''
+
     def __init__(self,name,descr=None):
         self.name = name
         self.descr = descr
@@ -757,10 +752,12 @@ class HostPlatform(Variable):
         '''Set value to he distribution on which the script is running.'''
         if self.value != None:
             return False
-        # \todo This code was working on python 2.5 but not in 2.6
+        # The following code was changed when upgrading from python 2.5 
+        # to 2.6. Since most distribution come with 2.6 installed, it does
+        # not seem important at this point to figure out the root cause
+        # and keep a backward compatible implementation.
         #   hostname = socket.gethostbyaddr(socket.gethostname())
         #   hostname = hostname[0]
-        # replaced by the following line
         hostname = socket.gethostname()
         sysname, nodename, release, version, machine = os.uname()
         if sysname == 'Darwin':
@@ -795,8 +792,14 @@ class Pathname(Variable):
         *var* value and returns True if the variable value as been set.'''
         if self.value != None:
             return False
-        sys.stdout.write('\n' + self.name + ':\n')
-        sys.stdout.write(self.descr + '\n')
+        if log:
+            # Configuration of logDir (where the log is stored) 
+            # will execute to here before the file is actually open.
+            log.write('\n' + self.name + ':\n')
+            log.write(self.descr + '\n')
+        else:
+            sys.stdout.write('\n' + self.name + ':\n')
+            sys.stdout.write(self.descr + '\n')            
         # compute the default leaf directory from the variable name 
         leafDir = self.name
         for last in range(0,len(self.name)):
@@ -853,8 +856,17 @@ class Pathname(Variable):
                 self.value = os.path.join(self.base.value,leafDir)
         if not ':' in dirname:
             if not os.path.exists(self.value):
-                sys.stdout.write(self.value + ' does not exist.\n')
+                if log:
+                    # Configuration of logDir (where the log is stored) 
+                    # will execute to here before the file is actually open.
+                    log.write(self.value + ' does not exist.\n')
+                else:
+                    sys.stdout.write(self.value + ' does not exist.\n')
                 os.makedirs(self.value)
+        if log:
+            log.write(self.name + ' set to ' + self.value +'\n')
+        else:
+            sys.stdout.write(self.name + ' set to ' + self.value +'\n')
         return True
 
 
@@ -874,6 +886,8 @@ class SingleChoice(Variable):
 
 
 class Dependency:
+    '''A dependency of a project on another project 
+    as defined by the <dep> tag in the project index.'''
 
     def __init__(self, name, files, excludes=[]):
         self.name = name
@@ -909,13 +923,10 @@ class Dependency:
 
 class Alternates(Dependency):
     '''Provides a set of dependencies where one of them is enough
-    to fullfil the prerequisite condition. This is used first to
-    allow differences in packaging between distributions.'''
+    to fullfil the prerequisite condition. This is used to allow 
+    differences in packaging between distributions.'''
 
     def __init__(self):
-        '''*depset* is organized as a list of lists of Dependency
-        where one of those list will form the actual prerequisite
-        of the project as returned by *prerequisites*.'''
         self.byTags = {}
 
     def __str__(self):
@@ -943,7 +954,8 @@ class Maintainer:
         self.email = email
 
 class Configure:
-    '''Dependencies to check in order to install a project.'''
+    '''All prerequisites information to check in order to install a project. 
+    This is the base class for *Package*, *Repository* and *Patch*.'''
 
     def __init__(self, fetches, locals, vars):
         self.fetches = fetches
@@ -978,14 +990,15 @@ class Configure:
 
 
 class Package(Configure):
-    '''Dependencies to install a project from a package.'''
+    '''All prerequisites information to install a project from a package.'''
 
     def __init__(self, fetches, locals, vars):
         Configure.__init__(self,fetches,locals,vars)
 
 
 class Repository(Configure):
-    '''Dependencies to install a project from a source control system.''' 
+    '''All prerequisites information to install a project 
+    from a source control system.''' 
 
     def __init__(self, sync, fetches, locals, vars):
         Configure.__init__(self,fetches,locals,vars)
@@ -1001,7 +1014,7 @@ class Repository(Configure):
         
 
 class Patch(Repository):
-    '''Dependencies to install a project from a patch 
+    '''All prerequisites information to install a project from a patch 
        in an upstream distribution.'''
 
     def __init__(self, sync, fetches, locals, vars):
@@ -1009,10 +1022,7 @@ class Patch(Repository):
 
 
 class Project:
-    '''*complete* will be True whenever all necessary executables, headers,
-    libraries, etc. have been found on the local machine. At which point.
-    *deps* contains such resolution. Otherwise, *deps* contains the 
-    required files and *excludes* the excluded versions.'''
+    '''Definition of a project with its prerequisites.'''
 
     def __init__(self, name):
         self.name = name
@@ -1052,10 +1062,9 @@ class Project:
             self.packages[p].populate(buildDeps)
 
     def prerequisites(self, tags):
-        '''returns a set of prerequisites for the project based 
-        on the provided tags. It is thus possible to choose 
-        between alternate prerequisites set based on the local
-        machine operating system, etc.'''
+        '''returns a set of *Dependency* instances for the project based 
+        on the provided tags. It enables choosing between alternate 
+        prerequisites set based on the local machine operating system, etc.'''
         prereqs = []
         if self.repository:
             prereqs += self.repository.prerequisites(tags)
@@ -1067,6 +1076,8 @@ class Project:
         return prereqs
 
     def prerequisiteNames(self, tags):
+        '''same as *prerequisites* except only returns the names 
+        of the prerequisite projects.'''
         names = []
         for prereq in self.prerequisites(tags):
             names += [ prereq.name ]
@@ -1074,10 +1085,9 @@ class Project:
 
 
 class xmlDbParser(xml.sax.ContentHandler):
-    '''Parse a project database stored as an XML file on disc and generate
-       callbacks on a PdbHandler. The handler will update its state
-       based on the callback sequence.
-       '''
+    '''Parse a project index database stored as an XML file on disc 
+    and generate callbacks on a PdbHandler. The handler will update 
+    its state based on the callback sequence.'''
 
     # Global Constants for the database parser
     tagAlternate = 'alternate'
@@ -1311,8 +1321,8 @@ def findBin(names,excludes=[]):
        false positive and need to be excluded, usually as a result 
        of incompatibilities.
 
-       This function returns a list of absolute paths for the executables
-       found and a version number. The version number is retrieved 
+       This function returns a list of populated (pattern,absolutePath) 
+       and a version number. The version number is retrieved 
        through a command line flag. --version and -V are tried out.
 
        This function differs from findInclude() and findLib() in its
@@ -1458,7 +1468,7 @@ def findFirstFiles(base,namePat,subdir=''):
     '''Search the directory tree rooted at *base* for files matching pattern
     *namePat* and returns a list of relative pathnames to those files 
     from *base*.
-    If ./ is part of pattern, base is searched recursively in breadth search 
+    If .*/ is part of pattern, base is searched recursively in breadth search 
     order until at least one result is found.'''
     subdirs = []
     results = []
@@ -1474,7 +1484,7 @@ def findFirstFiles(base,namePat,subdir=''):
             elif (((('.*' + os.sep) in namePat) 
                    or (subNumSubDirs < patNumSubDirs))
                   and os.path.isdir(path)):
-                # When we see ./, it means we are looking for a pattern 
+                # When we see .*/, it means we are looking for a pattern 
                 # that can be matched by files in subdirectories of the base.
                 subdirs += [ relative ]
     if len(results) == 0:
@@ -1516,7 +1526,7 @@ def findEtc(names,excludes=[]):
     return findData('etc',names,excludes)
 
 def findInclude(names,excludes=[]):
-    '''Search for a list of libraries that can be found from $PATH
+    '''Search for a list of headers that can be found from $PATH
        where bin was replaced by include.
 
      *names* is a list of (pattern,absolutePath) pairs where the absolutePat
@@ -1525,7 +1535,7 @@ def findInclude(names,excludes=[]):
     of versions that are concidered false positive and need to be 
     excluded, usually as a result of incompatibilities.
     
-    This function returns a list of absolute pathnames to found headers
+    This function returns a populated list of (pattern,absolutePath)  pairs
     and a version number if available.
 
     This function differs from findBin() and findLib() in its search 
@@ -1626,8 +1636,8 @@ def findLib(names,excludes=[]):
     of versions that are concidered false positive and need to be 
     excluded, usually as a result of incompatibilities.
     
-    This function returns a list of absolute pathnames to libraries
-    found and a version number if available.
+    This function returns a populated list of (pattern,absolutePath)  pairs
+    and a version number if available.
     
     This function differs from findBin() and findInclude() in its
     search algorithm. findLib() might generate a breadth search based 
@@ -1698,8 +1708,11 @@ def findPrerequisites(deps, excludes=[]):
     '''Find a set of executables, headers, libraries, etc. on a local machine.
     
     *deps* is a dictionary where each key associates an install directory 
-    (bin, include, lib, etc.) to file names (executable, header, library, 
-    etc.). *excludes* contains a list of excluded version ranges.
+    (bin, include, lib, etc.) to a pair (pattern,absolutePath) as required
+    by *findBin*(), *findLib*(), *findInclude*(), etc.
+
+    *excludes* contains a list of excluded version ranges because they are 
+    concidered false positive, usually as a result of incompatibilities.
 
     This function will try to find the latest version of each file which 
     was not excluded.
@@ -1834,9 +1847,6 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                 shellCommand('port install ' + ' '.join(darwinPkgs),admin=True)
             elif context.host() == 'Fedora':
                 fedoraNames = {
-                    # \todo translation of docbook-to-man package name is not
-                    #       enough since Fedora also renamed the executable
-                    #       from docbook-to-man to db2x_docbook2man...
                     'libbz2-dev': 'bzip2-devel',
                     'python-all-dev': 'python-devel',
                     'zlib1g-dev': 'zlib-devel' }
@@ -1865,10 +1875,7 @@ def installDarwinPkg(image,target,pkg=None):
     if target != 'CurrentUserHomeDirectory':
         message = 'ATTENTION: You need administrator privileges on ' \
                 + 'the local machine to execute the following cmmand\n'
-        if log:
-            log.write(message)
-        else:
-            sys.stdout.write(message)
+        log.write(message)
         admin = True
     else:
         admin = False
@@ -1906,7 +1913,7 @@ def libPrefix():
 
 
 def libStaticSuffix():
-    '''Returns the static for static library names.'''
+    '''Returns the suffix for static library names.'''
     libStaticSuffixes = {
         }
     if context.host() in libStaticSuffixes:
@@ -1915,7 +1922,7 @@ def libStaticSuffix():
 
 
 def libDynSuffix():
-    '''Returns the static for dynamic library names.'''
+    '''Returns the suffix for dynamic library names.'''
     libDynSuffixes = {
         'Cygwin': '.dll',
         'Darwin': '.dylib'
@@ -2043,6 +2050,11 @@ def make(names, targets):
     log.write('### make projects "' + ', '.join(names) \
                   + '" with targets "' + ', '.join(targets) + '"\n')
     distHost = context.value('distHost')
+    # prefix.mk and suffix.mk expects these variables to be defined 
+    # in ws.mk. If they are not you might get some strange errors where
+    # a g++ command-line appears with -I <nothing> or -L <nothing> for example.
+    for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
+        name = context.value(dir + 'Dir')
     if 'recurse' in targets:
         targets.remove('recurse')
         # Recurse through projects that need to be rebuilt first 
@@ -2053,37 +2065,20 @@ def make(names, targets):
         if len(recursiveTargets) == 0:
             recursiveTargets = [ 'install' ]
         names, projects = validateControls(names)
-        # We will generate a "make install" for all projects which are 
-        # a prerequisite. Those Makefiles expects bin, include, lib, etc.
-        # to be defined.
-        for dir in [ 'bin', 'include', 'lib', 'etc', 'share', 'log' ]:
-            name = context.value(dir + 'Dir')
         last = names.pop()
         for name in names:
-            # Dependencies which are concidered to be packages have files 
-            # located anywhere on the local system and only links to those
-            # files end-up in build{Bin,Lib,etc.}. 
-            # Those links cannot be created in validateControls though since
-            # we also have "package patches projects", i.e. projects which
-            # are only there as temporary workarounds for packages which 
-            # will be coming out of the local system package manager at some
-            # point in the future.
-            log.header(name)
-            linkDependencies({ name: projects[name]})
-            makeProject(name,recursiveTargets)
+            makeProject(name,recursiveTargets,{ name: projects[name]})
         # Make current project
-        linkDependencies({ last: projects[last]})
         if len(targets) > 0:
-            log.header(last)
-            makeProject(last,targets)
+            makeProject(last,targets,{ last: projects[last]})
     else:
         for name in names:
-            log.header(name)
             makeProject(name,targets)
 
 
-def makeProject(name,targets):
-    '''Issue make command and log output.'''
+def makeProject(name,targets,dependencies={}):
+    '''Create links for prerequisites when necessary, then issue a make 
+    command and log output.'''
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
     if objDir != os.getcwd():
@@ -2093,8 +2088,20 @@ def makeProject(name,targets):
     errcode = 0
     cmdline = 'export PATH=' + context.value('binDir') \
         + ':${PATH} ; make -f ' + makefile
-    try:
-        status = 'default'
+    log.header(name)
+    try:        
+        status = 'prereqs'
+        if len(dependencies) > 0:
+            # Dependencies which are concidered to be packages have files 
+            # located anywhere on the local system and only links to those
+            # files end-up in build{Bin,Lib,etc.}. 
+            # Those links cannot be created in validateControls though since
+            # we also have "package patches projects", i.e. projects which
+            # are only there as temporary workarounds for packages which 
+            # will be coming out of the local system package manager at some
+            # point in the future.
+            linkDependencies(dependencies)
+        status = 'make'
         if len(targets) > 0:
             for target in targets:
                 status = target
@@ -2369,23 +2376,35 @@ def upstreamRecurse(srcdir,pchdir):
                 shutil.copy(srcname + '.patched',srcname)
 
 
-def integrate(srcdir,pchdir):
+def integrate(srcdir, pchdir, verbose=True):
     for name in os.listdir(pchdir):
         srcname = os.path.join(srcdir,name)
         pchname = os.path.join(pchdir,name)
         if os.path.isdir(pchname):
             if not os.path.basename(name) in [ 'CVS', '.git']:
-                integrate(srcname,pchname)
+                integrate(srcname,pchname,verbose)
         else:
             if not name.endswith('~'):
                 if not os.path.islink(srcname):
                     if os.path.isfile(srcname):
                         shutil.move(srcname,srcname + '.patched')
-                    os.symlink(os.path.relpath(pchname),srcname)
+                    if verbose:
+                        # Use sys.stdout and not log as the integrate command
+                        # will mostly be emitted from a Makefile and thus 
+                        # trigger a "recursive" call to dws. We thus do not 
+                        # want nor need to open a new log file.
+                        sys.stdout.write(srcname + '... patched\n')
+                    # Change directory such that relative paths are computed
+                    # correctly.
+                    prev = os.getcwd()
+                    os.chdir(os.path.dirname(srcname))
+                    os.symlink(os.path.relpath(pchname),
+                               os.path.basename(srcname))
+                    os.chdir(prev)
 
 
 def update(reps, extraFetches={}, dbindex = None, force=False):
-    '''Update a list of *projects* within the workspace. The update will either 
+    '''Update a list of *reps* within the workspace. The update will either 
     sync with a source rep repository if the project is present in *srcTop*
     or will install a new binary package through the local package manager.
     *extraFetches* is a list of extra files to fetch from the remote machine,
@@ -2435,38 +2454,54 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
                 raise Error("unknown source control system '"  \
                                 + rep.type + "' for " + rep.sync)
         else:
-            sys.stdout.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
+            log.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
                              
             
 def upstream(srcdir,pchdir):
+    # In the common case, no variables will be added to ws.mk when 
+    # the upstream command is run. Hence sys.stdout will only display
+    # the patched information. This is important to be able to execute:
+    #   dws upstream > patch
+    if not os.path.exists(srcdir):
+        raise Error("cannot read " + srcdir)
+    if not os.path.exists(pchdir):
+        raise Error("cannot read " + pchdir)
     upstreamRecurse(srcdir,pchdir)
-    #subprocess.call('diff -ru ' + srcdir + ' ' + pchdir,shell=True)
-    p = subprocess.Popen('diff -ru ' + srcdir + ' ' + pchdir, shell=True,
-              stdout=subprocess.PIPE, close_fds=True)
+    # \todo handle cases when there is a new file in the patch.
+    cmdline = 'diff -ru ' + srcdir + ' ' + os.path.relpath(pchdir)
+    p = subprocess.Popen(cmdline, shell=True,
+                         stdout=subprocess.PIPE, close_fds=True)
     line = p.stdout.readline()
     while line != '':
         look = re.match('Only in ' + srcdir + ':',line)
         if look == None:
-            if log:
-                log.write(line)
-            else:
-                sys.stdout.write(line)
+            # log might not defined at this point. 
+            sys.stdout.write(line)
         line = p.stdout.readline()
     p.poll()
-    integrate(srcdir,pchdir)
+    integrate(srcdir,pchdir,False)
 
 
 def pubBuild(args):
-    '''build              [remoteIndexFile [localTop]]
+    '''  build              [remoteIndexFile [localTop]]
                         This bootstrap command will download an index 
-                        database file from *remoteTop* and starts rebuilding 
-                        every project listed in it.
+                        database file from *remoteTop* and starts issuing
+                        make for every project listed in it with targets 
+                        'install', 'check' and 'dist'. 
+                        The two philosophies for testing are execute 'install'
+                        then 'check' and 'check' then 'install'. In the first
+                        case all projects have a chance to compile even if 
+                        a dependency does not pass its unit tests. This will 
+                        find the most number of positive compilation errors
+                        and suits the development cycle.
+                        The second case guarentees no broken project will 
+                        install and is surely more suited for release testing.
                         This command is meant to be used as part of cron
                         jobs on build servers and thus designed to run 
-                        to completion with no human interaction. In order
-                        to be really useful in an automatic build system,
-                        authentication to the remote server should also
-                        be setup to run with no human interaction.
+                        to completion with no human interaction. As such, 
+                        in order to be really useful in an automatic build 
+                        system, authentication to the remote server should 
+                        also be setup to run with no human interaction.
     '''
     if len(args) > 0:
         remoteIndex = args[0]
@@ -2482,8 +2517,7 @@ def pubBuild(args):
     log = LogFile(context.logname(),nolog)
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    make(rgen.roots,[ 'recurse', 'install', 'check' ])
-    pubCollect([])
+    make(rgen.roots,[ 'recurse', 'install', 'check', 'dist' ])
     log.close()
     log = None
     # Once we have built the repository, let's report the results
@@ -2491,6 +2525,8 @@ def pubBuild(args):
     # it gets a unique name before uploading it.
     logstamp = os.path.join(context.host(),os.path.basename(context.logname()))
     logstamp = stamp(mark(logstamp,socket.gethostname()))
+    if not os.path.exists(os.path.dirname(context.cachePath(logstamp))):
+        os.makedirs(os.path.dirname(context.cachePath(logstamp)))
     shellCommand('install -m 644 ' + context.logname() \
                      + ' ' + context.cachePath(logstamp))
     if uploadResults:
@@ -2498,7 +2534,7 @@ def pubBuild(args):
 
 
 def pubCollect(args):
-    '''collect                Consolidate local dependencies information 
+    '''  collect              Consolidate local dependencies information 
                        into a global dependency database. Copy all 
                        distribution packages built into a platform 
                        distribution directory.
@@ -2519,20 +2555,19 @@ def pubCollect(args):
                    'Fedora': ('\.spec', '\.rpm'),
                    'Ubuntu': ('\.dsc', '\.deb')
                  }
-    preExcludeIndices = []
     # collect index and packages
-    copyIndex = ' '.join([ 'rsync', context.dbPathname(), 
-                           context.cachePath('') ])
-    copySrcPackages = 'rsync ' \
-                 + ' '.join(findFiles(context.value('buildTop'),'.tar.bz2')) \
-                 + ' ' + srcPackageDir
-    copyBinPackages = 'rsync '
+    copySrcPackages = None
+    srcPackages = findFiles(context.value('buildTop'),'.tar.bz2')
+    if len(srcPackages) > 0:
+        copySrcPackages = ' '.join('rsync',' '.join(srcPackages),srcPackageDir)
+    preExcludeIndices = []
+    copyBinPackages = None
     if context.host() in extensions:
         ext = extensions[context.host()]
         preExcludeIndices = findFiles(context.value('buildTop'),ext[0])
-        copyBinPackages = copyBinPackages \
-                     + ' '.join(findFiles(context.value('buildTop'),ext[1]))
-    copyBinPackages = copyBinPackages + ' ' + packageDir
+        binPackages = findFiles(context.value('buildTop'),ext[1])
+        if len(binPackages) > 0:
+            copyBinPackages = ' '.join('rsync',' '.join(binPackages),packageDir)
     preExcludeIndices += findFiles(context.value('srcTop'),'index.xml')
     # We exclude any project index files that has been determined 
     # to be irrelevent to the collection being built.
@@ -2551,40 +2586,41 @@ def pubCollect(args):
                    + os.path.join(context.value('etcDir'),'dws','index.xsd') \
                    + ' ' + context.dbPathname())
     # We should only copy the index file after we created it.
-    shellCommand(copyIndex)
-    shellCommand(copyBinPackages)
-    shellCommand(copySrcPackages)
+    if copyBinPackages:
+        shellCommand(copyBinPackages)
+    if copySrcPackages:
+        shellCommand(copySrcPackages)
 
 
 def pubConfigure(args):
-    '''configure              Configure the local machine with direct 
+    '''  configure            Configure the local machine with direct 
                        dependencies of a project such that the project 
                        can be built later on.
     '''
     global log 
     log = LogFile(context.logname(),nolog)
     projectName = context.cwdProject()
-    #look = re.match('([^-]+)-.*',projectName)
-    #if look:
-    #    projectName = look.group(1)
-    # \todo should report missing *direct* dependencies without install them. 
     dgen = DependencyGenerator([ projectName ],[],[])
     dbindex = IndexProjects(context,
                             context.srcDir(os.path.join(context.cwdProject(),
                                                         'index.xml')))
     dbindex.parse(dgen)
-    if len(dgen.missings) > 0:
+    if len(dgen.missings) > 0 or len(dgen.extraFetches) > 0:
         # This is an opportunity to prompt for missing dependencies.
         # After installing both, source controlled and packaged
         # projects, the checked-out projects will be added to 
         # the dependency graph while the packaged projects will
         # be added to the *cut* list.
-        raise Error('The following prerequisistes are missing: ' \
-                        + ' '.join(dgen.prerequisites))
+        prerequisites = set([])
+        for miss in dgen.missings:
+            prerequisites |= set([ miss[1] ])
+        for miss in dgen.extraFetches:
+            prerequisites |= set([ miss ])            
+        raise MissingError(projectName,prerequisites)
 
 
 def pubContext(args):
-    '''context                Prints the absolute pathname to a file.
+    '''  context              Prints the absolute pathname to a file.
                        If the filename cannot be found from the current 
                        directory up to the workspace root (i.e where ws.mk 
                        is located), it assumes the file is in *etcDir*.
@@ -2599,7 +2635,7 @@ def pubContext(args):
     sys.stdout.write(pathname)
 
 def pubFind(args):
-    '''find               bin|lib filename ...
+    '''  find               bin|lib filename ...
                        Search through a set of directories derived from PATH
                        for *filename*.
     ''' 
@@ -2617,20 +2653,20 @@ def pubFind(args):
     # print '\n\t'.join(installed)
 
 def pubInit(args):
-    '''init                   Prompt for variables which have not been 
+    '''  init                 Prompt for variables which have not been 
                        initialized in ws.mk. Fetch the project index.
     '''
     configVar(context.environ.values())
     index.validate()
 
 def pubInstall(args):
-    '''install                Install a package on the local system.
+    '''  install              Install a package on the local system.
     '''
     install(args)
 
 
 def pubIntegrate(args):
-    '''integrate          [ srcDir ... ]
+    '''  integrate          [ srcDir ... ]
                        Integrate a patch into a source package
     '''
     while len(args) > 0:
@@ -2647,14 +2683,13 @@ class ListPdbHandler(PdbHandler):
 
 
 def pubList(args):
-    '''list                   List available projects
+    '''  list                 List available projects
     '''
-    parser = xmlDbParser(context)
-    parser.parse(context.dbPathname(),ListPdbHandler())
+    index.parse(ListPdbHandler())
 
 
 def pubMake(args):
-    '''make                   Make projects. "make recurse" will build 
+    '''  make                 Make projects. "make recurse" will build 
                        all dependencies required before a project 
                        can be itself built.
     '''
@@ -2665,7 +2700,7 @@ def pubMake(args):
 
 
 def pubStatus(args):
-    '''status                 Show status of projects checked out 
+    '''  status               Show status of projects checked out 
                        in the workspace with regards to commits.
     '''
     global log 
@@ -2710,7 +2745,7 @@ def pubStatus(args):
 
 
 def pubUpdate(args):
-    '''update                 Update projects installed in the workspace
+    '''  update               Update projects installed in the workspace
     '''
     global log 
     log = LogFile(context.logname(),nolog)
@@ -2744,7 +2779,7 @@ def pubUpdate(args):
     
 
 def pubUpstream(args):
-    '''upstream          [ srcDir ... ]
+    '''  upstream          [ srcDir ... ]
                        Generate a patch to submit to upstream 
                        maintainer out of a source package and 
                        a repository.
@@ -2846,7 +2881,7 @@ def selectMultiple(description,selects):
     choices = [ [ 'all' ] ] + selects
     while len(choices) > 1 and not done:
         showMultiple(description,choices)
-        sys.stdout.write(str(len(choices) + 1) + ')  done\n')
+        log.write(str(len(choices) + 1) + ')  done\n')
         if useDefaultAnswer:
             selection = "1"
         else:
@@ -2907,14 +2942,34 @@ def showMultiple(description,choices):
             widths[c] = max(widths[c],len(col) + 2)
             c = c + 1
     # Ask user to review selection
-    sys.stdout.write(description + '\n')
+    if log:
+        # Configuration of logDir (where the log is stored) 
+        # will execute to here before the file is actually open.
+        log.write(description + '\n')
+    else:
+        sys.stdout.write(description + '\n')
     for project in displayed:
         c = 0
         for col in project:
-            sys.stdout.write(col.ljust(widths[c]))
+            if log:
+                # Configuration of logDir (where the log is stored) 
+                # will execute to here before the file is actually open.
+                log.write(col.ljust(widths[c]))
+            else:
+                sys.stdout.write(col.ljust(widths[c]))
             c = c + 1
-        sys.stdout.write('\n')
-    sys.stdout.flush()
+        if log:
+            # Configuration of logDir (where the log is stored) 
+            # will execute to here before the file is actually open.
+            log.write('\n')
+        else:
+            sys.stdout.write('\n')
+    if log:
+        # Configuration of logDir (where the log is stored) 
+        # will execute to here before the file is actually open.
+        log.flush()
+    else:
+        sys.stdout.flush()
 
 
 # Main Entry Point
@@ -2931,15 +2986,17 @@ if __name__ == '__main__':
             if command.startswith('pub'):
                 epilog += __main__.__dict__[command].__doc__ + '\n'
 
-	parser = optparse.OptionParser(usage="Usage: %prog [options] command",
-                                       formatter=CommandsFormatter(),
-                                       epilog=epilog)
+	parser = optparse.OptionParser(\
+            usage='%prog [options] command\n\nVersion\n  %prog version ' \
+                + __version__,
+            formatter=CommandsFormatter(),
+            epilog=epilog)
 	parser.add_option('--default', dest='default', action='store_true',
 	    help='Use default answer for every interactive prompt.')
 	parser.add_option('--exclude', dest='excludePats', action='append',
 	    help='The specified command will not be applied to projects matching the name pattern.')
 	parser.add_option('--nolog', dest='nolog', action='store_true',
-	    help='Do not generate output in the the log file')
+	    help='Do not generate output in the log file')
 	parser.add_option('--upload', dest='uploadResults', action='store_true',
 	    help='Upload log files to the server after building the repository')
 	parser.add_option('--version', dest='version', action='store_true',

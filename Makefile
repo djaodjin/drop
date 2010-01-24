@@ -44,14 +44,24 @@ bins	:=	buildpkg dmake dregress dstamp dws
 
 include $(srcTop)/drop/src/suffix.mk
 
-dmake:
-	echo '#!/bin/sh' > $@
-	echo 'dws make $$*' >> $@
+all:: doc/dws.book
 
 install:: dws.py dstamp.py $(srcTop)/drop/src/prefix.mk \
 		$(srcTop)/drop/src/suffix.mk \
 		$(srcTop)/drop/src/configure.sh \
-		$(srcTop)/drop/src/index.xsd
+		$(srcTop)/drop/src/index.xsd \
+		doc/dws.book
 	$(installFiles) $(filter %.py,$^) $(binDir)
 	$(installDirs)  $(etcDir)/dws
 	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(etcDir)/dws
+
+dmake:
+	echo '#!/bin/sh' > $@
+	echo 'dws make $$*' >> $@
+
+doc/dws.book: dws
+	$(installDirs) $(dir $@)
+	(echo "<h1>dws --help</h1>" \
+	&& echo "<pre>" \
+	&& python ./dws --help \
+	&& echo "</pre>") > $@ || rm -f $@

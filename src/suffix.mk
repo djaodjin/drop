@@ -72,10 +72,6 @@ dists		?=	$(project)-$(version)$(distExt$(distHost)) \
 
 dist:: $(dists)
 
-# \todo From http://www.gelato.unsw.edu.au/archives/git/0511/11390.html,
-# 'git-tar-tree branchname' can be an alternative to the rsync command.
-#  git archive -b branchname tag
-#  make dist
 $(project)-$(version).tar.bz2:
 	$(if $(patchedSources),                                  \
 		$(installDirs) $(basename $(basename $@))/cache \
@@ -91,21 +87,23 @@ $(project)-$(version).tar.bz2:
 	$(installDirs) $(basename $(basename $@))/etc
 	$(installExecs) $(shell dws context configure.sh) \
 		$(basename $(basename $@))/configure
-	$(installExecs) $(dws) $(basename $(basename $@))
-	$(installFiles) $(shell $(dws) context prefix.mk) \
-			$(shell $(dws) context suffix.mk) \
+	$(installExecs) $(shell which dws) $(basename $(basename $@))
+	$(installFiles) $(shell dws context prefix.mk) \
+			$(shell dws context suffix.mk) \
 		$(basename $(basename $@))/etc
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
 		-f $@ $(basename $(basename $@))
 
 
-# This rule is used to create a OSX distribution package
-# \todo It certainly should move to an *host* specific part of the Makefiles
+# 'make install' might just do nothing and we still want to build an empty
+# package for that case so we create ${buildInstallDir} before buildpkg 
+# regardless such that mkbom has something to work with. 
 %$(distExtDarwin): %.tar.bz2
 	tar jxf $<
 	cd $(basename $(basename $<)) \
 		&& ./configure --prefix=${buildUsrLocalDir}
 	cd $(basename $(basename $<)) && ${MAKE} install
+	$(installDirs) ${buildInstallDir}
 	buildpkg --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/index.xml ${buildInstallDir}
 
@@ -118,7 +116,7 @@ $(project)-$(version).tar.bz2:
 	rpmbuild -bb --clean $(basename $@)
 
 #%.spec: $(srcDir)/index.xml
-#	$(dws) spec $(basename $@)
+#	dws spec $(basename $@)
 #	echo '%files' >> $@ 
 #	echo $(bins) >> $@
 #	echo $(includes) >> $@
@@ -149,24 +147,30 @@ $(project)-$(version).tar.bz2:
 # Rules to build unit test logs
 # -----------------------------
 check:
-	$(installDirs) test
-	cd test && $(MAKE) -f $(srcDir)/test/Makefile
+	@if [ -f $(srcDir)/test/Makefile ] ; then \
+		echo "cd test && $(MAKE) -f $(srcDir)/test/Makefile" ; \
+		$(installDirs) test \
+		&& cd test && $(MAKE) -f $(srcDir)/test/Makefile ; \
+	else \
+		echo "$(basename $(srcDir)): warning: 'make check' expects to find a Makefile in $(srcDir)/test." ; \
+	fi
 
 regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^ 
 
 .PHONY: results.log
 
-# \todo Why does the following dependency code triggers 
-#       a recompile when building regression.log?
-# $(wildcard *Test.cout)
+# \todo When results.log depends on $(wildcard *Test.cout), it triggers 
+#       a recompile and rerunning of *Test when making regression.log.
+#       It should not but why it does in unknown yet.
 results.log: 
 	$(MAKE) -k -f $(srcDir)/Makefile results ; \
 		echo "ok to get positive error code" > /dev/null
-	echo "<config name=\"$(version)\">" >> $@
-	echo $(distHost) >> $@
-	echo "</config>" >> $@
-	for testunit in $(testunits) ; do \
+	@echo "<config name=\"$(version)\">" > $@
+	@echo $(distHost) >> $@
+	@echo "</config>" >> $@
+	@for testunit in $(testunits) ; do \
+		echo "append $${testunit}.cout to $@ ..." ; \
 		if [ ! -f $${testunit}.cout ] ; then \
 		  echo "@@ test: $$testunit fail @@" >> $@ ; \
 		  echo "$${testunit}: error: Cannot find .cout file" >> $@ ; \
@@ -188,12 +192,6 @@ results: $(patsubst %,%.cout,$(testunits))
 
 %.log:	%.cout $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^
-
-# \todo book.xsl might have to move into drop but since it is used
-#       for interaction with the website, it might also have to move
-#	to the themeDir, though it might not be directly theme related...
-%.book: %.log $(srcTop)/seed/test/src/book.xsl
-	xsltproc $(word 2,$^) $< > $@
 
 # Rules to validate the intra-projects dependency file
 # ----------------------------------------------------

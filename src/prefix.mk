@@ -25,7 +25,6 @@
 
 .DEFAULT_GOAL 	:=	all
 
-dws		:=	$(binDir)/dws
 ibtool          :=      /Developer/usr/bin/ibtool
 installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -m 644
@@ -60,7 +59,8 @@ distExtUbuntu	:=	_amd64.deb
 endif
 endif
 
-nonZeroExit	=	echo "$@:$$?: error: non-zero exit code"
+nonZeroExit	   =	echo "$@:$$?: error: non-zero exit code"
+unexpectedZeroExit =	echo "$@:$$?: error: expected non-zero exit code"
 
 vpath %.a 	$(libDir)
 vpath %.so	$(libDir)

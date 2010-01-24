@@ -551,6 +551,8 @@ def buildPackageSpecification(project,packageName):
                       + ' name="' + project.name + '">\n')
     package.write('\t\t<' + dws.xmlDbParser.tagPackage \
                       + ' name="' + packageName + '">\n')
+    package.write('\t\t\t<' + dws.xmlDbParser.tagTag + '>' + context.host() \
+                      + '</' + dws.xmlDbParser.tagTag + '>\n')
     package.write('\t\t\t<size>' + str(os.path.getsize(packageName)) \
                       + '</size>\n')        
     f = open(packageName,'rb')

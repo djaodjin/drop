@@ -14,7 +14,7 @@ Most Open source distributions use <a href="packages.book">packages</a> to resol
 When development requires changes in multiple projects, there are also no way to rebuilt those projects in dependence topological order. In most of these cases, custom shell scripts are put together as needed.
 </p>
 <p>
-A workspace concept and a workspace manager tool, <a href="../src/dws.py">dws</a>, has been put together to alleviate the time each contributor deals with dependencies troubles. 
+A workspace concept and a workspace manager tool, <a href="dws.book">dws</a>, has been put together to alleviate the time each contributor deals with dependencies troubles. 
 </p>
 <p>
 A workspace relies on environment variables (<i>srcTop</i>, <i>buildTop</i>, etc.) and a project dependency graph.
@@ -47,9 +47,9 @@ The <a href="http://www.gnu.org/software/make/manual/make.html">GNU Make Referen
 </p>
 
 <!--
-It is the topic of the next chapters.
+\todo It is the topic of the next chapters.
 <h2>Compiling - Libtool</h2>
 <h2>Running regression tests</h2> 
 -->
 
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on December 9th, 2009</p>
+<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on January 23rd, 2010</p>

@@ -29,6 +29,9 @@ A <a href="/seed/src/checkstyle.py">checkstyle</a> script runs through the top-l
 </p>
 <h1>Unit tests</h1>
 <p>The purpose of unit tests is to insure first that functionality is implemented correctly. Later in the life cycle of a project, unit tests are often relabeled regression tests and insure that changes to the source code did not break existing functionality.</p>
+<!-- \todo: Two ways: functional tests => pass/fail condition within the test. i.e. assert framework.
+regression tests => check output compared to previous run. meaning of labels.
+-->
 
 <h1>Conclusion</h1>
 <p>As projects grow in size, it becomes cumbersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process. Unit tests will also start breaking and become deprecated as a project moves forward. So, as a result, relevant unit tests are the ones that can be run by an automated tool as part of the <a href="usecases.book#snapshotBuilds">build process</a>.</p>
