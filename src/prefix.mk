@@ -47,14 +47,14 @@ LDFLAGS		+=	-L$(libDir)
 # Configuration for distribution packages
 
 distExtDarwin	:=	.dmg
-distExtFedora	:=	.rpm
+distExtFedora	:=	$(shell uname -r | sed -e 's/.*\(\.fc.*\)/\1/').rpm
 distExtUbuntu	:=	_i386.deb
 project		:=	$(notdir $(srcDir))
 version		?=	$(shell date +%Y-%m-%d-%H-%M-%S)
 
 ifeq ($(distHost),Ubuntu)
 # cat /etc/lsb-release
-ifeq ($(shell getconf LONG_BIT),32)
+ifneq ($(shell getconf LONG_BIT),32)
 distExtUbuntu	:=	_amd64.deb
 endif
 endif

@@ -2363,19 +2363,6 @@ def versionIncr(v):
     return v + '.1'
 
 
-def upstreamRecurse(srcdir,pchdir):
-    for name in os.listdir(pchdir):
-        srcname = os.path.join(srcdir,name)
-        pchname = os.path.join(pchdir,name)
-        if os.path.isdir(pchname):
-            upstreamRecurse(srcname,pchname)
-        else:
-            if os.path.islink(srcname):
-                os.unlink(srcname)
-            if os.path.isfile(srcname + '.patched'):
-                shutil.copy(srcname + '.patched',srcname)
-
-
 def integrate(srcdir, pchdir, verbose=True):
     for name in os.listdir(pchdir):
         srcname = os.path.join(srcdir,name)
@@ -2386,8 +2373,6 @@ def integrate(srcdir, pchdir, verbose=True):
         else:
             if not name.endswith('~'):
                 if not os.path.islink(srcname):
-                    if os.path.isfile(srcname):
-                        shutil.move(srcname,srcname + '.patched')
                     if verbose:
                         # Use sys.stdout and not log as the integrate command
                         # will mostly be emitted from a Makefile and thus 
@@ -2457,31 +2442,6 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
             log.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
                              
             
-def upstream(srcdir,pchdir):
-    # In the common case, no variables will be added to ws.mk when 
-    # the upstream command is run. Hence sys.stdout will only display
-    # the patched information. This is important to be able to execute:
-    #   dws upstream > patch
-    if not os.path.exists(srcdir):
-        raise Error("cannot read " + srcdir)
-    if not os.path.exists(pchdir):
-        raise Error("cannot read " + pchdir)
-    upstreamRecurse(srcdir,pchdir)
-    # \todo handle cases when there is a new file in the patch.
-    cmdline = 'diff -ru ' + srcdir + ' ' + os.path.relpath(pchdir)
-    p = subprocess.Popen(cmdline, shell=True,
-                         stdout=subprocess.PIPE, close_fds=True)
-    line = p.stdout.readline()
-    while line != '':
-        look = re.match('Only in ' + srcdir + ':',line)
-        if look == None:
-            # log might not defined at this point. 
-            sys.stdout.write(line)
-        line = p.stdout.readline()
-    p.poll()
-    integrate(srcdir,pchdir,False)
-
-
 def pubBuild(args):
     '''  build              [remoteIndexFile [localTop]]
                         This bootstrap command will download an index 
@@ -2666,11 +2626,11 @@ def pubInstall(args):
 
 
 def pubIntegrate(args):
-    '''  integrate          [ srcDir ... ]
+    '''  integrate          [ srcPackage ... ]
                        Integrate a patch into a source package
     '''
     while len(args) > 0:
-        srcdir = args.pop(0)
+        srcdir = unpack(args.pop(0))
         pchdir = context.srcDir(os.path.join(context.cwdProject(),
                                              srcdir + '-patch'))
         integrate(srcdir,pchdir)
@@ -2779,16 +2739,33 @@ def pubUpdate(args):
     
 
 def pubUpstream(args):
-    '''  upstream          [ srcDir ... ]
+    '''  upstream          [ srcPackage ... ]
                        Generate a patch to submit to upstream 
                        maintainer out of a source package and 
-                       a repository.
+                       a -patch subdirectory in a project srcDir.
     '''
     while len(args) > 0:
-        srcdir = args.pop(0)
+        pkgfilename = args.pop(0)
+        srcdir = unpack(pkgfilename)
+        orgdir = srcdir + '.orig'
+        shutil.move(srcdir,orgdir)
+        srcdir = unpack(pkgfilename)
         pchdir = context.srcDir(os.path.join(context.cwdProject(),
                                              srcdir + '-patch'))
-        upstream(srcdir,pchdir)
+        integrate(srcdir,pchdir)
+        # In the common case, no variables will be added to ws.mk when 
+        # the upstream command is run. Hence sys.stdout will only display
+        # the patched information. This is important to be able to execute:
+        #   dws upstream > patch
+        cmdline = 'diff -ruNa ' + orgdir + ' ' + srcdir
+        p = subprocess.Popen(cmdline, shell=True,
+                             stdout=subprocess.PIPE, close_fds=True)
+        line = p.stdout.readline()
+        while line != '':
+            # log might not defined at this point. 
+            sys.stdout.write(line)
+            line = p.stdout.readline()
+        p.poll()
 
 
 def selectCheckout(repCandidates, patchCandidates, packageCandidates=[]):
@@ -2970,6 +2947,15 @@ def showMultiple(description,choices):
         log.flush()
     else:
         sys.stdout.flush()
+
+def unpack(pkgfilename):
+    '''unpack a tar[.gz|.bz2] source distribution package.'''
+    if pkgfilename.endswith('.bz2'):
+        d = 'j'
+    elif pkgfilename.endswith('.gz'):
+        d = 'z'
+    shellCommand('tar ' + d + 'xf ' + pkgfilename)
+    return os.path.basename(os.path.splitext(os.path.splitext(pkgfilename)[0]))
 
 
 # Main Entry Point

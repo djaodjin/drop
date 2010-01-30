@@ -50,117 +50,6 @@ InstallFat\
 # Helpers
 ######################################################################
 
-class FedoraSpecWriter(dws.PdbHandler):
-    '''As the index file parser generates callback, an instance 
-    of this class will rewrite the exact same information in a format 
-    compatible with rpmbuild.'''
-
-    def __init__(self, specfile):
-        self.specfile = specfile
-
-    def project(self, p):
-        self.specfile.write('Name: ' + p.name.replace(os.sep,'_') + '\n')
-        self.specfile.write('Distribution: Fedora\n')
-        self.specfile.write('Release: 0\n')
-        self.specfile.write('Summary: None\n')
-        self.specfile.write('License: Unknown\n')
-        self.specfile.write('\n%description\n' + p.description + '\n')
-        self.specfile.write('Packager: ' + p.maintainer.name \
-                                + ' <' + p.maintainer.email + '>\n')
-        self.specfile.write('''\n%build
-./configure --prefix=/usr/local
-make
-
-%install
-make install
-''')
-
-
-class UbuntuSpecWriter(dws.PdbHandler):
-    '''As the index file parser generates callback, an instance 
-    of this class will rewrite the exact same information in a format 
-    compatible with debuild.'''
-
-    def __init__(self, control, changelog):
-        self.controlf = control
-        self.changelog = changelog
-    
-    def project(self, p):
-        self.controlf.write('Version:' + p.version)
-        self.controlf.write('Source: ' + p.name + '\n')
-        self.controlf.write('Description: ' + p.description)
-        self.controlf.write('Maintainer: ' + p.maintainer.name \
-                                + ' <' + p.maintainer.email + '>\n')
-        self.controlf.write('\nPackage: ' + p.name + '\n')
-        self.controlf.write('Architecture: any\n')
-        self.controlf.write('Depends: ' + ','.join(p.depends) + '\n')
-        self.controlf.write('\n')
-
-
-def pubSpec(args):
-    '''spec                   Writes out the specification files used 
-                       to build a distribution package.
-    '''
-    dist = context.host()
-    name = context.cwdProject() 
-    if dist == 'Darwin':
-        # For OSX, there does not seem to be an official packaging script
-        # so we use buildpkg.py and the index file directly.
-        None
-    elif dist == 'Fedora':
-        specfile = open(args[0] + '.spec','w')
-        writer = FedoraSpecWriter(specfile)
-        parser = xmlDbParser()
-        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
-        specfile.close()
-    elif dist == 'Ubuntu':
-        control = open('control','w')
-        changelog = open('changelog','w')
-        writer = UbuntuSpecWriter(control,changelog)
-        parser = xmlDbParser()
-        parser.parse(context.srcDir(os.path.join(name,'index.xml')),writer)
-        control.close()
-        changelog.write(writer.projectName + ' (' + args[0] + '-ubuntu1' + ') jaunty; urgency=low\n\n')
-        changelog.write('  * debian/rules: generate ubuntu package\n\n')
-        changelog.write(' -- ' + writer.maintainerName \
-                            + ' <' + writer.maintainerEmail + '>  ' \
-                            + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
-        changelog.close()
-        rules = open('rules','w')
-        rules.write('''#! /usr/bin/make -f
-
-export DH_OPTIONS
-
-#include /usr/share/quilt/quilt.make
-
-PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
-
-build:
-\t./configure --prefix=$(PREFIX)
-\tmake
-
-clean:
-\techo "make clean"
-
-install:
-\tdh_testdir
-\tdh_testroot
-\tdh_clean -k
-\tmake install
-
-binary: install
-\tdh_installdeb
-\tdh_gencontrol
-\tdh_md5sums
-\tdh_builddeb
-
-''')
-        rules.close()
-        copyright = open('copyright','w')
-        copyright.close()
-    else:
-        raise
-
 
 # Convenience class, as suggested by /F.
 
@@ -529,13 +418,126 @@ class PackageMaker:
 # Shortcut function interface
 
 def buildPackage(project, version, installTop):
-    "A shortcut function for building a package."
-    
-    pm = PackageMaker(project, version, installTop)
-    pm.build()
-    im = ImageMaker(project, version, pm.packageRootFolder)
-    return im.build()
+    '''Writes out the necessary files such as specification, control, etc.
+    then builds a binary distribution package based on the local system.
 
+    This routine with returns the name of the package that was built.
+    '''
+
+    dist = context.host()
+    name = context.cwdProject() 
+    if dist == 'Darwin':
+        pm = PackageMaker(project, version, installTop)
+        pm.build()
+        im = ImageMaker(project, version, pm.packageRootFolder)
+        return im.build()
+
+    elif dist == 'Fedora':
+        specname = project.name + '.spec'
+        specfile = open(specname,'w')
+        specfile.write('Name: ' + p.name.replace(os.sep,'_') + '\n')
+        specfile.write('Distribution: Fedora\n')
+        specfile.write('Release: 0\n')
+        specfile.write('Summary: None\n')
+        specfile.write('License: Unknown\n')
+        specfile.write('\n%description\n' + p.description + '\n')
+        specfile.write('Packager: ' + p.maintainer.fullname \
+                                + ' <' + p.maintainer.email + '>\n')
+        specfile.write('''\n%build
+./configure --prefix=/usr/local
+make
+
+%install
+make install
+''')
+        specfile.close()
+        dws.shellCommand("rpmbuild -bb --clean " + specname)
+        return projet.name + '-' + version + '.rpm'
+
+    elif dist == 'Ubuntu':
+        os.makedirs('debian')
+        control = open(os.path.join('debian','control'),'w')
+        control.write('Version:' + version + '\n')
+        control.write('Source: ' + project.name + '\n')
+        control.write('Description: ' + project.description + '\n')
+        control.write('Maintainer: ' + project.maintainer.fullname \
+                                + ' <' + project.maintainer.email + '>\n')
+        control.write('\nPackage: ' + project.name + '\n')
+        control.write('Architecture: any\n')
+        control.write('Depends: ' \
+                + ', '.join(project.prerequisiteNames([context.host()])) + '\n')
+        control.write('\n')
+        control.close()
+        changelog = open(os.path.join('debian','changelog'),'w')
+        changelog.write(project.name + ' (' + project.name + '-ubuntu1' + ') jaunty; urgency=low\n\n')
+        changelog.write('  * debian/rules: generate ubuntu package\n\n')
+        changelog.write(' -- ' + project.maintainer.fullname \
+                            + ' <' + project.maintainer.email + '>  ' \
+                            + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
+        changelog.close()
+        rules = open(os.path.join('debian','rules'),'w')
+        rules.write('''#! /usr/bin/make -f
+
+export DH_OPTIONS
+
+#include /usr/share/quilt/quilt.make
+
+PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
+
+build:
+\t./configure --prefix=$(PREFIX)
+\tmake
+
+clean:
+\techo "make clean"
+
+install:
+\tdh_testdir
+\tdh_testroot
+\tdh_clean -k
+\tmake install
+
+binary: install
+\tdh_installdeb
+\tdh_gencontrol
+\tdh_md5sums
+\tdh_builddeb
+
+''')
+        rules.close()
+        copyright = open(os.path.join('debian','copyright'),'w')
+        copyright.close()
+
+        # We have generated all files debuild requires to create a binary 
+        # package so now let's invoke it.
+        #
+        # alternative:
+        #   apt-get install pbuilder
+        #   pbuilder create
+        #   pdebuild --buildresult ..
+        #
+        # debuild will try to install the packages in /usr/local so it needs
+        # permission access to the directory.
+        # Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
+        #
+        # Can only find example in man pages of debuild but cannot 
+        # find description of options: "-i -us -uc -b".
+        dws.shellCommand("debuild -i -us -uc -b")
+        cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
+        longBit = cmd.stdout.readline().strip()
+        cmd.wait()
+        if cmd.returncode != 0:
+            raise dws.Error("problem reading `getconf LONG_BIT`")
+        distExtUbuntu =	'_amd64.deb'
+        if longBit == '32':
+            distExtUbuntu = '_i386.deb'            
+        return project.name + '-' + version + distExtUbuntu
+
+    else:
+        # unknown host, we don't know how to make a package for it.
+        raise
 
 
 def buildPackageSpecification(project,packageName):

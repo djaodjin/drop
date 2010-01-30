@@ -90,6 +90,7 @@ $(project)-$(version).tar.bz2:
 	$(installExecs) $(shell which dws) $(basename $(basename $@))
 	$(installFiles) $(shell dws context prefix.mk) \
 			$(shell dws context suffix.mk) \
+			$(shell dws context configure.sh) \
 		$(basename $(basename $@))/etc
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
 		-f $@ $(basename $(basename $@))
@@ -98,7 +99,7 @@ $(project)-$(version).tar.bz2:
 # 'make install' might just do nothing and we still want to build an empty
 # package for that case so we create ${buildInstallDir} before buildpkg 
 # regardless such that mkbom has something to work with. 
-%$(distExtDarwin): %.tar.bz2
+%$(distExtDarwin): %.tar.bz2 $(srcDir)/index.xml
 	tar jxf $<
 	cd $(basename $(basename $<)) \
 		&& ./configure --prefix=${buildUsrLocalDir}
@@ -110,38 +111,17 @@ $(project)-$(version).tar.bz2:
 %$(distExtFedora): %.tar.bz2 $(srcDir)/index.xml \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
+	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
 	buildpkg --version=$(subst $(project)-,,$(basename $@)) \
 	         --spec=$(srcDir)/index.xml $(basename $@)
-	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
-	rpmbuild -bb --clean $(basename $@)
 
-#%.spec: $(srcDir)/index.xml
-#	dws spec $(basename $@)
-#	echo '%files' >> $@ 
-#	echo $(bins) >> $@
-#	echo $(includes) >> $@
-#	echo $(libs) >> $@
-
-# alternative:
-#   apt-get install pbuilder
-#   pbuilder create
-#   pdebuild --buildresult ..
-#
-# debuild will try to install the packages in /usr/local so it needs
-# permission access to the directory.
-# Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
-
-# Can only find example in man pages of debuild but cannot 
-# find description of options: "-i -us -uc -b".
 %$(distExtUbuntu): %.tar.bz2
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
-	$(installDirs) $(basename $(basename $<))/debian
-	cd $(basename $(basename $<))/debian \
+	cd $(basename $(basename $<)) \
 		&& buildpkg --version=$(subst $(project)-,,$(basename $@)) \
 	         --spec=$(srcDir)/index.xml $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
-	cd $(basename $(basename $<)) && debuild -i -us -uc -b
 
 
 # Rules to build unit test logs
