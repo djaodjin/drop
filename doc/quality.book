@@ -1,39 +1,78 @@
-title: Source Code Quality
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink">
+  <info>
+    <title>Source Code Quality</title>
+    <author><personname>Sebastien Mirolo</personname></author>
+    <date>December 9th, 2009</date>
+  </info>
+  
+  <section>
+    <title>Conventions</title>
+    <para>The purpose of conventions is to make it faster for developers to use pre-existing general knowledge and start contributing to specific projects they were unfamiliar with. Conventions also help create automated tools and an infrastructure to build code, run tests and generate status reports (see <link xlink:href="workspace.book">workspace</link>).</para>
+    <para>Each project in fortylines source repository is organized as follow</para>
+    <variablelist>
+      <varlistentry>
+	<term>index.xml</term>
+	<listitem>
+	  <para>Project description and inter-projects dependency information.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>Makefile</term>
+	<listitem>
+	  <para>GNU Makefile used to build and install a project files on the local system.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>data/</term>
+	<listitem><para>Files necessary to build and run project executables but which are not considered source files.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>doc/</term>
+	<listitem><para>General documentation for the project which cannot be extracted from the source files.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>include/</term>
+	<listitem><para>Public header files (.hh, .tcc) that are installed in <xref linkend="includeDir" /> (ex. /usr/local/include).</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>src/</term>
+	<listitem><para>Source code in the form of C++ (.cc) and Python (.py) files.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>test/</term>
+	<listitem><para>Unit tests for the project. The organization of a test/ sub-directory follows the organization of a project directory, though mostly consisting of Makefile, src/ and data/ directories.</para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+    <para>All files in fortylines source repository should respect the following conventions</para>
+    <itemizedlist>
+      <listitem><para>Each source file starts with a few license paragraphs.</para></listitem>
+      <listitem><para>Identifiers use camelCase with a leading lowercase letter.</para></listitem>
+      <listitem><para>Each file name follows the camelCase identifier convention.</para></listitem>
+    </itemizedlist>
+    <para>
+      A <link xlink:href="/seed/src/checkstyle.py">checkstyle</link> script runs through the top-level <xref linkend="srcTop" /> and outputs a detailed report about projects broking those conventions.
+    </para>
+  </section>
+  
+  <section>
+    <title>Unit tests</title>
+    <para>The purpose of unit tests is to insure first that functionality is implemented correctly. Later in the life cycle of a project, unit tests are often relabeled regression tests and insure that changes to the source code did not break existing functionality.</para>
+    <!-- \todo: Two ways: functional tests => pass/fail condition within the test. i.e. assert framework.
+	 regression tests => check output compared to previous run. meaning of labels.
+      -->
+  </section>
+  
+  <section>
+    <title>Conclusion</title>
+    <para>As projects grow in size, it becomes cumbersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process. Unit tests will also start breaking and become deprecated as a project moves forward. So, as a result, relevant unit tests are the ones that can be run by an automated tool as part of the <link xlink:href="usecases.book#snapshotBuilds">build process</link>.</para>
+    
+  </section>
+</section>
 
-<h1>Conventions</h1>
-<p>The purpose of conventions is to make it faster for developers to use pre-existing general knowledge and start contributing to specific projects they were unfamiliar with. Conventions also help create automated tools and an infrastructure to build code, run tests and generate status reports (see <a href="workspace.book">workspace</a>).</p>
-<p>Each project in fortylines source repository is organized as follow</p>
-<ul>
-<li>index.xml
-<p>Project description and inter-projects dependency information.</p>
-<li>Makefile
-<p>GNU Makefile used to build and install a project files on the local system.</p>
-<li>data/
-<p>Files necessary to build and run project executables but which are not considered source files.</p>
-<li>doc/
-<p>General documentation for the project which cannot be extracted from the source files.</p>
-<li>include/
-<p>Public header files (.hh, .tcc) that are installed in <i>includeDir</i> (ex. /usr/local/include).</p>
-<li>src/
-<p>Source code in the form of C++ (.cc) and Python (.py) files.</p>
-<li>test/
-<p>Unit tests for the project. The organization of a test/ sub-directory follows the organization of a project directory, though mostly consisting of Makefile, src/ and data/ directories.</p>
-</ul>
-<p>All files in fortylines source repository should respect the following conventions
-<li>Each source file starts with a few license paragraphs. 
-<li>Identifiers use camelCase with a leading lowercase letter.
-<li>Each file name follows the camelCase identifier convention.
-</p>
-<p>
-A <a href="/seed/src/checkstyle.py">checkstyle</a> script runs through the top-level <i>srcTop</i> and outputs a detailed report about projects broking those conventions.
-</p>
-<h1>Unit tests</h1>
-<p>The purpose of unit tests is to insure first that functionality is implemented correctly. Later in the life cycle of a project, unit tests are often relabeled regression tests and insure that changes to the source code did not break existing functionality.</p>
-<!-- \todo: Two ways: functional tests => pass/fail condition within the test. i.e. assert framework.
-regression tests => check output compared to previous run. meaning of labels.
--->
-
-<h1>Conclusion</h1>
-<p>As projects grow in size, it becomes cumbersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process. Unit tests will also start breaking and become deprecated as a project moves forward. So, as a result, relevant unit tests are the ones that can be run by an automated tool as part of the <a href="usecases.book#snapshotBuilds">build process</a>.</p>
-
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on December 9th, 2009</p>

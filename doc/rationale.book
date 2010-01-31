@@ -1,68 +1,84 @@
-title: Building Software - Fortylines Solutions infrastructure
-<h1>Introduction</h1>
-<p>
-Starting a software project and turning it into a business is always a thrilling time. Everything seems to move along easily and at a good pace when suddenly the first issue pops up, a quick workaround and on the way forward again. Then another issue appears. It is an annoying one but not related to the project at end. Maybe a dependency that has not triggered out a recompile. It takes half an hour to figure it out; recommendation is to execute &quot;make clean && make&quot; next time. It takes fifteen minutes to rebuild the project; we will live with it.
-<p>
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink">
+<info>
+<title>Building Software - Fortylines Solutions infrastructure</title>
+</info>
+<section>
+<title>Introduction</title>
+<para>
+Starting a software project and turning it into a business is always a thrilling time. Everything seems to move along easily and at a good pace when suddenly the first issue pops up, a quick workaround and on the way forward again. Then another issue appears. It is an annoying one but not related to the project at end. Maybe a dependency that has not triggered out a recompile. It takes half an hour to figure it out; recommendation is to execute &quot;make clean &amp;&amp; make&quot; next time. It takes fifteen minutes to rebuild the project; we will live with it.
+</para>
+<para>
 More issues on the project are now popping out at a rapid pace. It takes longer to bend the IT infrastructure into a state where an issue can be investigated and time is running out. Pressure is building up to show a prototype, something that works... anything. We have to justify the investment to keep cash flowing in. A few top engineers realize that part of the troubles today are exacerbated by an unreliable infrastructure to support the development team but they will stay quiet. Responsibilities are shared between developers excited to start something new and accountants excited to get quick return-on-investment. A few executives wander around the office as if the sky had fallen on their head. They start wondering whether Pray-for-a-miracle would be a viable strategy. Everyone wished we had started a Quality Assurance feedback loop earlier.
-</p>
-<p>
+</para>
+<para>
 Starting an innovative software project, turning it into a business, making profit out of version two, is all but out of the ordinary. Heroic efforts are always necessary to achieve anything out of the ordinary. Nevertheless, as all heroes have gadgets to enhance their incredible innate abilities, developers will need a dose of magic to deliver amazing results. Some of that magic can be found inside fortylines solutions' development infrastructure. It is made up of thoughts, information and tools based on years of experience in software start-up engineering. Hopefully, you'll find them useful.
-</p>
-<h1>Software as a lifestyle</h1>
-<p>
+</para>
+</section>
+
+<section>
+<title>Software as a lifestyle</title>
+<para>
 Building software systems, as any human activity that requires coordination of highly creative minds, is a very risky business. Ideas mature, stabilize and turn into processes. Quality control insures that, along the way, labor intensive organizations or automated computer systems slowly replace risk associated with individual contributors.
-</p>
-<p>
+</para>
+<para>
 New and innovative projects have always relied one hundred and ten percent on talented people and these have always been very independent and never shy of expressing a lifestyle out of the ordinary. Each talent I have either met had a specific lifestyle that makes him or her creative and productive. If what you need is a team of talented people to work on a project, the policies and infrastructure of your project have to be carved around that fact.
-</p>
-<p>
-The Internet did not bring back the mini-computers era; the time of centralized computers and teletype terminals is long gone. Today, each developer has his own machine that he carefully sets up to his own taste. Any policy that intents to keep engineers productive needs to account for a variety of <a href="glossary.book#localMachine">local machines</a>. Very many of the brightest engineers I know have switched to a laptop as their primary development systems. They also work in different timezones even when physically in the same city. To avoid severely impacting productivity, systems should address intermittent network connectivity and limited live communications.
-</p>
-<p>
-Different people have different interests and expertise. Some days one is very careful and dedicated about writing a piece of source code and some other days, the same one is following an idea, cutting corners on the way. It is individually very hard to differentiate a brilliant masterpiece from an uninspired realization. This is the root cause for most bugs and long reaching costly mistakes. Quality Control is far and foremost the art of mixing individual motivations and making <b>all</b> information available to each contributor. Design guidelines, code conventions, document templates, web-based source code browsers, automated e-mail of commit messages are examples of tools to achieve that goal.
-</p>
-<p>
-Quality Control also guarantees that a new release of a project is <b>at least</b> as useful as the previous one. Testing for regressions is critical to make users happy and developers involved. Unit tests, integration tests and metrics tracking are among the tools used to automatically raise early warnings. 
-</p>
-
-<h1>Organization</h1>
-<h2>Presentation</h2>
-<p>
-Fortylines solutions' <i>drop</i> system is based on a distributed version control system (here <a href="http://git-scm.com/">git</a>). At any time, each developer has <b>physical access to the entire software stack of a project</b>. That includes source code (of course), documentation website, bug reports, ... As a design philosophy, all bits of a project are replicated on each contributor's local machine. Contributors only need connect to the Internet to exchange code, documentation and ideas. Having each contributor <b>decides when to exchange their work</b> is a key component of keeping a team productive. 
-</p>
-<p>
-As many human activities, releasing a quality piece of software requires coordination and integration of the work of many contributors, testing under multiple environments, editing for consistency, etc. I argue that it is better done through <b>mass communication</b> such as public speeches, books, TV broadcasts, etc. It has proved through the ages to be the most effective way to <b>distribute ideas</b>.
-</p>
-<p>Innovative products are, in a lot of ways, debates of ideas and need to be organized as such. A distributed infrastructure is thus primordial for thoughts and development purposes whereas an accessible forum is the backbone to release and publication activities.
-</p>
-
-<h2>Release Role</h2>
-<p>
-All components of a project are replicated on each contributor's local machine. As a result, at any time, any contributor's local machine can be elected to be the release (i.e golden reference) platform. Since any local machine is surely not configured to handle mass traffic that goes on with being a golden reference, there is, in practice, a dedicated machine that acts as release. The main emphasis in <i>drop</i> is that release is truly a &quot;role&quot; definition. There is nothing, nowhere in a <i>drop</i> system, as far as implementation and tools are concerned that can distinguish a random local machine from a release machine.
-</p>
-<p>
-A release machine will see heavy traffic and the hardware needs to keep up with it. The machine can either be rented as a service, installed on a rented virtual server, or built on an in-house machine. Either way, setting it up follows the exact same procedure as setting up a contributor's local development machine. Best IT practices require to have a plan for <a href="access.book">access control</a> and <a href="integrity.book">data integrity</a> before any machine is booted. These areas are highly dependent on the software business you are building and no technology can provide turn-key solutions. Tools and policies beneficial for a project might not always be appropriate for another.
-</p>
-
-<h2>Building Code</h2>
-<p>
-Most projects today are not started out of the vacuum but instead rely heavily on third-party projects and source code. Unless those dependencies are carefully managed, it quickly becomes a nightmare to sustain effort on your own project instead of delving into troubles while installing third-party <a href="packages.book">packages</a> on development machines. Package managers, configure scripts and the make utility are all useful pieces in an edit/compile/run cycle, though none of them is enough by itself. A complete <a href="workspace.book">workspace</a> management strategy integrates all pieces together. Open source projects see their contributors split their time between the project and other things in their life. Some contributors disappear and new ones appear at random. The time it takes to bring up a new contributor into the edit/compile/run cycle is a direct measure of the effectiveness of the implemented workspace management strategy.
-</p>
-<h2>Forum</h2>
-<p>
-Today, coordination of many contributors is primary done through mailing lists, a shared source repository and web-based services. <a href="services.book">Fortylines solutions servers</a> for mail and shared source repository are pretty conventional. The most interesting thing is that the servers live behind a firewall and no other machine is connected behind that firewall. As a design rule, there is no &quot;local&quot; network. All machines, either connected from a coffee shop or from the room next door, see the same firewall and connect to the servers by the same virtual private network settings.
-</p>
-<p>
-The web-based services of a software organization usually includes static documents, an editable wiki, a bug tracking system, a source code browser and some ways to deliver nightly build results. All pieces are usually coming from different vendors with their own <a href="access.book#authentication">authentication</a> systems and technical implementation details.
-</p>
-<p>
+</para>
+<para>
+The Internet did not bring back the mini-computers era; the time of centralized computers and teletype terminals is long gone. Today, each developer has his own machine that he carefully sets up to his own taste. Any policy that intents to keep engineers productive needs to account for a variety of <link xlink:href="glossary.book#localMachine">local machines</link>. Very many of the brightest engineers I know have switched to a laptop as their primary development systems. They also work in different timezones even when physically in the same city. To avoid severely impacting productivity, systems should address intermittent network connectivity and limited live communications.
+</para>
+<para>
+Different people have different interests and expertise. Some days one is very careful and dedicated about writing a piece of source code and some other days, the same one is following an idea, cutting corners on the way. It is individually very hard to differentiate a brilliant masterpiece from an uninspired realization. This is the root cause for most bugs and long reaching costly mistakes. Quality Control is far and foremost the art of mixing individual motivations and making <emphasis>all</emphasis> information available to each contributor. Design guidelines, code conventions, document templates, web-based source code browsers, automated e-mail of commit messages are examples of tools to achieve that goal.
+</para>
+<para>
+Quality Control also guarantees that a new release of a project is <emphasis>at least</emphasis> as useful as the previous one. Testing for regressions is critical to make users happy and developers involved. Unit tests, integration tests and metrics tracking are among the tools used to automatically raise early warnings. 
+</para>
+</section>
+<section>
+<title>Organization</title>
+<section>
+<title>Presentation</title>
+<para>
+Fortylines solutions' <xref linkend="drop" /> system is based on a distributed version control system (here <link xlink:href="http://git-scm.com/">git</link>). At any time, each developer has <emphasis>physical access to the entire software stack of a project</emphasis>. That includes source code (of course), documentation website, bug reports, ... As a design philosophy, all bits of a project are replicated on each contributor's local machine. Contributors only need connect to the Internet to exchange code, documentation and ideas. Having each contributor <emphasis>decides when to exchange their work</emphasis> is a key component of keeping a team productive. 
+</para>
+<para>
+As many human activities, releasing a quality piece of software requires coordination and integration of the work of many contributors, testing under multiple environments, editing for consistency, etc. I argue that it is better done through <emphasis>mass communication</emphasis> such as public speeches, books, TV broadcasts, etc. It has proved through the ages to be the most effective way to <emphasis>distribute ideas</emphasis>.
+</para>
+<para>Innovative products are, in a lot of ways, debates of ideas and need to be organized as such. A distributed infrastructure is thus primordial for thoughts and development purposes whereas an accessible forum is the backbone to release and publication activities.
+</para>
+</section>
+<section>
+<title>Release Role</title>
+<para>
+All components of a project are replicated on each contributor's local machine. As a result, at any time, any contributor's local machine can be elected to be the release (i.e golden reference) platform. Since any local machine is surely not configured to handle mass traffic that goes on with being a golden reference, there is, in practice, a dedicated machine that acts as release. The main emphasis in <xref linkend="drop" /> is that release is truly a &quot;role&quot; definition. There is nothing, nowhere in a <xref linkend="drop" /> system, as far as implementation and tools are concerned that can distinguish a random local machine from a release machine.
+</para>
+<para>
+A release machine will see heavy traffic and the hardware needs to keep up with it. The machine can either be rented as a service, installed on a rented virtual server, or built on an in-house machine. Either way, setting it up follows the exact same procedure as setting up a contributor's local development machine. Best IT practices require to have a plan for <link xlink:href="access.book">access control</link> and <link xlink:href="integrity.book">data integrity</link> before any machine is booted. These areas are highly dependent on the software business you are building and no technology can provide turn-key solutions. Tools and policies beneficial for a project might not always be appropriate for another.
+</para>
+</section>
+<section>
+<title>Building Code</title>
+<para>
+Most projects today are not started out of the vacuum but instead rely heavily on third-party projects and source code. Unless those dependencies are carefully managed, it quickly becomes a nightmare to sustain effort on your own project instead of delving into troubles while installing third-party <link xlink:href="packages.book">packages</link> on development machines. Package managers, configure scripts and the make utility are all useful pieces in an edit/compile/run cycle, though none of them is enough by itself. A complete <link xlink:href="workspace.book">workspace</link> management strategy integrates all pieces together. Open source projects see their contributors split their time between the project and other things in their life. Some contributors disappear and new ones appear at random. The time it takes to bring up a new contributor into the edit/compile/run cycle is a direct measure of the effectiveness of the implemented workspace management strategy.
+</para>
+</section>
+<section>
+<title>Forum</title>
+<para>
+Today, coordination of many contributors is primary done through mailing lists, a shared source repository and web-based services. <link xlink:href="services.book">Fortylines solutions servers</link> for mail and shared source repository are pretty conventional. The most interesting thing is that the servers live behind a firewall and no other machine is connected behind that firewall. As a design rule, there is no &quot;local&quot; network. All machines, either connected from a coffee shop or from the room next door, see the same firewall and connect to the servers by the same virtual private network settings.
+</para>
+<para>
+The web-based services of a software organization usually includes static documents, an editable wiki, a bug tracking system, a source code browser and some ways to deliver nightly build results. All pieces are usually coming from different vendors with their own <link xlink:href="access.book#authentication">authentication</link> systems and technical implementation details.
+</para>
+<para>
 Fortylines solutions approach to web services is to integrate all editable bits (code, web pages, bug reports, etc.) into the same distributed control version repository (git) and to provide tools to publish the repository as online documents.
-<a href="/seed/index.book"></a>
-</p>
-<p>
-For example, while source code and documentation are usually maintained and published separately, Fortylines solutions' <i>seed</i> product enables source code and other documents to cross-reference each other easily through nice web looking presentation of source files and urls embedded in comments.
-</p>
-<pre>
+<link xlink:href="/seed/index.book"></link>
+</para>
+<para>
+For example, while source code and documentation are usually maintained and published separately, Fortylines solutions' <xref linkend="seed" /> product enables source code and other documents to cross-reference each other easily through nice web looking presentation of source files and urls embedded in comments.
+</para>
+<para role="code">
 /* 
    This is a reference to &lt;a href="index.book"&gt;web-based documentation&lt;/a&gt;. 
 */
@@ -70,24 +86,24 @@ For example, while source code and documentation are usually maintained and publ
 int main( int argc, char *argv[] ) {
     return 0;
 }
-</pre>
-<p>is published as</p>
-<pre>
-<span class="comment">/* </span>
-<span class="comment">   This is a reference to <a href="index.book">web-based documentation</a>.</span>
-<span class="comment">*/</span>
+</para>
+<para>is published as</para>
+<para role="code">
+<phrase role="comment">/* </phrase>
+<phrase role="comment">   This is a reference to <link xlink:href="index.book">web-based documentation</link>.</phrase>
+<phrase role="comment">*/</phrase>
 
-<span class="identifier">int</span> <span class="identifier">main</span><span class="punctuator">(</span> <span class="identifier">int</span> <span class="identifier">argc</span><span class="punctuator">,</span> <span class="keyword">char</span> <span class="operator">*</span><span class="identifier">argv</span><span class="punctuator">[</span><span class="punctuator">]</span> <span class="punctuator">)</span> <span class="punctuator">{</span>
-    <span class="keyword">return</span> <span class="decimalLiteral">0</span><span class="punctuator">;</span>
-<span class="punctuator">}</span>
-</pre>
-<p>
-<a href="/seed/src/seed.cc">browse sample repository</a>
-</p>
+<phrase role="identifier">int</phrase> <phrase role="identifier">main</phrase><phrase role="punctuator">(</phrase> <phrase role="identifier">int</phrase> <phrase role="identifier">argc</phrase><phrase role="punctuator">,</phrase> <phrase role="keyword">char</phrase> <phrase role="operator">*</phrase><phrase role="identifier">argv</phrase><phrase role="punctuator">[</phrase><phrase role="punctuator">]</phrase> <phrase role="punctuator">)</phrase> <phrase role="punctuator">{</phrase>
+    <phrase role="keyword">return</phrase> <phrase role="decimalLiteral">0</phrase><phrase role="punctuator">;</phrase>
+<phrase role="punctuator">}</phrase>
+</para>
+<para>
+<link xlink:href="/seed/src/seed.cc">browse sample repository</link>
+</para>
 
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on September 27th, 2009</p>
+<para>updated by <link xlink:href="/contributors/smirolo/profile.book">Sebastien Mirolo</link> on September 27th, 2009</para>
 
-<!-- \todo <p>
+<!-- \todo <para>
 Policies:
 Search through freshmeat, sourceforge, wikipedia
 Select candidates:
@@ -96,5 +112,8 @@ second activity
 because evaluation time, cost contribution perspective.
 contribute to projects which are not company core technologies.
 <li>implementation through contribution to free software projects.<br />
-</p>
+</para>
 -->
+</section>
+</section>
+</section>

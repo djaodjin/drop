@@ -29,7 +29,19 @@ ibtool          :=      /Developer/usr/bin/ibtool
 installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -m 644
 installExecs	:=	/usr/bin/install -m 755
+FOP		:=	fop
 SED		:=	sed
+XSLTPROC	:=	xsltproc -xinclude 		\
+			--stringparam use.extensions 0 	\
+			--stringparam fop1.extensions 1
+
+# stylesheets to produce .fo markups out of docbook (.book) markups
+foxsl		:=	$(shareDir)/docbook-xsl/fo/docbook.xsl
+
+# extract dependencies to build a .pdf article out of xinclude statements 
+# in the docbook source.
+bookdeps	=	$(1) $(shell grep 'include xlink:href' $(1) \
+				| sed -e 's/.*href="\(.*\)".*/\1/')
 
 # \note For some reason when a '\' is inserted in the following line in order
 #       to keep a maximum of 80 characters per line, the sed command 
@@ -68,7 +80,7 @@ vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
 vpath %.c 	$(srcDir)/src
 vpath %.m 	$(srcDir)/src
-
+vpath %.book 	$(srcDir)/doc
 
 define bldUnitTest
 

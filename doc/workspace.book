@@ -1,55 +1,79 @@
-<h1>Workspaces</h1>
-<h2>Introduction</h2>
-<p>
-A workspace manager application is used to setup a local machine with third-party prerequisites and source code under revision control such that it is possible to execute a development cycle (edit/build/run) on a local machine. As such, the workspace manager application integrates package managers, configure scripts and make together in a single consistent bundle.
-</p>
-<h2>Dependencies</h2>
-<p>
-Projects at least depend on some compiler toolchain. Most times, they also require third-party tools and libraries. Configure scripts based on <a href="http://www.gnu.org/software/autoconf/">autoconf</a> are usually used to analyze a <a href="glossary.book#localMachine">local machine</a> for prerequisites. Unfortunately, once a prerequisite is identified as missing, very little help is given on how to fulfill that dependency.
-</p>
-<p>
-Most Open source distributions use <a href="packages.book">packages</a> to resolve runtime dependencies. It eventually guarantees a whole subsystem of released projects will run together. As package managers focus on project stability, installed files on a local machine get out of date with the prerequisites of a project head.
-</p>
-<p>
-When development requires changes in multiple projects, there are also no way to rebuilt those projects in dependence topological order. In most of these cases, custom shell scripts are put together as needed.
-</p>
-<p>
-A workspace concept and a workspace manager tool, <a href="dws.book">dws</a>, has been put together to alleviate the time each contributor deals with dependencies troubles. 
-</p>
-<p>
-A workspace relies on environment variables (<i>srcTop</i>, <i>buildTop</i>, etc.) and a project dependency graph.
-</p>
-<p>
-The environment variables are set through a workspace configuration file named ws.mk. The workspace tool populates the configuration file as necessary at the time a variable value is required. The environment variables consist mostly of directory paths where source files are checked out, where object files are built, etc. 
-</p>
-<p>
-The dependency graph contains information usually found in a package manager (yum, apt, etc.) as well as information usually found in configure scripts (automake). In the same way as Linux distributions, project dependency information is aggregated in a single index file. A master copy of the project dependency graph is stored on a remote server and cached locally on the development local machine.
-</p>
-<p>
-The workspace tool will extract a subset of the dependency graph from a set of projects. The subset contains the projects and their dependencies which can be found in <i>srcTop</i>. All prerequisite projects which are not found in <i>srcTop</i> and whose necessary executables, headers, libraries, etc. can be found pre-installed on the local machines will be added to a <i>cut</i> list. The <i>cut</i> list will thus end-up with third-party prerequisite projects. Other prerequisite projects will be added to a <i>missing</i> list.
-</p>
-<p>
-A project does not built as long as there are <i>missing</i> prerequisites so those dependencies will have to be installed as either:
-</p>
-<ul>
-  <li>a repository in <i>srcTop</i>
-  <p>The project is considered to be part of the workspace and will be checked-out as a source controlled directory in <i>srcTop</i>. A project can either contain all its sources code under revision control or just a patch into another source package.</p>
-  <li>A distribution package
-   <p>The workspace tool installs the package through the platform package manager.</p>
-</ul>
-<p>
-If all else breaks, the installation will have to be done manually.
-</p>
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink">
 
-<h2>Make</h2>
-<p>
-The <a href="http://www.gnu.org/software/make/manual/make.html">GNU Make Reference Manual</a> is very well written and contains the detailed information on how make works, thus the place to look when debugging Makefiles. Of course, as a reference manual, it has very little on writing Makefiles for large maintainable source code bases.
-</p>
-
-<!--
-\todo It is the topic of the next chapters.
-<h2>Compiling - Libtool</h2>
-<h2>Running regression tests</h2> 
--->
-
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on January 23rd, 2010</p>
+  <!-- Building Code -->
+  <section>
+    <title>Workspaces</title>
+    
+    <section>
+      <title>Introduction</title>
+      <para>
+	A workspace manager application is used to setup a local machine with third-party prerequisites and source code under revision control such that it is possible to execute a development cycle (edit/build/run) on a local machine. As such, the workspace manager application integrates package managers, configure scripts and make together in a single consistent bundle.
+      </para>
+    </section>
+    
+    <section>
+      <title>Dependencies</title>
+      <para>
+	Projects at least depend on some compiler toolchain. Most times, they also require third-party tools and libraries. Configure scripts based on <link xlink:href="http://www.gnu.org/software/autoconf/">autoconf</link> are usually used to analyze a <link xlink:href="glossary.book#localMachine">local machine</link> for prerequisites. Unfortunately, once a prerequisite is identified as missing, very little help is given on how to fulfill that dependency.
+      </para>
+      <para>
+	Most Open source distributions use <link xlink:href="packages.book">packages</link> to resolve runtime dependencies. It eventually guarantees a whole subsystem of released projects will run together. As package managers focus on project stability, installed files on a local machine get out of date with the prerequisites of a project head.
+      </para>
+      <para>
+	When development requires changes in multiple projects, there are also no way to rebuilt those projects in dependence topological order. In most of these cases, custom shell scripts are put together as needed.
+      </para>
+      <para>
+	A workspace concept and a workspace manager tool, <link xlink:href="dws.book">dws</link>, has been put together to alleviate the time each contributor deals with dependencies troubles. 
+      </para>
+      <para>
+	A workspace relies on environment variables (<xref linkend="srcTop" />, <xref linkend="buildTop" />, etc.) and a project dependency graph.
+      </para>
+      <para>
+	The environment variables are set through a workspace configuration file named ws.mk. The workspace tool populates the configuration file as necessary at the time a variable value is required. The environment variables consist mostly of directory paths where source files are checked out, where object files are built, etc. 
+      </para>
+      <para>
+	The dependency graph contains information usually found in a package manager (yum, apt, etc.) as well as information usually found in configure scripts (automake). In the same way as Linux distributions, project dependency information is aggregated in a single index file. A master copy of the project dependency graph is stored on a remote server and cached locally on the development local machine.
+      </para>
+      <para>
+	The workspace tool will extract a subset of the dependency graph from a set of projects. The subset contains the projects and their dependencies which can be found in <xref linkend="srcTop" />. All prerequisite projects which are not found in <xref linkend="srcTop" /> and whose necessary executables, headers, libraries, etc. can be found pre-installed on the local machines will be added to a <emphasis>cut</emphasis> list. The <emphasis>cut</emphasis> list will thus end-up with third-party prerequisite projects. Other prerequisite projects will be added to a <emphasis>missing</emphasis> list.
+      </para>
+      <para>
+	A project does not built as long as there are <emphasis>missing</emphasis> prerequisites so those dependencies will have to be installed as either:
+      </para>
+      <variablelist>
+      <varlistentry>
+	<term>a repository in <xref linkend="srcTop" /></term>
+	<listitem>
+	  <para>The project is considered to be part of the workspace and will be checked-out as a source controlled directory in <xref linkend="srcTop" />. A project can either contain all its sources code under revision control or just a patch into another source package.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>A distribution package</term>
+	<listitem>
+	  <para>The workspace tool installs the package through the platform package manager.</para>
+	</listitem>
+      </varlistentry>
+      </variablelist>
+      <para>
+	If all else breaks, the installation will have to be done manually.
+      </para>
+    </section>
+    
+    <section>
+      <title>Make</title>
+      <para>
+	The <link xlink:href="http://www.gnu.org/software/make/manual/make.html">GNU Make Reference Manual</link> is very well written and contains the detailed information on how make works, thus the place to look when debugging Makefiles. Of course, as a reference manual, it has very little on writing Makefiles for large maintainable source code bases.
+      </para>
+      
+      <!--
+	  \todo It is the topic of the next chapters.
+	  <title>Compiling - Libtool</title>
+	  <title>Running regression tests</title> 
+	  -->
+      
+      <para>updated by <link xlink:href="/contributors/smirolo/profile.book">Sebastien Mirolo</link> on January 23rd, 2010</para>
+    </section>
+  </section>
+</section>

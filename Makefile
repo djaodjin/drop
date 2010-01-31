@@ -42,6 +42,16 @@ include $(srcTop)/drop/src/prefix.mk
 
 bins	:=	buildpkg dmake dregress dstamp dws
 
+doc/dws.book: dws
+	$(installDirs) $(dir $@)
+	(echo "<h1>dws --help</h1>" \
+	&& echo "<pre>" \
+	&& python ./dws --help \
+	&& echo "</pre>") > $@ || rm -f $@
+
+devinfra.fo: $(call bookdeps,$(srcDir)/doc/devinfra.book)
+
+
 include $(srcTop)/drop/src/suffix.mk
 
 all:: doc/dws.book
@@ -59,9 +69,3 @@ dmake:
 	echo '#!/bin/sh' > $@
 	echo 'dws make $$*' >> $@
 
-doc/dws.book: dws
-	$(installDirs) $(dir $@)
-	(echo "<h1>dws --help</h1>" \
-	&& echo "<pre>" \
-	&& python ./dws --help \
-	&& echo "</pre>") > $@ || rm -f $@

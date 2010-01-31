@@ -1,15 +1,26 @@
-title: Reference Manuals
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink">
+<info>
+<title>Reference Manuals</title>
+</info>
 
-<h1>Reference Manuals</h1>
-<p>
-<li><a href="http://www.cplusplus.com/reference/">C++ Reference</a>
-<li><a href="http://www.docbook.org/tdg5/en/html/docbook.html">The DocBook definive guide</a>
-<li><a href="http://www.gnu.org/software/make/manual/make.html">GNU make reference manual</a>
-<li><a href="http://docs.python.org/">Python documentation</a>
-</p>
-<h1>Tutorials</h1>
-<p>
-<li><a href="http://book.git-scm.com/">The Git Community Book</a>
-<li><a href="http://www.cs.tut.fi/~jkorpela/forms/cgic.html">CGI Getting Started</a>
-<li><a href="http://opensource.bureau-cornavin.com/crash-course/en/index.html">Writing documentation using DocBook</a>
-</p>
+<section>
+<title>Reference Manuals</title>
+<simplelist>
+<member><link xlink:href="http://www.cplusplus.com/reference/">C++ Reference</link></member>
+<member><link xlink:href="http://www.docbook.org/tdg5/en/html/docbook.html">The DocBook definive guide</link></member>
+<member><link xlink:href="http://www.gnu.org/software/make/manual/make.html">GNU make reference manual</link></member>
+<member><link xlink:href="http://docs.python.org/">Python documentation</link></member>
+</simplelist>
+</section>
+
+<section>
+<title>Tutorials</title>
+<simplelist>
+<member><link xlink:href="http://book.git-scm.com/">The Git Community Book</link> and <link xlink:href="http://cworth.org/hgbook-git/tour/">A tour of git: the basics</link></member>
+<member><link xlink:href="http://www.cs.tut.fi/~jkorpela/forms/cgic.html">CGI Getting Started</link></member>
+<member><link xlink:href="http://opensource.bureau-cornavin.com/crash-course/en/index.html">Writing documentation using DocBook</link></member>
+</simplelist>
+</section>
+</section>

@@ -1,26 +1,32 @@
-title: Use cases of the infrastructure
-
-<h1>New contributor's account on the server</h1>
-<h2>Step 1 - Setting up a local machine</h2>
-<p>
-A contributor will to be able to push modifications to the shared repository once authentication keys have been created and installed on the server. The following commands will create the key pair used to authenticate the local machine to the server. <b>ssh-keygen</b> will prompt for a password. This password will be used to encrypt the private key on the local machine and is never communicated to the server for authentication. Be careful that an empty password will allow anyone with access to the local machine to remotely authenticate to the server in matters of seconds.
-</p>
-<pre>
-ssh-keygen -q -f ~/.ssh/fortylines_rsa -t rsa
-</pre>
-<p>
-Once the key pair has been generated, adding the following lines in the ssh config file will permit to use the appropriate private key to access fortylines server.   
-</p>
-<pre>
-<b>~/.ssh/config</b>
-Host fortylines.com
-	User <i>serverLoginName</i>
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink">
+  <info>
+    <title>Use cases of the infrastructure</title>
+  </info>
+  <section>
+    <title>New contributor's account on the server</title>
+    <section>
+      <title>Step 1 - Setting up a local machine</title>
+      <para>
+	A contributor will to be able to push modifications to the shared repository once authentication keys have been created and installed on the server. The following commands will create the key pair used to authenticate the local machine to the server. <emphasis>ssh-keygen</emphasis> will prompt for a password. This password will be used to encrypt the private key on the local machine and is never communicated to the server for authentication. Be careful that an empty password will allow anyone with access to the local machine to remotely authenticate to the server in matters of seconds.
+      </para>
+      <para role="code">
+	ssh-keygen -q -f ~/.ssh/fortylines_rsa -t rsa
+      </para>
+      <para>
+	Once the key pair has been generated, adding the following lines in the ssh config file will permit to use the appropriate private key to access fortylines server.   
+      </para>
+      <para role="code">
+	<emphasis>~/.ssh/config</emphasis>
+	Host fortylines.com
+	User <emphasis>serverLoginName</emphasis>
 	IdentityFile ~/.ssh/fortylines_rsa
-</pre>
-<p>Finally adding the following function into the shell configuration for the user account will further improve productivity later on. The shell startup script will typically be ~/.bash_profile (Darwin) or ~/.bashrc (Ubuntu).
-</p>
-<pre>
-<b>~/.bash_profile</b>
+      </para>
+      <para>Finally adding the following function into the shell configuration for the user account will further improve productivity later on. The shell startup script will typically be ~/.bash_profile (Darwin) or ~/.bashrc (Ubuntu).
+      </para>
+      <para role="code">
+<emphasis>~/.bash_profile</emphasis>
 function fortylines {
     # Setting ssh tunnels
     ssh -fN -L 9930:localhost:993 -L 5870:localhost:587 fortylines.com
@@ -40,70 +46,83 @@ function fortylines {
     fi
     cd $buildTop
 }
-</pre>
-<p>
-The shell function <b>fortylines</b> will setup the tunnels to the mail server and configure the current shell terminal for working with fortylines' workspace. <b>src</b> and <b>build</b> are aliases to switch respectively between the source (in <i>srcTop</i>) and build (in <i>buildTop</i>) directories of a project.
-</p>
-<p>At this point, the contributor need to communicate its local machine public key (~/.ssh/fortylines_rsa.pub) and <i>serverLoginName</i> to an administrator of the server.</p>
-<h2>Step 2 - Creating a new account on server</h2>
-<p>
-The administrator need to create a new account on the server for the contributor.
-</p>
-<pre>
-adduser <i>serverLoginName</i>
-</pre>
-<p>
-Then the public key needs to be pasted into the authorized_keys file in the contributor's ~/.ssh sub-directory. 
-</p>
-<pre>
-<b>ls -la ~<i>serverLoginName</i>/.ssh</b>
--rw------- ... authorized_keys
-</pre>
-<p>At this point the contributor will be able to login to the server as well as receive and send mail using its fortylines.com e-mail address. It only remains to add a project for the contributor's blog and hours book keeping.</p>
-<pre>
-cd /var/fortylines/reps/contributors
-mkdir -p <i>serverLoginName</i>/blog
-cd <i>serverLoginName</i>
-git init
-git add index.xml
-dws collect
-</pre>
-<h2>Step 3 - Testing the new account</h2>
-<p>Initial files are now in place for the contributor to authenticate to the server. The contributor can now follow the steps to do a <a href="#snapshotBuilds">snapshot build</a>, add files in the contributor's blog and push them back to the repository on the server. This will test setup has been done correctly.</p>
-
-<a name="snapshotBuilds"><h1>Snapshot builds</h1></a>
-<p>
-In order to do extensive testing, it should be straightforward to build the repository from an ISO installation of any operating system. <b>dws build</b> will fetch fortylines' repository, compile it and report the results to the server. It is accomplished with a single command run on the local machine:
-</p>
-<pre>
-mkdir -p ~/build/fortylines/night
-cd ~/build/fortylines/night
-dws build fortylines.com:/var/fortylines/db.xml
-</pre>
-
-<h1>Rebuilding the intra-projects dependency database</h1></a>
-<p>
-When an project's local index.xml file has been modified, a collect command needs to be run in order to integrate that change into the intra-projects dependency database used by everyone. Following are the commands to rebuild the intra-projects dependency databases currently available on fortylines server.
-</p>
-<pre>
-# 1. Excludes 'test[0-9]' such that the unit tests for the drop project itself 
-# do not end-up as first-class projects.
-# 2. Excludes 'machines' such that the scripts used to configure different 
-# machines in fortylines IT infrastructure do not end-up being executed
-# and repurpose a build machine.
-dws --exclude 'test[0-9]' --exclude machines collect
-scp <i>cacheTop</i>/db.xml fortylines.com:/var/fortylines
-</pre>
-
-<h1>Tracking contributor's hours</h1>
-<p>Time tracking has never been a precise nor relevant way to measure contributions but it is the most accepted way of billing for services. Fortylines as a service and sweat equity company needs to track each contributor's hours in order to generate invoices and pay its employees. In order to facilitate tracking, a line formatted <b>hours</b> text file is present in each contributor's project. This file can be edited manually or through the following commands.
-<pre>
-<b># start working on a project</b>
-seed -m '<i>project</i>' work
-<b># stop working on a project</b>
-seed rest
-</pre>
-<p>At the end of each month, invoices and pay stubs will be automatically generated from contributor's <b>hours</b> files checked in the server's repository.</p>
-
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on December 9th, 2009</p>
-
+      </para>
+      <para>
+	The shell function <emphasis>fortylines</emphasis> will setup the tunnels to the mail server and configure the current shell terminal for working with fortylines' workspace. <emphasis>src</emphasis> and <emphasis>build</emphasis> are aliases to switch respectively between the source (in <emphasis>srcTop</emphasis>) and build (in <emphasis>buildTop</emphasis>) directories of a project.
+      </para>
+      <para>At this point, the contributor need to communicate its local machine public key (~/.ssh/fortylines_rsa.pub) and <emphasis>serverLoginName</emphasis> to an administrator of the server.</para>
+    </section>
+    <section>
+      <title>Step 2 - Creating a new account on server</title>
+      <para>
+	The administrator need to create a new account on the server for the contributor.
+      </para>
+      <para role="code">
+	adduser <emphasis>serverLoginName</emphasis>
+      </para>
+      <para>
+	Then the public key needs to be pasted into the authorized_keys file in the contributor's ~/.ssh sub-directory. 
+      </para>
+      <para role="code">
+	<emphasis>ls -la ~<emphasis>serverLoginName</emphasis>/.ssh</emphasis>
+	-rw------- ... authorized_keys
+      </para>
+      <para>At this point the contributor will be able to login to the server as well as receive and send mail using its fortylines.com e-mail address. It only remains to add a project for the contributor's blog and hours book keeping.</para>
+      <para role="code">
+	cd /var/fortylines/reps/contributors
+	mkdir -p <emphasis>serverLoginName</emphasis>/blog
+	cd <emphasis>serverLoginName</emphasis>
+	git init
+	git add index.xml
+	dws collect
+      </para>
+    </section>
+    <section>
+      <title>Step 3 - Testing the new account</title>
+      <para>Initial files are now in place for the contributor to authenticate to the server. The contributor can now follow the steps to do a <link xlink:href="#snapshotBuilds">snapshot build</link>, add files in the contributor's blog and push them back to the repository on the server. This will test setup has been done correctly.</para>
+    </section>
+    
+    <section xml:id="snapshotBuilds">
+      <title>Snapshot builds</title>
+      <para>
+	In order to do extensive testing, it should be straightforward to build the repository from an ISO installation of any operating system. <emphasis>dws build</emphasis> will fetch fortylines' repository, compile it and report the results to the server. It is accomplished with a single command run on the local machine:
+      </para>
+      <para role="code">
+	mkdir -p ~/build/fortylines/night
+	cd ~/build/fortylines/night
+	dws build fortylines.com:/var/fortylines/db.xml
+      </para>
+    </section>
+    
+    <section>
+      <title>Rebuilding the intra-projects dependency database</title>
+      <para>
+	When an project's local index.xml file has been modified, a collect command needs to be run in order to integrate that change into the intra-projects dependency database used by everyone. Following are the commands to rebuild the intra-projects dependency databases currently available on fortylines server.
+      </para>
+      <para role="code">
+	# 1. Excludes 'test[0-9]' such that the unit tests for the drop project itself 
+	# do not end-up as first-class projects.
+	# 2. Excludes 'machines' such that the scripts used to configure different 
+	# machines in fortylines IT infrastructure do not end-up being executed
+	# and repurpose a build machine.
+	dws --exclude 'test[0-9]' --exclude machines collect
+	scp <xref linkend="cacheTop" />/db.xml fortylines.com:/var/fortylines
+      </para>
+    </section>
+    
+    <section>
+      <title>Tracking contributor's hours</title>
+      <para>Time tracking has never been a precise nor relevant way to measure contributions but it is the most accepted way of billing for services. Fortylines as a service and sweat equity company needs to track each contributor's hours in order to generate invoices and pay its employees. In order to facilitate tracking, a line formatted <emphasis>hours</emphasis> text file is present in each contributor's project. This file can be edited manually or through the following commands.
+      </para>
+      <para role="code">
+	<emphasis># start working on a project</emphasis>
+	seed -m '<emphasis>project</emphasis>' work
+	<emphasis># stop working on a project</emphasis>
+	seed rest
+      </para>
+      <para>At the end of each month, invoices and pay stubs will be automatically generated from contributor's <emphasis>hours</emphasis> files checked in the server's repository.</para>
+      
+      <para>updated by <link xlink:href="/contributors/smirolo/profile.book">Sebastien Mirolo</link> on December 9th, 2009</para>
+    </section>
+  </section>
+</section>

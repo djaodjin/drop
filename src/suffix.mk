@@ -173,9 +173,25 @@ results: $(patsubst %,%.cout,$(testunits))
 %.log:	%.cout $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^
 
+
+# Rules to build printable documentation out of docbook sources.
+# --------------------------------------------------------------
+%.pdf:	%.fo
+	$(FOP) -fo $< -pdf $@
+
+%.fo: %.book
+	$(XSLTPROC) --output $@ $(foxsl) $<
+
+
 # Rules to validate the intra-projects dependency file
 # ----------------------------------------------------
 validate: index.xml
 	xmllint --noout --schema $(srcTop)/drop/src/index.xsd $<
+
+
+# docbook validation
+# schema taken from http://www.docbook.org/xml/5.0/xsd/docbook.xsd
+validbook: $(shell find $(srcDir) -name '*.book')
+	xmllint --noout --schema $(shareDir)/docbook.xsd $^
 
 -include *.d

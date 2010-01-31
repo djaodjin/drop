@@ -1,40 +1,52 @@
-title: Information Distribution
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink">
+  <info>
+    <title>Information Distribution</title>
+    <author><personname>Sebastien Mirolo</personname></author>
+    <date>December 9th, 2009</date>
+  </info>
+  <section>
+    <title>Purpose</title>
+    <para>The purpose of information distribution is to efficiently complete a project that require interaction of many individuals as well as tracking the status of a project and the contributions made so far to it.</para>
+  </section>
+  <section>
+    <title>Technologies</title>
+    <para>The technologies usually involved in information distribution are</para>
+    <simplelist>
+      <member>source repository browser</member>
+      <member>mailing lists</member>
+      <member>online postings (wiki, blog, etc.)</member>
+      <member>mechanically generated reports (build, tests, etc.)</member>
+      <member>notification mechanism</member>
+      <member>tracking developer contributions (hour logs, bug trackers, etc.)</member>
+      <member>online calendars and schedules</member>
+    </simplelist>
+  </section>
+  <section>
+    <title>Features</title>
+    <para>To distribute information efficiently, the support technologies should have the following features</para>
+    <simplelist>
+      <member>Single sign-on</member>
+      <member>One page management of user accessibility rights</member>
+      <member>Automated integration of mechanically generated reports</member>
+      <member>Mechanically generated reports through intelligent data mining (ex. graphs with number of commits per days vs. unit tests passing)</member>
+      <member>Search engine through all postings, code, wiki, etc. With an efficient search engine, it could go as far as marking documents with special <emphasis>todo</emphasis> tags instead of relying on a bug tracking system.</member>
+      <member>Links between source code and documentation files. That is a url in a source comment should be traversable and documentation files could have url to source code files.</member>
+      <member>Collaborative drawing whiteboard</member>
+      <member>Import/export of documents from/to standard formats (.sxc, .pdf, etc.)</member>
+      <member>Context sensitive integrated &quot;educational notes&quot; on how use the information distribution system.</member>
+    </simplelist>
+  </section>
+  <section>
+    <title>Implementation</title>
+    <para>HTML remains central for presentation of a web interface and PDF remains central for printed documentation. As a result, content is usually stored in a server repository as a presentation independent file which is processed by appropriate transformation tools on request.</para>
+    <para><link xlink:href="http://www.docbook.org/tdg5/en/html/docbook.html">DocBook</link> is a popular format to store documentation content. When the documentation is embed into source code comments, tools such as <link xlink:href="http://www.dbdoclet.org/">dbdoclet</link> can be used to extract it into a docbook document.</para>
+    <para>The XSL language and XSL processors (ex. <link xlink:href="http://xml.apache.org/xalan-c/index.html">Xalan</link>) are typically used to transform XML documents in general. DocBook documents can be turned into either HTML or PDF through XSL based <link xlink:href="http://docbook.sourceforge.net/">docbook tools</link>. Using directly an XML parser (ex. <link xlink:href="http://rapidxml.sourceforge.net/">RapidXML</link>), PDF C++ libraries (ex. <link xlink:href="http://www.jagpdf.com/">JagPDF</link>), custom tools can also be implemented to transform content documents. The result can be served directly to the client or some sort of caching framework (ex. <link xlink:href="http://murka.sourceforge.net/">Murka</link>, <link xlink:href="http://axkit.org/">Apache AxKit</link>) can be used to handle requests more efficiently.</para>
+    <para>When presented as a website, the resulting HTML pages will further be customized with a specific company look and feel through CSS style-sheets.</para> 
+    <para>Web 2.0 technologies enable contributors to use a web browser as a text editor to create and modify remote files stored on a server. Heavy client-side Javascript are involved to implement full editors (ex. <link xlink:href="http://www.freedomeditor.com/">Freedom editor</link>, <link xlink:href="http://tinymce.moxiecode.com/">TinyMCE</link>) and other UI interactions such as <link xlink:href="http://www.walterzorn.com/dragdrop/dragdrop_e.htm">Javascript Drag-n-Drop</link> (<link xlink:href="http://www.webreference.com/programming/javascript/mk/column2/">second example</link>). HTTP extension protocols such as <link xlink:href="http://en.wikipedia.org/wiki/WebDAV">WebDAV</link>, a "Web-based Distributed Authoring and Versioning", allow contributors to collaboratively edit and manage files on remote web servers and <link xlink:href="http://en.wikipedia.org/wiki/RSS">RSS</link> is a popular standard for notification of website updates.</para>
+    
+    <para>Fortylines solutions server infrastructure is based on common open source <link xlink:href="services.book">services</link> and a custom simple-to-deploy <link xlink:href="/seed/index.book">presentation back-end</link> that strive to address features required for communication on software development projects.</para>
+  </section>
+</section>
 
-<h1>Purpose</h1>
-<p>The purpose of information distribution is to efficiently complete a project that require interaction of many individuals as well as tracking the status of a project and the contributions made so far to it.</p>
-
-<h1>Technologies</h1>
-<p>The technologies usually involved in information distribution are</p>
-<p>
-<li>source repository browser
-<li>mailing lists
-<li>online postings (wiki, blog, etc.)
-<li>mechanically generated reports (build, tests, etc.)
-<li>notification mechanism
-<li>tracking developer contributions (hour logs, bug trackers, etc.)
-<li>online calendars and schedules
-</p>
-
-<h1>Features</h1>
-<p>To distribute information efficiently, the support technologies should have the following features</p>
-<p>
-<li>Single sign-on
-<li>One page management of user accessibility rights
-<li>Automated integration of mechanically generated reports
-<li>Mechanically generated reports through intelligent data mining (ex. graphs with number of commits per days vs. unit tests passing)
-<li>Search engine through all postings, code, wiki, etc. With an efficient search engine, it could go as far as marking documents with special <i>todo</i> tags instead of relying on a bug tracking system.
-<li>Links between source code and documentation files. That is a url in a source comment should be traversable and documentation files could have url to source code files.
-<li>Collaborative drawing whiteboard
-<li>Import/export of documents from/to standard formats (.sxc, .pdf, etc.)
-<li>Context sensitive integrated &quot;educational notes&quot; on how use the information distribution system.
-</p>
-<h1>Implementation</h1>
-<p>HTML remains central for presentation of a web interface and PDF remains central for printed documentation. As a result, content is usually stored in a server repository as a presentation independent file which is processed by appropriate transformation tools on request.</p>
-<p><a href="http://www.docbook.org/tdg5/en/html/docbook.html">DocBook</a> is a popular format to store documentation content. When the documentation is embed into source code comments, tools such as <a href="http://www.dbdoclet.org/">dbdoclet</a> can be used to extract it into a docbook document.</p>
-<p>The XSL language and XSL processors (ex. <a href="http://xml.apache.org/xalan-c/index.html">Xalan</a>) are typically used to transform XML documents in general. DocBook documents can be turned into either HTML or PDF through XSL based <a href="http://docbook.sourceforge.net/">docbook tools</a>. Using directly an XML parser (ex. <a href="http://rapidxml.sourceforge.net/">RapidXML</a>), PDF C++ libraries (ex. <a href="http://www.jagpdf.com/">JagPDF</a>), custom tools can also be implemented to transform content documents. The result can be served directly to the client or some sort of caching framework (ex. <a href="http://murka.sourceforge.net/">Murka</a>, <a href="http://axkit.org/">Apache AxKit</a>) can be used to handle requests more efficiently.</p>
-<p>When presented as a website, the resulting HTML pages will further be customized with a specific company look and feel through CSS style-sheets.</p> 
-<p>Web 2.0 technologies enable contributors to use a web browser as a text editor to create and modify remote files stored on a server. Heavy client-side Javascript are involved to implement full editors (ex. <a href="http://www.freedomeditor.com/">Freedom editor</a>, <a href="http://tinymce.moxiecode.com/">TinyMCE</a>) and other UI interactions such as <a href="http://www.walterzorn.com/dragdrop/dragdrop_e.htm">Javascript Drag-n-Drop</a> (<a href="http://www.webreference.com/programming/javascript/mk/column2/">second example</a>). HTTP extension protocols such as <a href="http://en.wikipedia.org/wiki/WebDAV">WebDAV</a>, a "Web-based Distributed Authoring and Versioning", allow contributors to collaboratively edit and manage files on remote web servers and <a href="http://en.wikipedia.org/wiki/RSS">RSS</a> is a popular standard for notification of website updates.</p>
-
-<p>Fortylines solutions server infrastructure is based on common open source <a href="services.book">services</a> and a custom simple-to-deploy <a href="/seed/index.book">presentation back-end</a> that strive to address features required for communication on software development projects.</p>
-
-<p>updated by <a href="/contributors/smirolo/profile.book">Sebastien Mirolo</a> on December 9th, 2009</p>
