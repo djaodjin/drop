@@ -2691,12 +2691,33 @@ def pubStatus(args):
     if recurse:
         raise NotYetImplemented()
     else:
+        cmdline = 'git status'
         prev = os.getcwd()
-        for r in reps:
-            log.write('######## status in ' + r + '...\n')
+        for r in reps:            
             os.chdir(context.srcDir(r))
-            try:
-                shellCommand('git status')
+            try:                
+                cmd = subprocess.Popen(cmdline,shell=True,
+                                       stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT)
+                line = cmd.stdout.readline()
+                untracked = False
+                while line != '':
+                    look = re.match('#\s+([a-z]+):\s+(\S+)',line)
+                    if look:
+                       sys.stdout.write(':'.join([r,look.group(1),
+                                                  look.group(2)]) + '\n')
+                    elif re.match('# Untracked files:',line):
+                        untracked = True
+                    elif untracked:
+                        look = re.match('#	(\S+)',line)
+                        if look:
+                            sys.stdout.write(':'.join([r,'?',
+                                                       look.group(1)]) + '\n')
+                    line = cmd.stdout.readline()
+                cmd.wait()
+                if cmd.returncode != 0:
+                    raise Error("unable to complete: " + cmdline + '\n',
+                                cmd.returncode)
             except Error, e:
                 # It is ok. git will return error code 1 when no changes
                 # are to be committed.
