@@ -44,10 +44,9 @@ bins	:=	buildpkg dmake dregress dstamp dws
 
 doc/dws.book: dws
 	$(installDirs) $(dir $@)
-	(echo "<h1>dws --help</h1>" \
-	&& echo "<pre>" \
+	(echo '<?xml version="1.0"?><section xmlns="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink"><info><title>dws --help</title></info><title>dws --help</title><para role="code">' \
 	&& python ./dws --help \
-	&& echo "</pre>") > $@ || rm -f $@
+	&& echo "</para></section>") > $@ || rm -f $@
 
 devinfra.fo: $(call bookdeps,$(srcDir)/doc/devinfra.book)
 

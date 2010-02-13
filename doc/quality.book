@@ -64,9 +64,15 @@
   <section>
     <title>Unit tests</title>
     <para>The purpose of unit tests is to insure first that functionality is implemented correctly. Later in the life cycle of a project, unit tests are often relabeled regression tests and insure that changes to the source code did not break existing functionality.</para>
-    <!-- \todo: Two ways: functional tests => pass/fail condition within the test. i.e. assert framework.
-	 regression tests => check output compared to previous run. meaning of labels.
-      -->
+    <para>The definition of functional and regression tests are very often used interchangeably because a functional test can serve as the base for a regression test as much as a regression test can be used to validate functionality.</para> 
+    <para>For our purpose here, the major distinction between a functional and regression test is how they were originally created. The developper of a functional test has explicitely thought about the passing and failing conditions and written explicit statements for them in the source code that is checked into the repository. The developper of a regression test typically used the build framework to trigger comparison of different runs of the same program.</para> 
+    <para>As such functional tests usually result in source code while regression tests result in makefile rules. Functional tests also typically result in self-contained executables while regression tests rely on external data sets usually stored outside the version controled repository.</para>
+    <informaltable>
+      <tr><th>functional</th><th>regression</th></tr>
+      <tr><td>explicit pass conditions</td><td>output comparison</td></tr>
+      <tr><td>source code</td><td>makefiles</td></tr>
+      <tr><td>self-contained</td><td>rely on external data sets</td></tr>
+    </informaltable>
   </section>
   
   <section>

@@ -51,9 +51,9 @@
     </itemizedlist>
     
     <para>Once sshd is installed on the server, there are two things to do. First, from the local console, use the <emphasis>ssh-keygen</emphasis> command to retrieve the server ssh key fingerprint and publish it to the people that will be allowed to remotely login into the server. For example:</para>
-    <para role="code">
-      <emphasis>ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub</emphasis>
-      2048 c2:0d:b3:19:bf:cf:c8:09:f7:bd:76:dc:67:cd:59:7b /etc/ssh/ssh_host_rsa_key.pub (RSA)
+    <para role="shell">
+<emphasis>ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub</emphasis>
+2048 c2:0d:b3:19:bf:cf:c8:09:f7:bd:76:dc:67:cd:59:7b /etc/ssh/ssh_host_rsa_key.pub (RSA)
     </para>
     <para>Second, review the configuration file (/etc/ssh/sshd_config) and edit the settings to match your requirements. The sshd daemon offers to <link xlink:href="access.book#authentication">authenticate</link> a user using one of many schemes. It is important to note that, so far, it does not offer to authenticate through a <emphasis>combinaison</emphasis> of schemes. Each scheme has advantages and drawbacks that you need to take into concideration while designing the <link xlink:href="access.book">access policy</link>. For example</para>
     <informaltable>
@@ -65,52 +65,65 @@
     <para>The steps to configure an ssh server and client to use RSA public/private key for authentication.</para>
     <informaltable>
       <tr><th>Client</th><th>Server (i.e. <emphasis>hostname</emphasis>)</th></tr>
-      <tr><td><para role="code">man ssh-keygen
-	    man ssh_config
-	</para></td><td><para role="code">man sshd_config</para></td></tr>
-      <tr><td><para role="code">ssh-keygen -q -f ~/.ssh/id_rsa -t rsa</para></td><td>
-	  <para role="code">sudo apt-get upgrade sshd
-	    diff -u sshd_config.prev /etc/sshd_config
-	    + Protocol 2
-	    + PasswordAuthentication no
-	    + PubkeyAuthentication yes
-	    + AuthorizedKeysFile     %h/.ssh/authorized_keys
-	    sudo /etc/init.d/ssh restart</para></td></tr>
-      <tr><td colspan="2"><emphasis>Append the content of the client's file id_rsa.pub to the server's file /home/<emphasis>username</emphasis>/.ssh/authorized_keys</emphasis></td></tr>
-      <tr><td><para role="code">
-	    ls -la ~/.ssh
-	    drwx------   .
-	    -rw-r--r--   config
-	    -rw-------   id_rsa
-	    -rw-r--r--   id_rsa.pub
-	    -rw-r--r--   known_hosts
+      <tr><td><para role="shell">
+man ssh-keygen
+man ssh_config
+	</para></td><td>
+	  <para role="shell">
+man sshd_config
+          </para>
+      </td>
+      </tr>
+      <tr>
+	<td>
+	  <para role="shell">
+ssh-keygen -q -f ~/.ssh/id_rsa -t rsa
 	  </para>
 	</td>
 	<td>
-	  <para role="code">
-	    ls -la ~/.ssh
-	    drwx------ .
-	    -rw------- authorized_keys</para>
-      </td>
+	<para role="shell">
+sudo apt-get upgrade sshd
+diff -u sshd_config.prev /etc/sshd_config
++ Protocol 2
++ PasswordAuthentication no
++ PubkeyAuthentication yes
++ AuthorizedKeysFile     %h/.ssh/authorized_keys
+sudo /etc/init.d/ssh restart</para></td></tr>
+      <tr><td colspan="2"><emphasis>Append the content of the client's file id_rsa.pub to the server's file /home/<emphasis>username</emphasis>/.ssh/authorized_keys</emphasis></td></tr>
+      <tr><td><para role="shell">
+ls -la ~/.ssh
+drwx------   .
+-rw-r--r--   config
+-rw-------   id_rsa
+-rw-r--r--   id_rsa.pub
+-rw-r--r--   known_hosts
+	  </para>
+	</td>
+	<td>
+	  <para role="shell">
+ls -la ~/.ssh
+drwx------ .
+-rw------- authorized_keys</para>
+	</td>
       </tr>
-      <tr><td><para role="code">
-	    ssh -v <emphasis>hostname</emphasis>
-	    ...
-	    debug1: Next authentication method: publickey
-	    debug1: Offering public key: /Users/<emphasis>username</emphasis>/.ssh/id_rsa
-	    debug1: Server accepts key: pkalg ssh-rsa blen 277
-	    debug1: Authentication succeeded (publickey).
-	    ...
+      <tr><td><para role="shell">
+ssh -v <emphasis>hostname</emphasis>
+...
+debug1: Next authentication method: publickey
+debug1: Offering public key: /Users/<emphasis>username</emphasis>/.ssh/id_rsa
+debug1: Server accepts key: pkalg ssh-rsa blen 277
+debug1: Authentication succeeded (publickey).
+...
 	</para></td>
-	<td><para role="code">
-	    diff sshd_config.org /etc/ssh/sshd_config
-	    + LogLevel VERBOSE
-	    tail -f /var/log/auth.log
-	    ...
-	    ... Found matching RSA key ...
-	    ... Accepted publickey for <emphasis>username</emphasis> from <emphasis>client</emphasis> port 50818 sstitle
-	    ... pam_unix(sshd:session): session opened for user <emphasis>username</emphasis> by (uid=0)
-	    ... User child is on pid ...
+	<td><para role="shell">
+diff sshd_config.org /etc/ssh/sshd_config
++ LogLevel VERBOSE
+tail -f /var/log/auth.log
+...
+... Found matching RSA key ...
+... Accepted publickey for <emphasis>username</emphasis> from <emphasis>client</emphasis> port 50818 sstitle
+... pam_unix(sshd:session): session opened for user <emphasis>username</emphasis> by (uid=0)
+... User child is on pid ...
       </para></td></tr>
     </informaltable>
     <para><emphasis>Tip:</emphasis> At some point, you might be temped to update sshd or its configuration through a secure shell connection instead of at the local console. In that case, it is recommended to add a cron job that will restore previously known working configuration after a few minutes before logging out. Just in case.</para>
@@ -125,22 +138,28 @@
       <tr><th>Client</th><th>Server (i.e. <emphasis>hostname</emphasis>)
       </th></tr>
       <tr><td></td>
-	<td><para role="code">diff sshd_config.org /etc/ssh/sshd_config
-	    +PermitTunnel yes</para></td>
+	<td><para role="shell">
+diff sshd_config.org /etc/ssh/sshd_config
++PermitTunnel yes
+</para></td>
       </tr>
       <tr><td>
-	  <para role="code">ssh -f -L <emphasis>localport</emphasis>:<emphasis>hostname</emphasis>:<emphasis>hostport</emphasis> -N <emphasis>hostname</emphasis></para></td><td><para role="code">tail -f /var/log/auth.log</para>
+	  <para role="shell">
+ssh -f -L <emphasis>localport</emphasis>:<emphasis>hostname</emphasis>:<emphasis>hostport</emphasis> -N <emphasis>hostname</emphasis>
+	</para></td><td><para role="shell">
+tail -f /var/log/auth.log
+</para>
       </td>
       </tr>
     </informaltable>
     <para>
       At that point, you can open any secure shell tunnel you want. Two tunnels are open to access e-mails, one for IMAP and one for SMTP. The following code is thus added in the client ~/.bash_profile.
     </para>
-    <para role="code">
-      # http://wiki.metawerx.net/wiki/SSHTunnelTroubleshooting
-      function <emphasis>hostname</emphasis>_tunnels {
-      ssh -f -L 9930:localhost:993 -L 5870:localhost:587 -N <emphasis>hostname</emphasis>
-      }
+    <para role="shell">
+# http://wiki.metawerx.net/wiki/SSHTunnelTroubleshooting
+function <emphasis>hostname</emphasis>_tunnels {
+    ssh -f -L 9930:localhost:993 -L 5870:localhost:587 -N <emphasis>hostname</emphasis>
+}
     </para>
     <para>
       Invoking <emphasis>hostname</emphasis>_tunnels from a terminal command line will create the tunnels. Those tunnels will be open until the ssh process is killed. It is possible to also create <link xlink:href="http://www.g-loaded.eu/2006/11/24/auto-closing-ssh-tunnels/">auto closing ssh tunnels</link> with some more shell scripting if required.
@@ -168,20 +187,20 @@
     <para>The modem that connects the server to the internet through your ISP surely does not use a static IP address but rather a dynamic address assigned through DHCP, the same way, most likely, your local network is configured.</para>
     <para><link xlink:href="http://www.broadband-help.com/articles/guest/domain_name_for_your_pc/">Dynamic DNS</link> is very simple. Everytime your modem renew its DHCP lease and gets a new IP address, this address needs to be forwarded to the DNS server responsible to locate your modem. Either the modem can do that for you or a software daemon running on your server wakes up at regular intervals and generate a specifically crafted update query to the DNS server. On Ubuntu, you can <link xlink:href="https://help.ubuntu.com/community/DynamicDNS">setup dynamic DNS</link> with ddclient.</para>
     <para>There are a lot of companies offering dynamic DNS for free. As an example, you can easily register with <link xlink:href="http://www.dyndns.com">dynDNS</link> and get the url <emphasis>hostname</emphasis>.is-a-geek.com for free in a couple clicks. A direct professional <emphasis>domainname</emphasis>.com url will not cost much through &quot;Custom DNS service&quot; and is definitely worth it once you got everything up-and-running. There is a quota on the monthly DNS query volume and if you either reach it, most likely your business is successful enough to upgrade to a more professional infrastructure. Here is an example to setup ddclient together with dynDNS.</para>
-    <para role="code">
-      sudo apt-get install ddclient
-      ls -la /etc/ddclient.conf
-      -rw------- 1 root root <emphasis>...</emphasis> /etc/ddclient.conf
-      sudo cat /etc/ddclient.conf
-      # Example for /etc/ddclient.conf
+    <para role="shell">
+sudo apt-get install ddclient
+ls -la /etc/ddclient.conf
+-rw------- 1 root root <emphasis>...</emphasis> /etc/ddclient.conf
+sudo cat /etc/ddclient.conf
+# Example for /etc/ddclient.conf
 
-      pid=/var/run/ddclient.pid
-      protocol=dyndns2
-      use=web, if=eth1
-      server=members.dyndns.org
-      login=<emphasis>dynDNS login</emphasis>
-      password=<emphasis>dynDNS password</emphasis>
-      <emphasis>hostname</emphasis>.is-a-geek.com, <emphasis>domainname</emphasis>.com
+pid=/var/run/ddclient.pid
+protocol=dyndns2
+use=web, if=eth1
+server=members.dyndns.org
+login=<emphasis>dynDNS login</emphasis>
+password=<emphasis>dynDNS password</emphasis>
+<emphasis>hostname</emphasis>.is-a-geek.com, <emphasis>domainname</emphasis>.com
     </para>
     
     <para>
@@ -200,9 +219,9 @@
     <para>
       Looking at the configuration file, Ubuntu apache2 setup is configured to use a directory /etc/apache2/sites-enabled with links to files in /etc/apache2/sites-available. You most likely want to /etc/apache2/sites-enabled/000-default to point to your own configuration snipset or edit /etc/apache2/sites-available/default directly. You will also want to add a ServerName directive to /etc/apache2/apache2.conf in order to get rid of the warning &quot;Could not reliably determine the server's fully qualified domain name...&quot; message.
     </para>
-    <para role="code">
-      diff apache2.conf.org /etc/apache2/apache2.conf
-      + ServerName <emphasis>domainname</emphasis>
+    <para role="shell">
+diff apache2.conf.org /etc/apache2/apache2.conf
++ ServerName <emphasis>domainname</emphasis>
     </para>
     <para>Another directive you might want to take a close look at is <emphasis>DirectoryIndex</emphasis>. All urls pointing to the directory will try to load a specified default file.
     </para>
@@ -221,85 +240,85 @@
     <para>
       It is not straightforward to figure what is going on when e-mails do not work as expected. For <link xlink:href="http://www.postfix.com/DEBUG_README.html">debugging postfix</link>, you might want to append <emphasis>-v</emphasis> to the smtp line in /etc/postfix/master.cf as a first step.
     </para>
-    <para role="code">
-      diff main.cf.org /etc/postfix/main.cf
-      +smtp_tls_loglevel = 1
-      +smtpd_tls_loglevel = 1
+    <para role="shell">
+diff main.cf.org /etc/postfix/main.cf
++smtp_tls_loglevel = 1
++smtpd_tls_loglevel = 1
     </para>
     <para>Identification of the mail server:</para>
-    <para role="code">
-      +myorigin = /etc/mailname
-      +mydestination = <emphasis>domainname</emphasis>, <emphasis>hostname</emphasis>, localhost
-      +home_mailbox= Maildir/
+    <para role="shell">
++myorigin = /etc/mailname
++mydestination = <emphasis>domainname</emphasis>, <emphasis>hostname</emphasis>, localhost
++home_mailbox= Maildir/
     </para>
     <para>You first will want to enable Transport Layer Security (TLS) to avoid usernames, passwords and messages to travel in clear text.</para>
-    <para role="code">
-      diff main.cf.org /etc/postfix/main.cf
-      # TLS parameters
-      +smtp_use_tls=yes
-      +smtp_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
-      +smtp_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
-      +smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
-      +smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
-      +
-      +smtpd_use_tls=yes
-      +smtpd_tls_received_header = yes
-      +smtpd_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
-      +smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
-      +smtpd_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
-      +smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
-      +
-      +tls_random_source = dev:/dev/urandom
+    <para role="shell">
+diff main.cf.org /etc/postfix/main.cf
+# TLS parameters
++smtp_use_tls=yes
++smtp_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
++smtp_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
++smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
++smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
++
++smtpd_use_tls=yes
++smtpd_tls_received_header = yes
++smtpd_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
++smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
++smtpd_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
++smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
++
++tls_random_source = dev:/dev/urandom
     </para>
     <section>
       <title>Outgoing Mail</title>
       <para>
 	Mail servers send each other messages on port 25. Most Internet Service Providers (ISP) block outbound port 25 as a way to prevent spam relays. Port 587 remains open for submission of messages by users that can authenticate with an outgoing mail server.</para>
       <para>Thus, setting up postfix as the outgoing message agent might require to use a relay mail transfer agent to send outgoing e-mails. To do that, you can use any mail server allowed to talk on port 25, and on which you have an account. For example, you can use a gmail account.</para>
-      <para role="code">
-	diff main.cf.org /etc/postfix/main.cf
-	+# Gmail Relay
-	+relayhost = [smtp.gmail.com]:587
-	+disable_dns_lookups = yes
-	
-	+smtp_sasl_auth_enable = yes
-	+smtp_sasl_security_options= noanonymous
-	+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-	+smtp_sasl_type = cyrus
-	+
-	+smtpd_sasl_auth_enable= yes
-	+smtpd_sasl_local_domain= 
-	+smtpd_sasl_security_options= noanonymous
-	+smtpd_sasl_type = dovecot
-	+smtpd_sasl_path = private/auth-client
-	+smtpd_sender_restrictions = 
-	+    permit_mynetworks,
-	+    permit_sasl_authenticated,
-	+    reject_non_fqdn_sender,
-	+    reject_unknown_sender_domain
-	+smtpd_recipient_restrictions= 
-	+    permit_sasl_authenticated,
-	+    permit_mynetworks,
-	+    reject_unauth_destination
-	
-	diff master.cf.org /etc/postfix/master.cf
-	+submission inet n       -       -       -       -       smtpd
-	# When relaying mail as backup MX, disable fallback_relay to avoid MX loops
-	relay     unix  -       -       -       -       -       smtp
- 	-o smtp_fallback_relay=
-	+        -o smtp_generic_maps=
-	
-	diff sasl_passwd.org /etc/postfix/sasl_passwd
-	+[smtp.gmail.com]:587            <emphasis>username</emphasis>@gmail.com:<emphasis>password</emphasis>
+      <para role="shell">
+diff main.cf.org /etc/postfix/main.cf
++# Gmail Relay
++relayhost = [smtp.gmail.com]:587
++disable_dns_lookups = yes
+
++smtp_sasl_auth_enable = yes
++smtp_sasl_security_options= noanonymous
++smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
++smtp_sasl_type = cyrus
++
++smtpd_sasl_auth_enable= yes
++smtpd_sasl_local_domain= 
++smtpd_sasl_security_options= noanonymous
++smtpd_sasl_type = dovecot
++smtpd_sasl_path = private/auth-client
++smtpd_sender_restrictions = 
++    permit_mynetworks,
++    permit_sasl_authenticated,
++    reject_non_fqdn_sender,
++    reject_unknown_sender_domain
++smtpd_recipient_restrictions= 
++    permit_sasl_authenticated,
++    permit_mynetworks,
++    reject_unauth_destination
+
+diff master.cf.org /etc/postfix/master.cf
++submission inet n       -       -       -       -       smtpd
+# When relaying mail as backup MX, disable fallback_relay to avoid MX loops
+relay     unix  -       -       -       -       -       smtp
+-o smtp_fallback_relay=
++        -o smtp_generic_maps=
+
+diff sasl_passwd.org /etc/postfix/sasl_passwd
++[smtp.gmail.com]:587            <emphasis>username</emphasis>@gmail.com:<emphasis>password</emphasis>
       </para>
       
-      <para role="code">
-	postmap sasl_passwd
+      <para role="shell">
+postmap sasl_passwd
       </para>
       
       <para>Gmail will rewrite your outgoing message to read &quot;from <emphasis>username</emphasis>@gmail.com&quot; as a way to also prevent spam and false identities. Fortunately, you can use <link xlink:href="http://email.about.com/od/gmailtips/qt/et112605.htm">any &quot;from&quot; address</link> while relaying mail through gmail as long as you can receive e-mail at that address. All you need is to login in your gmail account and go through &quot;Settings > Accounts and Imports > Send Mail from another address&quot;. From a login on your server, test outgoing messages by using the following command:</para>
-      <para role="code">
-	echo "Email relayed by gmail" | mail -s 'test of relay' <emphasis>username</emphasis>@gmail.com
+      <para role="shell">
+echo "Email relayed by gmail" | mail -s 'test of relay' <emphasis>username</emphasis>@gmail.com
       </para>
       
       <!-- \todo remove on clean up:
@@ -320,17 +339,17 @@
 	<listitem><para>Restarting: /etc/init.d/dovecot restart</para></listitem>
 	<listitem><para>Logs: /var/log/syslog, /var/log/mail.log</para></listitem>
       </itemizedlist>
-      <para role="code">
-	diff -u dovecot.org /etc/dovecot/dovecot.conf
-	+  mechanisms = plain login
-	+  socket listen {
-	+    client {
-	+      path = /var/spool/postfix/private/auth-client
-	+      mode = 0660
-	+      user = postfix
-	+      group = postfix 
-	+    }
-	+  }
+      <para role="shell">
+diff -u dovecot.org /etc/dovecot/dovecot.conf
++  mechanisms = plain login
++  socket listen {
++    client {
++      path = /var/spool/postfix/private/auth-client
++      mode = 0660
++      user = postfix
++      group = postfix 
++    }
++  }
       </para>
     </section>
     <section>
@@ -338,8 +357,8 @@
       <para>
 	Locate lines begining with alias in /etc/postfix/main.cf, edit the referenced file (/etc/aliases on Ubuntu) to add aliases and run the <emphasis>newaliases</emphasis> command to rebuild the fast-lookup database.
       </para>
-      <para role="code">
-	+ info: <emphasis>username</emphasis>
+      <para role="shell">
++ info: <emphasis>username</emphasis>
       </para>
       
       <!-- use a mailing list manager (sympa, mailman, ...). -->
@@ -359,7 +378,7 @@ By default, git assumes that you are going to work with the files in the reposit
 "A short aside about what git means by bare: A default git repository assumes that you’ll be using it as your working directory, so git stores the actual bare repository files in a .git directory alongside all the project files. Remote repositories don’t need copies of the files on the filesystem unlike working copies, all they need are the deltas and binary what-nots of the repository itself. This is what “bare” means to git. Just the repository itself."
 </para>
 <para>Note that group is actually spelled group. as opposite to user and world.
-<para role="code">
+<para role="shell">
 git \-\-bare init \-\-shared=group
 </para>
 

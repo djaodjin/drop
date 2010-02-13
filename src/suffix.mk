@@ -194,4 +194,10 @@ validate: index.xml
 validbook: $(shell find $(srcDir) -name '*.book')
 	xmllint --noout --schema $(shareDir)/docbook.xsd $^
 
+validxhtml: $(subst .book,.html,$(shell find $(srcDir) -name '*.book'))
+	xmllint --noout --valid $^
+
+%.html: %.book
+	seed $< > $@
+
 -include *.d

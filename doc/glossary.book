@@ -68,7 +68,8 @@ A repository is made of all editable elements of a site. Each editable element i
 are candidates for branches while:
 </para>
 <simplelist>
-<member>Calendar tables <!-- google format? -->, account information</member>
+<!-- calendar tables in google format? -->
+<member>Calendar tables, account information</member>
 </simplelist>
 <para>are also part of the site. They are editable and thus require to be part of a change list. It does not seem pertinent to keep the revision history nor branch those information so their relevance as part of the repository is questionable.
 </para>

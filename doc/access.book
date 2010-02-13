@@ -1,6 +1,11 @@
 <?xml version="1.0"?>
 <section xmlns="http://docbook.org/ns/docbook" 
 	 xmlns:xlink="http://www.w3.org/1999/xlink">
+  <info>
+    <title>Fortylines Solutions - Access Control</title>
+    <author><personname>Sebastien Mirolo</personname></author>
+    <date>February 13th, 2010</date>
+  </info>
 <section>		
 <title>Access Control</title>
 <section>
@@ -39,11 +44,9 @@ Passwords, file permissions, firewalls, etc. do not prevent against unauthorized
 <section>
 <title>Remote Access</title>
 <para>
-The same way encryption is used for preventing unauthorized physical access to information stored on a disk, it can be used in communication protocols to prevent eavesdropping. The most commonly used set of tools for that purpose is the <link xlink:href="http://www.openssh.com/">openssh</link> software package.
-</para>
+The same way encryption is used for preventing unauthorized physical access to information stored on a disk, it can be used in communication protocols to prevent eavesdropping. The most commonly used set of tools for that purpose is the <link xlink:href="http://www.openssh.com/">openssh</link> software package.</para>
 <para>
-A remote machine provides services on open ports. Since each open ports is potentially a vector of attacks, the most tighten access control policy is to only have one port publicly open for the openssh daemon and use the local forward mechanism to redirect traffic to other services.
-</para>
+A remote machine provides services on open ports. Since each open ports is potentially a vector of attacks, the most tighten access control policy is to only have one port publicly open for the openssh daemon and use the local forward mechanism to redirect traffic to other services.</para>
 </section>
 
 <section xml:id="authentication">
@@ -59,8 +62,7 @@ Users have restricted permissions to access files and services. Authentication c
 <para>
 On today computer systems, public/private key cryptography is concidered one of the most sure way of authentication and thus heavily used. ssh and gpg, both, use public/private keys for authentication. Keys are typically very long and thus a shorter fingerprint is usually used to validate the authenticity of the key itself. To obtain fingerprints for ssh and gpg keys, use the following commands respectively.
 </para>
-<para role="code">
-ssh-keygen -lf <emphasis>keyfile</emphasis>
+<para role="shell">ssh-keygen -lf <emphasis>keyfile</emphasis>
 gpg --fingerprint <emphasis>username</emphasis>
 </para>
 <para>

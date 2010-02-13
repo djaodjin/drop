@@ -3,6 +3,8 @@
 	 xmlns:xlink="http://www.w3.org/1999/xlink">
   <info>
     <title>Use cases of the infrastructure</title>
+    <author><personname>Sebastien Mirolo</personname></author>
+    <date>February 13th, 2010</date>
   </info>
   <section>
     <title>New contributor's account on the server</title>
@@ -11,21 +13,21 @@
       <para>
 	A contributor will to be able to push modifications to the shared repository once authentication keys have been created and installed on the server. The following commands will create the key pair used to authenticate the local machine to the server. <emphasis>ssh-keygen</emphasis> will prompt for a password. This password will be used to encrypt the private key on the local machine and is never communicated to the server for authentication. Be careful that an empty password will allow anyone with access to the local machine to remotely authenticate to the server in matters of seconds.
       </para>
-      <para role="code">
-	ssh-keygen -q -f ~/.ssh/fortylines_rsa -t rsa
+      <para role="shell">
+ssh-keygen -q -f ~/.ssh/fortylines_rsa -t rsa
       </para>
       <para>
 	Once the key pair has been generated, adding the following lines in the ssh config file will permit to use the appropriate private key to access fortylines server.   
       </para>
-      <para role="code">
-	<emphasis>~/.ssh/config</emphasis>
-	Host fortylines.com
-	User <emphasis>serverLoginName</emphasis>
-	IdentityFile ~/.ssh/fortylines_rsa
+      <para role="shell">
+<emphasis>~/.ssh/config</emphasis>
+Host fortylines.com
+User <emphasis>serverLoginName</emphasis>
+IdentityFile ~/.ssh/fortylines_rsa
       </para>
       <para>Finally adding the following function into the shell configuration for the user account will further improve productivity later on. The shell startup script will typically be ~/.bash_profile (Darwin) or ~/.bashrc (Ubuntu).
       </para>
-      <para role="code">
+      <para role="shell">
 <emphasis>~/.bash_profile</emphasis>
 function fortylines {
     # Setting ssh tunnels
@@ -57,24 +59,24 @@ function fortylines {
       <para>
 	The administrator need to create a new account on the server for the contributor.
       </para>
-      <para role="code">
-	adduser <emphasis>serverLoginName</emphasis>
+      <para role="shell">
+adduser <emphasis>serverLoginName</emphasis>
       </para>
       <para>
 	Then the public key needs to be pasted into the authorized_keys file in the contributor's ~/.ssh sub-directory. 
       </para>
-      <para role="code">
-	<emphasis>ls -la ~<emphasis>serverLoginName</emphasis>/.ssh</emphasis>
-	-rw------- ... authorized_keys
+      <para role="shell">
+<emphasis>ls -la ~<emphasis>serverLoginName</emphasis>/.ssh</emphasis>
+-rw------- ... authorized_keys
       </para>
       <para>At this point the contributor will be able to login to the server as well as receive and send mail using its fortylines.com e-mail address. It only remains to add a project for the contributor's blog and hours book keeping.</para>
-      <para role="code">
-	cd /var/fortylines/reps/contributors
-	mkdir -p <emphasis>serverLoginName</emphasis>/blog
-	cd <emphasis>serverLoginName</emphasis>
-	git init
-	git add index.xml
-	dws collect
+      <para role="shell">
+cd /var/fortylines/reps/contributors
+mkdir -p <emphasis>serverLoginName</emphasis>/blog
+cd <emphasis>serverLoginName</emphasis>
+git init
+git add index.xml
+dws collect
       </para>
     </section>
     <section>
@@ -87,10 +89,10 @@ function fortylines {
       <para>
 	In order to do extensive testing, it should be straightforward to build the repository from an ISO installation of any operating system. <emphasis>dws build</emphasis> will fetch fortylines' repository, compile it and report the results to the server. It is accomplished with a single command run on the local machine:
       </para>
-      <para role="code">
-	mkdir -p ~/build/fortylines/night
-	cd ~/build/fortylines/night
-	dws build fortylines.com:/var/fortylines/db.xml
+      <para role="shell">
+mkdir -p ~/build/fortylines/night
+cd ~/build/fortylines/night
+dws build fortylines.com:/var/fortylines/db.xml
       </para>
     </section>
     
@@ -99,14 +101,14 @@ function fortylines {
       <para>
 	When an project's local index.xml file has been modified, a collect command needs to be run in order to integrate that change into the intra-projects dependency database used by everyone. Following are the commands to rebuild the intra-projects dependency databases currently available on fortylines server.
       </para>
-      <para role="code">
-	# 1. Excludes 'test[0-9]' such that the unit tests for the drop project itself 
-	# do not end-up as first-class projects.
-	# 2. Excludes 'machines' such that the scripts used to configure different 
-	# machines in fortylines IT infrastructure do not end-up being executed
-	# and repurpose a build machine.
-	dws --exclude 'test[0-9]' --exclude machines collect
-	scp <xref linkend="cacheTop" />/db.xml fortylines.com:/var/fortylines
+      <para role="shell">
+# 1. Excludes 'test[0-9]' such that the unit tests for the drop project itself 
+# do not end-up as first-class projects.
+# 2. Excludes 'machines' such that the scripts used to configure different 
+# machines in fortylines IT infrastructure do not end-up being executed
+# and repurpose a build machine.
+dws --exclude 'test[0-9]' --exclude machines collect
+scp <xref linkend="cacheTop" />/db.xml fortylines.com:/var/fortylines
       </para>
     </section>
     
@@ -114,15 +116,13 @@ function fortylines {
       <title>Tracking contributor's hours</title>
       <para>Time tracking has never been a precise nor relevant way to measure contributions but it is the most accepted way of billing for services. Fortylines as a service and sweat equity company needs to track each contributor's hours in order to generate invoices and pay its employees. In order to facilitate tracking, a line formatted <emphasis>hours</emphasis> text file is present in each contributor's project. This file can be edited manually or through the following commands.
       </para>
-      <para role="code">
-	<emphasis># start working on a project</emphasis>
-	seed -m '<emphasis>project</emphasis>' work
-	<emphasis># stop working on a project</emphasis>
-	seed rest
+      <para role="shell">
+<emphasis># start working on a project</emphasis>
+seed -m '<emphasis>project</emphasis>' work
+<emphasis># stop working on a project</emphasis>
+seed rest
       </para>
       <para>At the end of each month, invoices and pay stubs will be automatically generated from contributor's <emphasis>hours</emphasis> files checked in the server's repository.</para>
-      
-      <para>updated by <link xlink:href="/contributors/smirolo/profile.book">Sebastien Mirolo</link> on December 9th, 2009</para>
     </section>
   </section>
 </section>
