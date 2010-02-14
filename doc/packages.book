@@ -1,6 +1,13 @@
 <?xml version="1.0"?>
-<article xmlns="http://docbook.org/ns/docbook" 
-	 xmlns:xlink="http://www.w3.org/1999/xlink">
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink"
+	 xmlns:xi="http://www.w3.org/2001/XInclude">
+  <info>	 
+    <title>Fortylines Solutions - Packages</title>
+    <author><personname>Sebastien Mirolo</personname></author>
+    <date>February 13th, 2010</date>
+  </info>
+
   <section>
     <title>Packages</title>
     <section>
@@ -106,7 +113,6 @@
       <para>
 	All software compiled for Windows using cygwin need to be delivered with the cygwin.dll. On the other hand, <link xlink:href="http://www.mingw.com">mingwin</link> uses native win32 calls directly.</para>
       <para>Looking at <link xlink:href="http://trac.project-builder.org/">Project-Builder.org</link> might be a good step to find more details information. These perl scripts aim to provide support to automate packaging for different distribution.</para>
-      <para>updated by <link xlink:href="/contributors/smirolo/profile.book">Sebastien Mirolo</link> on July 25th, 2009</para>
     </section>
   </section>
-</article>
+</section>

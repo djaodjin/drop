@@ -27,21 +27,24 @@ installBinDir		?=	$(binDir)
 installIncludeDir	?=	$(includeDir)
 installLibDir		?=	$(libDir)
 installLogDir		?=	$(logDir)
+installShareDir		?=	$(shareDir)
 
 .PHONY:	all install check dist
 
-all::	$(bins) $(libs) $(includes) $(logs)
+all::	$(bins) $(libs) $(includes) $(shares) $(logs)
 
 clean::
 	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
 
-install:: $(bins) $(libs) $(includes) $(logs)
+install:: $(bins) $(libs) $(includes) $(shares) $(logs)
 	$(if $(bins),$(installDirs) $(installBinDir))
 	$(if $(bins),$(installExecs) $(bins) $(installBinDir))
 	$(if $(libs),$(installDirs) $(installLibDir))
 	$(if $(libs),$(installFiles) $(libs) $(installLibDir))
 	$(if $(includes),$(installDirs) $(installIncludeDir))
 	$(if $(includes),$(installFiles) $(includes) $(installIncludeDir))
+	$(if $(shares),$(installDirs) $(installShareDir))
+	$(if $(shares),$(installFiles) $(shares) $(installShareDir))
 	$(if $(logs),$(installDirs) $(installLogDir))
 	$(if $(logs),$(installFiles) $(logs) $(installLogDir))
 
@@ -192,12 +195,13 @@ validate: index.xml
 # docbook validation
 # schema taken from http://www.docbook.org/xml/5.0/xsd/docbook.xsd
 validbook: $(shell find $(srcDir) -name '*.book')
-	xmllint --noout --schema $(shareDir)/docbook.xsd $^
+	xmllint --noout --schema $(shareDir)/docbook-xsd/docbook.xsd $^
 
-validxhtml: $(subst .book,.html,$(shell find $(srcDir) -name '*.book'))
+validxhtml: $(subst .book,.html,\
+		$(notdir $(shell find $(srcDir) -name '*.book')))
 	xmllint --noout --valid $^
 
 %.html: %.book
-	seed $< > $@
+	seed $< | tail +2 > $@
 
 -include *.d

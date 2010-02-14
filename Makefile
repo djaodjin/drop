@@ -41,15 +41,18 @@ srcDir	:=	$(srcTop)/drop
 include $(srcTop)/drop/src/prefix.mk
 
 bins	:=	buildpkg dmake dregress dstamp dws
+shares	:=	drop.pdf devinfra.pdf
 
 doc/dws.book: dws
 	$(installDirs) $(dir $@)
-	(echo '<?xml version="1.0"?><section xmlns="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink"><info><title>dws --help</title></info><title>dws --help</title><para role="code">' \
+	(echo '<?xml version="1.0"?>' \
+	&& echo '<section xmlns="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink"><info><title>dws --help</title></info><title>dws --help</title><para role="code">' \
 	&& python ./dws --help \
 	&& echo "</para></section>") > $@ || rm -f $@
 
-devinfra.fo: $(call bookdeps,$(srcDir)/doc/devinfra.book)
+drop.fo: $(call bookdeps,$(srcDir)/doc/drop.book)
 
+devinfra.fo: $(call bookdeps,$(srcDir)/doc/devinfra.book)
 
 include $(srcTop)/drop/src/suffix.mk
 

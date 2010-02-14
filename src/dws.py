@@ -148,24 +148,6 @@ class Context:
                          'distHost': HostPlatform('distHost') }
 
         self.buildTopRelativeCwd = None
-        try:
-            self.locate()
-            # -- Read the environment variables set in the config file.
-            configFile = open(self.configFilename)
-            line = configFile.readline()
-            while line != '':
-                look = re.match('(\S+)\s*=\s*(\S+)',line)
-                if look != None:
-                    if not look.group(1) in self.environ:
-                        self.environ[look.group(1)] = Pathname(look.group(1),
-                                                               'no description')
-                    self.environ[look.group(1)].value = look.group(2)
-                line = configFile.readline()
-            configFile.close()        
-        except IOError:
-            None
-        except:
-            raise
 
     def cachePath(self,name):
         '''Absolute path to a file in the local system cache
@@ -239,6 +221,19 @@ class Context:
                 # Change of project name in index.xml on "make dist-src".
                 # self.buildTopRelativeCwd = look.group(1)
                 None
+        # -- Read the environment variables set in the config file.
+        configFile = open(self.configFilename)
+        line = configFile.readline()
+        while line != '':
+            look = re.match('(\S+)\s*=\s*(\S+)',line)
+            if look != None:
+                if not look.group(1) in self.environ:
+                    self.environ[look.group(1)] = Pathname(look.group(1),
+                                                           'no description')
+                self.environ[look.group(1)].value = look.group(2)
+            line = configFile.readline()
+        configFile.close()        
+
 
     def logname(self):
         '''Name of the XML tagged log file where sys.stdout is captured.''' 
@@ -288,16 +283,15 @@ class CommandsFormatter(optparse.IndentedHelpFormatter):
     import textwrap
     result = "\nCommands:\n"
     if description: 
-        desc_width = self.width - self.current_indent
-        indent = " "*self.current_indent
+        descWidth = self.width - self.current_indent
         bits = description.split('\n')
-        formatted_bits = [
+        formattedBits = [
           textwrap.fill(bit,
-            desc_width,
-            initial_indent=indent,
-            subsequent_indent=indent)
+            descWidth,
+            initial_indent="",
+            subsequent_indent="                       ")
           for bit in bits]
-        result = result + "\n".join(formatted_bits) + "\n"
+        result = result + "\n".join(formattedBits) + "\n"
     return result         
 
 
@@ -2985,6 +2979,7 @@ if __name__ == '__main__':
         import __main__
 	import optparse
 
+        context = Context()
         epilog= ''
         d = __main__.__dict__
         keys = d.keys()
@@ -2992,6 +2987,13 @@ if __name__ == '__main__':
         for command in keys:
             if command.startswith('pub'):
                 epilog += __main__.__dict__[command].__doc__ + '\n'
+        keys = context.environ.keys()
+        keys.sort()
+        epilog += 'Variables defined in ws.mk:\n'
+        for varname in keys:
+            var = context.environ[varname]
+            if var.descr:
+                epilog += var.name.ljust(23,' ') + var.descr + '\n\n'
 
 	parser = optparse.OptionParser(\
             usage='%prog [options] command\n\nVersion\n  %prog version ' \
@@ -3025,7 +3027,12 @@ if __name__ == '__main__':
 
         # Find the build information
         arg = args.pop(0)
-        context = Context()
+        try:
+            context.locate()
+        except IOError:
+            None
+        except:
+            raise
 
         index = IndexProjects(context)
         command = 'pub' + arg.capitalize()

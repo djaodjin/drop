@@ -1,8 +1,9 @@
 <?xml version="1.0"?>
-<section xmlns="http://docbook.org/ns/docbook" 
-	 xmlns:xlink="http://www.w3.org/1999/xlink">
+<chapter xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink"
+	 xmlns:xi="http://www.w3.org/2001/XInclude">
   <info>
-    <title>Building Software - Fortylines Solutions infrastructure</title>
+    <title>Fortylines Solutions Infrastructure - Rationale</title>
     <author><personname>Sebastien Mirolo</personname></author>
     <date>February 13th, 2010</date>
   </info>
@@ -72,56 +73,14 @@ The web-based services of a software organization usually includes static docume
 </para>
 <para>
 Fortylines solutions approach to web services is to integrate all editable bits (code, web pages, bug reports, etc.) into the same distributed control version repository (git) and to provide tools to publish the repository as online documents.
-<link xlink:href="/seed/index.book"></link>
+<link xlink:href="/seed/doc/seed.book"></link>
 </para>
 <para>
-For example, while source code and documentation are usually maintained and published separately, Fortylines solutions' <xref linkend="seed" /> product enables source code and other documents to cross-reference each other easily through nice web looking presentation of source files and urls embedded in comments.
-</para>
-<!-- rapidxml will parse '&lt;' as '<' which defies the purpose of the example
-     so we put the following element to contain CDATA.
-     rapidxml will also not give you any node for a sequence of spaces so we
-     integrate the spaces in the previous phrase tag. -->
-<para role="code">
-<![CDATA[
-/* 
-   This is a reference to &lt;a href="dws.book"&gt;web-based documentation&lt;/a&gt;. 
-*/
-
-int main( int argc, char *argv[] ) {
-    return 0;
-}
-]]>
-</para>
-<para>is published as</para>
-<para role="code">
-<phrase role="comment">/* </phrase>
-<phrase role="comment">   This is a reference to <link xlink:href="dws.book">web-based documentation</link>.
-</phrase>
-<phrase role="comment">*/
-
-</phrase>
-<phrase role="identifier">int </phrase><phrase role="identifier">main</phrase><phrase role="punctuator">( </phrase><phrase role="identifier">int </phrase><phrase role="identifier">argc</phrase><phrase role="punctuator">, </phrase><phrase role="keyword">char </phrase><phrase role="operator">*</phrase><phrase role="identifier">argv</phrase><phrase role="punctuator">[</phrase><phrase role="punctuator">] </phrase><phrase role="punctuator">) </phrase><phrase role="punctuator">{
-    </phrase>
-<phrase role="keyword">return </phrase><phrase role="decimalLiteral">0</phrase><phrase role="punctuator">;
-</phrase>
-<phrase role="punctuator">}
-</phrase>
-</para>
-<para>
-<link xlink:href="/seed/src/seed.cc">browse sample repository</link>
-</para>
-
-<!-- \todo <para>
-Policies:
-Search through freshmeat, sourceforge, wikipedia
-Select candidates:
-first by License (free first)
-second activity 
-because evaluation time, cost contribution perspective.
-contribute to projects which are not company core technologies.
-<li>implementation through contribution to free software projects.<br />
-</para>
--->
+      <link xlink:href="usecases.book">Use cases</link> will give specific answers to common usage patterns while the <link xlink:href="glossary.book">glossary of terms</link> and <link xlink:href="reference.book">reference manuals</link> will point to general useful documentation.
+    </para>
 </section>
 </section>
-</section>
+<xi:include xlink:href="usecases.book" />
+<xi:include xlink:href="glossary.book" />
+<xi:include xlink:href="reference.book" />
+</chapter>
