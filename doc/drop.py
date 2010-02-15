@@ -1,4 +1,5 @@
-# -*- Makefile -*-
+#!/usr/bin/env python
+#
 # Copyright (c) 2009, Sebastien Mirolo
 #   All rights reserved.
 #
@@ -24,48 +25,19 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-include $(shell \
-	d=`pwd` ; \
-	config='ws.mk_not_found' ; \
-	while [ $$d != '/' ] ; do \
-		if [ -f $$d/ws.mk ] ; then \
-			config=$$d/ws.mk ; \
-			break ; \
-		fi ; \
-		d=`dirname $$d` ; \
-	done ; \
-	echo $$config)
+import sys
 
-srcDir	:=	$(srcTop)/drop
-
-include $(srcTop)/drop/src/prefix.mk
-
-bins	:=	buildpkg dmake dregress dstamp dws
-shares	:=	drop.pdf
-
-drop.fo: drop.book
-
-drop.book: $(srcDir)/doc/drop.py dropintro.book workspace.book quality.book \
-		packages.book dws.book glossary.book
-	python $^ > $@
-
-dws.book: dws
-	python ./dws --help-book > $@ || rm -f $@
-
-include $(srcTop)/drop/src/suffix.mk
-
-all:: dws.book
-
-install:: dws.py dstamp.py $(srcTop)/drop/src/prefix.mk \
-		$(srcTop)/drop/src/suffix.mk \
-		$(srcTop)/drop/src/configure.sh \
-		$(srcTop)/drop/src/index.xsd \
-		dws.book
-	$(installFiles) $(filter %.py,$^) $(binDir)
-	$(installDirs)  $(etcDir)/dws
-	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(etcDir)/dws
-
-dmake:
-	echo '#!/bin/sh' > $@
-	echo 'dws make $$*' >> $@
-
+if __name__ == '__main__':
+    sys.stdout.write('''<?xml version="1.0"?>
+<article xmlns="http://docbook.org/ns/docbook" 
+	xmlns:xlink="http://www.w3.org/1999/xlink"
+	xmlns:xi="http://www.w3.org/2001/XInclude">
+  <info>	 
+    <title>Fortylines Drop - Workspace Management</title>
+    <author><personname>Sebastien Mirolo</personname></author>
+    <date>February 13th, 2010</date>
+  </info>
+''')
+    for part in sys.argv[1:]:
+        sys.stdout.write('<xi:include xlink:href="' + part + '" />\n')
+    sys.stdout.write('</article>\n')

@@ -1,15 +1,19 @@
 <?xml version="1.0"?>
 <section xmlns="http://docbook.org/ns/docbook" 
-	 xmlns:xlink="http://www.w3.org/1999/xlink">
+	 xmlns:xlink="http://www.w3.org/1999/xlink"
+	 xml:id="quality.book">
   <info>
     <title>Source Code Quality</title>
-    <author><personname>Sebastien Mirolo</personname></author>
-    <date>December 9th, 2009</date>
+    <date>February 13th, 2010</date>
   </info>
   
+  <para>
+    Conventions and Test Units.
+  </para>
+
   <section>
     <title>Conventions</title>
-    <para>The purpose of conventions is to make it faster for developers to use pre-existing general knowledge and start contributing to specific projects they were unfamiliar with. Conventions also help create automated tools and an infrastructure to build code, run tests and generate status reports (see <link xlink:href="workspace.book">workspace</link>).</para>
+    <para>The purpose of conventions is to make it faster for developers to use pre-existing general knowledge and start contributing to specific projects they were unfamiliar with. Conventions also help create automated tools and an infrastructure to build code, run tests and generate status reports (as detailed in <link linkend="workspace.book">workspace</link>).</para>
     <para>Each project in fortylines source repository is organized as follow</para>
     <variablelist>
       <varlistentry>
@@ -36,7 +40,7 @@
       </varlistentry>
       <varlistentry>
 	<term>include/</term>
-	<listitem><para>Public header files (.hh, .tcc) that are installed in <xref linkend="includeDir" /> (ex. /usr/local/include).</para>
+	<listitem><para>Public header files (.hh, .tcc) that are installed in <xref linkend="dws.book#includeDir" /> (ex. /usr/local/include).</para>
 	</listitem>
       </varlistentry>
       <varlistentry>
@@ -57,7 +61,7 @@
       <listitem><para>Each file name follows the camelCase identifier convention.</para></listitem>
     </itemizedlist>
     <para>
-      A <link xlink:href="/seed/src/checkstyle.py">checkstyle</link> script runs through the top-level <xref linkend="srcTop" /> and outputs a detailed report about projects broking those conventions.
+      A <link xlink:href="/seed/src/checkstyle.py">checkstyle</link> script runs through the top-level <link linkend="dws.book#srcTop">srcTop</link> and outputs a detailed report about projects broking those conventions.
     </para>
   </section>
   

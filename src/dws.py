@@ -37,6 +37,7 @@ __version__ = '0.1'
 import datetime, hashlib, re, os, optparse, shutil
 import socket, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
+import cStringIO
 
 # Object that implements logging into an XML formatted file 
 # what gets printed on sys.stdout.
@@ -281,7 +282,7 @@ class Context:
 class CommandsFormatter(optparse.IndentedHelpFormatter):
   def format_epilog(self, description):
     import textwrap
-    result = "\nCommands:\n"
+    result = ""
     if description: 
         descWidth = self.width - self.current_indent
         bits = description.split('\n')
@@ -2437,7 +2438,7 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
                              
             
 def pubBuild(args):
-    '''  build              [remoteIndexFile [localTop]]
+    '''build              [remoteIndexFile [localTop]]
                         This bootstrap command will download an index 
                         database file from *remoteTop* and starts issuing
                         make for every project listed in it with targets 
@@ -2488,7 +2489,7 @@ def pubBuild(args):
 
 
 def pubCollect(args):
-    '''  collect              Consolidate local dependencies information 
+    '''collect                Consolidate local dependencies information 
                        into a global dependency database. Copy all 
                        distribution packages built into a platform 
                        distribution directory.
@@ -2547,7 +2548,7 @@ def pubCollect(args):
 
 
 def pubConfigure(args):
-    '''  configure            Configure the local machine with direct 
+    '''configure              Configure the local machine with direct 
                        dependencies of a project such that the project 
                        can be built later on.
     '''
@@ -2574,7 +2575,7 @@ def pubConfigure(args):
 
 
 def pubContext(args):
-    '''  context              Prints the absolute pathname to a file.
+    '''context                Prints the absolute pathname to a file.
                        If the filename cannot be found from the current 
                        directory up to the workspace root (i.e where ws.mk 
                        is located), it assumes the file is in *etcDir*.
@@ -2589,7 +2590,7 @@ def pubContext(args):
     sys.stdout.write(pathname)
 
 def pubFind(args):
-    '''  find               bin|lib filename ...
+    '''find               bin|lib filename ...
                        Search through a set of directories derived from PATH
                        for *filename*.
     ''' 
@@ -2607,20 +2608,20 @@ def pubFind(args):
     # print '\n\t'.join(installed)
 
 def pubInit(args):
-    '''  init                 Prompt for variables which have not been 
+    '''init                   Prompt for variables which have not been 
                        initialized in ws.mk. Fetch the project index.
     '''
     configVar(context.environ.values())
     index.validate()
 
 def pubInstall(args):
-    '''  install              Install a package on the local system.
+    '''install                Install a package on the local system.
     '''
     install(args)
 
 
 def pubIntegrate(args):
-    '''  integrate          [ srcPackage ... ]
+    '''integrate          [ srcPackage ... ]
                        Integrate a patch into a source package
     '''
     while len(args) > 0:
@@ -2637,13 +2638,13 @@ class ListPdbHandler(PdbHandler):
 
 
 def pubList(args):
-    '''  list                 List available projects
+    '''list                   List available projects
     '''
     index.parse(ListPdbHandler())
 
 
 def pubMake(args):
-    '''  make                 Make projects. "make recurse" will build 
+    '''make                   Make projects. "make recurse" will build 
                        all dependencies required before a project 
                        can be itself built.
     '''
@@ -2654,7 +2655,7 @@ def pubMake(args):
 
 
 def pubStatus(args):
-    '''  status               Show status of projects checked out 
+    '''status                 Show status of projects checked out 
                        in the workspace with regards to commits.
     '''
     global log 
@@ -2720,7 +2721,7 @@ def pubStatus(args):
 
 
 def pubUpdate(args):
-    '''  update               Update projects installed in the workspace
+    '''update                 Update projects installed in the workspace
     '''
     global log 
     log = LogFile(context.logname(),nolog)
@@ -2754,7 +2755,7 @@ def pubUpdate(args):
     
 
 def pubUpstream(args):
-    '''  upstream          [ srcPackage ... ]
+    '''upstream          [ srcPackage ... ]
                        Generate a patch to submit to upstream 
                        maintainer out of a source package and 
                        a -patch subdirectory in a project srcDir.
@@ -2980,7 +2981,7 @@ if __name__ == '__main__':
 	import optparse
 
         context = Context()
-        epilog= ''
+        epilog= '\nCommands:\n'
         d = __main__.__dict__
         keys = d.keys()
         keys.sort()
@@ -3004,6 +3005,8 @@ if __name__ == '__main__':
 	    help='Use default answer for every interactive prompt.')
 	parser.add_option('--exclude', dest='excludePats', action='append',
 	    help='The specified command will not be applied to projects matching the name pattern.')
+	parser.add_option('--help-book', dest='helpBook', action='store_true',
+	    help='Print help in docbook format')
 	parser.add_option('--nolog', dest='nolog', action='store_true',
 	    help='Do not generate output in the log file')
 	parser.add_option('--upload', dest='uploadResults', action='store_true',
@@ -3013,8 +3016,99 @@ if __name__ == '__main__':
         
 	options, args = parser.parse_args()
 	if options.version:
-		sys.stdout.write('dws version ' + __version__ + '\n')
-		sys.exit(0)
+            sys.stdout.write('dws version ' + __version__ + '\n')
+            sys.exit(0)
+        if options.helpBook:
+            help = cStringIO.StringIO()
+            parser.print_help(help)
+            print """<?xml version="1.0"?>
+<refentry xmlns="http://docbook.org/ns/docbook" 
+         xmlns:xlink="http://www.w3.org/1999/xlink"
+         xml:id="dws.book">
+<refmeta>
+<refentrytitle>dws</refentrytitle>
+</refmeta>
+<refnamediv>
+<refname>dws</refname>
+<refpurpose>inter-project dependencies tool</refpurpose>
+</refnamediv>
+<refsynopsisdiv>
+<cmdsynopsis>
+<command>dws</command>
+<arg choice="opt">
+  <option>options</option>
+</arg>
+<arg>command</arg>
+</cmdsynopsis>
+</refsynopsisdiv>
+"""
+            firstTerm = True
+            firstSection = True
+            lines = help.getvalue().split('\n')
+            while len(lines) > 0:                
+                line = lines.pop(0)
+                if (line.strip().startswith('Usage')
+                    or line.strip().startswith('Version')
+                    or line.strip().startswith('dws version')):
+                    None
+                elif line.strip().endswith(':'):
+                    if not firstTerm:
+                        print "</para>"
+                        print "</listitem>"
+                        print "</varlistentry>"
+                    if not firstSection:
+                        print "</variablelist>"
+                        print "</refsection>"
+                    firstSection = False
+                    print "<refsection>"
+                    print '<title>' + line.strip() + '</title>'
+                    print "<variablelist>"
+                    firstTerm = True
+                elif len(line) > 0 and (re.search("[a-z]",line[0]) 
+                                        or line.startswith("  -")):
+                    s = line.strip().split(' ')
+                    if not firstTerm:
+                        print "</para>"
+                        print "</listitem>"
+                        print "</varlistentry>"
+                    firstTerm = False                    
+                    for w in s[1:]:
+                        if len(w) > 0:
+                            break
+                    print "<varlistentry>"
+                    if line.startswith("  -h,"):
+                        # Hack because "show" does not start
+                        # with uppercase.
+                        print "<term>" + ' '.join(s[0:2]) + "</term>"
+                        w = 'S'
+                        s = s[1:]
+                    elif not re.search("[A-Z]",w[0]):
+                        print "<term>" + line + "</term>"
+                    else:
+                        if not s[0].startswith('-'):
+                            print "<term xml:id=\"" + s[0] + "\">"
+                        else:
+                            print "<term>"
+                        print s[0] + "</term>"
+                    print "<listitem>"
+                    print "<para>"
+                    if not re.search("[A-Z]",w[0]):
+                        None
+                    else:
+                        print ' '.join(s[1:])
+                else:
+                    print line
+            if not firstTerm:
+                print "</para>"
+                print "</listitem>"
+                print "</varlistentry>"
+            if not firstSection:
+                print "</variablelist>"
+                print "</refsection>"
+            print """</refentry>
+"""
+            sys.exit(0)
+
         useDefaultAnswer = options.default
         uploadResults = options.uploadResults
         nolog = options.nolog

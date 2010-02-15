@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
 <section xmlns="http://docbook.org/ns/docbook" 
 	 xmlns:xlink="http://www.w3.org/1999/xlink">
-
-<section>
+<info>
 <title>Glossary</title>
+</info>
+
 <section xml:id="Dir">
 <title>*Dir</title>
 <para>
@@ -82,17 +83,10 @@ The root directory of a file hierarchy. examples: srcTop, buildTop.
 </para>
 </section>
 
-<section xml:id="srcTop">
-<title>srcTop</title>
-<para>
-Root of the tree where the source code under revision control lives on the local machine.
-</para>
-</section>
-
 <section xml:id="workspace">
 <title>Workspace</title>
 <para>Directory structure in which each file is a complete editable element of the repository at a specific revision.</para>
 </section>
-</section>
+
 </section>
 

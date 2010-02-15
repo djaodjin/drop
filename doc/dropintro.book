@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink">
+<info>	 
+    <title>Introduction</title>
+    <date>February 13th, 2010</date>
+</info>
+    <para>
+      In today's environment, the number of third-party dependencies for any piece of software is staggering. Most modern operating systems come with <link linkend="packages.book">package managers</link> whose goal is to get all the runtime dependencies correct. Often, they lack the flexiblity required for code development though. Once all third-party executables, headers, libraries, etc. have been installed on a development system, it is time to <link linkend="workspace.book">build the code</link>. With a substantial source code base, this usually involves intricate recursive calls to &quot;make&quot; and a complex set of implicit dependencies. The result are build systems with a tendency to create broken builds despite best efforts to enforce <link linkend="quality.book">conventions</link> in hope of improviving quality.  
+    </para>
+    <para>
+      Drop is an inter-project dependencies tool (<link linkend="dws.book">dws</link>), a set of makefile fragments and conventions used at fortylines solutions to improve the quality and robustness of building a large source repository. Its efficiency is measured by the time it takes to setup a random machine for code development first and subsequently the time spent in rebuilding the source base after any changes. 
+    </para>
+</section>

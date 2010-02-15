@@ -1,29 +1,27 @@
 <?xml version="1.0"?>
 <section xmlns="http://docbook.org/ns/docbook" 
 	 xmlns:xlink="http://www.w3.org/1999/xlink"
-	 xmlns:xi="http://www.w3.org/2001/XInclude">
+	 xmlns:xi="http://www.w3.org/2001/XInclude"
+	 xml:id="packages.book">
   <info>	 
-    <title>Fortylines Solutions - Packages</title>
-    <author><personname>Sebastien Mirolo</personname></author>
-    <date>February 13th, 2010</date>
+    <title>Packages</title>
+    <date>February 14th, 2010</date>
   </info>
 
   <section>
-    <title>Packages</title>
-    <section>
-      <title>Package Distribution Model</title>
-      <para>
-	Most operating systems distribute software in the form of packages. At a high-level, each package defines prerequisites packages that need to be installed on the system before it, itself, can be used. The operating system uses a package manager to analyze the packages dependency graph and determine how to update the local system based on an end-user selection.</para>
-      <para>
-	Software is always in an ever-evolving state. In order to keep a local system up-to-date with latest available features and fixes, software is tested, built, packaged and stored on remote update servers. Each package comes with a small specification file that primary contains information about a package prerequisite dependencies. The remote server aggregates all specification files into a small index file that contains the packages dependency graph. On a local system update, the local package manager downloads the index file and through the analysis of the packages dependency graph, decides to download actual packages and install them on the local system.</para>
-    </section>
-    <section>
-      <title>Distribution Specific Package Management</title>
-      <para>
-      </para>
-      <table>
-	<caption>Package Managers by OS distribution</caption>
-	<tbody>
+    <title>Package Distribution Model</title>
+    <para>
+      Most operating systems distribute software in the form of packages. At a high-level, each package defines prerequisites packages that need to be installed on the system before it, itself, can be used. The operating system uses a package manager to analyze the packages dependency graph and determine how to update the local system based on an end-user selection.</para>
+    <para>
+      Software is always in an ever-evolving state. In order to keep a local system up-to-date with latest available features and fixes, software is tested, built, packaged and stored on remote update servers. Each package comes with a small specification file that primary contains information about a package prerequisite dependencies. The remote server aggregates all specification files into a small index file that contains the packages dependency graph. On a local system update, the local package manager downloads the index file and through the analysis of the packages dependency graph, decides to download actual packages and install them on the local system.</para>
+  </section>
+  <section>
+    <title>Distribution Specific Package Management</title>
+    <para>
+    </para>
+    <table>
+      <caption>Package Managers by OS distribution</caption>
+      <tbody>
 	<tr>
 	  <td></td>
 	  <td><link xlink:href="http://www.ubuntu.com">Ubuntu</link></td>
@@ -114,5 +112,5 @@
 	All software compiled for Windows using cygwin need to be delivered with the cygwin.dll. On the other hand, <link xlink:href="http://www.mingw.com">mingwin</link> uses native win32 calls directly.</para>
       <para>Looking at <link xlink:href="http://trac.project-builder.org/">Project-Builder.org</link> might be a good step to find more details information. These perl scripts aim to provide support to automate packaging for different distribution.</para>
     </section>
-  </section>
 </section>
+
