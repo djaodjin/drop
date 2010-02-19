@@ -61,23 +61,97 @@
   <section>
     <title>Make</title>
     <para>
-      The workspace tool inter-project dependency
-      intra-project dependencies through regular makefile      
+      The workspace tool (<link linkend="dws.book">dws</link>) deals with inter-project dependency. Once it has generated a topological ordering of projects to be rebuilt, it invokes the unix make utility for each project in sequence. Thus intra-project dependencies are handled and updated through regular makefiles.
     </para>
     <para>
-      prefix Makefile suffix
-      crossprefix Makefile crosssuffix
-      provides standard for C++, book, distribution regression tests...
-      => ws.mk prefix.mk Makefile suffix.mk
-    </para>    
-    <para>
-      The <link xlink:href="http://www.gnu.org/software/make/manual/make.html">GNU Make Reference Manual</link> is very well written and contains the detailed information on how make works, thus the place to look when debugging Makefiles. Of course, as a reference manual, it has very little on writing Makefiles for large maintainable source code bases.
+      The <link xlink:href="http://www.gnu.org/software/make/manual/make.html">GNU Make Reference Manual</link> is very well written and contains the detailed information on how make works, thus the place to look when debugging Makefiles. Of course, as a reference manual, it has very little on writing makefiles for large maintainable source code bases.
     </para>
-    
-    <!--
-	\todo It is the topic of the next chapters.
-	<title>Compiling - Libtool</title>
-	-->
+    <para>
+      Common practise to factor makefiles is to devide them in three parts: a prefix that contains some definitions, project-specific declarations and a suffix that contains implicit rules.
+    </para>
+    <para>
+      <emphasis>Drop</emphasis>'s prefix.mk and suffix.mk define variables and rules to provide compilation of executables and libraries, installation of differnt files on the local system, packaging of a project for various distributions and running unit tests.
+    </para>
+    <para>
+      Using <emphasis>drop</emphasis> to write a project makefile requires to include drop's prefix.mk at the begining of the project makefile and drop's suffix at the end of the project makefile. In order to convieniently support multiple workspaces, it is also required to include ws.mk through a <code>include $(shell dws context)</code> statement as the first line of the project's makefile.
+    </para>
+    <programlisting>
+# -*- Makefile -*-
+include $(shell dws context)
+include $(etcDir)/dws/prefix.mk
+...
+include $(etcDir)/dws/suffix.mk
+    </programlisting>
+    <para>
+      <emphasis>Drop</emphasis> is especially relevent in large cross-platform build systems. By including crossprefix.mk and crosssuffix.mk instead of the usual prefix.mk and suffix.mk, each variable (ex. CC) is doubled with a host equivalent (ex. CC.host) and the associated rules. The cross*.mk fragments enable building both target and host executables in the same makefile, a feature often required for development of virtual machines.
+    </para>
+  </section>   
+
+  <!-- \todo section on compiling and libtool -->
+
+  <section xml:id="distPackages">
+    <title>Distribution Packages</title>
+    <para>
+      Most operating systems distribute software in the form of packages. At a high-level, each package defines prerequisites packages that need to be installed on the system before it, itself, can be used. The operating system uses a package manager to analyze the packages dependency graph and determine how to update the local system based on an end-user selection.</para>
+    <para>
+      Software is always in an ever-evolving state. In order to keep a local system up-to-date with latest available features and fixes, software is tested, built, packaged and stored on remote update servers. Each package comes with a small specification file that primary contains information about a package prerequisite dependencies. The remote server aggregates all specification files into a small index file that contains the packages dependency graph. On a local system update, the local package manager downloads the index file and through the analysis of the packages dependency graph, decides to download actual packages and install them on the local system.</para>
+    <para>The inter-project dependencies tool (<link linkend="dws.book">dws</link>) naturally extends the ideas of distribution packages to projects and the development cycle. It is thus natural to be able to build and install binary packages through dws while relying on the local system package manager as much as possible.
+    </para>
+
+    <section>
+      <title><link xlink:href="http://www.ubuntu.com">Ubuntu</link></title>
+      <para>Ubuntu is a derivative of the Debian family and thus uses most of the same tools and file formats for package distribution.</para>
+      <para>The apt- utilities are the original suite of tools for installing packages on Ubuntu even though aptitude is also very popular nowadays.</para>
+      <para>distribution packages come in the form of <link xlink:href="http://synthesize.us/HOWTO_make_a_deb_archive_without_dpkg">.deb</link> files.</para>
+      <para>The index database of packages dependencies is a compressed text file called <link xlink:href="http://mirrors.us.kernel.org/ubuntu/dists/jaunty/main/binary-amd64/Packages.bz2">Packages.bz2</link>.</para>
+      <para>To build a package, Makefiles are added into the upstream source tree in a debian/ subdirectory and the commands <code>cd %name &amp;&amp; debuild</code> is invoked from the top of the source tree. <link xlink:href="http://www.debian-administration.org/articles/336">Rolling your own Debian package</link> and <link xlink:href="https://wiki.ubuntu.com/PackagingGuide">Rolling your own Ubuntu package</link> are good introductions to building .deb files.</para>
+      <para>Information about <link xlink:href="http://www.debian.org/doc/manuals/repository-howto/repository-howto.en.html">creating a Debian repository</link> shows how to distribute those packages to a community.</para>
+    </section>
+
+    <section>
+      <title><link xlink:href="http://www.fedoraproject.org/">Fedora</link></title>
+      <para>Fedora is a Redhat sponsored distribution and uses most of the same tools and file formats for package distribution as Redhat Enterprise.</para>
+      <para>
+	<link xlink:href="http://www.phy.duke.edu/~rgb/General/yum_HOWTO/yum_HOWTO/yum_HOWTO-1.html">yum</link> is used for package management on Fedora and Redhat Enterprise.</para>
+      <para>Packages come in the form of a .rpm file</para>
+      <para>The index database with packages dependencies is stored as a SQLlite database under the name <link xlink:href="http://mirrors.us.kernel.org/fedora/releases/11/Fedora/x86_64/os/repodata/">repodata/</link>.</para>
+      <para>Fedora control files, <link xlink:href="http://fedoraproject.org/wiki/Packaging/NamingGuidelines">%{name}.spec</link>, are standalone shell-like scripts used to build packages out of an upstream source archive with a command such as <code>rpmbuild -bb --clean %name.spec</code>. <link xlink:href="http://www.rpm.org/max-rpm/index.html">RedHat Package Manager</link>, <link xlink:href="http://docs.fedoraproject.org/developers-guide/ch-rpm-building.html">Building Fedora RPM Packages</link> and <link xlink:href="https://fedoraproject.org/wiki/Packaging/Guidelines">Fedora Packaging guidelines</link> have starting documentation on building .rpm files.</para>
+      <para>Creating a remote repository is explained at length in <link xlink:href="http://sial.org/howto/rpm/">RedHat Package Manager Tips</link> and <link xlink:href="http://www.linux.com/feature/37660">How to run your own yum repository</link>. In modern Fedora distribution, yum-arch has been replaced by createrepo.</para>
+    </section>
+
+    <section>
+      <title><link xlink:href="http://www.apple.com/">OSX</link></title>
+      <para>
+	There is no official update tool for all software deployed on an OSX platform even though packaging projects as disk images is a common practise. The internals of OSX (aka Darwin), as a derivative from the BSD family, it is also common to find open source software distributed through <link xlink:href="http://freshmeat.net/projects/macports">macports</link>.</para>
+      <para>Simple applications on OSX come as a .app that needs to be dragged into the /Applications folder while complex applications come as .pkg directory. Both typically come bundled as a .dmg disk image.</para>
+      <para>The <link xlink:href="http://www.apple.com/downloads/">Apple Website</link> and <link xlink:href="http://freshmeat.net/projects/macports">macports</link> are the two main repositories to search for OSX packages.</para>
+      <para>The documentation to package OSX software is sparse and most times explained as a sequence of clicks through the XCode GUI which is far from convenient for automation. See <link xlink:href="http://developer.apple.com/documentation/developertools/conceptual/SoftwareDistribution/Introduction/Introduction.html#//apple_ref/doc/uid/10000145i-CH1-DontLinkElementID_69">Packaging and Distribution Software</link> by Apple, <link xlink:href="http://developer.apple.com/documentation/Darwin/Reference/Manpages/man1/packagemaker.1.html">packagemaker man pages</link> and the <link xlink:href="http://python.net/~gherman/projects/buildpkg/">buildpkg.py</link> python script which is a food starting point for understanding the command line tools available.</para>
+    </section>
+
+    <section>
+      <title><link xlink:href="http://www.apple.com/">Windows</link></title>
+      <para>There is no official update tool for all software deployed on a Windows platform. <link xlink:href="http://wwww.cygwin.com">Cygwin</link> has become a de-facto manager for open source packages and <link xlink:href="http://www.nabber.org/projects/cyg-get/">cyg-get.py</link> is script very convenient to update packages from the command-line.</para>
+      <para>
+	Cyg-apt turned out to be quite old and unreliable with current cygwin repositories. Cyg-get.py uses optparse so the command line syntax is quite strange for a package manager tool but it worked very well.</para>
+      <para>Most times, recent packages cannot be found in cygwin but are available in <link xlink:href="http://www.cygwinports.org/">cygwinports</link>. Since both sites are using the same distribution model, cyg-get.py can be used to download for either one.
+      </para>
+      <para>
+	All software compiled for Windows using cygwin need to be delivered with the cygwin.dll. On the other hand, <link xlink:href="http://www.mingw.com">mingwin</link> uses native win32 calls directly.</para>
+      <para>Distribution packages come in the form of .tar.bz2 files.</para>
+      <para>The index database is a simple formatted text file called either <link xlink:href="http://cygwin.elite-systems.org/setup.ini">setup.ini</link> or <link xlink:href="http://cygwin.elite-systems.org/setup-2.ini">setup-2.ini</link></para>
+      <para>There are at least three methods described to package software for cygwin as written in <link xlink:href="http://cygwin.com/setup.html">Cygwin Package Contributor&quot;s Guide</link>. A setup.hint file and a <code>cygport %name all</code> command will look very familiar to Fedora packagers.</para>
+    </section>
+
+    <section>
+      <title>Solaris</title>
+      <para>Information for <link xlink:href="https://www.gerts.net/sysconf/pkgupdate/">Solaris package management</link> is also available. The update tool is called <link xlink:href="http://www.bolthole.com/solaris/pkg-get.html">pkg-get</link>.</para>
+    </section>
+
+    <section>
+      <para>
+	<link xlink:href="https://help.ubuntu.com/community/SwitchingToUbuntu/FromLinux/%20RedHatEnterpriseLinuxAndFedora">apt-*</link>
+      </para>
+      <para>Looking at <link xlink:href="http://trac.project-builder.org/">Project-Builder.org</link> might be a good step to find more details information. These perl scripts aim to provide support to automate packaging for different distribution.</para>
+    </section>
   </section>
 </section>
-

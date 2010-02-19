@@ -1,58 +1,73 @@
 <?xml version="1.0"?>
-<section xmlns="http://docbook.org/ns/docbook" 
+<glossary xmlns="http://docbook.org/ns/docbook" 
 	 xmlns:xlink="http://www.w3.org/1999/xlink">
 <info>
 <title>Glossary</title>
 </info>
 
-<section xml:id="Dir">
-<title>*Dir</title>
+<glossentry xml:id="Dir">
+<glossterm>*Dir</glossterm>
+<glossdef>
 <para>
 A directory name on the local machine. example: backupDir.
 </para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="localMachine">
-<title>Local machine</title>
+<glossentry xml:id="localMachine">
+<glossterm>Local machine</glossterm>
+<glossdef>
 <para>Physical machine that runs the web browser and client side executables. Also, the development platform of a contributor.</para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="package">
-<title>Package</title>
+<glossentry xml:id="package">
+<glossterm>Package</glossterm>
+<glossdef>
 <para>
 A package is an archive of a project as a single file. Usually, a distribution package is made out of a stable version of a project but need not be. There exist binary packages of pre-compiled applications in format such as .rpm, .deb, etc. and source packages of a project source files.
 </para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="path">
-<title>Path</title>
+<glossentry xml:id="path">
+<glossterm>Path</glossterm>
+<glossdef>
 <para>
 A directory name on a local or remote machine. If the path references a directory on a remote machine, it will be qualified with either, or both, a user name and a machine name. example: replicatePath.
 </para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="project">
-<title>Project</title>
+<glossentry xml:id="project">
+<glossterm>Project</glossterm>
+<glossdef>
 <para>
 A project is a piece of software treated as a single logical unit either because of its functionality, its maintainer, ... In any case, by definition, a single source repository controls a project and commits can only be guaranteed atomic on a per project basis. 
 </para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="remoteMachine"> 
-<title>Remote machine</title>
+<glossentry xml:id="remoteMachine"> 
+<glossterm>Remote machine</glossterm>
+<glossdef>
 <para>Physical machine that host the remote site and the server side executables.</para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="remoteSite">
-<title>Remote site</title>
+<glossentry xml:id="remoteSite">
+<glossterm>Remote site</glossterm>
+<glossdef>
 <para>Information accessible through a web browser present on remote machine.</para>
 <para>
 The remote site (site for short) is composed of read-only and editable elements. Read-only elements comprise mail archives [mbox], billing information, etc. A mail archive is read-only and each e-mail in it stored in full and in time order. Thus mail archives, though part of the site, do not participate into repository activities such as branching, change lists, online edition, etc.</para>
 <!-- [Workflow idea: meeting notes are posted on a special meeting notes mailing list] -->
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="repository">
-<title>Repository</title>
+<glossentry xml:id="repository">
+<glossterm>Repository</glossterm>
+<glossdef>
 <para> 
 Information stored under a revision control system.</para>
 <para>
@@ -74,19 +89,24 @@ are candidates for branches while:
 </simplelist>
 <para>are also part of the site. They are editable and thus require to be part of a change list. It does not seem pertinent to keep the revision history nor branch those information so their relevance as part of the repository is questionable.
 </para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="top">
-<title>*Top</title>
+<glossentry xml:id="top">
+<glossterm>*Top</glossterm>
+<glossdef>
 <para>
 The root directory of a file hierarchy. examples: srcTop, buildTop.
 </para>
-</section>
+</glossdef>
+</glossentry>
 
-<section xml:id="workspace">
-<title>Workspace</title>
+<glossentry xml:id="workspace">
+<glossterm>Workspace</glossterm>
+<glossdef>
 <para>Directory structure in which each file is a complete editable element of the repository at a specific revision.</para>
-</section>
+</glossdef>
+</glossentry>
 
-</section>
+</glossary>
 

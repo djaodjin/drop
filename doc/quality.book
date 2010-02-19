@@ -8,6 +8,7 @@
   </info>
   
   <para>
+    \todo write paragraph
     Conventions and Test Units.
   </para>
 
@@ -40,7 +41,7 @@
       </varlistentry>
       <varlistentry>
 	<term>include/</term>
-	<listitem><para>Public header files (.hh, .tcc) that are installed in <xref linkend="dws.book#includeDir" /> (ex. /usr/local/include).</para>
+	<listitem><para>Public header files (.hh, .tcc) that are installed in <link linkend="dws.book#includeDir">includeDir</link> (ex. /usr/local/include).</para>
 	</listitem>
       </varlistentry>
       <varlistentry>
@@ -61,8 +62,11 @@
       <listitem><para>Each file name follows the camelCase identifier convention.</para></listitem>
     </itemizedlist>
     <para>
-      A <link xlink:href="/seed/src/checkstyle.py">checkstyle</link> script runs through the top-level <link linkend="dws.book#srcTop">srcTop</link> and outputs a detailed report about projects broking those conventions.
+      As projects grow in size, it becomes cumbersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process.
     </para>
+    <para>
+      \todo integrate checkstyle as a view in seed.
+      A <link xlink:href="/seed/src/checkstyle.py">checkstyle</link> script runs through the top-level <link linkend="dws.book#srcTop">srcTop</link> and outputs a detailed report about projects broking those conventions.</para>    
   </section>
   
   <section>
@@ -77,12 +81,7 @@
       <tr><td>source code</td><td>makefiles</td></tr>
       <tr><td>self-contained</td><td>rely on external data sets</td></tr>
     </informaltable>
-  </section>
-  
-  <section>
-    <title>Conclusion</title>
-    <para>As projects grow in size, it becomes cumbersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process. Unit tests will also start breaking and become deprecated as a project moves forward. So, as a result, relevant unit tests are the ones that can be run by an automated tool as part of the <link xlink:href="usecases.book#snapshotBuilds">build process</link>.</para>
-    
+    <para> Unit tests will typically start breaking and become deprecated as a project moves forward. As a result, relevant unit tests are the ones that can be run by an automated tool as part of the <link linkend="/services/doc/usecases.book#snapshotBuilds">build process</link>.</para>
   </section>
 </section>
 
