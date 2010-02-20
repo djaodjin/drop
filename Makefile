@@ -46,7 +46,7 @@ shares	:=	drop.pdf
 drop.fo: drop.book
 
 drop.book: $(srcDir)/doc/drop.py dropintro.book workspace.book quality.book \
-		packages.book dws.book glossary.book
+		dws.book glossary.book
 	python $^ > $@
 
 dws.book: dws
