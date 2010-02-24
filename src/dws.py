@@ -497,7 +497,8 @@ class DependencyGenerator(Unserializer):
         for miss in self.missings:
             targets |= set([ miss[1] ])
         for name in targets:      
-            if not os.path.isdir(context.srcDir(name)):      
+            if (not os.path.isdir(context.srcDir(name))
+                and self.filters(name)):
                 # If a prerequisite project is not defined as an explicit
                 # package, we will assume the prerequisite name is
                 # enough to install the required tools for the prerequisite.
@@ -537,15 +538,16 @@ class DependencyGenerator(Unserializer):
         # We now know what to do with the missing dependency edges, 
         # so let's add the ones we have to track. 
         for newEdge in self.missings:
-            if ((newEdge[1] in self.repositories 
+            if (newEdge[1] in self.repositories 
                 or newEdge[1] in self.patches
-                or newEdge[1] in self.packages)
-                and  newEdge[1] in self.projects):
-                # If the prerequisite is not a project, it will be installed 
-                # by the distribution's package manager on the local machine
-                # and we do not track its prerequisites explicitely. We leave
-                # this work to the distribution package manager.
-                self.levels[0] += [ newEdge ]
+                or newEdge[1] in self.packages):
+                if newEdge[1] in self.projects:
+                    # If the prerequisite is not a project, it will be 
+                    # installed by the distribution's package manager 
+                    # on the local machine and we do not track 
+                    # its prerequisites explicitely. We leave
+                    # this work to the distribution package manager.
+                    self.levels[0] += [ newEdge ]
             else:
                 self.excludePats |= set([ newEdge[1] ])
         locals = []
@@ -865,11 +867,27 @@ class Pathname(Variable):
         return True
 
 
+class MultipleChoice(Variable):
+
+    def __init__(self,name,descr=None,choices=[]):
+        Variable.__init__(self,name,descr)
+        self.choices = choices
+        self.constrains = {}
+
+    def configure(self):
+        '''Generate an interactive prompt to enter a workspace variable 
+        *var* value and returns True if the variable value as been set.'''
+        if self.value != None:
+            return False
+        self.value = selectMultiple(self.descr,self.choices)
+        return True
+
 class SingleChoice(Variable):
 
     def __init__(self,name,descr=None,choices=[]):
         Variable.__init__(self,name,descr)
         self.choices = choices
+        self.constrains = {}
 
     def configure(self):
         '''Generate an interactive prompt to enter a workspace variable 
@@ -1088,18 +1106,24 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagAlternate = 'alternate'
     tagAlternates = 'alternates'
     tagTag = 'tag'
+    tagBase = 'base'
     tagDb = 'projects'
+    tagDefault = 'default'
+    tagConstrain = 'constrain'
     tagDepend = 'dep'
     tagDescription = 'description'
     tagFetch = 'fetch'
     tagHash = 'sha1'
     tagMaintainer = 'maintainer'
+    tagMultiple = 'multiple'
     tagPackage = 'package'
     tagPatch = 'patch'
     tagPathname = 'pathname'
     tagProject = 'project'
     tagRepository = 'repository'
+    tagSingle = 'single'
     tagSync = 'sync'
+    tagValue = 'value'
     tagPattern = '.*<' + tagProject + '\s+name="(.*)"'
     trailerTxt = '</projects>'
 
@@ -1107,6 +1131,8 @@ class xmlDbParser(xml.sax.ContentHandler):
         self.build = build
         self.context = context
         self.handler = None
+        self.choice = None
+        self.constrain = None
  
     def startElement(self, name, attrs):
         '''Start populating an element.'''
@@ -1118,6 +1144,9 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.locals += [ Alternates() ]
             self.tagIndices += [ len(self.tags) ]
             self.locIndices += [ len(self.locals) ]
+        elif name == self.tagConstrain:
+            self.constrain = attrs['name']
+            self.constrainValues = []
         elif name == self.tagFetch:
             self.filename = attrs['name']
         elif name == self.tagProject:
@@ -1139,10 +1168,23 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.depName = attrs['name']
             self.deps = {}
             self.excludes = []
+        elif name == self.tagMultiple:
+            self.constrain = None
+            self.var = MultipleChoice(attrs['name'])
+            if self.var.name in self.context.environ:
+                self.var.value = self.context.environ[self.var.name]
         elif name == self.tagPathname:
+            self.constrain = None
             self.var = Pathname(attrs['name'])
             if self.var.name in self.context.environ:
                 self.var.value = self.context.environ[self.var.name]
+        elif name == self.tagSingle:
+            self.constrain = None
+            self.var = SingleChoice(attrs['name'])
+            if self.var.name in self.context.environ:
+                self.var.value = self.context.environ[self.var.name]
+        elif name == self.tagValue:
+            self.choice = [ attrs['name'] ]
         elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
             if 'excludes' in attrs:
                 self.excludes += attrs['excludes'].split(',')
@@ -1170,6 +1212,16 @@ class xmlDbParser(xml.sax.ContentHandler):
             depFirst = self.locIndices.pop()
             tagFirst = self.tagIndices.pop()
             self.tags = self.tags[:tagFirst]
+        elif name == self.tagBase:
+            if isinstance(self.var,Pathname):
+                self.var.base = self.context.environ[self.text.strip()]
+        elif name == self.tagConstrain:
+            self.var.constrains[self.choice[0]][self.constrain] \
+                = self.constrainValues
+            self.constrain = None
+        elif name == self.tagDefault:
+            if isinstance(self.var,Pathname):
+                self.var.default = self.text.strip()
         elif name == self.tagTag:
             self.tags += [ self.text ]
         elif name == self.tagPackage:
@@ -1192,7 +1244,9 @@ class xmlDbParser(xml.sax.ContentHandler):
         elif name == self.tagDepend:
             self.locals += [ Dependency(self.depName,self.deps,self.excludes) ]
         elif name == self.tagDescription:
-            if self.var:
+            if self.choice:
+                self.choice += [ self.text ]
+            elif self.var:
                 self.var.descr = self.text
             else:
                 self.project.description = self.text.strip()
@@ -1207,6 +1261,12 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.filename = None
         elif name == self.tagSync:
             self.sync = self.text
+        elif name == self.tagValue:
+            if self.constrain:
+                self.constrainValues += [ self.text.strip() ]
+            else:
+                self.var.choices += [ [ self.choice ] ]
+                self.choice = None
         elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
             if not name in self.deps:
                 self.deps[name] = []
@@ -1510,7 +1570,8 @@ def findData(dir,names,excludes=[]):
                 log.write('yes\n')
                 tokens = fullNames[0].split(os.sep)
                 linked = os.sep.join(tokens[:len(tokens) - linkNum])
-                results.append((namePat,linked))
+                # DEPRECATED: results.append((namePat,linked))
+                results.append((namePat,fullNames[0]))
                 found = True
                 break
         if not found:
@@ -1749,6 +1810,10 @@ def configVar(vars):
     If those do not exist, prompt the user for input.'''
     found = False
     for v in vars:
+        if not v.name in context.environ:
+            # If we do not add variable to the context, they won't
+            # be saved in ws.mk
+            context.environ[v.name] = v            
         found |= v.configure()
     if found:
         context.save()
@@ -1997,6 +2062,8 @@ def linkContext(path,linkName):
 
 def linkPatPath(namePat, absolutePath):
     # Yeah, looking for g++ might be a little bit of trouble. 
+    #print "!!! linkPatPath(namePat=" + str(namePat) \
+    #    + ", absolutePath=" + str(absolutePath) + ")"
     regex = re.compile(namePat.replace('+','\+') + '$')
     if regex.groups == 0:
         linkPath = absolutePath
@@ -2030,7 +2097,9 @@ def linkPathInclude(namePat, absolutePath):
 def linkPathLib(namePat, absolutePath):
     '''Normalize a library name to a name that will be used to create
     a link in buildLib later referenced from Makefiles.'''
-    pathname, ext = os.path.splitext(absolutePath)
+    ext = '.a'
+    if absolutePath:
+        pathname, ext = os.path.splitext(absolutePath)    
     libname = libPrefix() + namePat + ext 
     return os.path.join(context.value('libDir'),libname), absolutePath
 
@@ -2404,6 +2473,8 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
         # The project is present in *srcTop*, so we will update the source 
         # code from a repository. 
         rep = handler.asProject(name).repository
+        if not rep:
+            rep = handler.asProject(name).patch
         if rep:
             # Not every project is made a first-class citizen. If there are 
             # no rep structure for a project, it must depend on a project
@@ -2605,7 +2676,7 @@ def pubFind(args):
         __main__.__dict__[command](searches)
     if len(installed) != len(searches):
         sys.exit(1)
-    # print '\n\t'.join(installed)
+
 
 def pubInit(args):
     '''init                   Prompt for variables which have not been 
@@ -2649,6 +2720,8 @@ def pubMake(args):
                        can be itself built.
     '''
     global log 
+    context.cacheTop.default = os.path.dirname(os.path.dirname(
+        os.path.realpath(os.getcwd())))
     log = LogFile(context.logname(),nolog)
     repositories = [ context.cwdProject() ]
     make(repositories,args)
@@ -3021,7 +3094,7 @@ if __name__ == '__main__':
         if options.helpBook:
             help = cStringIO.StringIO()
             parser.print_help(help)
-            print """<?xml version="1.0"?>
+            sys.stdout.write("""<?xml version="1.0"?>
 <refentry xmlns="http://docbook.org/ns/docbook" 
          xmlns:xlink="http://www.w3.org/1999/xlink"
          xml:id="dws.book">
@@ -3041,7 +3114,7 @@ if __name__ == '__main__':
 <arg>command</arg>
 </cmdsynopsis>
 </refsynopsisdiv>
-"""
+""")
             firstTerm = True
             firstSection = True
             lines = help.getvalue().split('\n')
@@ -3053,45 +3126,46 @@ if __name__ == '__main__':
                     None
                 elif line.strip().endswith(':'):
                     if not firstTerm:
-                        print "</para>"
-                        print "</listitem>"
-                        print "</varlistentry>"
+                        sys.stdout.write("</para>\n")
+                        sys.stdout.write("</listitem>\n")
+                        sys.stdout.write("</varlistentry>\n")
                     if not firstSection:
-                        print "</variablelist>"
-                        print "</refsection>"
+                        sys.stdout.write("</variablelist>\n")
+                        sys.stdout.write("</refsection>\n")
                     firstSection = False
-                    print "<refsection>"
-                    print '<title>' + line.strip() + '</title>'
-                    print "<variablelist>"
+                    sys.stdout.write("<refsection>\n")
+                    sys.stdout.write('<title>' + line.strip() + '</title>\n')
+                    sys.stdout.write("<variablelist>")
                     firstTerm = True
                 elif len(line) > 0 and (re.search("[a-z]",line[0]) 
                                         or line.startswith("  -")):
                     s = line.strip().split(' ')
                     if not firstTerm:
-                        print "</para>"
-                        print "</listitem>"
-                        print "</varlistentry>"
+                        sys.stdout.write("</para>\n")
+                        sys.stdout.write("</listitem>\n")
+                        sys.stdout.write("</varlistentry>\n")
                     firstTerm = False                    
                     for w in s[1:]:
                         if len(w) > 0:
                             break
-                    print "<varlistentry>"
+                    sys.stdout.write("<varlistentry>\n")
                     if line.startswith("  -h,"):
                         # Hack because "show" does not start
                         # with uppercase.
-                        print "<term>" + ' '.join(s[0:2]) + "</term>"
+                        sys.stdout.write("<term>" + ' '.join(s[0:2])
+                                         + "</term>\n")
                         w = 'S'
                         s = s[1:]
                     elif not re.search("[A-Z]",w[0]):
-                        print "<term>" + line + "</term>"
+                        sys.stdout.write("<term>" + line + "</term>\n")
                     else:
                         if not s[0].startswith('-'):
-                            print "<term xml:id=\"" + s[0] + "\">"
+                            sys.stdout.write("<term xml:id=\"" + s[0] + "\">\n")
                         else:
-                            print "<term>"
-                        print s[0] + "</term>"
-                    print "<listitem>"
-                    print "<para>"
+                            sys.stdout.write("<term>\n")
+                        sys.stdout.write(s[0] + "</term>\n")
+                    sys.stdout.write("<listitem>\n")
+                    sys.stdout.write("<para>\n")
                     if not re.search("[A-Z]",w[0]):
                         None
                     else:
@@ -3099,14 +3173,13 @@ if __name__ == '__main__':
                 else:
                     print line
             if not firstTerm:
-                print "</para>"
-                print "</listitem>"
-                print "</varlistentry>"
+                sys.stdout.write("</para>\n")
+                sys.stdout.write("</listitem>\n")
+                sys.stdout.write("</varlistentry>\n")
             if not firstSection:
-                print "</variablelist>"
-                print "</refsection>"
-            print """</refentry>
-"""
+                sys.stdout.write("</variablelist>\n")
+                sys.stdout.write("</refsection>\n")
+            sys.stdout.write("</refentry>\n")
             sys.exit(0)
 
         useDefaultAnswer = options.default

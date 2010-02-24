@@ -12,6 +12,19 @@
       <dep name="git-core">
 	<bin>git</bin>
       </dep>      
+      <!-- To build documentation as PDF -->
+      <dep name="xsltproc">
+	<bin>xsltproc</bin>
+      </dep>
+      <dep name="docbook-xsl">
+	<!-- We have to link at the docbook-xsl directory level
+	     because the stylesheet expects to find files looking
+	     into into .. -->
+	<share>.*/(docbook-xsl)/fo/docbook.xsl</share>
+      </dep>
+      <dep name="fop">
+	<bin>fop</bin>
+      </dep>
 
       <!-- How to express >=4 when the python XML parser 
 	   throws malformed exceptions? -->

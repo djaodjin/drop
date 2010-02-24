@@ -34,10 +34,57 @@
     </xs:complexType>
   </xs:element>
 
+  <xs:element name="choices">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="value" 
+		    minOccurs="0" maxOccurs="unbounded">
+	  <xs:complexType>
+	    <xs:sequence>
+	      <xs:element name="description" type="xs:string"/>
+	      <xs:element name="constrain" minOccurs="0" maxOccurs="unbounded">
+		<xs:complexType>
+		  <xs:sequence>
+		    <xs:element name="value" type="xs:string" 
+				minOccurs="0" maxOccurs="unbounded"/>
+		  </xs:sequence>
+		  <xs:attribute name="name" type="xs:string" use="required"/>
+		</xs:complexType>
+	      </xs:element>
+	    </xs:sequence>
+	    <xs:attribute name="name" type="xs:string" use="required"/>
+	  </xs:complexType>
+	</xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  
+  <xs:element name="multiple">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="description" type="xs:string"/>
+	<xs:element ref="choices"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
   <xs:element name="pathname">
     <xs:complexType>
       <xs:sequence>
 	<xs:element name="description" type="xs:string"/>
+	<xs:element name="base" type="xs:string"/>
+	<xs:element name="default" type="xs:string"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="single">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="description" type="xs:string"/>
+	<xs:element ref="choices"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
@@ -101,7 +148,11 @@
 		    minOccurs="0"/>
 	<xs:element ref="fetch"
 		    minOccurs="0" maxOccurs="unbounded"/>	
+	<xs:element ref="multiple" 
+		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="pathname" 
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="single" 
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="dep"
 		    minOccurs="0" maxOccurs="unbounded"/>
