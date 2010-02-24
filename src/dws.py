@@ -2135,6 +2135,8 @@ def make(names, targets):
         # Make current project
         if len(targets) > 0:
             makeProject(last,targets,{ last: projects[last]})
+        else:
+            linkDependencies({ last: projects[last]})
     else:
         for name in names:
             makeProject(name,targets)
@@ -2143,6 +2145,7 @@ def make(names, targets):
 def makeProject(name,targets,dependencies={}):
     '''Create links for prerequisites when necessary, then issue a make 
     command and log output.'''
+    log.header(name)
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
     if objDir != os.getcwd():
@@ -2152,7 +2155,6 @@ def makeProject(name,targets,dependencies={}):
     errcode = 0
     cmdline = 'export PATH=' + context.value('binDir') \
         + ':${PATH} ; make -f ' + makefile
-    log.header(name)
     try:        
         status = 'prereqs'
         if len(dependencies) > 0:
