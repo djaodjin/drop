@@ -27,7 +27,7 @@
 
 # Generate regression between two log files.
 
-import re, os, optparse, shutil, sys, tempfile
+import re, os, optparse, shutil, stat, sys, tempfile
 
 __version__ = '0.1'
 
@@ -173,28 +173,33 @@ if __name__ == '__main__':
         out.write('<tests>\n')
         firstIteration = True
         for filename in args:
+            hasOuput = {}
             f = open(filename,'r')
             line = f.readline()
             while line != '':
-                look = re.match('@@ test: (\S+) (\S+) @@',line)
+                look = re.match('@@ test: (\S+) (\S+)?\s*@@',line)
                 if look:
                     # found information associated with a test
                     testName = look.group(1)
-                    testStatus = look.group(2)
+                    if look.group(2):
+                        testStatus = look.group(2)
+                    else:
+                        testStatus = 'unknown'
                     if firstIteration and testStatus != 'pass':
                         nbFailures = nbFailures + 1
                     if not testName in tests:
                         tests[testName] = tempfile.TemporaryFile()
-                        tests[testName].write('<output name="'+filename+'">\n')
-                        tests[testName].write('<![CDATA[\n')
+                    tests[testName].write('<output name="'+filename+'">\n')
+                    tests[testName].write('<![CDATA[\n')
                     testFile = tests[testName]                
+                    hasOuput[testName] = True
                 elif testFile:
                     testFile.write(line)
                 else:
                     out.write(line)
-                line = f.readline()
+                line = f.readline()                
             f.close()
-            for testName in tests:
+            for testName in hasOuput:
                 tests[testName].write(']]>\n')
                 tests[testName].write('</output>\n')
             firstIteration = False
@@ -203,7 +208,7 @@ if __name__ == '__main__':
         for reffile in reffiles:
             id = os.path.splitext(os.path.basename(reffile))[0]
             out.write('<reference id="' + id \
-                          + '"name="' + reffile + '"/>')
+                          + '" name="' + reffile + '"/>\n')
 
         # 3. All temporary files have been created, it is time to merge 
         #    them back together.
@@ -213,9 +218,13 @@ if __name__ == '__main__':
             # Write the set of regressions for the test
             for reffile in reffiles:
                 out.write('<compare name="' + reffile + '">')
-                if regressions[testName][reffile] == 'fail':
+                if testName in regressions:
+                    if regressions[testName][reffile] == 'fail':
+                        nbRegressions = nbRegressions + 1
+                    out.write(regressions[testName][reffile])
+                else:
                     nbRegressions = nbRegressions + 1
-                out.write(regressions[testName][reffile])
+                    out.write('compile')
                 out.write('</compare>\n')
             testFile = tests[testName]
             testFile.seek(0,os.SEEK_SET)
@@ -227,6 +236,9 @@ if __name__ == '__main__':
             testFile.close()
         out.write('</tests>\n')
         out.close()
+        # Insures permission will allow the CGI to read the file
+        os.chmod(outname,stat.S_IRUSR | stat.S_IWUSR 
+                 | stat.S_IRGRP | stat.S_IROTH) 
         shutil.move(outname,options.output)
         print str(nbFailures) + ' failures'
         print str(nbRegressions) + ' regressions'

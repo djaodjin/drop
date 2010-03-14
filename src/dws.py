@@ -185,8 +185,13 @@ class Context:
                                                self.configName)
             self.save()
             self.locate()
-        prefix = os.path.commonprefix([os.path.realpath(self.value('buildTop')),
-                                       os.getcwd()])    
+        if os.path.realpath(os.getcwd()).startswith(
+            os.path.realpath(self.value('buildTop'))):
+                top = os.path.realpath(self.value('buildTop'))
+        elif os.path.realpath(os.getcwd()).startswith(
+            os.path.realpath(self.value('srcTop'))):
+                top = os.path.realpath(self.value('srcTop'))            
+        prefix = os.path.commonprefix([top,os.getcwd()])
         return os.getcwd()[len(prefix) + 1:]
         # return self.buildTopRelativeCwd
 
@@ -257,7 +262,7 @@ class Context:
         configFile.write('# configuration for development workspace\n\n')
         for key in keys:
             if self.environ[key].value:
-                configFile.write(key + '=' + self.environ[key].value + '\n')
+                configFile.write(key + '=' + str(self.environ[key].value) + '\n')
         configFile.close()
 
     def srcDir(self,name):
@@ -880,6 +885,11 @@ class MultipleChoice(Variable):
         if self.value != None:
             return False
         self.value = selectMultiple(self.descr,self.choices)
+        if log:
+            log.write(self.name + ' set to ' + ', '.join(self.value) +'\n')
+        else:
+            sys.stdout.write(self.name + ' set to ' \
+                                 + ', '.join(self.value) +'\n')
         return True
 
 class SingleChoice(Variable):
@@ -895,6 +905,10 @@ class SingleChoice(Variable):
         if self.value != None:
             return False
         self.value = selectOne(self.descr,self.choices)
+        if log:
+            log.write(self.name + ' set to ' + self.value +'\n')
+        else:
+            sys.stdout.write(self.name + ' set to ' + self.value +'\n')
         return True
 
 
@@ -1184,7 +1198,8 @@ class xmlDbParser(xml.sax.ContentHandler):
             if self.var.name in self.context.environ:
                 self.var.value = self.context.environ[self.var.name]
         elif name == self.tagValue:
-            self.choice = [ attrs['name'] ]
+            if not self.constrain:
+                self.choice = [ attrs['name'] ]
         elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
             if 'excludes' in attrs:
                 self.excludes += attrs['excludes'].split(',')
@@ -1216,6 +1231,8 @@ class xmlDbParser(xml.sax.ContentHandler):
             if isinstance(self.var,Pathname):
                 self.var.base = self.context.environ[self.text.strip()]
         elif name == self.tagConstrain:
+            if not self.choice[0] in self.var.constrains:
+                self.var.constrains[self.choice[0]] = {}
             self.var.constrains[self.choice[0]][self.constrain] \
                 = self.constrainValues
             self.constrain = None
@@ -1254,7 +1271,7 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.handler.project(self.project)
         elif name == self.tagHash:
             self.fetches[ self.filename ] = self.text.strip()
-        elif name == self.tagPathname:
+        elif name in [ self.tagMultiple, self.tagPathname, self.tagSingle ]:
             self.vars += [ self.var ]            
             self.var = None
         elif name == self.tagFetch:
@@ -1265,7 +1282,7 @@ class xmlDbParser(xml.sax.ContentHandler):
             if self.constrain:
                 self.constrainValues += [ self.text.strip() ]
             else:
-                self.var.choices += [ [ self.choice ] ]
+                self.var.choices += [ self.choice ]
                 self.choice = None
         elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
             if not name in self.deps:
@@ -2681,7 +2698,7 @@ def pubFind(args):
 
 
 def pubInit(args):
-    '''init                   Prompt for variables which have not been 
+    '''init                  Prompt for variables which have not been 
                        initialized in ws.mk. Fetch the project index.
     '''
     configVar(context.environ.values())

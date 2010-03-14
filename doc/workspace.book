@@ -70,7 +70,7 @@
       Common practise to factor makefiles is to devide them in three parts: a prefix that contains some definitions, project-specific declarations and a suffix that contains implicit rules.
     </para>
     <para>
-      <emphasis>Drop</emphasis>'s prefix.mk and suffix.mk define variables and rules to provide compilation of executables and libraries, installation of differnt files on the local system, packaging of a project for various distributions and running unit tests.
+      <emphasis>Drop</emphasis>'s prefix.mk and suffix.mk define variables and rules to provide compilation of executables and libraries, installation of different files on the local system, packaging of a project for various distributions and running unit tests.
     </para>
     <para>
       Using <emphasis>drop</emphasis> to write a project makefile requires to include drop's prefix.mk at the begining of the project makefile and drop's suffix at the end of the project makefile. In order to convieniently support multiple workspaces, it is also required to include ws.mk through a <code>include $(shell dws context)</code> statement as the first line of the project's makefile.
