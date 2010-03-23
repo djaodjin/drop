@@ -36,17 +36,25 @@ all::	$(bins) $(libs) $(includes) $(shares) $(logs)
 clean::
 	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
 
-install:: $(bins) $(libs) $(includes) $(shares) $(logs)
-	$(if $(bins),$(installDirs) $(installBinDir))
-	$(if $(bins),$(installExecs) $(bins) $(installBinDir))
-	$(if $(libs),$(installDirs) $(installLibDir))
-	$(if $(libs),$(installFiles) $(libs) $(installLibDir))
-	$(if $(includes),$(installDirs) $(installIncludeDir))
-	$(if $(includes),$(installFiles) $(includes) $(installIncludeDir))
-	$(if $(shares),$(installDirs) $(installShareDir))
-	$(if $(shares),$(installFiles) $(shares) $(installShareDir))
-	$(if $(logs),$(installDirs) $(installLogDir))
-	$(if $(logs),$(installFiles) $(logs) $(installLogDir))
+install:: $(bins)
+	$(if $(strip $(bins)),$(installDirs) $(installBinDir))
+	$(if $(strip $(bins)),$(installExecs) $^ $(installBinDir))
+
+install:: $(libs)
+	$(if $(strip $(libs)),$(installDirs) $(installLibDir))
+	$(if $(strip $(libs)),$(installFiles) $^ $(installLibDir))
+
+install:: $(includes)
+	$(if $(strip $(includes)),$(installDirs) $(installIncludeDir))
+	$(if $(strip $(includes)), $(installFiles) $^ $(installIncludeDir))
+
+install:: $(shares)
+	$(if $(strip $(shares)),$(installDirs) $(installShareDir))
+	$(if $(strip $(shares)),$(installFiles) $^ $(installShareDir))
+
+install:: $(logs)
+	$(if $(strip $(logs)),$(installDirs) $(installLogDir))
+	$(if $(strip $(logs)),$(installFiles) $^ $(installLogDir))
 
 %.a:
 	$(AR) $(ARFLAGS) $@ $^
@@ -179,6 +187,9 @@ results: $(patsubst %,%.cout,$(testunits))
 
 # Rules to build printable documentation out of docbook sources.
 # --------------------------------------------------------------
+%.html: %.book
+	$(XSLTPROC) --output $@ $(htmlxsl) $<
+
 %.pdf:	%.fo
 	$(FOP) -fo $< -pdf $@
 

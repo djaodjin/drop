@@ -155,6 +155,17 @@ class Context:
         directory hierarchy.'''
         return os.path.join(self.value('cacheTop'),name)
 
+    def derivedEtc(self,name):
+        '''Absolute path to a file which is part of drop but located
+        in the etc/dws subdirectory. We first search in etcDir/dws then
+        in dirname(dws)/../etc/dws. The second search is useful when drop
+        is not part of the repository but a pre-installed prerequisite.'''
+        path = os.path.join(context.value('etcDir'),'dws',name)
+        if not os.path.isfile(path):
+            path = os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
+                                                 '..','etc','dws',name))
+        return path
+
     def hostCachePath(self,name):
         '''Absolute path to a file in the local system cache for host 
         specific packages.'''
@@ -234,12 +245,11 @@ class Context:
             look = re.match('(\S+)\s*=\s*(\S+)',line)
             if look != None:
                 if not look.group(1) in self.environ:
-                    self.environ[look.group(1)] = Pathname(look.group(1),
-                                                           'no description')
-                self.environ[look.group(1)].value = look.group(2)
+                    self.environ[look.group(1)] = look.group(2)
+                else:
+                    self.environ[look.group(1)].value = look.group(2)
             line = configFile.readline()
-        configFile.close()        
-
+        configFile.close()
 
     def logname(self):
         '''Name of the XML tagged log file where sys.stdout is captured.''' 
@@ -261,8 +271,9 @@ class Context:
         keys = sorted(self.environ.keys())
         configFile.write('# configuration for development workspace\n\n')
         for key in keys:
-            if self.environ[key].value:
-                configFile.write(key + '=' + str(self.environ[key].value) + '\n')
+            val = str(self.environ[key])
+            if val:
+                configFile.write(key + '=' + val + '\n')
         configFile.close()
 
     def srcDir(self,name):
@@ -273,9 +284,10 @@ class Context:
         has no value yet, a prompt is displayed for it.'''
         if not name in self.environ:
             raise Error("Trying to read unknown variable " + name + ".\n")
-        if self.environ[name].configure():
+        if (isinstance(self.environ[name],Variable) 
+            and self.environ[name].configure()):
             self.save()
-        return self.environ[name].value
+        return str(self.environ[name])
 
 # Formats help for script commands. The necessity for this class 
 # can be understood by the following posts on the internet:
@@ -314,7 +326,21 @@ class IndexProjects:
         by the dependency generator *dgen*.'''
         while dgen.more():
             self.parse(dgen)
-        return dgen.topological()
+        vars = []
+        reps, packages, fetches = dgen.topological()
+        projs = reps + packages
+        projs.reverse()
+        for projName in projs:
+            if projName in dgen.repositories:
+                vars += dgen.projects[projName].repository.vars
+            elif projName in dgen.patches:
+                vars += dgen.projects[projName].patch.vars
+            elif projName in dgen.packages:
+                vars += dgen.projects[projName].packages[tags].vars
+        # Configure environment variables required by a project 
+        # and that need to be present in ws.mk
+        configVar(vars)
+        return reps, packages, fetches
         
     def parse(self, dgen):
         '''Parse the project index and generates callbacks to *dgen*'''
@@ -367,6 +393,8 @@ class LogFile:
             self.logfile.close()        
 
     def error(self,text):
+        if not text.startswith('error'):
+            text = 'error: ' + text 
         sys.stdout.flush()
         self.logfile.flush()
         sys.stderr.write(text)
@@ -427,6 +455,7 @@ class Unserializer(PdbHandler):
 
     def filters(self, projectName):
         for inc in self.includePats:
+            inc = inc.replace('+','\+')
             if re.match(inc,projectName):
                 for exc in self.excludePats:
                     if re.match(exc,projectName):
@@ -558,7 +587,6 @@ class DependencyGenerator(Unserializer):
         locals = []
         fetches = {}
         syncs = []
-        vars = []
         tags = [ context.host() ]
         for edge in self.levels[0]:
             target = edge[1]
@@ -572,18 +600,15 @@ class DependencyGenerator(Unserializer):
                 locals += self.projects[target].repository.prerequisites(tags)
                 for f in self.projects[target].repository.fetches:
                     fetches[f] = self.projects[target].repository.fetches[f]
-                vars += self.projects[target].repository.vars
             elif target in self.patches:
                 syncs += [ target ]
                 locals += self.projects[target].patch.prerequisites(tags)
                 for f in self.projects[target].patch.fetches:
                     fetches[f] = self.projects[target].patch.fetches[f]
-                vars += self.projects[target].patch.vars
             elif target in self.packages:
                 locals += self.projects[target].packages[tags].prerequisites(tags)
                 for f in self.projects[target].packages[tags].fetches:
                     fetches[f] = self.projects[target].packages[tags].fetches[f]
-                vars += self.projects[target].packages[tags].vars
         # Find all executables, libraries, etc. that are already 
         # installed on the local system.
         aggDeps = self.buildDeps
@@ -651,33 +676,28 @@ class DependencyGenerator(Unserializer):
         for source in fetches:
             if not context.cachePath(source) in found:
                 self.extraFetches[source] = fetches[source]
-        # Configure environment variables required by a project 
-        # and that need to be present in ws.mk
-        configVar(vars)
         # Update project prerequisites that can be satisfied
         for p in self.projects:
             self.projects[ p ].populate(self.buildDeps)
-        self.levels.insert(0,newLevel)
 
-        # Going one step further in the breadth-first recursion introduces 
-        # a new level.
         roots = []
-        for newEdge in self.levels[0]:
-            # We first walk the tree of previously recorded edges to find out 
-            # if we detected a cycle.
-            if len(self.levels) > 1:
-                for level in self.levels[1:]:
-                    for edge in level:
-                        if edge[0] == newEdge[0] and edge[1] == newEdge[1]:
-                            raise CircleError(edge[0],edge[1])
-            if not newEdge[1] in roots:
-                # Insert each vertex once. 
-                roots += [ newEdge[1] ]
+        level = []
+        for newEdge in newLevel:
+            found = False
+            for edge in level:
+                if (edge[0] == newEdge[0] and edge[1] == newEdge[1]):
+                    found = True
+                    break
+            if not found:
+                level += [ newEdge ]
+                if not newEdge[1] in roots:
+                    # Insert each vertex once. 
+                    roots += [ newEdge[1] ]
         # If an edge's source is matching a vertex added 
         # to the next level, obviously, it was too "late"
         # in the topological order.
         newLevel = []
-        for edge in self.levels[0]:
+        for edge in level:
             found = False
             for vertex in roots:
                 if edge[0] == vertex:
@@ -685,7 +705,22 @@ class DependencyGenerator(Unserializer):
                     break
             if not found:
                 newLevel += [ edge ] 
-        self.levels[0] = newLevel   
+        self.levels.insert(0,newLevel)
+
+        # Going one step further in the breadth-first recursion introduces 
+        # a new level.
+        if None:
+            # \todo cannot detect cycles like this...
+            print "levels:"
+            print self.levels
+            for newEdge in self.levels[0]:
+                # We first walk the tree of previously recorded edges to find out 
+                # if we detected a cycle.
+                if len(self.levels) > 1:
+                    for level in self.levels[1:]:
+                        for edge in level:
+                            if edge[0] == newEdge[0] and edge[1] == newEdge[1]:
+                                raise CircleError(edge[0],edge[1])
 
     def more(self):
         '''True if there are more iterations of the breath-first 
@@ -737,18 +772,24 @@ class DerivedSetsGenerator(PdbHandler):
 class Variable:
     '''Variable that ends up being defined in ws.mk and thus in Makefile.'''
 
-    def __init__(self,name,descr=None):
+    def __init__(self,name,value,descr=None):
         self.name = name
+        self.value = value
         self.descr = descr
         if descr:
             self.descr = descr.strip()
-        self.value = None
+        self.constrains = {}
 
+    def __str__(self):
+        return str(self.value)
+
+    def constrain(self,vars):
+        None
 
 class HostPlatform(Variable):
 
     def __init__(self,name,descr=None):
-        Variable.__init__(self,name,descr)
+        Variable.__init__(self,name,None,descr)
 
     def configure(self):
         '''Set value to he distribution on which the script is running.'''
@@ -785,7 +826,7 @@ class HostPlatform(Variable):
 class Pathname(Variable):
     
     def __init__(self,name,descr=None,base=None,default=None):
-        Variable.__init__(self,name,descr)
+        Variable.__init__(self,name,None,descr)
         self.base = base
         self.default = default
 
@@ -874,35 +915,64 @@ class Pathname(Variable):
 
 class MultipleChoice(Variable):
 
-    def __init__(self,name,descr=None,choices=[]):
-        Variable.__init__(self,name,descr)
+    def __init__(self,name,value,descr=None,choices=[]):
+        if value and isinstance(value,str):
+            value = value.split(' ')
+        Variable.__init__(self,name,value,descr)
         self.choices = choices
-        self.constrains = {}
+
+    def __str__(self):
+        return ' '.join(self.value)
 
     def configure(self):
         '''Generate an interactive prompt to enter a workspace variable 
         *var* value and returns True if the variable value as been set.'''
-        if self.value != None:
+        # There is no point to propose a choice already constraint by other
+        # variables values.
+        choices = []
+        for choice in self.choices:
+            if not choice[0] in self.value:
+                choices += [ choice ]
+        if len(choices) == 0:
             return False
-        self.value = selectMultiple(self.descr,self.choices)
+        descr = self.descr
+        if len(self.value) > 0:
+            descr +=  " (constrained: " + ", ".join(self.value) + ")"
+        self.value += selectMultiple(descr,choices)
         if log:
             log.write(self.name + ' set to ' + ', '.join(self.value) +'\n')
         else:
             sys.stdout.write(self.name + ' set to ' \
                                  + ', '.join(self.value) +'\n')
+        self.choices = []
         return True
+
+    def constrain(self,vars):
+        if not self.value:
+            self.value = []
+        for var in vars:
+            if isinstance(vars[var],Variable) and vars[var].value:
+                if isinstance(vars[var].value,list):
+                    for val in vars[var].value:
+                        if (val in vars[var].constrains
+                            and self.name in vars[var].constrains[val]):
+                            self.value += vars[var].constrains[val][self.name]
+                else:
+                    val = vars[var].value 
+                    if (val in vars[var].constrains 
+                        and self.name in vars[var].constrains[val]):
+                        self.value += vars[var].constrains[val][self.name]
 
 class SingleChoice(Variable):
 
-    def __init__(self,name,descr=None,choices=[]):
-        Variable.__init__(self,name,descr)
+    def __init__(self,name,value,descr=None,choices=[]):
+        Variable.__init__(self,name,value,descr)
         self.choices = choices
-        self.constrains = {}
 
     def configure(self):
         '''Generate an interactive prompt to enter a workspace variable 
         *var* value and returns True if the variable value as been set.'''
-        if self.value != None:
+        if self.value:
             return False
         self.value = selectOne(self.descr,self.choices)
         if log:
@@ -911,6 +981,19 @@ class SingleChoice(Variable):
             sys.stdout.write(self.name + ' set to ' + self.value +'\n')
         return True
 
+    def constrain(self,vars):
+        for var in vars:
+            if isinstance(vars[var],Variable) and vars[var].value:
+                if isinstance(vars[var].value,list):
+                    for val in vars[var].value:
+                        if (val in vars[var].constrains
+                            and self.name in vars[var].constrains[val]):
+                            self.value = vars[var].constrains[val][self.name]
+                else:
+                    val = vars[var].value 
+                    if (val in vars[var].constrains 
+                        and self.name in vars[var].constrains[val]):
+                        self.value = vars[var].constrains[val][self.name]
 
 class Dependency:
     '''A dependency of a project on another project 
@@ -931,18 +1014,19 @@ class Dependency:
         if self.name in buildDeps:
             deps = buildDeps[self.name].files
             for d in deps:
-                files = []
-                for lookPat, lookPath in self.files[d]:
-                    found = False
-                    if not lookPath:
-                        for pat, path in deps[d]:
-                            if pat == lookPat:
-                                files += [ (lookPat, path) ]
-                                found = True
-                                break
-                    if not found:
-                        files += [ (lookPat, lookPath) ]
-                self.files[d] = files
+                if d in self.files:
+                    files = []
+                    for lookPat, lookPath in self.files[d]:
+                        found = False
+                        if not lookPath:
+                            for pat, path in deps[d]:
+                                if pat == lookPat:
+                                    files += [ (lookPat, path) ]
+                                    found = True
+                                    break
+                        if not found:
+                            files += [ (lookPat, lookPath) ]
+                    self.files[d] = files
 
     def prerequisites(self,tags):
         return [ self ]    
@@ -1184,19 +1268,26 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.excludes = []
         elif name == self.tagMultiple:
             self.constrain = None
-            self.var = MultipleChoice(attrs['name'])
-            if self.var.name in self.context.environ:
-                self.var.value = self.context.environ[self.var.name]
+            choiceValue = None
+            if attrs['name'] in self.context.environ:
+                choiceValue = str(self.context.environ[attrs['name']])
+            self.var = MultipleChoice(attrs['name'],choiceValue,None,[])
         elif name == self.tagPathname:
             self.constrain = None
+            choiceValue = None
+            if attrs['name'] in self.context.environ:
+                choiceValue = str(self.context.environ[attrs['name']])
             self.var = Pathname(attrs['name'])
-            if self.var.name in self.context.environ:
-                self.var.value = self.context.environ[self.var.name]
+            self.var.value = choiceValue
         elif name == self.tagSingle:
             self.constrain = None
-            self.var = SingleChoice(attrs['name'])
-            if self.var.name in self.context.environ:
-                self.var.value = self.context.environ[self.var.name]
+            # We have to specify [] explicitely here else self.var.choices
+            # is aliased to the default parameter and self.var.choices 
+            # are duplicated when the xml is parsed multiple times.
+            choiceValue = None
+            if attrs['name'] in self.context.environ:
+                choiceValue = str(self.context.environ[attrs['name']])
+            self.var = SingleChoice(attrs['name'],choiceValue,None,[])
         elif name == self.tagValue:
             if not self.constrain:
                 self.choice = [ attrs['name'] ]
@@ -1229,7 +1320,7 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.tags = self.tags[:tagFirst]
         elif name == self.tagBase:
             if isinstance(self.var,Pathname):
-                self.var.base = self.context.environ[self.text.strip()]
+                self.var.base = str(self.context.environ[self.text.strip()])
         elif name == self.tagConstrain:
             if not self.choice[0] in self.var.constrains:
                 self.var.constrains[self.choice[0]] = {}
@@ -1262,9 +1353,9 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.locals += [ Dependency(self.depName,self.deps,self.excludes) ]
         elif name == self.tagDescription:
             if self.choice:
-                self.choice += [ self.text ]
+                self.choice += [ self.text.strip() ]
             elif self.var:
-                self.var.descr = self.text
+                self.var.descr = self.text.strip()
             else:
                 self.project.description = self.text.strip()
         elif name == self.tagProject:
@@ -1718,7 +1809,7 @@ def findLib(names,excludes=[]):
     in order to deduce a version number if possible.'''
     results = []
     version = None
-    suffix = '.*(\\' + libStaticSuffix() + '|\\' + libDynSuffix() + ')'
+    suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() + '|\\' + libDynSuffix() + ')'
     for namePat, absolutePath in names:
         if absolutePath:
             # absolute paths only occur when the search has already been
@@ -1827,12 +1918,14 @@ def configVar(vars):
     If those do not exist, prompt the user for input.'''
     found = False
     for v in vars:
+        # apply constrains where necessary
+        v.constrain(context.environ)           
         if not v.name in context.environ:
             # If we do not add variable to the context, they won't
             # be saved in ws.mk
-            context.environ[v.name] = v            
-        found |= v.configure()
-    if found:
+            context.environ[v.name] = v 
+            found |= v.configure()
+    if found:                
         context.save()
     return vars
 
@@ -2052,10 +2145,11 @@ def linkDependencies(projects, cuts=[]):
                             linkName, linkPath \
                                 = __main__.__dict__[command](namePat,
                                                              absolutePath)
-                            linkContext(linkPath,linkName)
                             if not (linkPath
                                     or os.path.exists(linkName)):
                                 complete = False
+                            else:
+                                linkContext(linkPath,linkName)
     if len(missings) > 0:
         raise Error("incomplete prerequisites for " + ' '.join(missings),1)
 
@@ -2466,8 +2560,10 @@ def integrate(srcdir, pchdir, verbose=True):
                     # correctly.
                     prev = os.getcwd()
                     os.chdir(os.path.dirname(srcname))
-                    os.symlink(os.path.relpath(pchname),
-                               os.path.basename(srcname))
+                    basename = os.path.basename(srcname)
+                    if os.path.exists(basename):
+                        shutil.move(basename,basename + '~')
+                    os.symlink(os.path.relpath(pchname),basename)
                     os.chdir(prev)
 
 
@@ -2628,7 +2724,7 @@ def pubCollect(args):
     # Create the index and checks it is valid according to the schema. 
     createIndexPathname(context.dbPathname(),indices)
     shellCommand('xmllint --noout --schema ' \
-                   + os.path.join(context.value('etcDir'),'dws','index.xsd') \
+                   + context.derivedEtc('index.xsd') \
                    + ' ' + context.dbPathname())
     # We should only copy the index file after we created it.
     if copyBinPackages:
@@ -3062,8 +3158,9 @@ def unpack(pkgfilename):
         d = 'j'
     elif pkgfilename.endswith('.gz'):
         d = 'z'
-    shellCommand('tar ' + d + 'xf ' + pkgfilename)
-    return os.path.basename(os.path.splitext(os.path.splitext(pkgfilename)[0]))
+    shellCommand('tar ' + d + 'xf ' + pkgfilename)    
+    return os.path.basename(os.path.splitext(
+               os.path.splitext(pkgfilename)[0])[0])
 
 
 # Main Entry Point
@@ -3188,9 +3285,9 @@ if __name__ == '__main__':
                     if not re.search("[A-Z]",w[0]):
                         None
                     else:
-                        print ' '.join(s[1:])
+                        sys.stdout.write(' '.join(s[1:]) + '\n')
                 else:
-                    print line
+                    sys.stdout.write(line + '\n')
             if not firstTerm:
                 sys.stdout.write("</para>\n")
                 sys.stdout.write("</listitem>\n")

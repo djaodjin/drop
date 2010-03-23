@@ -27,21 +27,13 @@
 
 ibtool          :=      /Developer/usr/bin/ibtool
 installDirs 	:=	/usr/bin/install -d
-installFiles	:=	/usr/bin/install -m 644
-installExecs	:=	/usr/bin/install -m 755
+installFiles	:=	/usr/bin/install -p -m 644
+installExecs	:=	/usr/bin/install -p -m 755
 FOP		:=	fop
 SED		:=	sed
 XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
-
-# stylesheets to produce .fo markups out of docbook (.book) markups
-foxsl		:=	$(shareDir)/docbook-xsl/fo/docbook.xsl
-
-# extract dependencies to build a .pdf article out of xinclude statements 
-# in the docbook source.
-bookdeps	=	$(1) $(shell grep 'include xlink:href' $(1) \
-				| sed -e 's/.*href="\(.*\)".*/\1/')
 
 # \note For some reason when a '\' is inserted in the following line in order
 #       to keep a maximum of 80 characters per line, the sed command 
@@ -49,9 +41,7 @@ bookdeps	=	$(1) $(shell grep 'include xlink:href' $(1) \
 #       '\n' character.
 srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
 
-includes	:=	$(wildcard $(srcDir)/include/*.hh \
-	                           $(srcDir)/include/*.tcc)
-
+CFLAGS		:=	-g -MMD
 CXXFLAGS	:=	-g -MMD
 CPPFLAGS	+=	-I$(srcDir)/include -I$(includeDir)
 LDFLAGS		+=	-L$(libDir)
@@ -71,8 +61,18 @@ distExtUbuntu	:=	_amd64.deb
 endif
 endif
 
+# stylesheets to produce .html and .fo markups out of docbook (.book) markups
+htmlxsl		:=	$(shareDir)/docbook-xsl/html/docbook.xsl
+foxsl		:=	$(shareDir)/docbook-xsl/fo/docbook.xsl
+
+# extract dependencies to build a .pdf article out of xinclude statements 
+# in the docbook source.
+bookdeps	=	$(1) $(shell grep 'include xlink:href' $(1) \
+				| sed -e 's/.*href="\(.*\)".*/\1/')
+
 nonZeroExit	   =	echo "$@:$$?: error: non-zero exit code"
 unexpectedZeroExit =	echo "$@:$$?: error: expected non-zero exit code"
+
 
 vpath %.a 	$(libDir)
 vpath %.so	$(libDir)
@@ -87,3 +87,10 @@ define bldUnitTest
 $(1): $(1).cc $(testDepencencies)
 
 endef
+
+# List of files to be installed
+# -----------------------------
+bins	:=
+libs	:=
+includes:=	$(wildcard $(srcDir)/include/*.hh \
+	          	   $(srcDir)/include/*.tcc)
