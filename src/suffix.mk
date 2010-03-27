@@ -37,24 +37,24 @@ clean::
 	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
 
 install:: $(bins)
-	$(if $(strip $(bins)),$(installDirs) $(installBinDir))
-	$(if $(strip $(bins)),$(installExecs) $^ $(installBinDir))
+	$(if $^,$(installDirs) $(installBinDir))
+	$(if $^,$(installExecs) $^ $(installBinDir))
 
 install:: $(libs)
-	$(if $(strip $(libs)),$(installDirs) $(installLibDir))
-	$(if $(strip $(libs)),$(installFiles) $^ $(installLibDir))
+	$(if $^,$(installDirs) $(installLibDir))
+	$(if $^,$(installFiles) $^ $(installLibDir))
 
 install:: $(includes)
-	$(if $(strip $(includes)),$(installDirs) $(installIncludeDir))
-	$(if $(strip $(includes)), $(installFiles) $^ $(installIncludeDir))
+	$(if $^,$(installDirs) $(installIncludeDir))
+	$(if $^, $(installFiles) $^ $(installIncludeDir))
 
 install:: $(shares)
-	$(if $(strip $(shares)),$(installDirs) $(installShareDir))
-	$(if $(strip $(shares)),$(installFiles) $^ $(installShareDir))
+	$(if $^,$(installDirs) $(installShareDir))
+	$(if $^,$(installFiles) $^ $(installShareDir))
 
 install:: $(logs)
-	$(if $(strip $(logs)),$(installDirs) $(installLogDir))
-	$(if $(strip $(logs)),$(installFiles) $^ $(installLogDir))
+	$(if $^,$(installDirs) $(installLogDir))
+	$(if $^,$(installFiles) $^ $(installLogDir))
 
 %.a:
 	$(AR) $(ARFLAGS) $@ $^

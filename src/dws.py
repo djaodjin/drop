@@ -1827,8 +1827,8 @@ def findLib(names,excludes=[]):
         found = False
         for libSysDir in derivedRoots('lib'):
             libs = []
-            for libname in findFirstFiles(libSysDir,
-                                          libPrefix() + namePat + suffix):
+            for libname in findFirstFiles(libSysDir,libPrefix() \
+                               + namePat.replace('+','\+') + suffix):
                 numbers = versionCandidates(libname)
                 if len(numbers) == 1:
                     excluded = False
@@ -2126,11 +2126,12 @@ def linkDependencies(projects, cuts=[]):
                         linkName, linkPath \
                             = __main__.__dict__[command](namePat,
                                                          absolutePath)
-                        if not (linkPath
-                                or os.path.exists(linkName)):
-                            complete = False
+                        if linkPath:
+                            if not os.path.isfile(linkName):
+                                linkContext(linkPath,linkName)
                         else:
-                            linkContext(linkPath,linkName)
+                            if not os.path.isfile(linkName):
+                                complete = False
                 if not complete:
                     deps, complete = findPrerequisites(
                         prereq.files,
@@ -2145,11 +2146,12 @@ def linkDependencies(projects, cuts=[]):
                             linkName, linkPath \
                                 = __main__.__dict__[command](namePat,
                                                              absolutePath)
-                            if not (linkPath
-                                    or os.path.exists(linkName)):
-                                complete = False
+                            if linkPath:
+                                if not os.path.isfile(linkName):
+                                    linkContext(linkPath,linkName)
                             else:
-                                linkContext(linkPath,linkName)
+                                if not os.path.isfile(linkName):
+                                    complete = False
     if len(missings) > 0:
         raise Error("incomplete prerequisites for " + ' '.join(missings),1)
 
@@ -2559,8 +2561,11 @@ def integrate(srcdir, pchdir, verbose=True):
                     # Change directory such that relative paths are computed
                     # correctly.
                     prev = os.getcwd()
-                    os.chdir(os.path.dirname(srcname))
+                    dirname = os.path.dirname(srcname) 
                     basename = os.path.basename(srcname)
+                    if not os.path.isdir(dirname):
+                        os.makedirs(dirname)
+                    os.chdir(dirname)
                     if os.path.exists(basename):
                         shutil.move(basename,basename + '~')
                     os.symlink(os.path.relpath(pchname),basename)
