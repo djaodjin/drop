@@ -592,8 +592,10 @@ if __name__ == "__main__":
     options, args = parser.parse_args()
 
     context = dws.Context()
+    context.locate()
     index = dws.IndexProjects(context,options.spec)
     handler = dws.Unserializer([ '.*' ])
+
     index.parse(handler)
     project = handler.projects[handler.projects.keys()[0]]
 
