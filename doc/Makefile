@@ -23,4 +23,21 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-include $(etcDir)/builder/suffix.mk
+include $(shell dws context)
+include $(shell dws context prefix.mk)
+
+shares	:=	drop.pdf
+
+vpath %.book	$(srcDir)
+
+drop.fo: drop.book
+
+drop.book: $(srcDir)/drop.py dropintro.book workspace.book quality.book \
+		dws.book glossary.book
+	python $^ > $@
+
+dws.book: ../dws
+	python ../dws --help-book > $@ || rm -f $@
+
+
+include $(shell dws context suffix.mk)

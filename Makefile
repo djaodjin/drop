@@ -1,4 +1,3 @@
-# -*- Makefile -*-
 # Copyright (c) 2009, Sebastien Mirolo
 #   All rights reserved.
 #
@@ -41,26 +40,13 @@ srcDir	:=	$(srcTop)/drop
 include $(srcTop)/drop/src/prefix.mk
 
 bins	:=	buildpkg dmake dregress dstamp dws
-shares	:=	drop.pdf
-
-drop.fo: drop.book
-
-drop.book: $(srcDir)/doc/drop.py dropintro.book workspace.book quality.book \
-		dws.book glossary.book
-	python $^ > $@
-
-dws.book: dws
-	python ./dws --help-book > $@ || rm -f $@
 
 include $(srcTop)/drop/src/suffix.mk
-
-all:: dws.book
 
 install:: dws.py dstamp.py $(srcTop)/drop/src/prefix.mk \
 		$(srcTop)/drop/src/suffix.mk \
 		$(srcTop)/drop/src/configure.sh \
-		$(srcTop)/drop/src/index.xsd \
-		dws.book
+		$(srcTop)/drop/src/index.xsd
 	$(installFiles) $(filter %.py,$^) $(binDir)
 	$(installDirs)  $(etcDir)/dws
 	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(etcDir)/dws

@@ -11,7 +11,7 @@
 #     * Neither the name of fortylines nor the
 #       names of its contributors may be used to endorse or promote products
 #       derived from this software without specific prior written permission.
-
+#
 #   THIS SOFTWARE IS PROVIDED BY Sebastien Mirolo ''AS IS'' AND ANY
 #   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 #   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -29,7 +29,7 @@ installLibDir		?=	$(libDir)
 installLogDir		?=	$(logDir)
 installShareDir		?=	$(shareDir)
 
-.PHONY:	all install check dist
+.PHONY:	all check dist doc install
 
 all::	$(bins) $(libs) $(includes) $(shares) $(logs)
 
@@ -133,6 +133,17 @@ $(project)-$(version).tar.bz2:
 		&& buildpkg --version=$(subst $(project)-,,$(basename $@)) \
 	         --spec=$(srcDir)/index.xml $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
+
+# Rules to build the documentation
+# --------------------------------
+doc:
+	@if [ -f $(srcDir)/doc/Makefile ] ; then \
+		echo "cd doc && $(MAKE) -f $(srcDir)/doc/Makefile" ; \
+		$(installDirs) doc \
+		&& cd doc && $(MAKE) -f $(srcDir)/doc/Makefile ; \
+	else \
+		echo "$(basename $(srcDir)): warning: 'make doc' expects to find a Makefile in $(srcDir)/doc." ; \
+	fi
 
 
 # Rules to build unit test logs

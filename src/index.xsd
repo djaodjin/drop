@@ -73,8 +73,8 @@
     <xs:complexType>
       <xs:sequence>
 	<xs:element name="description" type="xs:string"/>
-	<xs:element name="base" type="xs:string"/>
-	<xs:element name="default" type="xs:string"/>
+	<xs:element name="base" type="xs:string" minOccurs="0" />
+	<xs:element name="default" type="xs:string" minOccurs="0" />
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>

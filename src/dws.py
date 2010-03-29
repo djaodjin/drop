@@ -13,7 +13,7 @@
 #     * Neither the name of fortylines nor the
 #       names of its contributors may be used to endorse or promote products
 #       derived from this software without specific prior written permission.
-
+#
 #   THIS SOFTWARE IS PROVIDED BY Sebastien Mirolo ''AS IS'' AND ANY
 #   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 #   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -331,12 +331,13 @@ class IndexProjects:
         projs = reps + packages
         projs.reverse()
         for projName in projs:
-            if projName in dgen.repositories:
-                vars += dgen.projects[projName].repository.vars
-            elif projName in dgen.patches:
-                vars += dgen.projects[projName].patch.vars
-            elif projName in dgen.packages:
-                vars += dgen.projects[projName].packages[tags].vars
+            if projName in dgen.projects:
+                if projName in dgen.repositories:
+                    vars += dgen.projects[projName].repository.vars
+                elif projName in dgen.patches:
+                    vars += dgen.projects[projName].patch.vars
+                elif projName in dgen.packages:
+                    vars += dgen.projects[projName].packages[tags].vars
         # Configure environment variables required by a project 
         # and that need to be present in ws.mk
         configVar(vars)
@@ -2175,8 +2176,6 @@ def linkContext(path,linkName):
 
 def linkPatPath(namePat, absolutePath):
     # Yeah, looking for g++ might be a little bit of trouble. 
-    #print "!!! linkPatPath(namePat=" + str(namePat) \
-    #    + ", absolutePath=" + str(absolutePath) + ")"
     regex = re.compile(namePat.replace('+','\+') + '$')
     if regex.groups == 0:
         linkPath = absolutePath
