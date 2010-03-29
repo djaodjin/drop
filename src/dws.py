@@ -1634,26 +1634,31 @@ def findFirstFiles(base,namePat,subdir=''):
     from *base*.
     If .*/ is part of pattern, base is searched recursively in breadth search 
     order until at least one result is found.'''
-    subdirs = []
-    results = []
-    patNumSubDirs = len(namePat.split(os.sep))
-    subNumSubDirs = len(subdir.split(os.sep))
-    if os.path.exists(os.path.join(base,subdir)):
-        for p in os.listdir(os.path.join(base,subdir)):
-            relative = os.path.join(subdir,p)
-            path = os.path.join(base,relative)
-            look = re.match(namePat + '$',relative)
-            if look != None:
-                results += [ relative ]
-            elif (((('.*' + os.sep) in namePat) 
-                   or (subNumSubDirs < patNumSubDirs))
-                  and os.path.isdir(path)):
-                # When we see .*/, it means we are looking for a pattern 
-                # that can be matched by files in subdirectories of the base.
-                subdirs += [ relative ]
-    if len(results) == 0:
-        for subdir in subdirs:
-            results += findFirstFiles(base,namePat,subdir)
+    try:
+        subdirs = []
+        results = []
+        patNumSubDirs = len(namePat.split(os.sep))
+        subNumSubDirs = len(subdir.split(os.sep))
+        if os.path.exists(os.path.join(base,subdir)):
+            for p in os.listdir(os.path.join(base,subdir)):
+                relative = os.path.join(subdir,p)
+                path = os.path.join(base,relative)
+                look = re.match(namePat + '$',relative)
+                if look != None:
+                    results += [ relative ]
+                elif (((('.*' + os.sep) in namePat) 
+                       or (subNumSubDirs < patNumSubDirs))
+                      and os.path.isdir(path)):
+                    # When we see .*/, it means we are looking for a pattern 
+                    # that can be matched by files in subdirectories 
+                    # of the base.
+                    subdirs += [ relative ]
+        if len(results) == 0:
+            for subdir in subdirs:
+                results += findFirstFiles(base,namePat,subdir)
+    except OSError, e:
+        # Permission to a subdirectory might be denied.
+        None
     return results
 
 
@@ -1828,8 +1833,11 @@ def findLib(names,excludes=[]):
         found = False
         for libSysDir in derivedRoots('lib'):
             libs = []
-            for libname in findFirstFiles(libSysDir,libPrefix() \
-                               + namePat.replace('+','\+') + suffix):
+            libPat = libPrefix() + namePat.replace('+','\+') + suffix
+            base, ext = os.path.splitext(namePat)
+            if len(ext) > 0:
+                libPat = namePat.replace('+','\+')
+            for libname in findFirstFiles(libSysDir,libPat):
                 numbers = versionCandidates(libname)
                 if len(numbers) == 1:
                     excluded = False

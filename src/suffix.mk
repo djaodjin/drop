@@ -64,7 +64,7 @@ install:: $(logs)
 		$(LOADLIBES) $(LDLIBS) -o $@
 
 %: %.py
-	$(installFiles)	$< $@
+	$(installExecs)	$< $@
 
 
 # Rules to build packages for distribution
