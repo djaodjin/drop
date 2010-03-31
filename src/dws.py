@@ -2009,9 +2009,11 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                 # configuration of packages do not pop up in the middle 
                 # of installation. We are going to update the configuration
                 # in /etc afterwards anyway.
-                shellCommand('apt-get update', admin=True)
-                shellCommand('DEBIAN_FRONTEND=noninteractive apt-get -y ' \
-                                 + 'install ' + ' '.join(projects),admin=True)
+                shellCommand('/usr/bin/apt-get update', admin=True)
+                shellCommand(' '.join(['DEBIAN_FRONTEND=noninteractive',
+                                       '/usr/bin/apt-get','-y ',
+                                       'install',
+                                       ' '.join(projects)]),admin=True)
             elif context.host() == 'Darwin':
                 darwinNames = {
                     # translation of package names. It is simpler than
@@ -2399,9 +2401,12 @@ def searchBackToRoot(filename,root=os.sep):
 def shellCommand(commandLine, admin=False):
     '''Execute a shell command and throws an exception when the command fails'''
     if admin:
-        if not commandLine.startswith('/'):
-            raise Error("admin command without a fully quaified path: " \
-                            + cmdline + '\n')
+        if None:
+            # \todo cannot do this simple check because of a shell variable
+            # setup before call to apt-get.
+            if not commandLine.startswith('/'):
+                raise Error("admin command without a fully quaified path: " \
+                                + commandLine + '\n')
         # ex: su username -c 'sudo port install icu'
         cmdline = 'sudo ' + commandLine
     else:
