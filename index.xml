@@ -38,6 +38,9 @@
 	  <dep name="devscripts">
 	    <bin>debuild</bin>
 	  </dep>
+	  <dep name="fakeroot">
+	    <bin>fakeroot</bin>
+	  </dep>
 	</alternate>
 	<alternate>
 	  <tag>Fedora</tag>

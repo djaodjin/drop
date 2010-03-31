@@ -271,9 +271,9 @@ class Context:
         keys = sorted(self.environ.keys())
         configFile.write('# configuration for development workspace\n\n')
         for key in keys:
-            val = str(self.environ[key])
+            val = self.environ[key]
             if val:
-                configFile.write(key + '=' + val + '\n')
+                configFile.write(key + '=' + str(val) + '\n')
         configFile.close()
 
     def srcDir(self,name):
@@ -1321,7 +1321,7 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.tags = self.tags[:tagFirst]
         elif name == self.tagBase:
             if isinstance(self.var,Pathname):
-                self.var.base = str(self.context.environ[self.text.strip()])
+                self.var.base = self.context.environ[self.text.strip()]
         elif name == self.tagConstrain:
             if not self.choice[0] in self.var.constrains:
                 self.var.constrains[self.choice[0]] = {}
@@ -2399,6 +2399,9 @@ def searchBackToRoot(filename,root=os.sep):
 def shellCommand(commandLine, admin=False):
     '''Execute a shell command and throws an exception when the command fails'''
     if admin:
+        if not commandLine.startswith('/'):
+            raise Error("admin command without a fully quaified path: " \
+                            + cmdline + '\n')
         # ex: su username -c 'sudo port install icu'
         cmdline = 'sudo ' + commandLine
     else:
