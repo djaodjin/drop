@@ -148,11 +148,11 @@
 		    minOccurs="0"/>
 	<xs:element ref="fetch"
 		    minOccurs="0" maxOccurs="unbounded"/>	
-	<xs:element ref="multiple" 
-		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="pathname" 
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="single" 
+		    minOccurs="0" maxOccurs="unbounded"/>
+	<xs:element ref="multiple" 
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="dep"
 		    minOccurs="0" maxOccurs="unbounded"/>

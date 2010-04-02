@@ -70,8 +70,10 @@ foxsl		:=	$(shareDir)/docbook-xsl/fo/docbook.xsl
 bookdeps	=	$(1) $(shell grep 'include xlink:href' $(1) \
 				| sed -e 's/.*href="\(.*\)".*/\1/')
 
-nonZeroExit	   =	echo "$@:$$?: error: non-zero exit code"
-unexpectedZeroExit =	echo "$@:$$?: error: expected non-zero exit code"
+nonZeroExit	   =	@echo "$(1)" && ($(1) \
+	|| echo "$@:$$?:error: functional test expected zero exit code")
+unexpectedZeroExit =	@echo "$(1)" && ($(1) \
+	&& echo "$@:$$?:error: functional test expected non-zero exit code")
 
 
 vpath %.a 	$(libDir)

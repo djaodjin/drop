@@ -171,19 +171,19 @@ results.log:
 	@echo "<config name=\"$(version)\">" > $@
 	@echo $(distHost) >> $@
 	@echo "</config>" >> $@
-	@for testunit in $(testunits) ; do \
-		echo "append $${testunit}.cout to $@ ..." ; \
-		if [ ! -f $${testunit}.cout ] ; then \
-		  echo "@@ test: $$testunit fail @@" >> $@ ; \
-		  echo "$${testunit}: error: Cannot find .cout file" >> $@ ; \
+	@for funtest in $(testunits) ; do \
+		echo "append $${funtest}.cout to $@ ..." ; \
+		if [ ! -f $${funtest}.cout ] ; then \
+		  echo "@@ test: $$funtest fail @@" >> $@ ; \
+		  echo "$${funtest}: error: Cannot find .cout file" >> $@ ; \
 		else \
-		grep "error:" $${testunit}.cout > /dev/null 2>&1 ; \
+		grep "error: functional test" $${funtest}.cout > /dev/null 2>&1 ; \
 		if [ $$? -eq 0 ] ; then \
-		  echo "@@ test: $$testunit fail @@" >> $@ ; \
+		  echo "@@ test: $$funtest fail @@" >> $@ ; \
 		else \
-		  echo "@@ test: $$testunit pass @@" >> $@ ; \
+		  echo "@@ test: $$funtest pass @@" >> $@ ; \
 		fi ; \
-		  cat $${testunit}.cout >> $@ ; \
+		  cat $${funtest}.cout >> $@ ; \
 		fi ; \
 	done
 

@@ -171,6 +171,11 @@ class Context:
         specific packages.'''
         return os.path.join(self.value('cacheTop'),host(),name)
 
+    def logPath(self,name):
+        '''Absolute path to a file in the local system log
+        directory hierarchy.'''
+        return os.path.join(self.value('logDir'),name)
+
     def remoteCachePath(self,name):
         '''Absolute path to access a file on the remote machine.''' 
         return os.path.join(self.value('remoteCacheTop'),name)
@@ -2187,17 +2192,18 @@ def linkContext(path,linkName):
 def linkPatPath(namePat, absolutePath):
     # Yeah, looking for g++ might be a little bit of trouble. 
     regex = re.compile(namePat.replace('+','\+') + '$')
+    linkPath = absolutePath
     if regex.groups == 0:
-        linkPath = absolutePath
         linkName = namePat
         parts = namePat.split(os.sep)
         if len(parts) > 0:
             linkName = parts[len(parts) - 1]
     else:
-        look = regex.search(absolutePath)
-        linkName = look.group(1)
-        parts = absolutePath[look.end(1):].split(os.sep)
-        linkPath = absolutePath[:look.end(1)] + parts[0]
+        linkName = re.search('\((.+)\)',namePat).group(1)
+        if absolutePath:
+            look = regex.search(absolutePath)
+            parts = absolutePath[look.end(1):].split(os.sep)
+            linkPath = absolutePath[:look.end(1)] + parts[0]
     return linkName, linkPath
 
 
@@ -2416,6 +2422,7 @@ def shellCommand(commandLine, admin=False):
         log.flush()
     else:
         sys.stdout.write(cmdline + '\n')
+        sys.stdout.flush()
     if not doNotExecute:
         cmd = subprocess.Popen(cmdline,shell=True,
                                stdout=subprocess.PIPE,
@@ -2424,8 +2431,10 @@ def shellCommand(commandLine, admin=False):
         while line != '':
             if log:
                 log.write(line)
+                log.flush()
             else:
                 sys.stdout.write(line)
+                sys.stdout.flush()
             line = cmd.stdout.readline()
         cmd.wait()
         if cmd.returncode != 0:
@@ -2684,12 +2693,12 @@ def pubBuild(args):
     # Once we have built the repository, let's report the results
     # back to the remote server. We stamp the logfile such that
     # it gets a unique name before uploading it.
-    logstamp = os.path.join(context.host(),os.path.basename(context.logname()))
+    logstamp = os.path.basename(context.logname())
     logstamp = stamp(mark(logstamp,socket.gethostname()))
     if not os.path.exists(os.path.dirname(context.cachePath(logstamp))):
         os.makedirs(os.path.dirname(context.cachePath(logstamp)))
     shellCommand('install -m 644 ' + context.logname() \
-                     + ' ' + context.cachePath(logstamp))
+                     + ' ' + context.logPath(logstamp))
     if uploadResults:
         upload([ logstamp ])
 
