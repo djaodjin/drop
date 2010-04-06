@@ -104,34 +104,35 @@ class Context:
 
     def __init__(self):
         self.cacheTop = Pathname('cacheTop',
-                          'Root of the tree where the directory structure of *remoteCacheTop* is cached on the local system',
-                          default=os.getcwd())
+                          'Root of the tree where the website is generated and thus where *remoteCacheTop* is cached on the local system',
+                          default=os.path.join(os.getcwd(),'cache'))
         self.remoteCacheTop = Pathname('remoteCacheTop',
-             'Root of the remote tree the workspace is built out-of (ex: url:/var/cache).',
+             'Root of the remote tree that holds the published website (ex: url:/var/cache).',
                   default='')
+        self.installTop = Pathname('installTop',
+                          'Root of the tree for installed bin/, include/, lib/, ...',
+                          default=os.getcwd())
+        self.srcTop = Pathname('srcTop',
+             'Root of the tree where the source code under revision control lives on the local machine.',default=os.path.join(os.getcwd(),'reps'))
         self.environ = { 'buildTop': Pathname('buildTop',
              'Root of the tree where intermediate files are created.',
-                                              self.cacheTop,default='build'), 
-                         'srcTop' : Pathname('srcTop',
-             'Root of the tree where the source code under revision control lives on the local machine.',self.cacheTop,default='reps'),
+                                              self.srcTop,default='../build'), 
+                         'srcTop' : self.srcTop,
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
-                                            self.cacheTop),
+                                            self.installTop),
                          'includeDir': Pathname('includeDir',
              'Root of the tree where include files are installed',
-                                                self.cacheTop),
+                                                self.installTop),
                          'libDir': Pathname('libDir',
              'Root of the tree where libraries are installed',
-                                            self.cacheTop),
+                                            self.installTop),
                          'etcDir': Pathname('etcDir',
              'Root of the tree where extra files are installed',
-                                            self.cacheTop,'etc'),
+                                            self.installTop,'etc'),
                          'shareDir': Pathname('shareDir',
              'Root of the tree where shared files are installed',
-                                            self.cacheTop),
-                         'logDir': Pathname('logDir',
-             'Root of the tree where logs are installed',
-                                            self.cacheTop,'log'),
+                                            self.installTop),
                          'cacheTop': self.cacheTop,
                          'remoteCacheTop': self.remoteCacheTop,
                          'remoteIndex': Pathname('remoteIndex',
@@ -174,7 +175,7 @@ class Context:
     def logPath(self,name):
         '''Absolute path to a file in the local system log
         directory hierarchy.'''
-        return os.path.join(self.value('logDir'),name)
+        return os.path.join(self.value('cacheTop'),'log',name)
 
     def remoteCachePath(self,name):
         '''Absolute path to access a file on the remote machine.''' 
@@ -229,12 +230,11 @@ class Context:
             self.buildTopRelativeCwd, self.configFilename \
                 = searchBackToRoot(self.configName)
         except IOError, e:
-            configFromBuildTop = os.path.join(self.environ['buildTop'].default,
-                                              self.configName)
-            if not os.path.isfile(configFromBuildTop):
-                raise e
-            self.configFilename = configFromBuildTop
             self.buildTopRelativeCwd = None
+            self.configFilename = os.path.join(self.environ['buildTop'].default,
+                                              self.configName)
+            if not os.path.isfile(self.configFilename):
+                raise e
         if self.buildTopRelativeCwd == '.':
             self.buildTopRelativeCwd = os.path.basename(os.getcwd())
             # \todo is this code still relevent?
@@ -258,7 +258,7 @@ class Context:
 
     def logname(self):
         '''Name of the XML tagged log file where sys.stdout is captured.''' 
-        filename = os.path.join(self.value('logDir'),'dws.log')
+        filename = self.logPath('dws.log')
         if not os.path.exists(os.path.dirname(filename)):
             os.makedirs(os.path.dirname(filename))
         return filename
@@ -842,7 +842,7 @@ class Pathname(Variable):
         if self.value != None:
             return False
         if log:
-            # Configuration of logDir (where the log is stored) 
+            # Configuration of logPath (where the log is stored) 
             # will execute to here before the file is actually open.
             log.write('\n' + self.name + ':\n')
             log.write(self.descr + '\n')
@@ -906,7 +906,7 @@ class Pathname(Variable):
         if not ':' in dirname:
             if not os.path.exists(self.value):
                 if log:
-                    # Configuration of logDir (where the log is stored) 
+                    # Configuration of logPath (where the log is stored) 
                     # will execute to here before the file is actually open.
                     log.write(self.value + ' does not exist.\n')
                 else:
@@ -3153,7 +3153,7 @@ def showMultiple(description,choices):
             c = c + 1
     # Ask user to review selection
     if log:
-        # Configuration of logDir (where the log is stored) 
+        # Configuration of logPath (where the log is stored) 
         # will execute to here before the file is actually open.
         log.write(description + '\n')
     else:
@@ -3162,20 +3162,20 @@ def showMultiple(description,choices):
         c = 0
         for col in project:
             if log:
-                # Configuration of logDir (where the log is stored) 
+                # Configuration of logPath (where the log is stored) 
                 # will execute to here before the file is actually open.
                 log.write(col.ljust(widths[c]))
             else:
                 sys.stdout.write(col.ljust(widths[c]))
             c = c + 1
         if log:
-            # Configuration of logDir (where the log is stored) 
+            # Configuration of logPath (where the log is stored) 
             # will execute to here before the file is actually open.
             log.write('\n')
         else:
             sys.stdout.write('\n')
     if log:
-        # Configuration of logDir (where the log is stored) 
+        # Configuration of logPath (where the log is stored) 
         # will execute to here before the file is actually open.
         log.flush()
     else:

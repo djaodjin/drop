@@ -26,12 +26,11 @@
 installBinDir		?=	$(binDir)
 installIncludeDir	?=	$(includeDir)
 installLibDir		?=	$(libDir)
-installLogDir		?=	$(logDir)
 installShareDir		?=	$(shareDir)
 
-.PHONY:	all check dist doc install
+.PHONY:	all check dist doc install site
 
-all::	$(bins) $(libs) $(includes) $(shares) $(logs)
+all::	$(bins) $(libs) $(includes)
 
 clean::
 	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
@@ -47,14 +46,6 @@ install:: $(libs)
 install:: $(includes)
 	$(if $^,$(installDirs) $(installIncludeDir))
 	$(if $^, $(installFiles) $^ $(installIncludeDir))
-
-install:: $(shares)
-	$(if $^,$(installDirs) $(installShareDir))
-	$(if $^,$(installFiles) $^ $(installShareDir))
-
-install:: $(logs)
-	$(if $^,$(installDirs) $(installLogDir))
-	$(if $^,$(installFiles) $^ $(installLogDir))
 
 %.a:
 	$(AR) $(ARFLAGS) $@ $^
@@ -134,18 +125,6 @@ $(project)-$(version).tar.bz2:
 	         --spec=$(srcDir)/index.xml $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
 
-# Rules to build the documentation
-# --------------------------------
-doc:
-	@if [ -f $(srcDir)/doc/Makefile ] ; then \
-		echo "cd doc && $(MAKE) -f $(srcDir)/doc/Makefile" ; \
-		$(installDirs) doc \
-		&& cd doc && $(MAKE) -f $(srcDir)/doc/Makefile ; \
-	else \
-		echo "$(basename $(srcDir)): warning: 'make doc' expects to find a Makefile in $(srcDir)/doc." ; \
-	fi
-
-
 # Rules to build unit test logs
 # -----------------------------
 check:
@@ -198,14 +177,51 @@ results: $(patsubst %,%.cout,$(testunits))
 
 # Rules to build printable documentation out of docbook sources.
 # --------------------------------------------------------------
-%.html: %.book
-	$(XSLTPROC) --output $@ $(htmlxsl) $<
+doc: $(shares)
 
 %.pdf:	%.fo
 	$(FOP) -fo $< -pdf $@
 
 %.fo: %.book
 	$(XSLTPROC) --output $@ $(foxsl) $<
+
+
+# Rules to build the website
+# --------------------------
+siteDir	:=	$(subst $(srcTop)/,$(cacheTop)/,$(srcDir))
+
+site::
+	[ -d $(siteDir) ] \
+	  || $(installDirs) $(siteDir)
+	$(installFiles) $(shell dws context) $(cacheTop)
+	cd $(siteDir)     \
+	   && $(MAKE) -f $(srcDir)/Makefile buildTop=$(cacheTop) site-stamp
+
+site-stamp:: $(htmlSite)
+
+%.html: %.cc
+	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
+	$(SEED) $< > $@
+
+%.html: %.hh
+	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
+	$(SEED) $< > $@
+
+%.html: %.py
+	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
+	$(SEED) $< > $@
+
+%.html: %.book
+	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
+	$(SEED) $< > $@
+
+Makefile.html: Makefile
+	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
+	$(SEED) $< > $@
+
+%Makefile.html: %Makefile
+	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
+	$(SEED) $< > $@
 
 
 # Rules to validate the intra-projects dependency file
@@ -223,7 +239,11 @@ validxhtml: $(subst .book,.html,\
 		$(notdir $(shell find $(srcDir) -name '*.book')))
 	xmllint --noout --valid $^
 
-%.html: %.book
-	seed $< | tail +2 > $@
+.PHONY: lint
+
+lint:	$(patsubst $(srcDir)/%.xml,%.lint,$(wildcard $(srcDir)/*.book))
+
+%.lint:	%.book
+	xmllint --format --output $@ $<
 
 -include *.d

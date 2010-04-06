@@ -40,6 +40,16 @@ srcDir	:=	$(srcTop)/drop
 include $(srcTop)/drop/src/prefix.mk
 
 bins	:=	buildpkg dmake dregress dstamp dws
+shares	:=	drop.pdf
+
+drop.fo: drop.book
+
+drop.book: $(srcDir)/src/drop.py dropintro.book workspace.book quality.book \
+		dws.book glossary.book
+	python $^ > $@
+
+dws.book: ../dws
+	python ../dws --help-book > $@ || rm -f $@
 
 include $(srcTop)/drop/src/suffix.mk
 
@@ -54,4 +64,5 @@ install:: dws.py dstamp.py $(srcTop)/drop/src/prefix.mk \
 dmake:
 	echo '#!/bin/sh' > $@
 	echo 'dws make $$*' >> $@
+
 

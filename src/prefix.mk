@@ -31,6 +31,7 @@ installFiles	:=	/usr/bin/install -p -m 644
 installExecs	:=	/usr/bin/install -p -m 755
 FOP		:=	fop
 SED		:=	sed
+SEED		:=	$(binDir)/seed
 XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
@@ -41,9 +42,11 @@ XSLTPROC	:=	xsltproc -xinclude 		\
 #       '\n' character.
 srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
 
+incSearchPath	:=	$(srcDir)/include $(includeDir)
+
 CFLAGS		:=	-g -MMD
 CXXFLAGS	:=	-g -MMD
-CPPFLAGS	+=	-I$(srcDir)/include -I$(includeDir)
+CPPFLAGS	+=	$(patsubst %,-I%,$(incSearchPath))
 LDFLAGS		+=	-L$(libDir)
 
 # Configuration for distribution packages
@@ -64,6 +67,8 @@ endif
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
 htmlxsl		:=	$(shareDir)/docbook-xsl/html/docbook.xsl
 foxsl		:=	$(shareDir)/docbook-xsl/fo/docbook.xsl
+graphicSuffix	:=	png
+#graphicSuffix	:=	svg
 
 # extract dependencies to build a .pdf article out of xinclude statements 
 # in the docbook source.
@@ -77,6 +82,7 @@ unexpectedZeroExit =	@echo "$(1)" && ($(1) \
 
 
 vpath %.a 	$(libDir)
+vpath %.hh      $(incSearchPath)
 vpath %.so	$(libDir)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
@@ -89,6 +95,30 @@ define bldUnitTest
 $(1): $(1).cc $(testDepencencies)
 
 endef
+
+# List of files to be published on the website
+# --------------------------------------------
+htmlSite	:=	$(patsubst $(srcDir)/%.hh,%.html,                 \
+				$(wildcard $(srcDir)/include/*.hh))       \
+			$(patsubst $(srcDir)/%.tcc,%.html,                \
+				$(wildcard $(srcDir)/include/*.tcc))      \
+			$(patsubst $(srcDir)/%.cc,%.html,                 \
+				$(wildcard $(srcDir)/src/*.cc             \
+					   $(srcDir)/test/src/*.cc))      \
+			$(patsubst $(srcDir)/%Makefile,%Makefile.html,    \
+				$(wildcard $(srcDir)/Makefile             \
+					   $(srcDir)/test/src/Makefile))  \
+			$(patsubst $(srcDir)/%.book,%.html,               \
+				$(wildcard $(srcDir)/doc/*.book))
+
+# The rules to produce HTML are relative to the project top directory (srcDir)
+# so we need to set the search path accordingly.
+vpath %.hh      $(srcDir)
+vpath %.cc 	$(srcDir)
+vpath %.py	$(srcDir)
+vpath %.book 	$(srcDir)
+vpath %Makefile $(srcDir)
+
 
 # List of files to be installed
 # -----------------------------
