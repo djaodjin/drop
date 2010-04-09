@@ -103,20 +103,20 @@ class Context:
     configName = 'ws.mk'
 
     def __init__(self):
-        self.cacheTop = Pathname('cacheTop',
-                          'Root of the tree where the website is generated and thus where *remoteCacheTop* is cached on the local system',
-                          default=os.path.join(os.getcwd(),'cache'))
-        self.remoteCacheTop = Pathname('remoteCacheTop',
+        self.siteTop = Pathname('siteTop',
+                          'Root of the tree where the website is generated and thus where *remoteSiteTop* is cached on the local system',
+                          default=os.getcwd())
+        self.remoteSiteTop = Pathname('remoteSiteTop',
              'Root of the remote tree that holds the published website (ex: url:/var/cache).',
                   default='')
         self.installTop = Pathname('installTop',
                           'Root of the tree for installed bin/, include/, lib/, ...',
                           default=os.getcwd())
         self.srcTop = Pathname('srcTop',
-             'Root of the tree where the source code under revision control lives on the local machine.',default=os.path.join(os.getcwd(),'reps'))
+             'Root of the tree where the source code under revision control lives on the local machine.',self.siteTop,default='reps')
         self.environ = { 'buildTop': Pathname('buildTop',
              'Root of the tree where intermediate files are created.',
-                                              self.srcTop,default='../build'), 
+                                              self.siteTop,default='build'), 
                          'srcTop' : self.srcTop,
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
@@ -131,16 +131,17 @@ class Context:
              'Root of the tree where extra files are installed',
                                             self.installTop,'etc'),
                          'shareDir': Pathname('shareDir',
-             'Root of the tree where shared files are installed',
-                                            self.installTop),
-                         'cacheTop': self.cacheTop,
-                         'remoteCacheTop': self.remoteCacheTop,
+             'Directory where the shared files are installed. This is based on *siteTop* by default because we want the pdfs to be accessible through the website.',
+                                            self.siteTop,
+                                              default='resources/articles'),
+                         'siteTop': self.siteTop,
+                         'remoteSiteTop': self.remoteSiteTop,
                          'remoteIndex': Pathname('remoteIndex',
              'Index file with projects dependencies information',
-                                          self.remoteCacheTop,'db.xml'),
+                                          self.remoteSiteTop,'db.xml'),
                          'remoteSrcTop': Pathname('remoteSrcTop',
              'Root of the tree on the remote machine where repositories are located',
-                                          self.remoteCacheTop,'reps'),
+                                          self.remoteSiteTop,'reps'),
                         'darwinTargetVolume': SingleChoice('darwinTargetVolume',
               'Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
               choices=[ ['LocalSystem', 
@@ -154,7 +155,7 @@ class Context:
     def cachePath(self,name):
         '''Absolute path to a file in the local system cache
         directory hierarchy.'''
-        return os.path.join(self.value('cacheTop'),name)
+        return os.path.join(self.value('siteTop'),name)
 
     def derivedEtc(self,name):
         '''Absolute path to a file which is part of drop but located
@@ -170,21 +171,21 @@ class Context:
     def hostCachePath(self,name):
         '''Absolute path to a file in the local system cache for host 
         specific packages.'''
-        return os.path.join(self.value('cacheTop'),host(),name)
+        return os.path.join(self.value('siteTop'),host(),name)
 
     def logPath(self,name):
         '''Absolute path to a file in the local system log
         directory hierarchy.'''
-        return os.path.join(self.value('cacheTop'),'log',name)
+        return os.path.join(self.value('siteTop'),'log',name)
 
     def remoteCachePath(self,name):
         '''Absolute path to access a file on the remote machine.''' 
-        return os.path.join(self.value('remoteCacheTop'),name)
+        return os.path.join(self.value('remoteSiteTop'),name)
 
     def remoteHostCachePath(self,name):
         '''Absolute path to access a host specific file 
         on the remote machine.''' 
-        return os.path.join(self.value('remoteCacheTop'),host(),name)
+        return os.path.join(self.value('remoteSiteTop'),host(),name)
 
     def remoteSrcPath(self,name):
         '''Absolute path to access a repository on the remote machine.''' 
@@ -202,6 +203,7 @@ class Context:
                                                self.configName)
             self.save()
             self.locate()
+        print "!!! " + os.path.realpath(os.getcwd())
         if os.path.realpath(os.getcwd()).startswith(
             os.path.realpath(self.value('buildTop'))):
                 top = os.path.realpath(self.value('buildTop'))
@@ -2678,9 +2680,9 @@ def pubBuild(args):
         if not ':' in remoteIndex:
             remoteIndex = os.path.realpath(remoteIndex)
         context.environ['remoteIndex'].value = remoteIndex
-        context.remoteCacheTop.default = os.path.dirname(args[0])
+        context.remoteSiteTop.default = os.path.dirname(args[0])
     if len(args) > 1:
-        context.cacheTop.value = os.path.realpath(args[1])
+        context.siteTop.value = os.path.realpath(args[1])
     global useDefaultAnswer
     useDefaultAnswer = True
     global log
@@ -2864,7 +2866,7 @@ def pubMake(args):
                        can be itself built.
     '''
     global log 
-    context.cacheTop.default = os.path.dirname(os.path.dirname(
+    context.siteTop.default = os.path.dirname(os.path.dirname(
         os.path.realpath(os.getcwd())))
     log = LogFile(context.logname(),nolog)
     repositories = [ context.cwdProject() ]

@@ -28,7 +28,7 @@ etcDir=${buildDir}/etc
 
 echo buildTop=${buildTop} > ws.mk
 echo srcTop=${srcTop} >> ws.mk
-echo cacheTop=${buildDir}/cache >> ws.mk
+echo siteTop=${buildDir}/cache >> ws.mk
 echo binDir=${binDir} >> ws.mk
 echo etcDir=${buildDir}/etc >> ws.mk
 echo libDir=${buildDir}/lib >> ws.mk

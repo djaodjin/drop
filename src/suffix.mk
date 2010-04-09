@@ -30,7 +30,7 @@ installShareDir		?=	$(shareDir)
 
 .PHONY:	all check dist doc install site
 
-all::	$(bins) $(libs) $(includes)
+all::	$(bins) $(libs) $(includes) $(logs)
 
 clean::
 	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
@@ -46,6 +46,10 @@ install:: $(libs)
 install:: $(includes)
 	$(if $^,$(installDirs) $(installIncludeDir))
 	$(if $^, $(installFiles) $^ $(installIncludeDir))
+
+install:: $(resources)
+	$(if $^,$(installDirs) $(resourcesDir))
+	$(if $^, $(installFiles) $^ $(resourcesDir))
 
 %.a:
 	$(AR) $(ARFLAGS) $@ $^
@@ -188,40 +192,39 @@ doc: $(shares)
 
 # Rules to build the website
 # --------------------------
-siteDir	:=	$(subst $(srcTop)/,$(cacheTop)/,$(srcDir))
+siteDir	:=	$(subst $(srcTop)/,$(resourcesDir)/,$(srcDir))
 
 site::
-	[ -d $(siteDir) ] \
-	  || $(installDirs) $(siteDir)
-	$(installFiles) $(shell dws context) $(cacheTop)
+	$(installDirs) $(siteDir)
+	$(installFiles) $(shell dws context) $(resourcesDir)
 	cd $(siteDir)     \
-	   && $(MAKE) -f $(srcDir)/Makefile buildTop=$(cacheTop) site-stamp
+	   && $(MAKE) -f $(srcDir)/Makefile srcDir=$(srcDir) site-stamp
 
 site-stamp:: $(htmlSite)
 
 %.html: %.cc
-	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
-	$(SEED) $< > $@
+	@$(installDirs) $(dir $@)
+	$(SEED) $< | tail +2 > $@
 
 %.html: %.hh
-	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
-	$(SEED) $< > $@
+	@$(installDirs) $(dir $@)
+	$(SEED) $< | tail +2 > $@
 
 %.html: %.py
-	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
-	$(SEED) $< > $@
+	@$(installDirs) $(dir $@)
+	$(SEED) $< | tail +2 > $@
 
 %.html: %.book
-	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
-	$(SEED) $< > $@
+	@$(installDirs) $(dir $@)
+	$(SEED) $< | tail +2 > $@
 
 Makefile.html: Makefile
 	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
-	$(SEED) $< > $@
+	$(SEED) $< | tail +2 > $@
 
 %Makefile.html: %Makefile
-	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
-	$(SEED) $< > $@
+	@$(installDirs) $(dir $@)
+	$(SEED) $< | tail +2 > $@
 
 
 # Rules to validate the intra-projects dependency file

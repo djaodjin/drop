@@ -42,6 +42,8 @@ XSLTPROC	:=	xsltproc -xinclude 		\
 #       '\n' character.
 srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
 
+resourcesDir	?=	$(siteTop)/resources
+
 incSearchPath	:=	$(srcDir)/include $(includeDir)
 
 CFLAGS		:=	-g -MMD
