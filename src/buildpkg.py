@@ -455,6 +455,7 @@ make install
         return projet.name + '-' + version + '.rpm'
 
     elif dist == 'Ubuntu':
+        packageVersion = version + '-ubuntu1'
         os.makedirs('debian')
         control = open(os.path.join('debian','control'),'w')
         control.write('Version:' + version + '\n')
@@ -469,7 +470,7 @@ make install
         control.write('\n')
         control.close()
         changelog = open(os.path.join('debian','changelog'),'w')
-        changelog.write(project.name + ' (' + project.name + '-ubuntu1' + ') jaunty; urgency=low\n\n')
+        changelog.write(project.name + ' (' + packageVersion + ') jaunty; urgency=low\n\n')
         changelog.write('  * debian/rules: generate ubuntu package\n\n')
         changelog.write(' -- ' + project.maintainer.fullname \
                             + ' <' + project.maintainer.email + '>  ' \
@@ -533,7 +534,7 @@ binary: install
         distExtUbuntu =	'_amd64.deb'
         if longBit == '32':
             distExtUbuntu = '_i386.deb'            
-        return project.name + '-' + version + distExtUbuntu
+        return '../' + project.name + '_' + packageVersion + distExtUbuntu
 
     else:
         # unknown host, we don't know how to make a package for it.
@@ -598,6 +599,9 @@ if __name__ == "__main__":
 
     index.parse(handler)
     project = handler.projects[handler.projects.keys()[0]]
+    # Removes any leading directory name from the project name
+    # else debuild is not very happy.
+    project.name = os.path.basename(project.name)
 
     buildPackageSpecification(project,
                               buildPackage(project,options.version,args[0]))

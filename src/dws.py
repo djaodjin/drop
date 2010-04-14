@@ -154,7 +154,7 @@ class Context:
     def cachePath(self,name):
         '''Absolute path to a file in the local system cache
         directory hierarchy.'''
-        return os.path.join(self.value('siteTop'),name)
+        return os.path.join(self.value('siteTop'),'resources',name)
 
     def derivedEtc(self,name):
         '''Absolute path to a file which is part of drop but located
@@ -179,7 +179,7 @@ class Context:
 
     def remoteCachePath(self,name):
         '''Absolute path to access a file on the remote machine.''' 
-        return os.path.join(self.value('remoteSiteTop'),name)
+        return os.path.join(self.value('remoteSiteTop'),'resources',name)
 
     def remoteHostCachePath(self,name):
         '''Absolute path to access a host specific file 
@@ -278,7 +278,7 @@ class Context:
         configFile.write('# configuration for development workspace\n\n')
         for key in keys:
             val = self.environ[key]
-            if val:
+            if len(str(val)) > 0:
                 configFile.write(key + '=' + str(val) + '\n')
         configFile.close()
 
@@ -788,7 +788,10 @@ class Variable:
         self.constrains = {}
 
     def __str__(self):
-        return str(self.value)
+        if self.value:
+            return str(self.value)
+        else:
+            return ''
 
     def constrain(self,vars):
         None
