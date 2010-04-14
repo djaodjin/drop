@@ -181,7 +181,12 @@ results: $(patsubst %,%.cout,$(testunits))
 
 # Rules to build printable documentation out of docbook sources.
 # --------------------------------------------------------------
+# We install documentation files, both in shareDir and resourcesDir
+# such that those are available for generating a distribution package
+# as well as acessible through the website.
 doc: $(shares)
+	$(installFiles) $^ $(shareDir)
+	$(installFiles) $^ $(resourcesDir)
 
 %.pdf:	%.fo
 	$(FOP) -fo $< -pdf $@

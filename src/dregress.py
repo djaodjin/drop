@@ -50,10 +50,11 @@ def logAdvance(log):
     logLineNum = sys.maxint
     logLine = log.readline()
     # print "advance log: " + logLine
-    look = re.match('(\d+):@@ test: (\S+) @@',logLine)
+    look = re.match('(\d+):@@ test: (\S+) (\S+)? @@',logLine)
     if look != None:
         logLineNum = int(look.group(1))
         logTestName = look.group(2)
+        # group(3) if present is status
     return logLineNum, logTestName
 
 

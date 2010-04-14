@@ -44,12 +44,12 @@ shares	:=	drop.pdf
 
 drop.fo: drop.book
 
-drop.book: $(srcDir)/src/drop.py dropintro.book workspace.book quality.book \
+drop.book: $(srcDir)/doc/drop.py dropintro.book workspace.book quality.book \
 		dws.book glossary.book
 	python $^ > $@
 
-dws.book: ../dws
-	python ../dws --help-book > $@ || rm -f $@
+dws.book: dws
+	python dws --help-book > $@ || rm -f $@
 
 include $(srcTop)/drop/src/suffix.mk
 
