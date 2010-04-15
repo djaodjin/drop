@@ -370,7 +370,8 @@ class IndexProjects:
                                       + 'of the two following method:',
                                       [ [ 'fetching', 'from remote server' ],
                                         [ 'indexing', 
-                                          'local projects in the workspace' ] ])
+                                          'local projects in the workspace' ] ],
+                                      False)
             if selection == 'indexing':
                 pubCollect([])
             elif selection == 'fetching' or force:
@@ -879,7 +880,8 @@ class Pathname(Variable):
                                               + self.base.name \
                         + '* by default. Would you like to ... ',
                               [ [ offbase  ],
-                                [ directly ] ])
+                                [ directly ] ],
+                                          False)
                     if selection == offbase:
                         dir = self.base
                         default = dir.default
@@ -3054,7 +3056,7 @@ this step if you know those dependencies will be resolved correctly later on.
     return packages
 
 
-def selectOne(description,choices):
+def selectOne(description, choices, sort=True):
     '''Prompt an interactive list of choices and returns the element selected
     by the user. *description* is a text that explains the reason for the 
     prompt. *choices* is a list of elements to choose from. Each element is 
@@ -3062,7 +3064,10 @@ def selectOne(description,choices):
     and returned by this function. The other values are only use as textual
     context to help the user make an informed choice.'''
     choice = None
-    choices.sort()
+    if sort:
+        # We should not sort 'Enter ...' choices for pathnames else we will
+        # end-up selecting unexpected pathnames by default.
+        choices.sort()
     while True:
         showMultiple(description,choices)
         if useDefaultAnswer:

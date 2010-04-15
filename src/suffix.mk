@@ -151,7 +151,7 @@ regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 #       It should not but why it does in unknown yet.
 results.log: 
 	$(MAKE) -k -f $(srcDir)/Makefile results ; \
-		echo "ok to get positive error code" > /dev/null
+		echo "ok to get positive errcodes" > /dev/null
 	@echo "<config name=\"$(version)\">" > $@
 	@echo $(distHost) >> $@
 	@echo "</config>" >> $@
