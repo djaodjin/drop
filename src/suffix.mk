@@ -241,7 +241,8 @@ validate: index.xml
 
 # docbook validation
 # schema taken from http://www.docbook.org/xml/5.0/xsd/docbook.xsd
-validbook: $(shell find $(srcDir) -name '*.book')
+validbook: $(shell find $(srcDir) -name '*.book') \
+	   $(shell find $(srcDir) -name '*.corp')
 	xmllint --noout --schema $(shareDir)/docbook-xsd/docbook.xsd $^
 
 validxhtml: $(subst .book,.html,\

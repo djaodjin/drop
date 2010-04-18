@@ -133,6 +133,9 @@ class Context:
                          'shareDir': Pathname('shareDir',
              'Directory where the shared files are installed.',
                                             self.installTop,'share'),
+                         'duplicateDir': Pathname('duplicateDir',
+             'Directory where important directory trees on the remote machine are duplicated.',
+                                            self.installTop,'duplicate'),
                          'siteTop': self.siteTop,
                          'remoteSiteTop': self.remoteSiteTop,
                          'remoteIndex': Pathname('remoteIndex',
@@ -2809,6 +2812,30 @@ def pubContext(args):
         except IOError:
             pathname = os.path.join(context.value('etcDir'),'dws',args[0])
     sys.stdout.write(pathname)
+
+
+def pubDuplicate(args):
+    '''duplicate          Duplicate pathnames from the remote machine into
+                       *duplicateDir* on the local machine. 
+    ''' 
+    remotePath = context.value('remoteSiteTop')
+    dirname, hostname, username = splitRemotePath(remotePath)
+    pathnames = [ '/var/log', '/var/lib', dirname ]
+    duplicateDir = context.value('duplicateDir')
+    if hostname:
+        duplicateDir = os.path.join(duplicateDir,hostname)        
+    cmdline, cachePath, remotePath  = remoteSyncCommand(duplicateDir)
+    prefix = ""
+    if username:
+        prefix = prefix + username + '@'
+    if hostname:
+        prefix = prefix + hostname + ':'
+    sources = "'" + prefix + ' '.join(pathnames) + "'"
+    cmdline = cmdline + ' ' + sources + ' ' + cachePath
+    print cmdline
+    if None:
+        shellCommand(cmdline)
+
 
 def pubFind(args):
     '''find               bin|lib filename ...

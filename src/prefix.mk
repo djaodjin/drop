@@ -30,6 +30,7 @@ installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -p -m 644
 installExecs	:=	/usr/bin/install -p -m 755
 FOP		:=	fop
+LN_S		:=	/bin/ln -fs
 SED		:=	sed
 SEED		:=	$(binDir)/seed
 XSLTPROC	:=	xsltproc -xinclude 		\
@@ -46,8 +47,8 @@ resourcesDir	?=	$(siteTop)/resources
 
 incSearchPath	:=	$(srcDir)/include $(includeDir)
 
-CFLAGS		:=	-g -MMD
-CXXFLAGS	:=	-g -MMD
+CFLAGS		:=	-g -MMD -Wall
+CXXFLAGS	:=	-g -MMD -Wall
 CPPFLAGS	+=	$(patsubst %,-I%,$(incSearchPath))
 LDFLAGS		+=	-L$(libDir)
 
