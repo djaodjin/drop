@@ -145,7 +145,8 @@ class Context:
              'Root of the tree on the remote machine where repositories are located',
                                           self.remoteSiteTop,'reps'),
                         'darwinTargetVolume': SingleChoice('darwinTargetVolume',
-              'Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
+                                                           None,
+              descr='Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
               choices=[ ['LocalSystem', 
                          'install packages on the system root for all users'],
                         ['CurrentUserHomeDirectory', 
@@ -3263,6 +3264,8 @@ if __name__ == '__main__':
 	    help='Print help in docbook format')
 	parser.add_option('--nolog', dest='nolog', action='store_true',
 	    help='Do not generate output in the log file')
+	parser.add_option('--prefix', dest='installTop', action='append',
+	    help='Set the root for installed bin, include, lib, etc. ')
 	parser.add_option('--upload', dest='uploadResults', action='store_true',
 	    help='Upload log files to the server after building the repository')
 	parser.add_option('--version', dest='version', action='store_true',
@@ -3362,6 +3365,8 @@ if __name__ == '__main__':
                 sys.stdout.write("</refsection>\n")
             sys.stdout.write("</refentry>\n")
             sys.exit(0)
+        if options.installTop:
+            context.environ['installTop'].value = options.installTop
 
         useDefaultAnswer = options.default
         uploadResults = options.uploadResults
