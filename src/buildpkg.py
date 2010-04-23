@@ -1,21 +1,17 @@
 #!/usr/bin/env python
 
-"""buildpkg.py -- Build OS X packages for Apple's Installer.app.
-
-This is an experimental command-line tool for building packages to be
-installed with the Mac OS X Installer.app application. 
+"""buildpkg.py -- Build Fedora, OSX and Ubuntu packages.
 
 Sebastien Mirolo, 
 smirolo@fortylines.com
-June 2009
+April 2010
 
-Based on work from 
+The OSX packager code was originally based on work from 
 
 Dinu C. Gherman, 
 gherman@europemail.com
 September 2002
 
-!! USE AT YOUR OWN RISK !!
 """
 
 __version__ = 0.4

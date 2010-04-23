@@ -84,10 +84,13 @@ $(project)-$(version).tar.bz2:
 		&& rsync -aR $(patchedSources)                   \
 			$(basename $(basename $@))/cache)
 	rsync -r --exclude=.git $(srcDir)/* $(basename $(basename $@))
-	$(SED) -e s,$(project),$(subst .tar.bz2,,$@),g \
-		$(srcDir)/index.xml > $(basename $(basename $@))/index.xml 
+	if [ -f $(srcDir)/index.xml ] ; then \
+		$(SED) -e s,$(project),$(subst .tar.bz2,,$@),g \
+		$(srcDir)/index.xml > $(basename $(basename $@))/index.xml ; \
+	fi
 	$(SED) -e 's,$$(shell dws context),ws.mk,' \
 	    -e 's,$$(shell dws context \(..*\)),etc/\1,' \
+	    -e 's,$$(srcTop)/drop,$$(srcTop)/$(basename $(basename $@)),' \
 		$(srcDir)/Makefile > $(basename $(basename $@))/Makefile.in
 	rm $(basename $(basename $@))/Makefile
 	$(installDirs) $(basename $(basename $@))/etc
@@ -105,7 +108,7 @@ $(project)-$(version).tar.bz2:
 # 'make install' might just do nothing and we still want to build an empty
 # package for that case so we create ${buildInstallDir} before buildpkg 
 # regardless such that mkbom has something to work with. 
-%$(distExtDarwin): %.tar.bz2 $(srcDir)/index.xml
+%$(distExtDarwin): %.tar.bz2 
 	tar jxf $<
 	cd $(basename $(basename $<)) \
 		&& ./configure --prefix=${buildUsrLocalDir}
@@ -114,7 +117,7 @@ $(project)-$(version).tar.bz2:
 	buildpkg --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/index.xml ${buildInstallDir}
 
-%$(distExtFedora): %.tar.bz2 $(srcDir)/index.xml \
+%$(distExtFedora): %.tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
 	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES

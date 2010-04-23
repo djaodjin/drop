@@ -37,7 +37,7 @@ include $(shell \
 
 srcDir	:=	$(srcTop)/drop
 
-include $(srcTop)/drop/src/prefix.mk
+include $(srcDir)/src/prefix.mk
 
 bins	:=	buildpkg dmake dregress dstamp dws
 shares	:=	drop.pdf
@@ -51,12 +51,12 @@ drop.book: $(srcDir)/doc/drop.py dropintro.book workspace.book quality.book \
 dws.book: dws
 	python dws --help-book > $@ || rm -f $@
 
-include $(srcTop)/drop/src/suffix.mk
+include $(srcDir)/src/suffix.mk
 
-install:: dws.py dstamp.py $(srcTop)/drop/src/prefix.mk \
-		$(srcTop)/drop/src/suffix.mk \
-		$(srcTop)/drop/src/configure.sh \
-		$(srcTop)/drop/src/index.xsd
+install:: dws.py dstamp.py $(srcDir)/src/prefix.mk \
+		$(srcDir)/src/suffix.mk \
+		$(srcDir)/src/configure.sh \
+		$(srcDir)/src/index.xsd
 	$(installFiles) $(filter %.py,$^) $(binDir)
 	$(installDirs)  $(etcDir)/dws
 	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(etcDir)/dws

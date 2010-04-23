@@ -244,7 +244,6 @@ if __name__ == '__main__':
         print str(nbFailures) + ' failures'
         print str(nbRegressions) + ' regressions'
         sys.exit(max(nbFailures,nbRegressions))
-        
-    # dregress -o regression.log results.log /Volumes/DIESEL/workspace/fortylines/dev/reps/seed/test/data/results-golden.log 
+
 
 

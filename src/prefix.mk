@@ -38,9 +38,9 @@ XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam fop1.extensions 1
 
 # \note For some reason when a '\' is inserted in the following line in order
-#       to keep a maximum of 80 characters per line, the sed command 
-#       in contributors/smirolo/Makefile complains about an extra 
-#       '\n' character.
+#       to keep a maximum of 80 characters per line, the sed command:
+#           sed -e 's,$$(srcDir),$(srcDir),g'
+#       complains about an extra '\n' character.
 srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
 
 resourcesDir	?=	$(siteTop)/resources

@@ -8,13 +8,13 @@
   </info>
   
   <para>
-    \todo write paragraph
-    Conventions and Test Units.
+    The quality of a software system relies fundamentally on dedicated and inventive contributors supported by  Quality is in many ways subjective. The quality in terms of usefulness relies a lot of trial and errors, the larger software ecosystem, human perceptions and a perfect market timing. There are unlikely efficient, reliable procedures and infrastructures to achieve this kind of quality so we will focus on the quality that can be achieved and mechanically inforced, that is software systems behaving as expected by the people who wrote the code. These fall in two categories: static analysis and runtime behavior. 
   </para>
-
   <section>
     <title>Conventions</title>
     <para>The purpose of conventions is to make it faster for developers to use pre-existing general knowledge and start contributing to specific projects they were unfamiliar with. Conventions also help create automated tools and an infrastructure to build code, run tests and generate status reports (as detailed in <link linkend="workspace.book">workspace</link>).</para>
+    <section>
+      <title>Code Layout</title>
     <para>Each project in fortylines source repository is organized as follow</para>
     <variablelist>
       <varlistentry>
@@ -65,8 +65,44 @@
       As projects grow in size, it becomes cumbersome to enforce conventions manually. As a result, the only convention that exist are the ones that can be checked and enforce by an automated tool as part of the build process.
     </para>
     <para>
-      \todo integrate checkstyle as a view in seed.
-      A <link xlink:href="/seed/src/checkstyle.py">checkstyle</link> script runs through the top-level <link linkend="dws.book#srcTop">srcTop</link> and outputs a detailed report about projects broking those conventions.</para>    
+      A checkstyle script runs through the top-level <link linkend="dws.book#srcTop">srcTop</link> and outputs a detailed report about projects broking those conventions.</para>    
+    </section>
+    <section>
+      <title>Release Checklist</title>
+      <para>It is not easy to realize when a project is of release quality. Planes do not take off before the captain verify every items on a list and checks them off. It is a very efficient and cost-effective way of insuring a certain level of quality. In the software world, as the cost of post-release workarounds and fixes can become enormous, it is wise to keep a simple, straightforward &quot;release checklist&quot; to thoroughly go through before any package is pushed onto the delivery channels. Having an explicit release checklist is an important step towards a consistent quality through releases. For example:</para>
+      <itemizedlist>
+	<listitem><para>General</para>
+	  <itemizedlist>
+	    <listitem><para>All unit tests pass</para></listitem>
+	    <listitem><para>All source files have an appropriate license</para></listitem>
+	    <!-- Remove hardcoded references (fortylines, "solutions", 
+		 smirolo, etc. -->
+	  </itemizedlist>
+	</listitem>
+	<listitem><para>C++ (.hh, .tcc, .cc)</para>
+	  <itemizedlist>
+	    <listitem><para>No std::cerr statements that can be accounted as debugging messages.</para></listitem>
+	    <listitem><para>No "#if 0" nor "#if 1" without a blessed &quot;todo&quot; comment.</para></listitem>
+	    <listitem><para>compile with no warnings when using -Wall compiler command line flag</para></listitem>
+	  </itemizedlist>
+	</listitem>
+	<listitem><para>Python (.py)</para>
+	  <itemizedlist>
+	    <listitem><para>No "if None:" without a blessed &quot;todo&quot; comment.</para></listitem>
+	  </itemizedlist>
+	</listitem>
+	<listitem><para>Documentation (.docbook)</para>
+	  <itemizedlist>
+	    <listitem><para>No error when run through the spellchecker</para></listitem>
+	  </itemizedlist>
+	</listitem>
+	<listitem><para>HTML (.css, .template)</para>
+	  <itemizedlist>
+	    <listitem><para>Correct display of each template on Firefox, Safari and IE8.</para></listitem>
+	  </itemizedlist>
+	</listitem>
+      </itemizedlist>
+    </section>
   </section>
   
   <section>

@@ -206,7 +206,6 @@ class Context:
                                                self.configName)
             self.save()
             self.locate()
-        print "!!! " + os.path.realpath(os.getcwd())
         if os.path.realpath(os.getcwd()).startswith(
             os.path.realpath(self.value('buildTop'))):
                 top = os.path.realpath(self.value('buildTop'))
@@ -381,8 +380,7 @@ class IndexProjects:
             elif selection == 'fetching' or force:
                 if not os.path.exists(os.path.dirname(self.filename)):
                     os.makedirs(os.path.dirname(self.filename))
-                fetch({os.path.basename(self.context.value('remoteIndex')):
-                           None},
+                fetch({self.context.value('remoteIndex'): None},
                       os.path.dirname(self.filename),True)
         if not os.path.exists(self.filename):
             raise Error(self.filename + ' does not exist.')
@@ -1971,14 +1969,8 @@ def fetch(filenames, cacheDir=None, force=False):
                     if not os.path.exists(dir):
                         os.makedirs(dir)
                     downloads += [ filename ]
-        cmdline, cachePath, remotePath = remoteSyncCommand(cacheDir)
-        dirname, hostname, username = splitRemotePath(remotePath)
-        if username:
-            sources = username        
-        sources = "'" + remotePath + './' \
-            +' ./'.join(downloads).replace(' ',' ' + dirname + os.sep) + "'"
-        cmdline = cmdline + ' ' + sources + ' ' + cachePath
-        shellCommand(cmdline)
+        downCmdline, upCmdline = remoteSyncCommand(downloads,cacheDir)
+        shellCommand(downCmdline)
 
 
 def install(packages, extraFetches={}, dbindex=None, force=False):
@@ -2366,7 +2358,7 @@ def mergeBuildConf(dbPrev,dbUpd,parser):
         parser.trailer(dbNext)
         return dbNext
 
-def remoteSyncCommand(cacheDir=None):
+def remoteSyncCommand(filenames,cacheDir=None,admin=False):
     '''returns a triplet (rsync, cachePath, remoteCachePath) that can be
     used to build a command that will either fetch or upload files
     from or to the remote server to the local machine.
@@ -2380,7 +2372,28 @@ def remoteSyncCommand(cacheDir=None):
     dirname, hostname, username = splitRemotePath(remotePath)
     if hostname:
         cmdline = cmdline + " --rsh=ssh"
-    return cmdline, cachePath, remotePath
+        if admin:
+            cmdline = cmdline + ' --rsync-path "sudo rsync"'
+
+    upCmdline = cmdline + ' ././' + ' ././'.join(filenames) \
+        + ' ' + remotePath
+
+    downCmdline = cmdline
+    prefix = ""
+    if username:
+        prefix = prefix + username + '@'
+    if hostname:
+        prefix = prefix + hostname + ':'
+    pathnames = []
+    for f in filenames:
+        if f.startswith(os.sep):
+            pathnames += [ f ]
+        else:
+            pathnames += [ dirname + '/./' + f ]
+    sources = "'" + prefix + ' '.join(pathnames) + "'"
+    downCmdline = cmdline + ' ' + sources + ' ' + cachePath
+
+    return downCmdline, upCmdline
 
 
 def upload(filenames, cacheDir=None):
@@ -2388,11 +2401,11 @@ def upload(filenames, cacheDir=None):
     to the remote server. See the fetch function for downloading
     files from the remote server.
     '''
-    cmdline, cachePath, remoteCachePath = remoteSyncCommand(cacheDir)
+    downCmdline, upCmdline = remoteSyncCommand(filenames,cacheDir)
+    prev = os.getcwd()
     os.chdir(cachePath)
-    cmdline = cmdline + ' ././' + ' ././'.join(filenames) \
-        + ' ' + remoteCachePath
-    shellCommand(cmdline)
+    shellCommand(upCmdline)
+    os.chdir(prev)
 
 
 def searchBackToRoot(filename,root=os.sep):
@@ -2797,6 +2810,8 @@ def pubConfigure(args):
         for miss in dgen.extraFetches:
             prerequisites |= set([ miss ])            
         raise MissingError(projectName,prerequisites)
+    else:
+        linkDependencies({ projectName: dgen.projects[projectName]})
 
 
 def pubContext(args):
@@ -2824,18 +2839,18 @@ def pubDuplicate(args):
     pathnames = [ '/var/log', '/var/lib', dirname ]
     duplicateDir = context.value('duplicateDir')
     if hostname:
-        duplicateDir = os.path.join(duplicateDir,hostname)        
-    cmdline, cachePath, remotePath  = remoteSyncCommand(duplicateDir)
-    prefix = ""
-    if username:
-        prefix = prefix + username + '@'
-    if hostname:
-        prefix = prefix + hostname + ':'
-    sources = "'" + prefix + ' '.join(pathnames) + "'"
-    cmdline = cmdline + ' ' + sources + ' ' + cachePath
-    print cmdline
-    if None:
-        shellCommand(cmdline)
+        duplicateDir = os.path.join(duplicateDir,hostname)
+    if not os.path.exists(duplicateDir):
+        os.makedirs(duplicateDir)
+    downCmdline, upCmdline = remoteSyncCommand(pathnames,duplicateDir,
+                                               admin=True)
+    # The following command will promt for the sudo password and extend
+    # the grace period for 5min such that the following rsync command
+    # executes properly since it does not prompt for the sudo password
+    # and locks up the system.
+    # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
+    shellCommand('stty -echo; ssh ' + hostname + ' sudo -v; stty echo')
+    shellCommand(downCmdline)
 
 
 def pubFind(args):
