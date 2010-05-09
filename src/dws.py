@@ -140,7 +140,9 @@ class Context:
                          'remoteSiteTop': self.remoteSiteTop,
                          'remoteIndex': Pathname('remoteIndex',
              'Index file with projects dependencies information',
-                                          self.remoteSiteTop,'db.xml'),
+                                          self.remoteSiteTop,
+                                                 os.path.basename(sys.argv[0]) \
+                                                     + '.xml'),
                          'remoteSrcTop': Pathname('remoteSrcTop',
              'Root of the tree on the remote machine where repositories are located',
                                           self.remoteSiteTop,'reps'),
@@ -248,21 +250,31 @@ class Context:
                 # self.buildTopRelativeCwd = look.group(1)
                 None
         # -- Read the environment variables set in the config file.
+        siteTopFound = False
         configFile = open(self.configFilename)
         line = configFile.readline()
         while line != '':
             look = re.match('(\S+)\s*=\s*(\S+)',line)
             if look != None:
+                if look.group(1) == 'siteTop':
+                    siteTopFound = True
                 if not look.group(1) in self.environ:
                     self.environ[look.group(1)] = look.group(2)
                 else:
                     self.environ[look.group(1)].value = look.group(2)
             line = configFile.readline()
+        if not siteTopFound:
+            # By default we set *siteTop* to be the directory
+            # where the configuration file was found since basic paths
+            # such as *buildTop* and *srcTop* defaults are based on it.
+            self.environ['siteTop'].value = os.path.dirname(self.configFilename)
         configFile.close()
 
     def logname(self):
         '''Name of the XML tagged log file where sys.stdout is captured.''' 
-        filename = self.logPath('dws.log')
+        filename = os.path.basename(self.value('remoteIndex'))
+        filename = os.path.splitext(filename)[0] + '.log'
+        filename = self.logPath(filename)
         if not os.path.exists(os.path.dirname(filename)):
             os.makedirs(os.path.dirname(filename))
         return filename
@@ -276,6 +288,8 @@ class Context:
             configFile = open(self.configFilename,'w')
         except:
             self.configFilename = self.objDir(self.configName)
+            if not os.path.exists(os.path.dirname(self.configFilename)):
+                os.makedirs(os.path.dirname(self.configFilename))
             configFile = open(self.configFilename,'w')
         keys = sorted(self.environ.keys())
         configFile.write('# configuration for development workspace\n\n')
@@ -919,7 +933,10 @@ class Pathname(Variable):
                     log.write(self.value + ' does not exist.\n')
                 else:
                     sys.stdout.write(self.value + ' does not exist.\n')
-                os.makedirs(self.value)
+                # We should not assume the pathname is a directory 
+                # (i.e. remoteIndex).
+                if None:
+                    os.makedirs(self.value)
         if log:
             log.write(self.name + ' set to ' + self.value +'\n')
         else:
@@ -1151,7 +1168,7 @@ class Project:
 
     def __init__(self, name):
         self.name = name
-        self.description = None
+        self.title = None
         self.maintainer = None
         self.complete = False
         # *packages* maps a set of tags to *Package* instances. A *Package*
@@ -1163,7 +1180,7 @@ class Project:
 
     def __str__(self):
         result = 'project ' + self.name + '\n' \
-            + '\t' + str(self.description) + '\n' \
+            + '\t' + str(self.title) + '\n' \
             + '\tfound version ' + str(self.installedVersion) \
             + ' installed locally\n' \
             + '\tcomplete: ' + str(self.complete) + '\n'
@@ -1223,7 +1240,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagDefault = 'default'
     tagConstrain = 'constrain'
     tagDepend = 'dep'
-    tagDescription = 'description'
+    tagTitle = 'title'
     tagFetch = 'fetch'
     tagHash = 'sha1'
     tagMaintainer = 'maintainer'
@@ -1365,13 +1382,13 @@ class xmlDbParser(xml.sax.ContentHandler):
                                                  self.vars)
         elif name == self.tagDepend:
             self.locals += [ Dependency(self.depName,self.deps,self.excludes) ]
-        elif name == self.tagDescription:
+        elif name == self.tagTitle:
             if self.choice:
                 self.choice += [ self.text.strip() ]
             elif self.var:
                 self.var.descr = self.text.strip()
             else:
-                self.project.description = self.text.strip()
+                self.project.title = self.text.strip()
         elif name == self.tagProject:
             self.handler.project(self.project)
         elif name == self.tagHash:
@@ -2752,7 +2769,9 @@ def pubCollect(args):
     copySrcPackages = None
     srcPackages = findFiles(context.value('buildTop'),'.tar.bz2')
     if len(srcPackages) > 0:
-        copySrcPackages = ' '.join('rsync',' '.join(srcPackages),srcPackageDir)
+        copySrcPackages = ' '.join(['rsync',
+                                    ' '.join(srcPackages),
+                                    srcPackageDir])
     preExcludeIndices = []
     copyBinPackages = None
     if context.host() in extensions:
@@ -2760,7 +2779,9 @@ def pubCollect(args):
         preExcludeIndices = findFiles(context.value('buildTop'),ext[0])
         binPackages = findFiles(context.value('buildTop'),ext[1])
         if len(binPackages) > 0:
-            copyBinPackages = ' '.join('rsync',' '.join(binPackages),packageDir)
+            copyBinPackages = ' '.join(['rsync',
+                                        ' '.join(binPackages),
+                                        packageDir])
     preExcludeIndices += findFiles(context.value('srcTop'),'index.xml')
     # We exclude any project index files that has been determined 
     # to be irrelevent to the collection being built.
@@ -3002,18 +3023,21 @@ def pubUpdate(args):
         cwd = os.path.realpath(os.getcwd())
         buildTop = os.path.realpath(context.value('buildTop'))
         srcTop = os.path.realpath(context.value('srcTop'))
+        projectName = None
         srcDir = srcTop
         srcPrefix = os.path.commonprefix([ cwd,srcTop ])
         buildPrefix = os.path.commonprefix([ cwd, buildTop ])
         if srcPrefix == srcTop:
             srcDir = cwd
+            projectName = srcDir[len(srcTop) + 1:]
         elif buildPrefix == buildTop:
             srcDir = cwd.replace(buildTop,srcTop)
-        if os.path.exists(srcDir):
+            projectName = srcDir[len(srcTop) + 1:]
+        if projectName:
+            reps = [ projectName ]
+        else:
             for repdir in findFiles(srcDir,'\.git'):
                 reps += [ os.path.dirname(repdir.replace(srcTop + os.sep,'')) ]
-        else:
-            reps = [ context.cwdProject() ]
     if recurse:
         names, projects = validateControls(reps,force=True)
     else:
