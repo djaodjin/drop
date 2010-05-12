@@ -168,7 +168,7 @@ class PackageMaker:
 
         info = {"Title": os.path.basename(project.name) + "-" + version, 
                 "Version": version, 
-                "Description": project.description }
+                "Description": project.descr }
         self.packageInfo = copy.deepcopy(self.packageInfoDefaults)
         self.packageInfo.update(info)
         self.sourceFolder = installTop

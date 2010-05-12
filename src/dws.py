@@ -1169,6 +1169,7 @@ class Project:
     def __init__(self, name):
         self.name = name
         self.title = None
+        self.descr = None
         self.maintainer = None
         self.complete = False
         # *packages* maps a set of tags to *Package* instances. A *Package*
@@ -1240,7 +1241,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagDefault = 'default'
     tagConstrain = 'constrain'
     tagDepend = 'dep'
-    tagTitle = 'title'
+    tagDescription = 'description'
     tagFetch = 'fetch'
     tagHash = 'sha1'
     tagMaintainer = 'maintainer'
@@ -1252,6 +1253,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagRepository = 'repository'
     tagSingle = 'single'
     tagSync = 'sync'
+    tagTitle = 'title'
     tagValue = 'value'
     tagPattern = '.*<' + tagProject + '\s+name="(.*)"'
     trailerTxt = '</projects>'
@@ -1382,13 +1384,16 @@ class xmlDbParser(xml.sax.ContentHandler):
                                                  self.vars)
         elif name == self.tagDepend:
             self.locals += [ Dependency(self.depName,self.deps,self.excludes) ]
-        elif name == self.tagTitle:
+        elif name == self.tagDescription:
             if self.choice:
                 self.choice += [ self.text.strip() ]
             elif self.var:
                 self.var.descr = self.text.strip()
             else:
-                self.project.title = self.text.strip()
+                # The project description is used to make the dist target.
+                self.project.descr = self.text.strip()
+        elif name == self.tagTitle:
+            self.project.title = self.text.strip()
         elif name == self.tagProject:
             self.handler.project(self.project)
         elif name == self.tagHash:
