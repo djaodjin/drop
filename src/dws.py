@@ -183,14 +183,11 @@ class Context:
         directory hierarchy.'''
         return os.path.join(self.value('siteTop'),'log',name)
 
-    def remoteCachePath(self,name):
-        '''Absolute path to access a file on the remote machine.''' 
-        return os.path.join(self.value('remoteSiteTop'),'resources',name)
-
-    def remoteHostCachePath(self,name):
-        '''Absolute path to access a host specific file 
-        on the remote machine.''' 
-        return os.path.join(self.value('remoteSiteTop'),host(),name)
+    def remoteCachePath(self,name=None):
+        '''Absolute path to access a file on the remote machine.'''
+        if name:
+            return os.path.join(self.value('remoteSiteTop'),'resources',name)
+        return os.path.join(self.value('remoteSiteTop'),'resources')
 
     def remoteSrcPath(self,name):
         '''Absolute path to access a repository on the remote machine.''' 
@@ -1144,7 +1141,10 @@ class Repository(Configure):
 
     def __init__(self, sync, fetches, locals, vars):
         Configure.__init__(self,fetches,locals,vars)
-        self.sync, self.type = os.path.splitext(sync)
+        self.type = None
+        self.sync = sync
+        if self.sync.endswith('.git'):
+            self.type = '.git'
         self.fetches = fetches
         self.vars = vars
         self.locals = locals
@@ -1152,16 +1152,7 @@ class Repository(Configure):
     def __str__(self):
         result = '\t\tsync repository from ' + self.sync + '\n'
         result = result + Configure.__str__(self) 
-        return result
-        
-
-class Patch(Repository):
-    '''All prerequisites information to install a project from a patch 
-       in an upstream distribution.'''
-
-    def __init__(self, sync, fetches, locals, vars):
-        Repository.__init__(self,sync,fetches,locals,vars)
-
+        return result        
 
 class Project:
     '''Definition of a project with its prerequisites.'''
@@ -1373,12 +1364,12 @@ class xmlDbParser(xml.sax.ContentHandler):
                 self.project.packages[tag] = package
         elif name == self.tagPatch:
             if not self.sync:
-                self.sync = self.project.name + '.git'
-            self.project.patch = Patch(self.sync,
+                self.sync = os.path.join(self.project.name,'.git')
+            self.project.patch = Repository(self.sync,
                                        self.fetches,self.locals,self.vars)
         elif name == self.tagRepository:
             if not self.sync:
-                self.sync = self.project.name + '.git'            
+                self.sync = os.path.join(self.project.name,'.git')
             self.project.repository = Repository(self.sync,
                                                  self.fetches,self.locals,
                                                  self.vars)
@@ -2381,39 +2372,59 @@ def mergeBuildConf(dbPrev,dbUpd,parser):
         return dbNext
 
 def remoteSyncCommand(filenames,cacheDir=None,admin=False):
-    '''returns a triplet (rsync, cachePath, remoteCachePath) that can be
-    used to build a command that will either fetch or upload files
-    from or to the remote server to the local machine.
+    '''returns a pair (downCmdline, upCmdline) where downCmdline
+    can be used to download from the remote machine onto the local
+    machine and upCmdline can be used to upload from the local
+    machine to the remote machine.
     '''
-    cmdline = "rsync -avuzb"
+    downCmdline = None
+    upCmdline = None
     cachePath = cacheDir
     if not cacheDir:
         cachePath = context.cachePath('')
-        cmdline = cmdline + 'R'
-    remotePath = context.remoteCachePath('')
-    dirname, hostname, username = splitRemotePath(remotePath)
-    if hostname:
-        cmdline = cmdline + " --rsh=ssh"
+    remoteCachePath = context.remoteCachePath()
+    dirname, hostname, username, protocol = splitRemotePath(remoteCachePath)
+    if protocol and protocol.startswith('http'):
+        # We are accessing the remote machine through http
+        downCmdline = 'curl --create-dirs'
+        for f in filenames:
+            if f.startswith('http'):
+                pathname = f
+            else:
+                pathname = context.remoteCachePath(f)
+            downCmdline += ' ' + ' '.join(['-o',
+                       pathname.replace(remoteCachePath,cachePath),
+                                           pathname])
+    else:
+        # We are accessing the remote machine through a mounted
+        # drive or through ssh.
+        prefix = ""
+        if username:
+            prefix = prefix + username + '@'
+        cmdline = "rsync -avuzb"
+        if not cacheDir:
+            cmdline = cmdline + 'R'
+        if hostname:
+            # We are accessing the remote machine through ssh
+            prefix = prefix + hostname + ':'
+            cmdline = cmdline + " --rsh=ssh"
         if admin:
             cmdline = cmdline + ' --rsync-path "sudo rsync"'
 
-    upCmdline = cmdline + ' ././' + ' ././'.join(filenames) \
-        + ' ' + remotePath
+        upCmdline = cmdline + ' ././' + ' ././'.join(filenames) \
+            + ' ' + remoteCachePath
 
-    downCmdline = cmdline
-    prefix = ""
-    if username:
-        prefix = prefix + username + '@'
-    if hostname:
-        prefix = prefix + hostname + ':'
-    pathnames = []
-    for f in filenames:
-        if f.startswith(os.sep):
-            pathnames += [ f ]
-        else:
-            pathnames += [ dirname + '/./' + f ]
-    sources = "'" + prefix + ' '.join(pathnames) + "'"
-    downCmdline = cmdline + ' ' + sources + ' ' + cachePath
+        downCmdline = cmdline 
+        pathnames = []
+        print "dirname: " + str(dirname)
+        print "filenames: " + str(filenames)
+        for f in filenames:
+            if f.startswith(remoteCachePath):
+                pathnames += [ f[f.find(':') + 1:] ]
+            else:
+                pathnames += [ dirname + '/./' + f ]
+        sources = "'" + prefix + ' '.join(pathnames) + "'"
+        downCmdline = ' '.join([ cmdline, sources, cachePath ])
 
     return downCmdline, upCmdline
 
@@ -2512,17 +2523,24 @@ def sortBuildConfList(dbPathnames,parser):
 def splitRemotePath(remoteDir=None):
     '''returns a triplet (dirname, hostname, username) extracted 
     out of a *remoteDir*'''
+    protocol = None
     username = None
     hostname = None
     dirname = remoteDir
     if not remoteDir:
-        dirname = context.remoteCachePath('')
+        dirname = context.remoteCachePath()
     look = re.match('(\S+@)?(\S+):(\S+)',dirname)
     if look:
-        username = look.group(1)
-        hostname = look.group(2)
-        dirname = look.group(3)
-    return dirname, hostname, username
+        if look.group(2).startswith('http'):
+            protocol = look.group(2)
+            sep = look.group(3)[2:].find('/')
+            hostname = look.group(3)[2: 2 + sep]
+            dirname = look.group(3)[2 + sep:]
+        else:
+           username = look.group(1)
+           hostname = look.group(2)
+           dirname = look.group(3)
+    return dirname, hostname, username, protocol
 
 
 def validateControls(repositories, dbindex=None, force=False):
@@ -2676,7 +2694,7 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
                           os.path.join(context.srcDir(name),'.git')):
                     # If the path to the remote repository is not absolute,
                     # derive it from *remoteTop*. Binding any sooner will 
-                    # trigger a potentially unnecessary prompt for remotePath.
+                    # trigger a potentially unnecessary prompt for remoteCachePath.
                     if not ':' in rep.sync and context:
                         rep.sync = context.remoteSrcPath(rep.sync)
                     cmdline = 'git clone ' + rep.sync \
@@ -2723,7 +2741,11 @@ def pubBuild(args):
         if not ':' in remoteIndex:
             remoteIndex = os.path.realpath(remoteIndex)
         context.environ['remoteIndex'].value = remoteIndex
-        context.remoteSiteTop.default = os.path.dirname(args[0])
+        remoteCachePath = os.path.dirname(args[0])
+        if remoteCachePath.endswith('resources'):
+            context.remoteSiteTop.default = os.path.dirname(remoteCachePath)
+        else:
+            context.remoteSiteTop.default = remoteCachePath
     if len(args) > 1:
         context.siteTop.value = os.path.realpath(args[1])
     global useDefaultAnswer
@@ -2860,8 +2882,8 @@ def pubDuplicate(args):
     '''duplicate          Duplicate pathnames from the remote machine into
                        *duplicateDir* on the local machine. 
     ''' 
-    remotePath = context.value('remoteSiteTop')
-    dirname, hostname, username = splitRemotePath(remotePath)
+    remoteCachePath = context.value('remoteSiteTop')
+    dirname, hostname, username = splitRemotePath(remoteCachePath)
     pathnames = [ '/var/log', '/var/lib', dirname ]
     duplicateDir = context.value('duplicateDir')
     if hostname:
