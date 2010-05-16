@@ -1994,7 +1994,7 @@ def fetch(filenames, cacheDir=None, force=False, admin=False):
         if protocol and protocol.startswith('http'):
             for remotename in downloads:
                 if not remotename.startswith('http'):
-                    remotename = context.remoteCachePath(f)
+                    remotename = context.remoteCachePath(remotename)
                 localname = remotename.replace(remoteCachePath,cachePath)
                 if not os.path.exists(os.path.dirname(localname)):
                     os.makedirs(os.path.dirname(localname))
