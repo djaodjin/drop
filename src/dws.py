@@ -35,7 +35,7 @@
 __version__ = '0.1'
 
 import datetime, hashlib, re, os, optparse, shutil
-import socket, subprocess, sys, tempfile
+import socket, subprocess, sys, tempfile, urllib2
 import xml.dom.minidom, xml.sax
 import cStringIO
 
@@ -157,10 +157,12 @@ class Context:
 
         self.buildTopRelativeCwd = None
 
-    def cachePath(self,name):
+    def cachePath(self,name=None):
         '''Absolute path to a file in the local system cache
         directory hierarchy.'''
-        return os.path.join(self.value('siteTop'),'resources',name)
+        if name:
+            return os.path.join(self.value('siteTop'),'resources',name)
+        return os.path.join(self.value('siteTop'),'resources')
 
     def derivedEtc(self,name):
         '''Absolute path to a file which is part of drop but located
@@ -1965,11 +1967,16 @@ def configVar(vars):
     return vars
 
 
-def fetch(filenames, cacheDir=None, force=False):
+def fetch(filenames, cacheDir=None, force=False, admin=False):
     '''download *filenames*, typically a list of distribution packages, 
     from the remote server into *cacheDir*. See the upload function 
     for uploading files to the remote server.
+    When the files to fetch require sudo permissions on the remote
+    machine, set *admin* to true.
     '''
+    cachePath = cacheDir
+    if not cacheDir:
+        cachePath = context.cachePath()
     if len(filenames) > 0:
         if force:
             downloads = filenames
@@ -1982,8 +1989,31 @@ def fetch(filenames, cacheDir=None, force=False):
                     if not os.path.exists(dir):
                         os.makedirs(dir)
                     downloads += [ filename ]
-        downCmdline, upCmdline = remoteSyncCommand(downloads,cacheDir)
-        shellCommand(downCmdline)
+        remoteCachePath = context.remoteCachePath()
+        dirname, hostname, username, protocol = splitRemotePath(remoteCachePath)
+        if protocol and protocol.startswith('http'):
+            for remotename in downloads:
+                if not remotename.startswith('http'):
+                    remotename = context.remoteCachePath(f)
+                localname = remotename.replace(remoteCachePath,cachePath)
+                if not os.path.exists(os.path.dirname(localname)):
+                    os.makedirs(os.path.dirname(localname))
+                remote = urllib2.urlopen(urllib2.Request(remotename))
+                local = open(localname,'w')
+                local.write(remote.read())
+                local.close()
+                remote.close()                
+        else:
+            downCmdline, upCmdline = remoteSyncCommand(downloads,cacheDir,admin)
+            # The following command will promt for the sudo password and extend
+            # the grace period for 5min such that the following rsync command
+            # executes properly since it does not prompt for the sudo password
+            # and locks up the system.
+            # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
+            if admin:
+                shellCommand('stty -echo; ssh ' + hostname \
+                                 + ' sudo -v; stty echo')
+            shellCommand(downCmdline)
 
 
 def install(packages, extraFetches={}, dbindex=None, force=False):
@@ -2890,15 +2920,7 @@ def pubDuplicate(args):
         duplicateDir = os.path.join(duplicateDir,hostname)
     if not os.path.exists(duplicateDir):
         os.makedirs(duplicateDir)
-    downCmdline, upCmdline = remoteSyncCommand(pathnames,duplicateDir,
-                                               admin=True)
-    # The following command will promt for the sudo password and extend
-    # the grace period for 5min such that the following rsync command
-    # executes properly since it does not prompt for the sudo password
-    # and locks up the system.
-    # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
-    shellCommand('stty -echo; ssh ' + hostname + ' sudo -v; stty echo')
-    shellCommand(downCmdline)
+    fetch(pathnames,duplicateDir,force=True,admin=True)
 
 
 def pubFind(args):
