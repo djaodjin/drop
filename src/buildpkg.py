@@ -436,7 +436,7 @@ def buildPackage(project, version, installTop):
         specfile.write('Release: 0\n')
         specfile.write('Summary: None\n')
         specfile.write('License: Unknown\n')
-        specfile.write('\n%description\n' + p.description + '\n')
+        specfile.write('\n%description\n' + p.descr + '\n')
         specfile.write('Packager: ' + p.maintainer.fullname \
                                 + ' <' + p.maintainer.email + '>\n')
         specfile.write('''\n%build
@@ -456,7 +456,7 @@ make install
         control = open(os.path.join('debian','control'),'w')
         control.write('Version:' + version + '\n')
         control.write('Source: ' + project.name + '\n')
-        control.write('Description: ' + project.description + '\n')
+        control.write('Description: ' + project.descr + '\n')
         control.write('Maintainer: ' + project.maintainer.fullname \
                                 + ' <' + project.maintainer.email + '>\n')
         control.write('\nPackage: ' + project.name + '\n')
