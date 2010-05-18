@@ -2011,8 +2011,7 @@ def fetch(filenames, cacheDir=None, force=False, admin=False):
             # and locks up the system.
             # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
             if admin:
-                shellCommand('stty -echo; ssh ' + hostname \
-                                 + ' sudo -v; stty echo')
+                shellCommand('ssh -t ' + hostname + ' sudo -v')
             shellCommand(downCmdline)
 
 
@@ -2499,7 +2498,7 @@ def shellCommand(commandLine, admin=False):
             if not commandLine.startswith('/'):
                 raise Error("admin command without a fully quaified path: " \
                                 + commandLine + '\n')
-        # ex: su username -c 'sudo port install icu'
+        # ex: su username -c 'sudo port install icu'        
         cmdline = 'sudo ' + commandLine
     else:
         cmdline = commandLine
