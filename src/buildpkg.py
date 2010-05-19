@@ -536,6 +536,11 @@ binary: install
         # unknown host, we don't know how to make a package for it.
         raise
 
+def tabStop(n):
+    result = '':
+    for i in range(0,n):
+        result.append('  ')
+    return result
 
 def buildPackageSpecification(project,packageName):
     '''Buils a package specification file named *packageSpec* 
@@ -546,27 +551,30 @@ def buildPackageSpecification(project,packageName):
     package = open(packageSpec,'w')
     package.write('<?xml version="1.0" ?>\n')
     package.write('<' + dws.xmlDbParser.tagDb + '>\n')
-    package.write('\t<' + dws.xmlDbParser.tagProject \
+    package.write(tabStop(1) + '<' + dws.xmlDbParser.tagProject \
                       + ' name="' + project.name + '">\n')
-    package.write('\t\t<' + dws.xmlDbParser.tagPackage \
-                      + ' name="' + packageName + '">\n')
-    package.write('\t\t\t<' + dws.xmlDbParser.tagTag + '>' + context.host() \
+    package.write(tabStop(2) + '<' + dws.xmlDbParser.tagPackage + '>\n')
+    package.write(tabStop(3) + '<' + dws.xmlDbParser.tagTag + '>' \
+                      + context.host() \
                       + '</' + dws.xmlDbParser.tagTag + '>\n')
-    package.write('\t\t\t<size>' + str(os.path.getsize(packageName)) \
+    package.write(tabStop(3) + '<' + dws.xmlDbParser.tagFetch \
+                      + ' name="' + packageName + '">\n')
+    package.write(tabStop(4) + '<size>' + str(os.path.getsize(packageName)) \
                       + '</size>\n')        
     f = open(packageName,'rb')
-    package.write('\t\t\t<md5>' + hashlib.md5(f.read()).hexdigest() \
+    package.write(tabStop(4) + '<md5>' + hashlib.md5(f.read()).hexdigest() \
                       + '</md5>\n')
     f.seek(0)
-    package.write('\t\t\t<' + dws.xmlDbParser.tagHash + '>' \
+    package.write(tabStop(4) + '<' + dws.xmlDbParser.tagHash + '>' \
                       + hashlib.sha1(f.read()).hexdigest() \
                       + '</' + dws.xmlDbParser.tagHash + '>\n')
     f.seek(0)
-    package.write('\t\t\t<sha256>' + hashlib.sha256(f.read()).hexdigest() \
+    package.write(tabStop(4) + '<sha256>' + hashlib.sha256(f.read()).hexdigest() \
                       + '</sha256>\n')
     f.close()
-    package.write('\t\t</' + dws.xmlDbParser.tagPackage + '>\n')
-    package.write('\t</' + dws.xmlDbParser.tagProject + '>\n')
+    package.write(tabStop(3) + '</' + dws.xmlDbParser.tagFetch + '>\n')
+    package.write(tabStop(2) + '</' + dws.xmlDbParser.tagPackage + '>\n')
+    package.write(tabStop(1) + '</' + dws.xmlDbParser.tagProject + '>\n')
     package.write('</' + dws.xmlDbParser.tagDb + '>\n')
     package.close()
 

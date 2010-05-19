@@ -141,8 +141,7 @@ class Context:
                          'remoteIndex': Pathname('remoteIndex',
              'Index file with projects dependencies information',
                                           self.remoteSiteTop,
-                                                 os.path.basename(sys.argv[0]) \
-                                                     + '.xml'),
+              os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')),
                          'remoteSrcTop': Pathname('remoteSrcTop',
              'Root of the tree on the remote machine where repositories are located',
                                           self.remoteSiteTop,'reps'),
@@ -2445,8 +2444,6 @@ def remoteSyncCommand(filenames,cacheDir=None,admin=False):
 
         downCmdline = cmdline 
         pathnames = []
-        print "dirname: " + str(dirname)
-        print "filenames: " + str(filenames)
         for f in filenames:
             if f.startswith(remoteCachePath):
                 pathnames += [ f[f.find(':') + 1:] ]

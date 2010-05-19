@@ -85,7 +85,7 @@ $(project)-$(version).tar.bz2:
 			$(basename $(basename $@))/cache)
 	rsync -r --exclude=.git $(srcDir)/* $(basename $(basename $@))
 	if [ -f $(srcDir)/index.xml ] ; then \
-		$(SED) -e s,$(project),$(subst .tar.bz2,,$@),g \
+		$(SED) -e "s,<project  *name=\".*$(project),<project name=\"$(subst .tar.bz2,,$@),g" \
 		$(srcDir)/index.xml > $(basename $(basename $@))/index.xml ; \
 	fi
 	$(SED) -e 's,$$(shell dws context),ws.mk,' \

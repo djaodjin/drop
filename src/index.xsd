@@ -28,7 +28,10 @@
   <xs:element name="fetch">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="sha1" type="xs:string"/>
+	<xs:element name="size" type="xs:string" minOccurs="0" />
+	<xs:element name="md5" type="xs:string" minOccurs="0" />
+	<xs:element name="sha1" type="xs:string" minOccurs="0" />
+	<xs:element name="sha256" type="xs:string" minOccurs="0" />
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
@@ -168,11 +171,11 @@
 	<xs:element name="description" type="xs:string"/>
 	<xs:element ref="maintainer"/>
 	<xs:element name="url" type="xs:string" minOccurs="0"/>
-	<xs:element name="package" type="packageType"
+	<xs:element name="repository" type="repositoryType" 
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element name="patch" type="repositoryType"
 		    minOccurs="0" maxOccurs="unbounded"/>	
-	<xs:element name="repository" type="repositoryType" 
+	<xs:element name="package" type="packageType"
 		    minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required" />
