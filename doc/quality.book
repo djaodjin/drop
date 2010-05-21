@@ -8,7 +8,7 @@
   </info>
   
   <para>
-    The quality of a software system relies fundamentally on dedicated and inventive contributors supported by  Quality is in many ways subjective. The quality in terms of usefulness relies a lot of trial and errors, the larger software ecosystem, human perceptions and a perfect market timing. There are unlikely efficient, reliable procedures and infrastructures to achieve this kind of quality so we will focus on the quality that can be achieved and mechanically inforced, that is software systems behaving as expected by the people who wrote the code. These fall in two categories: static analysis and runtime behavior. 
+    The quality of a software system relies fundamentally on dedicated and inventive contributors supported by appropriate procedures and tools. Quality is in many ways subjective. The quality in terms of usefulness relies a lot on trial and errors, the larger software ecosystem, human perceptions and a perfect market timing. There are unlikely mechanical, reliable procedures and infrastructures to achieve this kind of quality. We will focus here on quality that can be mechanically enforced, primarily that software systems behaves as expected by the people who wrote the code. The mechanical enforcement tools fall in two categories: static analysis and run-time behavior. 
   </para>
   <section>
     <title>Conventions</title>
@@ -47,11 +47,6 @@
       <varlistentry>
 	<term>src/</term>
 	<listitem><para>Source code in the form of C++ (.cc) and Python (.py) files.</para>
-	</listitem>
-      </varlistentry>
-      <varlistentry>
-	<term>test/</term>
-	<listitem><para>Unit tests for the project. The organization of a test/ sub-directory follows the organization of a project directory, though mostly consisting of Makefile, src/ and data/ directories.</para>
 	</listitem>
       </varlistentry>
     </variablelist>
@@ -108,9 +103,11 @@
   <section>
     <title>Unit tests</title>
     <para>The purpose of unit tests is to insure first that functionality is implemented correctly. Later in the life cycle of a project, unit tests are often relabeled regression tests and insure that changes to the source code did not break existing functionality.</para>
+    <section>
+      <title>Functional and regression tests</title>
     <para>The definition of functional and regression tests are very often used interchangeably because a functional test can serve as the base for a regression test as much as a regression test can be used to validate functionality.</para> 
-    <para>For our purpose here, the major distinction between a functional and regression test is how they were originally created. The developper of a functional test has explicitely thought about the passing and failing conditions and written explicit statements for them in the source code that is checked into the repository. The developper of a regression test typically used the build framework to trigger comparison of different runs of the same program.</para> 
-    <para>As such functional tests usually result in source code while regression tests result in makefile rules. Functional tests also typically result in self-contained executables while regression tests rely on external data sets usually stored outside the version controled repository.</para>
+    <para>For our purpose here, the major distinction between a functional and regression test is how they were originally created. The developer of a functional test has explicitly thought about the passing and failing conditions and written explicit statements for them in the source code that is checked into the repository. The developer of a regression test typically used the build framework to trigger comparison of different runs of the same program.</para> 
+    <para>As such functional tests usually result in source code while regression tests result in makefile rules. Functional tests also typically result in self-contained executables while regression tests rely on external data sets usually stored outside the version controlled repository.</para>
     <informaltable>
       <tr><th>functional</th><th>regression</th></tr>
       <tr><td>explicit pass conditions</td><td>output comparison</td></tr>
@@ -118,6 +115,42 @@
       <tr><td>self-contained</td><td>rely on external data sets</td></tr>
     </informaltable>
     <para> Unit tests will typically start breaking and become deprecated as a project moves forward. As a result, relevant unit tests are the ones that can be run by an automated tool as part of the <link linkend="/services/doc/usecases.book#snapshotBuilds">build process</link>.</para>
+    </section>
+    <section>
+      <title>Projects and tests source repositories</title>
+      <para>
+	There are usually two approaches to store the tests associated to a project. Either they can form a sub-directory in the project hierarchy and managed as part of the same physical repository or they can form their own directory hierarchy and managed in a logically separate repository. Choosing either approach depends on the distribution model. In a typical two-party model made of a developer and a user, the developer provides a source package to the user; the user compiles the code provided, checks the stability of it and installs it on the system. In a typical three-party model made of a developer, a distributor and a user, the developer provides a source package to the distributor; the distributor compiles the code provided, checks the stability of it and provides a binary package to the user; the user then updates the system and installs the binary package as a side effect.
+      </para>
+      <para role="code">
+	# Two party model                 # Three party model       
+	
+	# developer                      # developer
+	make dist-src                     make dist-src
+
+	                                  # distributor
+	                                  cd project-test
+	                                  tar zxvf project.tar.gz
+	                                  make
+	                                  make dist
+
+	# user                            # user (ex. Ubuntu)
+	tar zxvf project.tar.gz           apt-get install project
+	cd project
+	./configure
+	make
+	make check
+	make install
+      </para>
+      <para>
+	In a two-party model, including tests as a sub-directory in the project repository seems more appropriate. It facilitates the life of the developer to deal with a single repository and distribute tests along the project into a single package. The end-user can also rely on a single source package and a straightforward procedure to deploy a project on the system.
+      </para>
+      <para>
+	In a three-party model, dual repositories approach for project and tests is better suited then. The test repository can be relatively large with regards to the project repository itself and of little use for anyone but the distributor. Furthermore the responsibility of writing and running tests have been off loaded to the distributor so it is usually more practical for the distributor to maintain its own tests repository separate from the developer project repository.
+      </para>
+      <para>
+	Fortylines uses the dual repositories approach. The tests for a project form their own repository in a separate directory hierarchy. The organization of a test project though follows the organization of a regular project directory consisting of Makefile, src/ and data/, etc. directories. Thus project and tests are purely a distribution policy difference and the workspace management tools are agnostic of that difference.
+      </para>
   </section>
+    </section>
 </section>
 

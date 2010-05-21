@@ -1095,7 +1095,7 @@ class Maintainer:
 
 class Configure:
     '''All prerequisites information to check in order to install a project. 
-    This is the base class for *Package*, *Repository* and *Patch*.'''
+    This is the base class for *Package* and *Repository*.'''
 
     def __init__(self, fetches, locals, vars):
         self.fetches = fetches
@@ -1144,8 +1144,6 @@ class Repository(Configure):
         Configure.__init__(self,fetches,locals,vars)
         self.type = None
         self.sync = sync
-        if self.sync.endswith('.git'):
-            self.type = '.git'
         self.fetches = fetches
         self.vars = vars
         self.locals = locals
@@ -1154,6 +1152,61 @@ class Repository(Configure):
         result = '\t\tsync repository from ' + self.sync + '\n'
         result = result + Configure.__str__(self) 
         return result        
+
+    def update(self,name,context):
+        raise Error("unknown source control system for " + self.sync)
+
+
+class GitRepository(Repository):
+    '''All prerequisites information to install a project 
+    from a git source control repository.'''
+
+    def __init__(self, sync, fetches, locals, vars):
+        Repository.__init__(self,sync,fetches,locals,vars)
+ 
+    def update(self,name,context):
+        if not os.path.exists(os.path.join(context.srcDir(name),'.git')):
+            # If the path to the remote repository is not absolute,
+            # derive it from *remoteTop*. Binding any sooner will 
+            # trigger a potentially unnecessary prompt for remoteCachePath.
+            if not ':' in self.sync and context:
+                self.sync = context.remoteSrcPath(self.sync)
+            cmdline = 'git clone ' + self.sync \
+                + ' ' + context.srcDir(name)
+            shellCommand(cmdline)
+        else:
+            cwd = os.getcwd()
+            os.chdir(context.srcDir(name))
+            cmdline = 'git pull'
+            shellCommand(cmdline)
+            cmdline = 'git checkout -m'
+            shellCommand(cmdline)
+            os.chdir(cwd)
+
+ 
+class SvnRepository(Repository):
+    '''All prerequisites information to install a project 
+    from a svn source control repository.'''
+
+    def __init__(self, sync, fetches, locals, vars):
+        Repository.__init__(self,sync,fetches,locals,vars)
+ 
+    def update(self,name,context):
+        if not os.path.exists(os.path.join(context.srcDir(name),'.git')):
+            # If the path to the remote repository is not absolute,
+            # derive it from *remoteTop*. Binding any sooner will 
+            # trigger a potentially unnecessary prompt for remoteCachePath.
+            if not ':' in self.sync and context:
+                self.sync = context.remoteSrcPath(self.sync)
+            cmdline = 'svn co ' + self.sync + ' ' + context.srcDir(name)
+            shellCommand(cmdline)
+        else:
+            cwd = os.getcwd()
+            os.chdir(context.srcDir(name))
+            cmdline = 'svn update'
+            shellCommand(cmdline)
+            os.chdir(cwd)
+
 
 class Project:
     '''Definition of a project with its prerequisites.'''
@@ -1323,6 +1376,17 @@ class xmlDbParser(xml.sax.ContentHandler):
     def characters(self, ch):
         self.text += ch
 
+    def createRepositoryObject(self):
+        if self.sync.endswith('.git'):
+            return GitRepository(self.sync,self.fetches,
+                                 self.locals,self.vars)
+        elif re.match('.*svn.*',self.sync):
+            return SvnRepository(self.sync,self.fetches,
+                                 self.locals,self.vars)
+        return Repository(self.sync,self.fetches,
+                          self.locals,self.vars)
+
+
     def endElement(self, name):
         '''Once the element is fully populated, call back the simplified
            interface on the handler.'''
@@ -1365,15 +1429,12 @@ class xmlDbParser(xml.sax.ContentHandler):
                 self.project.packages[tag] = package
         elif name == self.tagPatch:
             if not self.sync:
-                self.sync = os.path.join(self.project.name,'.git')
-            self.project.patch = Repository(self.sync,
-                                       self.fetches,self.locals,self.vars)
+                self.sync = os.path.join(self.project.name,'.git')            
+            self.project.patch = self.createRepositoryObject()
         elif name == self.tagRepository:
             if not self.sync:
                 self.sync = os.path.join(self.project.name,'.git')
-            self.project.repository = Repository(self.sync,
-                                                 self.fetches,self.locals,
-                                                 self.vars)
+            self.project.repository = self.createRepositoryObject()
         elif name == self.tagDepend:
             self.locals += [ Dependency(self.depName,self.deps,self.excludes) ]
         elif name == self.tagDescription:
@@ -1994,7 +2055,8 @@ def fetch(filenames, cacheDir=None, force=False, admin=False):
             for remotename in downloads:
                 if not remotename.startswith('http'):
                     remotename = context.remoteCachePath(remotename)
-                localname = remotename.replace(remoteCachePath,cachePath)
+                localname = remotename.replace(context.value('remoteSiteTop'),
+                                               context.value('siteTop'))
                 if not os.path.exists(os.path.dirname(localname)):
                     os.makedirs(os.path.dirname(localname))
                 remote = urllib2.urlopen(urllib2.Request(remotename))
@@ -2444,8 +2506,9 @@ def remoteSyncCommand(filenames,cacheDir=None,admin=False):
 
         downCmdline = cmdline 
         pathnames = []
-        for f in filenames:
-            if f.startswith(remoteCachePath):
+        print str(filenames)
+        for f in filenames:            
+            if f.startswith(context.value('remoteSiteTop')):
                 pathnames += [ f[f.find(':') + 1:] ]
             else:
                 pathnames += [ dirname + '/./' + f ]
@@ -2715,28 +2778,7 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
             # This is a simple way to specify inter-related projects 
             # with complex dependency set and barely any code. 
             log.write('######## updating project ' + name + '...\n')
-            if rep.type == '.git':
-                if not os.path.exists(
-                          os.path.join(context.srcDir(name),'.git')):
-                    # If the path to the remote repository is not absolute,
-                    # derive it from *remoteTop*. Binding any sooner will 
-                    # trigger a potentially unnecessary prompt for remoteCachePath.
-                    if not ':' in rep.sync and context:
-                        rep.sync = context.remoteSrcPath(rep.sync)
-                    cmdline = 'git clone ' + rep.sync \
-                        + ' ' + context.srcDir(name)
-                    shellCommand(cmdline)
-                else:
-                    cwd = os.getcwd()
-                    os.chdir(context.srcDir(name))
-                    cmdline = 'git pull'
-                    shellCommand(cmdline)
-                    cmdline = 'git checkout -m'
-                    shellCommand(cmdline)
-                    os.chdir(cwd)
-            else:
-                raise Error("unknown source control system '"  \
-                                + rep.type + "' for " + rep.sync)
+            rep.update(name,context)
         else:
             log.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
                              
@@ -2767,7 +2809,7 @@ def pubBuild(args):
         if not ':' in remoteIndex:
             remoteIndex = os.path.realpath(remoteIndex)
         context.environ['remoteIndex'].value = remoteIndex
-        remoteCachePath = os.path.dirname(args[0])
+        remoteCachePath = os.path.realpath(os.path.dirname(args[0]))
         if remoteCachePath.endswith('resources'):
             context.remoteSiteTop.default = os.path.dirname(remoteCachePath)
         else:
