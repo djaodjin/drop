@@ -72,6 +72,16 @@
     </xs:complexType>
   </xs:element>
 
+  <xs:element name="variable">
+    <xs:complexType>
+      <xs:sequence>
+	<xs:element name="description" type="xs:string"/>
+	<xs:element name="default" type="xs:string" minOccurs="0" />
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
   <xs:element name="pathname">
     <xs:complexType>
       <xs:sequence>
@@ -136,7 +146,7 @@
 	<xs:element name="tag" type="xs:string"
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="fetch"
-		    minOccurs="0" maxOccurs="unbounded"/>	
+		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="pathname" 
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="dep"
@@ -151,6 +161,8 @@
 		    minOccurs="0"/>
 	<xs:element ref="fetch"
 		    minOccurs="0" maxOccurs="unbounded"/>	
+	<xs:element ref="variable" 
+		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="pathname" 
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="single" 

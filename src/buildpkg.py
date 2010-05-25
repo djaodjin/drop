@@ -14,7 +14,7 @@ September 2002
 
 """
 
-__version__ = 0.4
+__version__ = None
 __license__ = "FreeBSD"
 
 
@@ -537,9 +537,9 @@ binary: install
         raise
 
 def tabStop(n):
-    result = '':
+    result = ''
     for i in range(0,n):
-        result.append('  ')
+        result += '  '
     return result
 
 def buildPackageSpecification(project,packageName):

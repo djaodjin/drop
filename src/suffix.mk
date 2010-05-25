@@ -78,31 +78,41 @@ dists		?=	$(project)-$(version)$(distExt$(distHost)) \
 
 dist:: $(dists)
 
-$(project)-$(version).tar.bz2:
-	$(if $(patchedSources),                                  \
-		$(installDirs) $(basename $(basename $@))/cache \
-		&& rsync -aR $(patchedSources)                   \
-			$(basename $(basename $@))/cache)
-	rsync -r --exclude=.git $(srcDir)/* $(basename $(basename $@))
+dist-src: $(project)-$(version).tar.bz2
+
+
+define distVersion
+	sed -e 's,__version__ = None,__version__ = "$(version)",' $(1) > $@/src/$(notdir $(1))
+
+endef
+
+dwsEtcFiles	:= 	$(shell dws context prefix.mk) \
+			$(shell dws context suffix.mk) \
+			$(shell dws context configure.sh)	
+
+$(project)-$(version).tar.bz2: $(project)-$(version)
+	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' -f $@ $<
+
+$(project)-$(version)::
+	$(if $(patchedSources),          \
+		$(installDirs) $@/cache \
+		&& rsync -aR $(patchedSources) $@/cache)
+	rsync -r --exclude=.git $(srcDir)/* $@
+	$(foreach script,$(wildcard $(srcDir)/src/*.py),$(call distVersion,$(script)))
 	if [ -f $(srcDir)/index.xml ] ; then \
-		$(SED) -e "s,<project  *name=\".*$(project),<project name=\"$(subst .tar.bz2,,$@),g" \
-		$(srcDir)/index.xml > $(basename $(basename $@))/index.xml ; \
+		$(SED) -e "s,<project  *name=\".*$(project),<project name=\"$@,g" \
+		$(srcDir)/index.xml > $@/index.xml ; \
 	fi
 	$(SED) -e 's,$$(shell dws context),ws.mk,' \
 	    -e 's,$$(shell dws context \(..*\)),etc/\1,' \
-	    -e 's,$$(srcTop)/drop,$$(srcTop)/$(basename $(basename $@)),' \
-		$(srcDir)/Makefile > $(basename $(basename $@))/Makefile.in
-	rm $(basename $(basename $@))/Makefile
-	$(installDirs) $(basename $(basename $@))/etc
+	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
+		$(srcDir)/Makefile > $@/Makefile.in
+	rm $@/Makefile
+	$(installDirs) $@/etc
 	$(installExecs) $(shell dws context configure.sh) \
 		$(basename $(basename $@))/configure
-	$(installExecs) $(shell which dws) $(basename $(basename $@))
-	$(installFiles) $(shell dws context prefix.mk) \
-			$(shell dws context suffix.mk) \
-			$(shell dws context configure.sh) \
-		$(basename $(basename $@))/etc
-	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' \
-		-f $@ $(basename $(basename $@))
+	$(installExecs) $(shell which dws) $@
+	$(installFiles) $(dwsEtcFiles) $@/etc
 
 
 # 'make install' might just do nothing and we still want to build an empty
@@ -135,14 +145,7 @@ $(project)-$(version).tar.bz2:
 
 # Rules to build unit test logs
 # -----------------------------
-check:
-	@if [ -f $(srcDir)/test/Makefile ] ; then \
-		echo "cd test && $(MAKE) -f $(srcDir)/test/Makefile" ; \
-		$(installDirs) test \
-		&& cd test && $(MAKE) -f $(srcDir)/test/Makefile ; \
-	else \
-		echo "$(basename $(srcDir)): warning: 'make check' expects to find a Makefile in $(srcDir)/test." ; \
-	fi
+check: $(logs)
 
 regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
 	dregress -o $@ $^ 

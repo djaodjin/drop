@@ -42,6 +42,7 @@ XSLTPROC	:=	xsltproc -xinclude 		\
 #           sed -e 's,$$(srcDir),$(srcDir),g'
 #       complains about an extra '\n' character.
 srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
+objDir		:=	$(subst $(srcTop),$(buildTop),$(srcDir))
 
 resourcesDir	?=	$(siteTop)/resources
 
@@ -58,7 +59,15 @@ distExtDarwin	:=	.dmg
 distExtFedora	:=	$(shell uname -r | sed -e 's/.*\(\.fc.*\)/\1/').rpm
 distExtUbuntu	:=	_i386.deb
 project		:=	$(notdir $(srcDir))
-version		?=	$(shell date +%Y-%m-%d-%H-%M-%S)
+
+# ATTENTION: We use ifeq ... endif here instead of ?= because
+# we want the version to be set as "immediate". ?= will defer
+# the evaluation of the shell script, hence generating different 
+# date/time. 
+# http://www.gnu.org/software/make/manual/make.html, "Variable Assignment"
+ifeq ($(version),)
+version		:=	$(shell date +%Y-%m-%d-%H-%M-%S)
+endif
 
 ifeq ($(distHost),Ubuntu)
 # cat /etc/lsb-release

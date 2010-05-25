@@ -32,12 +32,14 @@
 # control such that it is possible to execute a development cycle
 # (edit/build/run) on a local machine.
 
-__version__ = '0.1'
+__version__ = None
 
 import datetime, hashlib, re, os, optparse, shutil
 import socket, subprocess, sys, tempfile, urllib2
 import xml.dom.minidom, xml.sax
 import cStringIO
+
+modself = sys.modules[__name__]
 
 # Object that implements logging into an XML formatted file 
 # what gets printed on sys.stdout.
@@ -279,6 +281,22 @@ class Context:
 
     def objDir(self,name):
         return os.path.join(self.value('buildTop'),name)
+
+    def remoteSite(self,indexPath):
+        '''We need to set the remoteIndex to a realpath when we are dealing
+        with a local file else links could end-up generating a different prefix
+        than remoteSiteTop for remoteIndex.'''
+        remoteIndex = indexPath
+        if not ':' in remoteIndex:
+            remoteIndex = os.path.realpath(remoteIndex)
+        context.environ['remoteIndex'].value = remoteIndex
+        remoteCachePath = os.path.dirname(indexPath)
+        if not ':' in remoteCachePath:
+            remoteCachePath = os.path.realpath(remoteCachePath)
+        if remoteCachePath.endswith('resources'):
+            context.remoteSiteTop.default = os.path.dirname(remoteCachePath)
+        else:
+            context.remoteSiteTop.default = remoteCachePath
 
     def save(self):
         '''Write the config back to a file.'''
@@ -794,10 +812,11 @@ class DerivedSetsGenerator(PdbHandler):
 class Variable:
     '''Variable that ends up being defined in ws.mk and thus in Makefile.'''
 
-    def __init__(self,name,value,descr=None):
+    def __init__(self,name,value=None,descr=None):
         self.name = name
         self.value = value
         self.descr = descr
+        self.default = None
         if descr:
             self.descr = descr.strip()
         self.constrains = {}
@@ -811,13 +830,29 @@ class Variable:
     def constrain(self,vars):
         None
 
+    def configure(self):
+        '''Set value to the string entered at the prompt.'''
+        if self.value != None:
+            return False
+        log.write('\n' + self.name + ':\n')
+        log.write(self.descr + '\n')
+        if useDefaultAnswer:
+            self.value = self.default
+        else:
+            defaultPrompt = ""
+            if self.default:
+                defaultPrompt = " [" + self.default + "]"
+            self.value = prompt("Enter a string" + defaultPrompt + ": ")
+        log.write(self.name + ' set to ' + self.value +'\n')
+        return True
+
 class HostPlatform(Variable):
 
     def __init__(self,name,descr=None):
         Variable.__init__(self,name,None,descr)
 
     def configure(self):
-        '''Set value to he distribution on which the script is running.'''
+        '''Set value to the distribution on which the script is running.'''
         if self.value != None:
             return False
         # The following code was changed when upgrading from python 2.5 
@@ -912,7 +947,7 @@ class Pathname(Variable):
         if useDefaultAnswer:
             dirname = default
         else:
-            dirname = raw_input("Enter a pathname [" + default + "]: ")
+            dirname = prompt("Enter a pathname [" + default + "]: ")
         if dirname == '':
             dirname = default
         if not ':' in dirname:
@@ -1300,6 +1335,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagSync = 'sync'
     tagTitle = 'title'
     tagValue = 'value'
+    tagVariable = 'variable'
     tagPattern = '.*<' + tagProject + '\s+name="(.*)"'
     trailerTxt = '</projects>'
 
@@ -1366,6 +1402,13 @@ class xmlDbParser(xml.sax.ContentHandler):
             if attrs['name'] in self.context.environ:
                 choiceValue = str(self.context.environ[attrs['name']])
             self.var = SingleChoice(attrs['name'],choiceValue,None,[])
+        elif name == self.tagVariable:
+            self.constrain = None
+            choiceValue = None
+            if attrs['name'] in self.context.environ:
+                choiceValue = str(self.context.environ[attrs['name']])
+            self.var = Variable(attrs['name'])
+            self.var.value = choiceValue
         elif name == self.tagValue:
             if not self.constrain:
                 self.choice = [ attrs['name'] ]
@@ -1417,7 +1460,7 @@ class xmlDbParser(xml.sax.ContentHandler):
                 = self.constrainValues
             self.constrain = None
         elif name == self.tagDefault:
-            if isinstance(self.var,Pathname):
+            if isinstance(self.var,Variable):
                 self.var.default = self.text.strip()
         elif name == self.tagTag:
             self.tags += [ self.text ]
@@ -1451,7 +1494,8 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.handler.project(self.project)
         elif name == self.tagHash:
             self.fetches[ self.filename ] = self.text.strip()
-        elif name in [ self.tagMultiple, self.tagPathname, self.tagSingle ]:
+        elif name in [ self.tagMultiple, self.tagPathname, self.tagSingle,
+                       self.tagVariable ]:
             self.vars += [ self.var ]            
             self.var = None
         elif name == self.tagFetch:
@@ -1982,7 +2026,6 @@ def findPrerequisites(deps, excludes=[]):
     file will be replaced by an absolute pathname and each file not found
     will not be present. This function returns True if all files in *deps* 
     can be fulfilled and returns False if any file cannot be found.'''
-    import __main__
     version = None
     installed = {}
     complete = True
@@ -1990,9 +2033,9 @@ def findPrerequisites(deps, excludes=[]):
         # The search order "bin, include, lib, etc" will determine 
         # how excluded versions apply.
         if dir in deps:
-            command = 'find' + dir.capitalize()
+            command = 'find' + dir.capitalize()   
             installed[dir], installedVersion = \
-                __main__.__dict__[command](deps[dir],excludes)
+                modself.__dict__[command](deps[dir],excludes)
             # Once we have selected a version out of the installed
             # local system, we lock it down and only search for
             # that specific version.
@@ -2228,8 +2271,6 @@ def linkDependencies(projects, cuts=[]):
     are not under development in the current workspace. Links to 
     the required executables, headers, libraries, etc. will be added to 
     the install directories such that projects in *srcTop* can build.'''
-    import __main__
-
     missings = []
     tags = [ context.host() ]
     for project in projects:
@@ -2245,7 +2286,7 @@ def linkDependencies(projects, cuts=[]):
                     for namePat, absolutePath in deps[dir]:
                         command = 'linkPath' + dir.capitalize()
                         linkName, linkPath \
-                            = __main__.__dict__[command](namePat,
+                            = modself.__dict__[command](namePat,
                                                          absolutePath)
                         if linkPath:
                             if not os.path.isfile(linkName):
@@ -2265,8 +2306,8 @@ def linkDependencies(projects, cuts=[]):
                         for namePat, absolutePath in deps[dir]:
                             command = 'linkPath' + dir.capitalize()
                             linkName, linkPath \
-                                = __main__.__dict__[command](namePat,
-                                                             absolutePath)
+                                = modself.__dict__[command](namePat,
+                                                            absolutePath)
                             if linkPath:
                                 if not os.path.isfile(linkName):
                                     linkContext(linkPath,linkName)
@@ -2342,7 +2383,7 @@ def linkPathShare(namePat, absolutePath):
     return os.path.join(context.value('shareDir'),linkName), linkPath 
 
 
-def make(names, targets):
+def make(names, targets, dbindex=None):
     '''invoke the make utility to build a set of projects.'''
     log.write('### make projects "' + ', '.join(names) \
                   + '" with targets "' + ', '.join(targets) + '"\n')
@@ -2361,7 +2402,7 @@ def make(names, targets):
         recursiveTargets = targets
         if len(recursiveTargets) == 0:
             recursiveTargets = [ 'install' ]
-        names, projects = validateControls(names)
+        names, projects = validateControls(names,dbindex)
         last = names.pop()
         for name in names:
             makeProject(name,recursiveTargets,{ name: projects[name]})
@@ -2781,7 +2822,16 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
             rep.update(name,context)
         else:
             log.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
-                             
+
+def prompt(message):
+    '''If the script is run through a ssh command, the message would not
+    appear if passed directly in raw_input.'''
+    if log:
+        log.write(message)
+    else:
+        sys.stdout.write(message)
+        sys.stdout.flush()
+    return raw_input("")
             
 def pubBuild(args):
     '''build              [remoteIndexFile [localTop]]
@@ -2805,15 +2855,7 @@ def pubBuild(args):
                         also be setup to run with no human interaction.
     '''
     if len(args) > 0:
-        remoteIndex = args[0]
-        if not ':' in remoteIndex:
-            remoteIndex = os.path.realpath(remoteIndex)
-        context.environ['remoteIndex'].value = remoteIndex
-        remoteCachePath = os.path.realpath(os.path.dirname(args[0]))
-        if remoteCachePath.endswith('resources'):
-            context.remoteSiteTop.default = os.path.dirname(remoteCachePath)
-        else:
-            context.remoteSiteTop.default = remoteCachePath
+        context.remoteSite(args[0])
     if len(args) > 1:
         context.siteTop.value = os.path.realpath(args[1])
     global useDefaultAnswer
@@ -2974,7 +3016,7 @@ def pubFind(args):
     for arg in args[1:]:
         searches += [ (arg,None) ]
     installed, installedVersion = \
-        __main__.__dict__[command](searches)
+        modself.__dict__[command](searches)
     if len(installed) != len(searches):
         sys.exit(1)
 
@@ -3227,7 +3269,7 @@ def selectOne(description, choices, sort=True):
         if useDefaultAnswer:
             selection = "1"
         else:
-            selection = raw_input("Enter a single number [1]: ")
+            selection = prompt("Enter a single number [1]: ")
             if selection == "":
                 selection = "1"
         try:
@@ -3258,7 +3300,7 @@ def selectMultiple(description,selects):
         if useDefaultAnswer:
             selection = "1"
         else:
-            selection = raw_input("Enter a list of numbers separated by spaces [1]: ")
+            selection = prompt("Enter a list of numbers separated by spaces [1]: ")
             if len(selection) == 0:
                 selection = "1"
         # parse the answer for valid inputs
@@ -3292,7 +3334,7 @@ def selectYesNo(description):
     '''Prompt for a yes/no answer.'''
     if useDefaultAnswer:
         return True
-    yesNo = raw_input(description + " [Y/n]? ")
+    yesNo = prompt(description + " [Y/n]? ")
     if yesNo == '' or yesNo == 'Y' or yesNo == 'y':
         return True
     return False
@@ -3379,7 +3421,7 @@ if __name__ == '__main__':
 
 	parser = optparse.OptionParser(\
             usage='%prog [options] command\n\nVersion\n  %prog version ' \
-                + __version__,
+                + str(__version__),
             formatter=CommandsFormatter(),
             epilog=epilog)
 	parser.add_option('--default', dest='default', action='store_true',
@@ -3399,7 +3441,8 @@ if __name__ == '__main__':
         
 	options, args = parser.parse_args()
 	if options.version:
-            sys.stdout.write('dws version ' + __version__ + '\n')
+            sys.stdout.write(sys.argv[0] + ' version ' + str(__version__) \
+                                 + '\n')
             sys.exit(0)
         if options.helpBook:
             help = cStringIO.StringIO()

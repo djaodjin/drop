@@ -29,7 +29,7 @@
 
 import re, os, optparse, shutil, stat, sys, tempfile
 
-__version__ = '0.1'
+__version__ = None
 
 def diffAdvance(diff):
     diffLineNum = sys.maxint
@@ -62,7 +62,7 @@ def logAdvance(log):
 if __name__ == '__main__':
     usage= 'usage: %prog [options] -o regression result [reference ...]'
     parser = optparse.OptionParser(usage=usage, 
-                                   version='%prog ' + __version__)
+                                   version='%prog ' + str(__version__))
     parser.add_option('-o', dest='output', 
                       metavar="FILE",
                       default='regression.log',
