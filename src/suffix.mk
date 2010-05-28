@@ -113,7 +113,7 @@ $(project)-$(version)::
 	$(installExecs) $(shell dws context configure.sh) \
 		$(basename $(basename $@))/configure
 	$(installExecs) $(shell which dws) $@
-	$(installFiles) $(shell dws context prefix.mk ; dws context suffix.mk ; dws context configure.sh) $@/etc
+	$(installFiles) $(shell dws context prefix.mk) $(shell dws context suffix.mk) $(shell dws context configure.sh) $@/etc
 
 
 # 'make install' might just do nothing and we still want to build an empty
