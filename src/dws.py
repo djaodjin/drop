@@ -1592,7 +1592,7 @@ def basenames(pathnames):
     '''return the basename of all pathnames in a list.'''
     bases = []
     for p in pathnames:
-        bases += [ os.path.basename(pathnames) ]
+        bases += [ os.path.basename(p) ]
     return bases
 
 def mark(filename,suffix):    

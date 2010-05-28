@@ -469,10 +469,10 @@ make install
             control.write('Build-Depends: ' \
                               + ', '.join(dws.basenames(
             project.patch.prerequisiteNames([context.host()]))) + '\n')
-        if project.package:
+        if context.host() in project.packages:
             control.write('Depends: ' \
                               + ', '.join(dws.basenames(
-            project.package.prerequisiteNames([context.host()]))) + '\n')
+            project.packages[context.host()].prerequisiteNames([context.host()]))) + '\n')
         control.write('\n')
         control.close()
         changelog = open(os.path.join('debian','changelog'),'w')
