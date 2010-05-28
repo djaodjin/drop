@@ -461,8 +461,18 @@ make install
                                 + ' <' + project.maintainer.email + '>\n')
         control.write('\nPackage: ' + project.name + '\n')
         control.write('Architecture: any\n')
-        control.write('Depends: ' \
-                + ', '.join(project.prerequisiteNames([context.host()])) + '\n')
+        if project.repository:
+            control.write('Build-Depends: ' \
+                              + ', '.join(dws.basenames(
+            project.repository.prerequisiteNames([context.host()]))) + '\n')
+        elif project.patch:
+            control.write('Build-Depends: ' \
+                              + ', '.join(dws.basenames(
+            project.patch.prerequisiteNames([context.host()]))) + '\n')
+        if project.package:
+            control.write('Depends: ' \
+                              + ', '.join(dws.basenames(
+            project.package.prerequisiteNames([context.host()]))) + '\n')
         control.write('\n')
         control.close()
         changelog = open(os.path.join('debian','changelog'),'w')
@@ -475,6 +485,10 @@ make install
         rules = open(os.path.join('debian','rules'),'w')
         rules.write('''#! /usr/bin/make -f
 
+# Debian's policy is to install package rooted at /usr. Here we are producing
+# packages which are not part of the "official" debian repository so we'd 
+# rather install them rooted at /usr/local.
+
 export DH_OPTIONS
 
 #include /usr/share/quilt/quilt.make
@@ -482,7 +496,7 @@ export DH_OPTIONS
 PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
 
 build:
-\t./configure --prefix=$(PREFIX)
+\tPATH=/usr/local/bin:${PATH} ./configure --prefix=$(PREFIX)
 \tmake
 
 clean:

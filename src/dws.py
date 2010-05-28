@@ -1170,6 +1170,15 @@ class Configure:
             prereqs += local.prerequisites(tags)
         return prereqs
 
+    def prerequisiteNames(self, tags):
+        '''same as *prerequisites* except only returns the names 
+        of the prerequisite projects.'''
+        names = []
+        for local in self.locals:
+            for prereq in local.prerequisites(tags):
+                names += [ prereq.name ]
+        return names
+
 
 class Package(Configure):
     '''All prerequisites information to install a project from a package.'''
@@ -1578,6 +1587,13 @@ class xmlDbParser(xml.sax.ContentHandler):
            processing Upd and Prev then add it back before closing 
            the final file.'''
         dbNext.write(self.trailerTxt)
+
+def basenames(pathnames):
+    '''return the basename of all pathnames in a list.'''
+    bases = []
+    for p in pathnames:
+        bases += [ os.path.basename(pathnames) ]
+    return bases
 
 def mark(filename,suffix):    
     base, ext = os.path.splitext(filename)
