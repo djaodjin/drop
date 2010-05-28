@@ -229,6 +229,13 @@ class Context:
         '''Returns the distribution on which the script is running.'''
         return self.value('distHost')
 
+    def localDir(self,remotename):
+        localname = remotename.replace(context.value('remoteSiteTop'),
+                                       context.value('siteTop'))
+        if localname.endswith('.git'):
+            localname = localname[:-4]
+        return localname
+
     def locate(self):
         '''Locate the workspace configuration file and derive the project
         name out of its location.'''
@@ -1200,18 +1207,18 @@ class GitRepository(Repository):
         Repository.__init__(self,sync,fetches,locals,vars)
  
     def update(self,name,context):
-        if not os.path.exists(os.path.join(context.srcDir(name),'.git')):
-            # If the path to the remote repository is not absolute,
-            # derive it from *remoteTop*. Binding any sooner will 
-            # trigger a potentially unnecessary prompt for remoteCachePath.
-            if not ':' in self.sync and context:
-                self.sync = context.remoteSrcPath(self.sync)
-            cmdline = 'git clone ' + self.sync \
-                + ' ' + context.srcDir(name)
+        # If the path to the remote repository is not absolute,
+        # derive it from *remoteTop*. Binding any sooner will 
+        # trigger a potentially unnecessary prompt for remoteCachePath.
+        if not ':' in self.sync and context:
+            self.sync = context.remoteSrcPath(self.sync)
+        local = context.srcDir(name)
+        if not os.path.exists(os.path.join(local,'.git')):
+            cmdline = 'git clone ' + self.sync + ' ' + local
             shellCommand(cmdline)
         else:
             cwd = os.getcwd()
-            os.chdir(context.srcDir(name))
+            os.chdir(local)
             cmdline = 'git pull'
             shellCommand(cmdline)
             cmdline = 'git checkout -m'
@@ -1227,17 +1234,18 @@ class SvnRepository(Repository):
         Repository.__init__(self,sync,fetches,locals,vars)
  
     def update(self,name,context):
-        if not os.path.exists(os.path.join(context.srcDir(name),'.git')):
-            # If the path to the remote repository is not absolute,
-            # derive it from *remoteTop*. Binding any sooner will 
-            # trigger a potentially unnecessary prompt for remoteCachePath.
-            if not ':' in self.sync and context:
-                self.sync = context.remoteSrcPath(self.sync)
-            cmdline = 'svn co ' + self.sync + ' ' + context.srcDir(name)
+        # If the path to the remote repository is not absolute,
+        # derive it from *remoteTop*. Binding any sooner will 
+        # trigger a potentially unnecessary prompt for remoteCachePath.
+        if not ':' in self.sync and context:
+            self.sync = context.remoteSrcPath(self.sync)
+        local = context.srcDir(name)
+        if not os.path.exists(os.path.join(local,'.svn')):
+            cmdline = 'svn co ' + self.sync + ' ' + local
             shellCommand(cmdline)
         else:
             cwd = os.getcwd()
-            os.chdir(context.srcDir(name))
+            os.chdir(local)
             cmdline = 'svn update'
             shellCommand(cmdline)
             os.chdir(cwd)
@@ -2098,8 +2106,8 @@ def fetch(filenames, cacheDir=None, force=False, admin=False):
             for remotename in downloads:
                 if not remotename.startswith('http'):
                     remotename = context.remoteCachePath(remotename)
-                localname = remotename.replace(context.value('remoteSiteTop'),
-                                               context.value('siteTop'))
+                localname = context.localDir(remotename)
+                #print "!!! from " + remotename + " to " + localname
                 if not os.path.exists(os.path.dirname(localname)):
                     os.makedirs(os.path.dirname(localname))
                 remote = urllib2.urlopen(urllib2.Request(remotename))
@@ -3399,6 +3407,9 @@ def unpack(pkgfilename):
 
 # Main Entry Point
 if __name__ == '__main__':
+
+    sys.stderr.write("!!! PATH=" + os.environ['PATH'] + '\n')
+
     try:
         import __main__
 	import optparse
