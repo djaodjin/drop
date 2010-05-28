@@ -24,13 +24,14 @@
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 installBinDir		?=	$(binDir)
+installEtcDir		?=	$(etcDir)
 installIncludeDir	?=	$(includeDir)
 installLibDir		?=	$(libDir)
 installShareDir		?=	$(shareDir)
 
 .PHONY:	all check dist doc install site
 
-all::	$(bins) $(libs) $(includes) $(logs)
+all::	$(bins) $(libs) $(includes) $(etcs) $(logs)
 
 clean::
 	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
@@ -46,6 +47,10 @@ install:: $(libs)
 install:: $(includes)
 	$(if $^,$(installDirs) $(installIncludeDir))
 	$(if $^, $(installFiles) $^ $(installIncludeDir))
+
+install:: $(etcs)
+	$(if $^,$(installDirs) $(installEtcDir))
+	$(if $^,$(installFiles) $^ $(installEtcDir))
 
 install:: $(resources)
 	$(if $^,$(installDirs) $(resourcesDir))
