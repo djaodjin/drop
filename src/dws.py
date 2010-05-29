@@ -938,6 +938,7 @@ class Pathname(Variable):
                               [ [ offbase  ],
                                 [ directly ] ],
                                           False)
+                    print "!!! selection =\"" + str(selection) + "\""
                     if selection == offbase:
                         dir = self.base
                         default = dir.default
