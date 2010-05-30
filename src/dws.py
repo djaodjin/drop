@@ -302,9 +302,10 @@ class Context:
         if not ':' in remoteCachePath:
             remoteCachePath = os.path.realpath(remoteCachePath)
         if remoteCachePath.endswith('resources'):
-            context.remoteSiteTop.default = os.path.dirname(remoteCachePath)
+            context.environ['remoteSiteTop'].default \
+                = os.path.dirname(remoteCachePath)
         else:
-            context.remoteSiteTop.default = remoteCachePath
+            context.environ['remoteSiteTop'].default = remoteCachePath
 
     def save(self):
         '''Write the config back to a file.'''
