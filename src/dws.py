@@ -105,48 +105,49 @@ class Context:
     configName = 'ws.mk'
 
     def __init__(self):
-        self.siteTop = Pathname('siteTop',
+        siteTop = Pathname('siteTop',
                           'Root of the tree where the website is generated and thus where *remoteSiteTop* is cached on the local system',
                           default=os.getcwd())
-        self.remoteSiteTop = Pathname('remoteSiteTop',
+        remoteSiteTop = Pathname('remoteSiteTop',
              'Root of the remote tree that holds the published website (ex: url:/var/cache).',
                   default='')
-        self.installTop = Pathname('installTop',
+        installTop = Pathname('installTop',
                           'Root of the tree for installed bin/, include/, lib/, ...',
                           default=os.getcwd())
         self.srcTop = Pathname('srcTop',
-             'Root of the tree where the source code under revision control lives on the local machine.',self.siteTop,default='reps')
+             'Root of the tree where the source code under revision control lives on the local machine.',siteTop,default='reps')
         self.environ = { 'buildTop': Pathname('buildTop',
              'Root of the tree where intermediate files are created.',
-                                              self.siteTop,default='build'), 
+                                              siteTop,default='build'), 
                          'srcTop' : self.srcTop,
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
-                                            self.installTop),
+                                            installTop),
+                         'installTop': installTop,
                          'includeDir': Pathname('includeDir',
              'Root of the tree where include files are installed',
-                                                self.installTop),
+                                                installTop),
                          'libDir': Pathname('libDir',
              'Root of the tree where libraries are installed',
-                                            self.installTop),
+                                            installTop),
                          'etcDir': Pathname('etcDir',
              'Root of the tree where extra files are installed',
-                                            self.installTop,'etc'),
+                                            installTop,'etc'),
                          'shareDir': Pathname('shareDir',
              'Directory where the shared files are installed.',
-                                            self.installTop,'share'),
+                                            installTop,'share'),
                          'duplicateDir': Pathname('duplicateDir',
              'Directory where important directory trees on the remote machine are duplicated.',
-                                            self.installTop,'duplicate'),
-                         'siteTop': self.siteTop,
-                         'remoteSiteTop': self.remoteSiteTop,
+                                            installTop,'duplicate'),
+                         'siteTop': siteTop,
+                         'remoteSiteTop': remoteSiteTop,
                          'remoteIndex': Pathname('remoteIndex',
              'Index file with projects dependencies information',
-                                          self.remoteSiteTop,
+                                          remoteSiteTop,
               os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')),
                          'remoteSrcTop': Pathname('remoteSrcTop',
              'Root of the tree on the remote machine where repositories are located',
-                                          self.remoteSiteTop,'reps'),
+                                          remoteSiteTop,'reps'),
                         'darwinTargetVolume': SingleChoice('darwinTargetVolume',
                                                            None,
               descr='Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
@@ -938,7 +939,6 @@ class Pathname(Variable):
                               [ [ offbase  ],
                                 [ directly ] ],
                                           False)
-                    print "!!! selection =\"" + str(selection) + "\""
                     if selection == offbase:
                         dir = self.base
                         default = dir.default
@@ -1406,11 +1406,14 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.var = MultipleChoice(attrs['name'],choiceValue,None,[])
         elif name == self.tagPathname:
             self.constrain = None
-            choiceValue = None
             if attrs['name'] in self.context.environ:
-                choiceValue = str(self.context.environ[attrs['name']])
-            self.var = Pathname(attrs['name'])
-            self.var.value = choiceValue
+                if isinstance(self.context.environ[attrs['name']],Pathname):
+                    self.var = self.context.environ[attrs['name']]
+                else:
+                    self.var = Pathname(attrs['name'])
+                    self.var.value = str(self.context.environ[attrs['name']])
+            else:
+                self.var = Pathname(attrs['name'])
         elif name == self.tagSingle:
             self.constrain = None
             # We have to specify [] explicitely here else self.var.choices
@@ -2124,7 +2127,6 @@ def fetch(filenames, cacheDir=None, force=False, admin=False):
                 if not remotename.startswith('http'):
                     remotename = context.remoteCachePath(remotename)
                 localname = context.localDir(remotename)
-                #print "!!! from " + remotename + " to " + localname
                 if not os.path.exists(os.path.dirname(localname)):
                     os.makedirs(os.path.dirname(localname))
                 remote = urllib2.urlopen(urllib2.Request(remotename))
@@ -2413,11 +2415,6 @@ def make(names, targets, dbindex=None):
     log.write('### make projects "' + ', '.join(names) \
                   + '" with targets "' + ', '.join(targets) + '"\n')
     distHost = context.value('distHost')
-    # prefix.mk and suffix.mk expects these variables to be defined 
-    # in ws.mk. If they are not you might get some strange errors where
-    # a g++ command-line appears with -I <nothing> or -L <nothing> for example.
-    for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
-        name = context.value(dir + 'Dir')
     if 'recurse' in targets:
         targets.remove('recurse')
         # Recurse through projects that need to be rebuilt first 
@@ -2467,6 +2464,15 @@ def makeProject(name,targets,dependencies={}):
             # point in the future.
             linkDependencies(dependencies)
         status = 'make'
+        # prefix.mk and suffix.mk expects these variables to be defined 
+        # in ws.mk. If they are not you might get some strange errors where
+        # a g++ command-line appears with -I <nothing> or -L <nothing> 
+        # for example.
+        # This code was moved to be executed right before the issue 
+        # of a "make" subprocess in order to let the project index file 
+        # a change to override defaults for installTop, etc.
+        for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
+            name = context.value(dir + 'Dir')
         if len(targets) > 0:
             for target in targets:
                 status = target
@@ -2882,7 +2888,7 @@ def pubBuild(args):
     if len(args) > 0:
         context.remoteSite(args[0])
     if len(args) > 1:
-        context.siteTop.value = os.path.realpath(args[1])
+        context.environ['siteTop'].value = os.path.realpath(args[1])
     global useDefaultAnswer
     useDefaultAnswer = True
     global log
@@ -3088,7 +3094,7 @@ def pubMake(args):
                        can be itself built.
     '''
     global log 
-    context.siteTop.default = os.path.dirname(os.path.dirname(
+    context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
         os.path.realpath(os.getcwd())))
     log = LogFile(context.logname(),nolog)
     repositories = [ context.cwdProject() ]
@@ -3424,8 +3430,6 @@ def unpack(pkgfilename):
 
 # Main Entry Point
 if __name__ == '__main__':
-
-    sys.stderr.write("!!! PATH=" + os.environ['PATH'] + '\n')
 
     try:
         import __main__
