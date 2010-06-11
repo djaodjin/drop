@@ -43,6 +43,7 @@ XSLTPROC	:=	xsltproc -xinclude 		\
 #       complains about an extra '\n' character.
 srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
 objDir		:=	$(subst $(srcTop),$(buildTop),$(srcDir))
+logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 
 resourcesDir	?=	$(siteTop)/resources
 

@@ -1611,6 +1611,11 @@ def stamp(filename,date=datetime.datetime.now()):
                + ('_%02d' % (date.day)) \
                + ('-%02d' % (date.hour)) + ext
 
+def stampfile(filename):
+    return stamp(mark(os.path.basename(filename),
+                      socket.gethostname()))
+
+
 def createIndexPathname(dbIndexPathname,dbPathnames):
     '''create a global dependency database (i.e. project index file) out of
     a set local dependency index files.'''
@@ -2579,7 +2584,6 @@ def remoteSyncCommand(filenames,cacheDir=None,admin=False):
 
         downCmdline = cmdline 
         pathnames = []
-        print str(filenames)
         for f in filenames:            
             if f.startswith(context.value('remoteSiteTop')):
                 pathnames += [ f[f.find(':') + 1:] ]
@@ -2870,15 +2874,7 @@ def pubBuild(args):
                         This bootstrap command will download an index 
                         database file from *remoteTop* and starts issuing
                         make for every project listed in it with targets 
-                        'install', 'check' and 'dist'. 
-                        The two philosophies for testing are execute 'install'
-                        then 'check' and 'check' then 'install'. In the first
-                        case all projects have a chance to compile even if 
-                        a dependency does not pass its unit tests. This will 
-                        find the most number of positive compilation errors
-                        and suits the development cycle.
-                        The second case guarentees no broken project will 
-                        install and is surely more suited for release testing.
+                        'install' and 'dist'. 
                         This command is meant to be used as part of cron
                         jobs on build servers and thus designed to run 
                         to completion with no human interaction. As such, 
@@ -2896,14 +2892,13 @@ def pubBuild(args):
     log = LogFile(context.logname(),nolog)
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    make(rgen.roots,[ 'recurse', 'install', 'check', 'dist' ])
+    make(rgen.roots,[ 'recurse', 'install', 'dist' ])
     log.close()
     log = None
     # Once we have built the repository, let's report the results
     # back to the remote server. We stamp the logfile such that
     # it gets a unique name before uploading it.
-    logstamp = os.path.basename(context.logname())
-    logstamp = stamp(mark(logstamp,socket.gethostname()))
+    logstamp = stampfile(context.logname())
     if not os.path.exists(os.path.dirname(context.cachePath(logstamp))):
         os.makedirs(os.path.dirname(context.cachePath(logstamp)))
     shellCommand('install -m 644 ' + context.logname() \
@@ -3215,6 +3210,8 @@ def pubUpstream(args):
         pkgfilename = args.pop(0)
         srcdir = unpack(pkgfilename)
         orgdir = srcdir + '.orig'
+        if os.path.exists(orgdir):
+            os.removedirs(orgdir)        
         shutil.move(srcdir,orgdir)
         srcdir = unpack(pkgfilename)
         pchdir = context.srcDir(os.path.join(context.cwdProject(),

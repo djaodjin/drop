@@ -120,19 +120,19 @@ if __name__ == '__main__':
                 if diffLineNum < logLineNum:
                     # last log failed
                     if prevLogTestName != None:
-                        print prevLogTestName + " fail"
+                        print prevLogTestName + " different"
                         if not prevLogTestName in regressions:
                             regressions[prevLogTestName] = {}
-                        regressions[prevLogTestName][reffile] = "fail"
+                        regressions[prevLogTestName][reffile] = "different"
                         prevLogTestName = None
                     diffLineNum = diffAdvance(diff)
                 elif diffLineNum > logLineNum:
                     # last log passed
                     if prevLogTestName != None:
-                        print prevLogTestName + " pass"
+                        print prevLogTestName + " identical"
                         if not prevLogTestName in regressions:
                             regressions[prevLogTestName] = {}
-                        regressions[prevLogTestName][reffile] = "pass"
+                        regressions[prevLogTestName][reffile] = "identical"
                     prevLogTestName = logTestName
                     logLineNum, logTestName = logAdvance(log)
                 else:
@@ -145,15 +145,15 @@ if __name__ == '__main__':
             # tests must have passed.
             if logLineNum != sys.maxint:
                 if prevLogTestName != None:
-                    print prevLogTestName + " pass"
+                    print prevLogTestName + " identical"
                     if not prevLogTestName in regressions:
                         regressions[prevLogTestName] = {}
-                    regressions[prevLogTestName][reffile] = "pass"
+                    regressions[prevLogTestName][reffile] = "identical"
                 while logLineNum != sys.maxint:
-                    print logTestName + " pass"
+                    print logTestName + " identical"
                     if not logTestName in regressions:
                         regressions[logTestName] = {}
-                    regressions[logTestName][reffile] = "pass"
+                    regressions[logTestName][reffile] = "identical"
                     logLineNum, logTestName = logAdvance(log)
  
             diff.close()
@@ -191,6 +191,7 @@ if __name__ == '__main__':
                     if not testName in tests:
                         tests[testName] = tempfile.TemporaryFile()
                     tests[testName].write('<output name="'+filename+'">\n')
+                    tests[testName].write('<status>' + testStatus + '</status>')
                     tests[testName].write('<![CDATA[\n')
                     testFile = tests[testName]                
                     hasOuput[testName] = True

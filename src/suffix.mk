@@ -52,6 +52,10 @@ install:: $(etcs)
 	$(if $^,$(installDirs) $(installEtcDir))
 	$(if $^,$(installFiles) $^ $(installEtcDir))
 
+install:: $(logs)
+	$(if $^,$(installDirs) $(logDir))
+	$(if $^,dstamp install $(filter-out regression.log,$^) $(logDir))
+
 install:: $(resources)
 	$(if $^,$(installDirs) $(resourcesDir))
 	$(if $^, $(installFiles) $^ $(resourcesDir))
@@ -146,10 +150,13 @@ $(project)-$(version)::
 
 # Rules to build unit test logs
 # -----------------------------
-check: $(logs)
+check: regression.log
+	$(installDirs) $(logDir)
+	$(installFiles) regression.log $(logDir)
 
-regression.log: results.log $(wildcard $(srcDir)/data/results-*.log)
-	dregress -o $@ $^ 
+regression.log: $(wildcard $(logDir)/results-*.log) \
+		$(wildcard $(srcDir)/data/results-*.log)
+	-dregress -o $@ $^ 
 
 .PHONY: results.log
 

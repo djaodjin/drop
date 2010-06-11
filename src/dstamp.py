@@ -30,7 +30,9 @@
 # Second, this script will remove files in the current directory based
 # on a specified aging policy.
 
-import datetime, dws, os, sys
+__version__ = None
+
+import datetime, dws, optparse, os, shutil, sys
 
 doNotExecute = True
 
@@ -115,65 +117,58 @@ def cleanUpAgedFiles(dirname,keepPerYear=1,keepPerMonth=1,keepPerWeek=1):
                 if not doNotExecute:
                     os.remove(pathname)
 
-# Main Entry Point
-if __name__ == '__main__':
-    keepPerYear = 1
-    keepPerMonth = 1
-    keepPerWeek = 1
-    arguments = sys.argv[1:]
-    if len(arguments) == 0:
-        sys.stdout.write('''
-usage: ''' + sys.argv[0] + ''' [command] pathname
-where command is one of the following:
-clean             delete files which have aged according to a policy.
+def pubClean(args):
+    '''clean         targetDir
+                  Delete files which have aged according to a policy.
                   The policy is defined by the number of stamped files
                   that are kept per year, month and week. All stamps
-                  less than a week old are always kept.
+                  less than a week old are always kept.'''
+    cleanUpAgedFiles('.',keepPerYear=1,keepPerMonth=1,keepPerWeek=1)
 
-selftest          Run the selftest that checks the algorithm is implemented
-                  correctly.
-''')        
-    if arguments[0] == 'clean':
-        cleanUpAgedFiles('.',keepPerYear,keepPerMonth,keepPerWeek)
-    elif arguments[0] == 'selftest':
-        # Generate test cases
-        now = datetime.datetime.now()
-        # more than one year old
-        dates = [ now - datetime.timedelta(days=366) ]
-        dates += [ now - datetime.timedelta(days=365+79) ]
-        dates += [ now - datetime.timedelta(days=365+82) ]
-        dates += [ now - datetime.timedelta(days=365+85) ]
-        dates += [ now - datetime.timedelta(days=365*2+1) ]
-        dates += [ now - datetime.timedelta(days=365*2+120) ]
-        dates += [ now - datetime.timedelta(days=365*2+122) ]
-        dates += [ now - datetime.timedelta(days=365*3+1) ]
-        dates += [ now - datetime.timedelta(days=365*3+63) ]
-        # more than one month but less than one year old
-        dates += [ now - datetime.timedelta(days=32) ]
-        dates += [ now - datetime.timedelta(days=36) ]
-        dates += [ now - datetime.timedelta(days=39) ]
-        dates += [ now - datetime.timedelta(days=65) ]
-        dates += [ now - datetime.timedelta(days=67) ]
-        dates += [ now - datetime.timedelta(days=69) ]
-        # more than one week but less than one month old
-        dates += [ now - datetime.timedelta(days=7) ]
-        dates += [ now - datetime.timedelta(days=8) ]
-        dates += [ now - datetime.timedelta(days=12) ]
-        dates += [ now - datetime.timedelta(days=23) ]
-        # less than one week old
-        dates += [ now - datetime.timedelta(days=1) ]
-        dates += [ now - datetime.timedelta(days=2) ]
-        dates += [ now - datetime.timedelta(days=3) ]
-        dates += [ now - datetime.timedelta(days=4) ]
-        keep = cleanUpAgedStamps(dates,1,1,1)
-        for d in dates:
-            delta = now - d
-            if d in keep:
-                sys.stdout.write('* ')
-            else:
-                sys.stdout.write('  ')
-            sys.stdout.write(dws.stamp("dummy.log",d) + ' >' + str(delta.days) + ' days\n')
-    else:
-        # stamp file with current date
-        print dws.stamp(sys.argv[1])
+def pubInstall(args):
+    '''install      sourceFile [sourceFile ...] targetDir
+                  Install source file into target directory
+                  with a stamp suffix.'''
+    installDir = args.pop()
+    for f in args:
+        shutil.copy(f,os.path.join(installDir,dws.stampfile(f)))
+
+# Main Entry Point
+if __name__ == '__main__':
+    try:
+        epilog= '\nCommands:\n'
+        import __main__
+        keys = __main__.__dict__.keys()
+        keys.sort()
+        for command in keys:
+            if command.startswith('pub'):
+                epilog += __main__.__dict__[command].__doc__ + '\n'
+
+        parser = optparse.OptionParser(\
+            usage='%prog [options] command\n\nVersion\n  %prog version ' \
+                + str(__version__),
+            formatter=dws.CommandsFormatter(),
+            epilog=epilog)
+        parser.add_option('--version', dest='version', action='store_true',
+                          help='Print version information')
+
+        options, args = parser.parse_args()
+        if options.version:
+            sys.stdout.write(sys.argv[0] + ' version ' + str(__version__) \
+                                 + '\n')
+            sys.exit(0)
+
+        arg = args.pop(0)
+        command = 'pub' + arg.capitalize()
+        if command in __main__.__dict__:
+            __main__.__dict__[command](args)
+        else:
+            raise dws.Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
+
+    except dws.Error, err:
+        sys.stderr.write(str(err))
+        sys.exit(err.code)
+
+ 
+
         

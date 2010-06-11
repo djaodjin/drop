@@ -105,7 +105,7 @@
     <para>The purpose of unit tests is to insure first that functionality is implemented correctly. Later in the life cycle of a project, unit tests are often relabeled regression tests and insure that changes to the source code did not break existing functionality.</para>
     <section>
       <title>Functional and regression tests</title>
-    <para>The definition of functional and regression tests are very often used interchangeably because a functional test can serve as the base for a regression test as much as a regression test can be used to validate functionality.</para> 
+      <para>The definition of functional and regression tests are very often used interchangeably because a functional test can serve as the base for a regression test as much as a regression test can be used to validate functionality.</para>
     <para>For our purpose here, the major distinction between a functional and regression test is how they were originally created. The developer of a functional test has explicitly thought about the passing and failing conditions and written explicit statements for them in the source code that is checked into the repository. The developer of a regression test typically used the build framework to trigger comparison of different runs of the same program.</para> 
     <para>As such functional tests usually result in source code while regression tests result in makefile rules. Functional tests also typically result in self-contained executables while regression tests rely on external data sets usually stored outside the version controlled repository.</para>
     <informaltable>
@@ -115,6 +115,8 @@
       <tr><td>self-contained</td><td>rely on external data sets</td></tr>
     </informaltable>
     <para> Unit tests will typically start breaking and become deprecated as a project moves forward. As a result, relevant unit tests are the ones that can be run by an automated tool as part of the <link linkend="/services/doc/usecases.book#snapshotBuilds">build process</link>.</para>
+    <para>Regardless of the original specification of a unit test, the web presentation engine provides both a test functional view and a test regression view. Functional views are useful in the release process to validate that tests pass on all systems and configurations. A failing test in the context of a functional view usually indicates an unanticipated error that must be further investigated. Regression views tie a change in behavior to a specific source revision and or system. Regression views will thus be most useful to contributors investigating why a previously passing test started to fail.
+    </para>
     </section>
     <section>
       <title>Projects and tests source repositories</title>
