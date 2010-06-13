@@ -123,26 +123,33 @@
       <para>
 	There are usually two approaches to store the tests associated to a project. Either they can form a sub-directory in the project hierarchy and managed as part of the same physical repository or they can form their own directory hierarchy and managed in a logically separate repository. Choosing either approach depends on the distribution model. In a typical two-party model made of a developer and a user, the developer provides a source package to the user; the user compiles the code provided, checks the stability of it and installs it on the system. In a typical three-party model made of a developer, a distributor and a user, the developer provides a source package to the distributor; the distributor compiles the code provided, checks the stability of it and provides a binary package to the user; the user then updates the system and installs the binary package as a side effect.
       </para>
-      <para role="code">
-	# Two party model                 # Three party model       
+	<informaltable>
+	  
+<tr><td><programlisting># Two-party model</programlisting></td>    
+  <td><programlisting># Three-party model</programlisting></td></tr>
 	
-	# developer                      # developer
-	make dist-src                     make dist-src
+<tr><td><programlisting># developer                      
+make dist-src</programlisting></td>       
+<td><programlisting># developer
+make dist-src</programlisting></td></tr>
 
-	                                  # distributor
-	                                  cd project-test
-	                                  tar zxvf project.tar.gz
-	                                  make
-	                                  make dist
+<tr><td></td>	                  
+<td><programlisting># distributor
+cd project-test
+tar zxvf project.tar.gz
+make
+make dist</programlisting></td></tr>
 
-	# user                            # user (ex. Ubuntu)
-	tar zxvf project.tar.gz           apt-get install project
-	cd project
-	./configure
-	make
-	make check
-	make install
-      </para>
+<tr><td><programlisting># user                            
+tar zxvf project.tar.gz           
+cd project
+./configure
+make
+make check
+make install</programlisting></td>        
+<td><programlisting># user (ex. Ubuntu)
+apt-get install project</programlisting></td></tr>
+	</informaltable>    
       <para>
 	In a two-party model, including tests as a sub-directory in the project repository seems more appropriate. It facilitates the life of the developer to deal with a single repository and distribute tests along the project into a single package. The end-user can also rely on a single source package and a straightforward procedure to deploy a project on the system.
       </para>
