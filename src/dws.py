@@ -3016,11 +3016,11 @@ def pubContext(args):
 
 
 def pubDuplicate(args):
-    '''duplicate          Duplicate pathnames from the remote machine into
+    '''duplicate              Duplicate pathnames from the remote machine into
                        *duplicateDir* on the local machine. 
     ''' 
     remoteCachePath = context.value('remoteSiteTop')
-    dirname, hostname, username = splitRemotePath(remoteCachePath)
+    dirname, hostname, username, protocol = splitRemotePath(remoteCachePath)
     pathnames = [ '/var/log', '/var/lib', dirname ]
     duplicateDir = context.value('duplicateDir')
     if hostname:
@@ -3049,7 +3049,7 @@ def pubFind(args):
 
 
 def pubInit(args):
-    '''init                  Prompt for variables which have not been 
+    '''init                   Prompt for variables which have not been 
                        initialized in ws.mk. Fetch the project index.
     '''
     configVar(context.environ.values())

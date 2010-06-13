@@ -61,6 +61,10 @@ install:: dws.py dstamp.py $(srcDir)/src/prefix.mk \
 	$(installDirs)  $(etcDir)/dws
 	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(etcDir)/dws
 
+install:: dws
+	$(installDirs) $(resourcesDir)
+	$(installFiles) $^ $(resourcesDir)
+
 dmake:
 	echo '#!/bin/sh' > $@
 	echo 'dws make $$*' >> $@
