@@ -2104,7 +2104,7 @@ def configVar(vars):
     return vars
 
 
-def fetch(filenames, cacheDir=None, force=False, admin=False):
+def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
     '''download *filenames*, typically a list of distribution packages, 
     from the remote server into *cacheDir*. See the upload function 
     for uploading files to the remote server.
@@ -2141,14 +2141,16 @@ def fetch(filenames, cacheDir=None, force=False, admin=False):
                 local.close()
                 remote.close()                
         else:
-            downCmdline, upCmdline = remoteSyncCommand(downloads,cacheDir,admin)
+            downCmdline, upCmdline = remoteSyncCommand(downloads,cacheDir,
+                                                       admin,relative)
             # The following command will promt for the sudo password and extend
             # the grace period for 5min such that the following rsync command
             # executes properly since it does not prompt for the sudo password
             # and locks up the system.
             # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
             if admin:
-                shellCommand('ssh -t ' + hostname + ' sudo -v')
+                shellCommand('stty -echo; ssh ' + hostname \
+                                 + ' sudo -v ; stty echo')
             shellCommand(downCmdline)
 
 
@@ -2539,7 +2541,7 @@ def mergeBuildConf(dbPrev,dbUpd,parser):
         parser.trailer(dbNext)
         return dbNext
 
-def remoteSyncCommand(filenames,cacheDir=None,admin=False):
+def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
     '''returns a pair (downCmdline, upCmdline) where downCmdline
     can be used to download from the remote machine onto the local
     machine and upCmdline can be used to upload from the local
@@ -2570,7 +2572,7 @@ def remoteSyncCommand(filenames,cacheDir=None,admin=False):
         if username:
             prefix = prefix + username + '@'
         cmdline = "rsync -avuzb"
-        if not cacheDir:
+        if relative or not cacheDir:
             cmdline = cmdline + 'R'
         if hostname:
             # We are accessing the remote machine through ssh
@@ -2587,6 +2589,8 @@ def remoteSyncCommand(filenames,cacheDir=None,admin=False):
         for f in filenames:            
             if f.startswith(context.value('remoteSiteTop')):
                 pathnames += [ f[f.find(':') + 1:] ]
+            elif f.startswith('/'):
+                pathnames += [ '/.' + f ]
             else:
                 pathnames += [ dirname + '/./' + f ]
         sources = "'" + prefix + ' '.join(pathnames) + "'"
@@ -3027,7 +3031,7 @@ def pubDuplicate(args):
         duplicateDir = os.path.join(duplicateDir,hostname)
     if not os.path.exists(duplicateDir):
         os.makedirs(duplicateDir)
-    fetch(pathnames,duplicateDir,force=True,admin=True)
+    fetch(pathnames,duplicateDir,force=True,admin=True,relative=True)
 
 
 def pubFind(args):
