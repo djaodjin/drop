@@ -23,11 +23,11 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-installBinDir		?=	$(binDir)
-installEtcDir		?=	$(etcDir)
-installIncludeDir	?=	$(includeDir)
-installLibDir		?=	$(libDir)
-installShareDir		?=	$(shareDir)
+binDir		?=	$(binBuildDir)
+etcDir		?=	$(etcBuildDir)
+includeDir	?=	$(includeBuildDir)
+libDir		?=	$(libBuildDir)
+shareDir	?=	$(shareBuildDir)
 
 .PHONY:	all check dist doc install site
 
@@ -37,20 +37,20 @@ clean::
 	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
 
 install:: $(bins)
-	$(if $^,$(installDirs) $(installBinDir))
-	$(if $^,$(installExecs) $^ $(installBinDir))
+	$(if $^,$(installDirs) $(binDir))
+	$(if $^,$(installExecs) $^ $(binDir))
 
 install:: $(libs)
-	$(if $^,$(installDirs) $(installLibDir))
-	$(if $^,$(installFiles) $^ $(installLibDir))
+	$(if $^,$(installDirs) $(libDir))
+	$(if $^,$(installFiles) $^ $(libDir))
 
 install:: $(includes)
-	$(if $^,$(installDirs) $(installIncludeDir))
-	$(if $^, $(installFiles) $^ $(installIncludeDir))
+	$(if $^,$(installDirs) $(includeDir))
+	$(if $^, $(installFiles) $^ $(includeDir))
 
 install:: $(etcs)
-	$(if $^,$(installDirs) $(installEtcDir))
-	$(if $^,$(installFiles) $^ $(installEtcDir))
+	$(if $^,$(installDirs) $(etcDir))
+	$(if $^,$(installFiles) $^ $(etcDir))
 
 install:: $(logs)
 	$(if $^,$(installDirs) $(logDir))

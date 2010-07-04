@@ -32,7 +32,7 @@ installExecs	:=	/usr/bin/install -p -m 755
 FOP		:=	fop
 LN_S		:=	/bin/ln -fs
 SED		:=	sed
-SEED		:=	$(binDir)/seed
+SEED		:=	$(binBuildDir)/seed
 XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
@@ -47,12 +47,13 @@ logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 
 resourcesDir	?=	$(siteTop)/resources
 
-incSearchPath	:=	$(srcDir)/include $(includeDir)
+incSearchPath	:=	$(srcDir)/include $(buildIncludeDir) $(includeDir)
+libSearchPath	:=	$(buildLibDir) $(libDir)
 
 CFLAGS		:=	-g -MMD -Wall
 CXXFLAGS	:=	-g -MMD -Wall
 CPPFLAGS	+=	$(patsubst %,-I%,$(incSearchPath))
-LDFLAGS		+=	-L$(libDir)
+LDFLAGS		+=	$(patsubst %,-I%,$(libSearchPath))
 
 # Configuration for distribution packages
 
@@ -78,8 +79,8 @@ endif
 endif
 
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
-htmlxsl		:=	$(shareDir)/docbook-xsl/html/docbook.xsl
-foxsl		:=	$(shareDir)/docbook-xsl/fo/docbook.xsl
+htmlxsl		:=	$(shareBuildDir)/docbook-xsl/html/docbook.xsl
+foxsl		:=	$(shareBuildDir)/docbook-xsl/fo/docbook.xsl
 graphicSuffix	:=	png
 #graphicSuffix	:=	svg
 
@@ -94,9 +95,9 @@ unexpectedZeroExit =	@echo "$(1)" && ($(1) \
 	&& echo "$@:$$?:error: functional test expected non-zero exit code")
 
 
-vpath %.a 	$(libDir)
+vpath %.a 	$(libSearchPath)
+vpath %.so	$(libSearchPath)
 vpath %.hh      $(incSearchPath)
-vpath %.so	$(libDir)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
 vpath %.c 	$(srcDir)/src

@@ -466,7 +466,7 @@ make
 make install
 ''')
         specfile.close()
-        dws.shellCommand("rpmbuild -bb --clean " + specname)
+        dws.shellCommand(['rpmbuild', '-bb', '--clean', specname])
         return projet.name + '-' + version + '.rpm'
 
     elif dist == 'Ubuntu':
@@ -552,7 +552,7 @@ binary: install
         #
         # Can only find example in man pages of debuild but cannot 
         # find description of options: "-i -us -uc -b".
-        dws.shellCommand("debuild -i -us -uc -b")
+        dws.shellCommand(['debuild', '-i', '-us', '-uc', '-b'])
         cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)

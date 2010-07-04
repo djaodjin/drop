@@ -23,30 +23,31 @@ buildTop=`dirname $buildDir`
 srcDir=`echo $0 | sed -e 's,\(.*\)/.*$,\\1,'`
 srcDir=`cd $srcDir ; pwd`
 srcTop=`dirname $srcDir`
-binDir=${buildDir}/bin
-etcDir=${buildDir}/etc
+binBuildDir=${buildDir}/bin
+etcBuildDir=${buildDir}/etc
 
 echo buildTop=${buildTop} > ws.mk
 echo srcTop=${srcTop} >> ws.mk
 echo siteTop=${buildDir}/cache >> ws.mk
-echo binDir=${binDir} >> ws.mk
-echo etcDir=${buildDir}/etc >> ws.mk
-echo libDir=${buildDir}/lib >> ws.mk
-echo includeDir=${buildDir}/include >> ws.mk
-echo installBinDir=${prefix}/bin >> ws.mk
-echo installEtcDir=${prefix}/etc >> ws.mk
-echo installIncludeDir=${prefix}/include >> ws.mk
-echo installLibDir=${prefix}/lib >> ws.mk
-echo installShareDir=${prefix}/share >> ws.mk
+echo binBuildDir=${binBuildDir} >> ws.mk
+echo etcBuildDir=${etcBuildDir} >> ws.mk
+echo libBuildDir=${buildDir}/lib >> ws.mk
+echo includeBuildDir=${buildDir}/include >> ws.mk
+echo shareBuildDir=${buildDir}/share >> ws.mk
+echo binDir=${prefix}/bin >> ws.mk
+echo etcDir=${prefix}/etc >> ws.mk
+echo includeDir=${prefix}/include >> ws.mk
+echo libDir=${prefix}/lib >> ws.mk
+echo shareDir=${prefix}/share >> ws.mk
 
 # Copy dws files into binDir and etcDir because that's where they will 
 # be searched when drop is specified as a prerequisite for the project.
-mkdir -p ${binDir}
-mkdir -p ${etcDir}/dws
-cp ${srcDir}/dws ${binDir}
-cp -r ${srcDir}/etc/*.mk ${etcDir}/dws
-cp -r ${srcDir}/etc/*.sh ${etcDir}/dws
-${binDir}/dws --default configure
+mkdir -p ${binBuildDir}
+mkdir -p ${etcBuildDir}/dws
+cp ${srcDir}/dws ${binBuildDir}
+cp -r ${srcDir}/etc/*.mk ${etcBuildDir}/dws
+cp -r ${srcDir}/etc/*.sh ${etcBuildDir}/dws
+${binBuildDir}/dws --default configure
 
 sed -e s',$(shell dws context),ws.mk,' \
     -e s',$(shell dws context \(.*\)),$(etcDir)/\1,' \

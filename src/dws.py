@@ -112,14 +112,30 @@ class Context:
              'Root of the remote tree that holds the published website (ex: url:/var/cache).',
                   default='')
         installTop = Pathname('installTop',
-                          'Root of the tree for installed bin/, include/, lib/, ...',
+                    'Root of the tree for installed bin/, include/, lib/, ...',
                           default=os.getcwd())
+        buildTop = Pathname('buildTop',
+                    'Root of the tree where intermediate files are created.',
+                            siteTop,default='build')
         self.srcTop = Pathname('srcTop',
              'Root of the tree where the source code under revision control lives on the local machine.',siteTop,default='reps')
-        self.environ = { 'buildTop': Pathname('buildTop',
-             'Root of the tree where intermediate files are created.',
-                                              siteTop,default='build'), 
+        self.environ = { 'buildTop': buildTop, 
                          'srcTop' : self.srcTop,
+                         'binBuildDir': Pathname('binBuildDir',
+             'Root of the tree where executable prerequisites are linked',
+                                            buildTop),
+                         'includeBuildDir': Pathname('includeBuildDir',
+             'Root of the tree where include prerequisites are linked',
+                                                buildTop),
+                         'libBuildDir': Pathname('libBuildDir',
+             'Root of the tree where library prerequisites are linked',
+                                            buildTop),
+                         'etcBuildDir': Pathname('etcBuildDir',
+             'Root of the tree where configuration prerequisites are linked',
+                                            buildTop),
+                         'shareBuildDir': Pathname('shareBuildDir',
+             'Directory where the shared prerequisites are linked',
+                                            buildTop),
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
                                             installTop),
@@ -324,6 +340,11 @@ class Context:
                 configFile.write(key + '=' + str(val) + '\n')
         configFile.close()
 
+    def searchPath(self):
+        # \todo should we add binDir here?
+        return [ self.value('binBuildDir') ] \
+            + os.environ['PATH'].split(':')
+
     def srcDir(self,name):
         return os.path.join(self.value('srcTop'),name)
 
@@ -364,10 +385,10 @@ class CommandsFormatter(optparse.IndentedHelpFormatter):
 class IndexProjects:
     '''Index file containing the graph dependency for all projects.'''
 
-    def __init__(self, context, filename = None):
+    def __init__(self, context, source = None):
         self.context = context
         self.parser = xmlDbParser(context)
-        self.filename = filename
+        self.source = source
  
     def closure(self, dgen):
         '''Find out all dependencies from a root set of projects as defined 
@@ -393,36 +414,38 @@ class IndexProjects:
         
     def parse(self, dgen):
         '''Parse the project index and generates callbacks to *dgen*'''
-        self.validate()
-        self.parser.parse(self.filename,dgen)
+        self.validate()        
+        self.parser.parse(self.source,dgen)
 
     def validate(self,force=False):
         '''Create the project index file if it does not exist
         either by fetching it from a remote server or collecting
         projects indices locally.'''
-        if not self.filename:
-            self.filename = self.context.dbPathname()     
-        if not os.path.exists(self.filename) or force:
-            selection = ''
-            if not force:
-                # index or copy.
-                selection = selectOne('The project index file could not '
-                                      + 'be found at ' + self.filename \
-                                      + '. It can be regenerated through one ' \
-                                      + 'of the two following method:',
-                                      [ [ 'fetching', 'from remote server' ],
-                                        [ 'indexing', 
-                                          'local projects in the workspace' ] ],
-                                      False)
-            if selection == 'indexing':
-                pubCollect([])
-            elif selection == 'fetching' or force:
-                if not os.path.exists(os.path.dirname(self.filename)):
-                    os.makedirs(os.path.dirname(self.filename))
-                fetch({self.context.value('remoteIndex'): None},
-                      os.path.dirname(self.filename),True)
-        if not os.path.exists(self.filename):
-            raise Error(self.filename + ' does not exist.')
+        if not self.source:
+            self.source = self.context.dbPathname()     
+        if not self.source.startswith('<?xml'):
+            # The source is an actual string, thus we do not fetch any file.
+            if not os.path.exists(self.source) or force:
+                selection = ''
+                if not force:
+                    # index or copy.
+                    selection = selectOne('The project index file could not '
+                                    + 'be found at ' + self.source \
+                                    + '. It can be regenerated through one ' \
+                                    + 'of the two following method:',
+                                    [ [ 'fetching', 'from remote server' ],
+                                      [ 'indexing', 
+                                        'local projects in the workspace' ] ],
+                                          False)
+                if selection == 'indexing':
+                    pubCollect([])
+                elif selection == 'fetching' or force:
+                    if not os.path.exists(os.path.dirname(self.source)):
+                        os.makedirs(os.path.dirname(self.source))
+                    fetch({self.context.value('remoteIndex'): None},
+                          os.path.dirname(self.source),True)                
+            if not os.path.exists(self.source):
+                raise Error(self.source + ' does not exist.')
 
 
 class LogFile:
@@ -875,18 +898,24 @@ class HostPlatform(Variable):
         if sysname == 'Darwin':
             self.value = 'Darwin'
         elif sysname == 'Linux':
-            version = open('/proc/version')
-            line = version.readline()
-            while line != '':
-                for d in [ 'Ubuntu', 'fedora' ]:
-                    look = re.match('.*' + d + '.*',line)
-                    if look:
-                        self.value = d
-                        break
-                if self.value:
-                    break
-                line = version.readline()
-            version.close()
+            for versionPath in [ '/proc/version', '/etc/apt/sources.list' ]: 
+                # If we can't determine the host platform for /proc/version,
+                # let's try to guess from the package manager installed.
+                if os.path.exits(versionPath):
+                    version = open(versionPath)
+                    line = version.readline()
+                    while line != '':
+                        for d in [ 'Ubuntu', 'ubuntu', 'fedora' ]:
+                            look = re.match('.*' + d + '.*',line)
+                            if look:
+                                self.value = d
+                                break
+                        if self.value:
+                            break
+                        line = version.readline()
+                    version.close()
+                    if self.value:
+                        break                    
             if self.value:
                 self.value = self.value.capitalize()
         return True
@@ -1225,15 +1254,12 @@ class GitRepository(Repository):
             self.sync = context.remoteSrcPath(self.sync)
         local = context.srcDir(name)
         if not os.path.exists(os.path.join(local,'.git')):
-            cmdline = 'git clone ' + self.sync + ' ' + local
-            shellCommand(cmdline)
+            shellCommand(['git', 'clone', self.sync, local])
         else:
             cwd = os.getcwd()
             os.chdir(local)
-            cmdline = 'git pull'
-            shellCommand(cmdline)
-            cmdline = 'git checkout -m'
-            shellCommand(cmdline)
+            shellCommand(['git', 'pull'])
+            shellCommand(['git', 'checkout', '-m'])
             os.chdir(cwd)
 
  
@@ -1252,13 +1278,11 @@ class SvnRepository(Repository):
             self.sync = context.remoteSrcPath(self.sync)
         local = context.srcDir(name)
         if not os.path.exists(os.path.join(local,'.svn')):
-            cmdline = 'svn co ' + self.sync + ' ' + local
-            shellCommand(cmdline)
+            shellCommand(['svn', 'co', self.sync, local])
         else:
             cwd = os.getcwd()
             os.chdir(local)
-            cmdline = 'svn update'
-            shellCommand(cmdline)
+            shellCommand(['svn', 'update'])
             os.chdir(cwd)
 
 
@@ -1535,14 +1559,17 @@ class xmlDbParser(xml.sax.ContentHandler):
                 self.deps[name] = []
             self.deps[name] += [ (self.text,None) ]
 
-    def parse(self, pathname, handler):
+    def parse(self, source, handler):
         '''This is the public interface for one pass through the database
            that generates callbacks on the handler interface.'''
         self.handler = handler
         parser = xml.sax.make_parser()
         parser.setFeature(xml.sax.handler.feature_namespaces, 0)
         parser.setContentHandler(self)
-        parser.parse(pathname)
+        if source.startswith('<?xml'):
+            parser.parse(cStringIO.StringIO(source))
+        else:
+            parser.parse(source)
 
     # The following methods are used to merge multiple databases together.
 
@@ -1634,6 +1661,7 @@ def createIndexPathname(dbIndexPathname,dbPathnames):
 def derivedRoots(name):
     '''Derives a list of directory names based on the PATH 
     environment variable.'''
+    # \todo use of context.searchPath() ?
     dirs = []
     for p in os.environ['PATH'].split(':'):
         dir = os.path.join(os.path.dirname(p),name)
@@ -1679,12 +1707,12 @@ def findBin(names,excludes=[]):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        # First time ever *findBin* is called, binDir will surely not defined
-        # in ws.mk and thus we will trigger interactive input from the user.
-        # We want to make sure the output of the interactive session does not
-        # mangle the search for an executable so we preemptively trigger 
-        # an interactive session.
-        context.value('binDir')
+        # First time ever *findBin* is called, binBuildDir will surely not 
+        # defined in ws.mk and thus we will trigger interactive input from 
+        # the user. We want to make sure the output of the interactive session 
+        # does not mangle the search for an executable so we preemptively 
+        # trigger an interactive session.
+        context.value('binBuildDir')
         log.write(namePat + '... ')
         log.flush()
         found = False
@@ -1695,8 +1723,7 @@ def findBin(names,excludes=[]):
                 log.write('yes\n')
                 results.append((namePat, bin))
         else:
-            for p in [ context.value('binDir') ] \
-                    + os.environ['PATH'].split(':'):
+            for p in context.searchPath():
                 bin = os.path.realpath(os.path.join(p,namePat))
                 if (os.path.isfile(bin) 
                     and os.access(bin, os.X_OK)):
@@ -2085,6 +2112,30 @@ def findShare(names,excludes=[]):
     return findData('share',names,excludes)
 
 
+def findRSync():
+    '''Check if rsync is present and install it through the package
+    manager if it is not. rsync is a little special since it is used
+    directly by this script and the script is not always installed
+    through a project.'''
+    rsync = os.path.join(context.value('binBuildDir'),'rsync')
+    if not os.path.exists(rsync):
+        index = IndexProjects(context,
+                          '''<?xml version="1.0" ?>
+<projects>
+  <project name="dws">
+    <repository>
+      <dep name="rsync">
+	<bin>rsync</bin>
+      </dep>
+    </repository>
+  </project>
+</projects>
+''')
+        dgen = DependencyGenerator([ 'dws' ],[],[])
+        index.parse(dgen)
+    return rsync
+
+
 def configVar(vars):
     '''Look up the workspace configuration file ws.mk for definition
     of variables *vars*, instances of classes derived from Variable 
@@ -2149,8 +2200,8 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
             # and locks up the system.
             # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
             if admin:
-                shellCommand('stty -echo; ssh ' + hostname \
-                                 + ' sudo -v ; stty echo')
+                shellCommand(['stty -echo;', 'ssh', hostname,
+                              'sudo', '-v', '; stty echo'])
             shellCommand(downCmdline)
 
 
@@ -2197,11 +2248,10 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                 # configuration of packages do not pop up in the middle 
                 # of installation. We are going to update the configuration
                 # in /etc afterwards anyway.
-                shellCommand('/usr/bin/apt-get update', admin=True)
-                shellCommand(' '.join(['DEBIAN_FRONTEND=noninteractive',
-                                       '/usr/bin/apt-get','-y ',
-                                       'install',
-                                       ' '.join(projects)]),admin=True)
+                shellCommand(['/usr/bin/apt-get', 'update'], admin=True)
+                shellCommand(['DEBIAN_FRONTEND=noninteractive',
+                              '/usr/bin/apt-get','-y ',
+                              'install'] + projects, admin=True)
             elif context.host() == 'Darwin':
                 darwinNames = {
                     # translation of package names. It is simpler than
@@ -2213,7 +2263,8 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                         darwinPkgs += [ darwinNames[p] ]
                     else:
                         darwinPkgs += [ p ]
-                shellCommand('port install ' + ' '.join(darwinPkgs),admin=True)
+                shellCommand(['/opt/local/bin/port', 'install' ] \
+                                 + darwinPkgs,admin=True)
             elif context.host() == 'Fedora':
                 fedoraNames = {
                     'libbz2-dev': 'bzip2-devel',
@@ -2227,8 +2278,7 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                         fedoraPkgs += [ p + 'el' ]
                     else:
                         fedoraPkgs += [ p ]
-                shellCommand('yum -y install ' \
-                                 + ' '.join(fedoraPkgs),admin=True)
+                shellCommand(['yum', '-y', 'install' ] + fedoraPkgs, admin=True)
             else:
                 raise Error("Use of package manager for '" \
                                 + context.host() + " not yet implemented.'")
@@ -2240,7 +2290,7 @@ def installDarwinPkg(image,target,pkg=None):
     installer.'''
     base, ext = os.path.splitext(image)
     volume = os.path.join('/Volumes',os.path.basename(base))
-    shellCommand('hdiutil attach ' + image)
+    shellCommand(['hdiutil', 'attach', image])
     if target != 'CurrentUserHomeDirectory':
         message = 'ATTENTION: You need administrator privileges on ' \
                 + 'the local machine to execute the following cmmand\n'
@@ -2253,10 +2303,9 @@ def installDarwinPkg(image,target,pkg=None):
         if len(pkgs) != 1:
             raise RuntimeError('ambiguous: not exactly one .pkg to install')
         pkg = pkgs[0]
-    cmdline = 'installer -pkg ' + os.path.join(volume,pkg) \
-            + ' -target "' + target + '"'
-    shellCommand(cmdline,admin)
-    shellCommand('hdiutil detach ' + volume)
+    shellCommand(['installer', '-pkg', os.path.join(volume,pkg),
+                  '-target "' + target + '"'], admin)
+    shellCommand(['hdiutil', 'detach', volume])
 
 
 def installLocalPackage(filename):
@@ -2264,9 +2313,9 @@ def installLocalPackage(filename):
     if context.host() == 'Darwin':
         installDarwinPkg(filename,context.value('darwinTargetVolume'))
     elif context.host() == 'Ubuntu':
-        shellCommand('dpkg -i ' + filename,admin=True)
+        shellCommand(['dpkg', '-i', filename], admin=True)
     elif context.host() == 'Fedora':
-        shellCommand('rpm -i ' + filename,admin=True)
+        shellCommand(['rpm', '-i', filename], admin=True)
     else:
         raise Error("Does not know how to install '" \
                         + filename + "' on " + context.host())
@@ -2390,17 +2439,17 @@ def linkPatPath(namePat, absolutePath):
 
 def linkPathBin(namePat, absolutePath):
     linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('binDir'),linkName), linkPath 
+    return os.path.join(context.value('binBuildDir'),linkName), linkPath 
 
 
 def linkPathEtc(namePat, absolutePath):
     linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('etcDir'),linkName), linkPath 
+    return os.path.join(context.value('etcBuildDir'),linkName), linkPath 
 
 
 def linkPathInclude(namePat, absolutePath):
     linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('includeDir'),linkName), linkPath 
+    return os.path.join(context.value('includeBuildDir'),linkName), linkPath 
 
 
 def linkPathLib(namePat, absolutePath):
@@ -2410,12 +2459,12 @@ def linkPathLib(namePat, absolutePath):
     if absolutePath:
         pathname, ext = os.path.splitext(absolutePath)    
     libname = libPrefix() + namePat + ext 
-    return os.path.join(context.value('libDir'),libname), absolutePath
+    return os.path.join(context.value('libBuildDir'),libname), absolutePath
 
 
 def linkPathShare(namePat, absolutePath):
     linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('shareDir'),linkName), linkPath 
+    return os.path.join(context.value('shareBuildDir'),linkName), linkPath 
 
 
 def make(names, targets, dbindex=None):
@@ -2457,8 +2506,8 @@ def makeProject(name,targets,dependencies={}):
             os.makedirs(objDir)
         os.chdir(objDir)
     errcode = 0
-    cmdline = 'export PATH=' + context.value('binDir') \
-        + ':${PATH} ; make -f ' + makefile
+    cmdline = ['export PATH=' + ':'.join(context.searchPath()) + ' ;',
+               'make', '-f', makefile]
     try:        
         status = 'prereqs'
         if len(dependencies) > 0:
@@ -2484,7 +2533,7 @@ def makeProject(name,targets,dependencies={}):
         if len(targets) > 0:
             for target in targets:
                 status = target
-                shellCommand(cmdline + ' ' + target)
+                shellCommand(cmdline + [ target ])
         else:
             shellCommand(cmdline)
     except Error, e:
@@ -2556,35 +2605,33 @@ def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
     dirname, hostname, username, protocol = splitRemotePath(remoteCachePath)
     if protocol and protocol.startswith('http'):
         # We are accessing the remote machine through http
-        downCmdline = 'curl --create-dirs'
+        downCmdline = ['curl', '--create-dirs']
         for f in filenames:
             if f.startswith('http'):
                 pathname = f
             else:
                 pathname = context.remoteCachePath(f)
-            downCmdline += ' ' + ' '.join(['-o',
-                       pathname.replace(remoteCachePath,cachePath),
-                                           pathname])
+            downCmdline += ['-o', pathname.replace(remoteCachePath,cachePath),
+                            pathname ]
     else:
         # We are accessing the remote machine through a mounted
         # drive or through ssh.
         prefix = ""
         if username:
             prefix = prefix + username + '@'
-        cmdline = "rsync -avuzb"
+        cmdline = [ findRSync(), '-avuzb' ]
         if relative or not cacheDir:
-            cmdline = cmdline + 'R'
+            cmdline = [ findRSync(), '-avuzbR' ]
         if hostname:
             # We are accessing the remote machine through ssh
             prefix = prefix + hostname + ':'
-            cmdline = cmdline + " --rsh=ssh"
+            cmdline += [ '--rsh=ssh' ]
         if admin:
-            cmdline = cmdline + ' --rsync-path "sudo rsync"'
+            cmdline += [ '--rsync-path "sudo rsync"' ]
 
-        upCmdline = cmdline + ' ././' + ' ././'.join(filenames) \
-            + ' ' + remoteCachePath
+        upCmdline = cmdline + [ '././' + ' ././'.join(filenames),
+                                remoteCachePath ]
 
-        downCmdline = cmdline 
         pathnames = []
         for f in filenames:            
             if f.startswith(context.value('remoteSiteTop')):
@@ -2594,7 +2641,7 @@ def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
             else:
                 pathnames += [ dirname + '/./' + f ]
         sources = "'" + prefix + ' '.join(pathnames) + "'"
-        downCmdline = ' '.join([ cmdline, sources, cachePath ])
+        downCmdline = cmdline + [ sources, cachePath ]
 
     return downCmdline, upCmdline
 
@@ -2640,17 +2687,17 @@ def shellCommand(commandLine, admin=False):
                 raise Error("admin command without a fully quaified path: " \
                                 + commandLine + '\n')
         # ex: su username -c 'sudo port install icu'        
-        cmdline = 'sudo ' + commandLine
+        cmdline = [ '/usr/bin/sudo' ] + commandLine
     else:
         cmdline = commandLine
     if log:
-        log.write(cmdline + '\n')
+        log.write(' '.join(cmdline) + '\n')
         log.flush()
     else:
-        sys.stdout.write(cmdline + '\n')
+        sys.stdout.write(' '.join(cmdline) + '\n')
         sys.stdout.flush()
     if not doNotExecute:
-        cmd = subprocess.Popen(cmdline,shell=True,
+        cmd = subprocess.Popen(' '.join(cmdline),shell=True,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
         line = cmd.stdout.readline()
@@ -2664,7 +2711,8 @@ def shellCommand(commandLine, admin=False):
             line = cmd.stdout.readline()
         cmd.wait()
         if cmd.returncode != 0:
-            raise Error("unable to complete: " + cmdline + '\n',cmd.returncode)
+            raise Error("unable to complete: " + ' '.join(cmdline) + '\n',
+                        cmd.returncode)
 
 
 def sortBuildConfList(dbPathnames,parser):
@@ -2905,8 +2953,8 @@ def pubBuild(args):
     logstamp = stampfile(context.logname())
     if not os.path.exists(os.path.dirname(context.cachePath(logstamp))):
         os.makedirs(os.path.dirname(context.cachePath(logstamp)))
-    shellCommand('install -m 644 ' + context.logname() \
-                     + ' ' + context.logPath(logstamp))
+    shellCommand(['install', '-m', '644', context.logname(),
+                  context.logPath(logstamp)])
     if uploadResults:
         upload([ logstamp ])
 
@@ -2937,9 +2985,9 @@ def pubCollect(args):
     copySrcPackages = None
     srcPackages = findFiles(context.value('buildTop'),'.tar.bz2')
     if len(srcPackages) > 0:
-        copySrcPackages = ' '.join(['rsync',
-                                    ' '.join(srcPackages),
-                                    srcPackageDir])
+        copySrcPackages = ' '.join([ findRSync(),
+                                     ' '.join(srcPackages),
+                                     srcPackageDir])
     preExcludeIndices = []
     copyBinPackages = None
     if context.host() in extensions:
@@ -2947,9 +2995,9 @@ def pubCollect(args):
         preExcludeIndices = findFiles(context.value('buildTop'),ext[0])
         binPackages = findFiles(context.value('buildTop'),ext[1])
         if len(binPackages) > 0:
-            copyBinPackages = ' '.join(['rsync',
-                                        ' '.join(binPackages),
-                                        packageDir])
+            copyBinPackages = ' '.join([ findRSync(),
+                                         ' '.join(binPackages),
+                                         packageDir])
     preExcludeIndices += findFiles(context.value('srcTop'),'index.xml')
     # We exclude any project index files that has been determined 
     # to be irrelevent to the collection being built.
@@ -2964,9 +3012,9 @@ def pubCollect(args):
             indices += [ index ]
     # Create the index and checks it is valid according to the schema. 
     createIndexPathname(context.dbPathname(),indices)
-    shellCommand('xmllint --noout --schema ' \
-                   + context.derivedEtc('index.xsd') \
-                   + ' ' + context.dbPathname())
+    shellCommand(['xmllint', '--noout', '--schema ',
+                  context.derivedEtc('index.xsd'),
+                  context.dbPathname()])
     # We should only copy the index file after we created it.
     if copyBinPackages:
         shellCommand(copyBinPackages)
@@ -3059,6 +3107,7 @@ def pubInit(args):
     configVar(context.environ.values())
     index.validate()
 
+
 def pubInstall(args):
     '''install                Install a package on the local system.
     '''
@@ -3146,14 +3195,15 @@ def pubStatus(args):
                 while line != '':
                     look = re.match('#\s+([a-z]+):\s+(\S+)',line)
                     if look:
-                       sys.stdout.write(':'.join([r,look.group(1),
-                                                  look.group(2)]) + '\n')
+                        sys.stdout.write(' '.join([
+                                    look.group(1).capitalize()[0],
+                                    r, look.group(2)]) + '\n')
                     elif re.match('# Untracked files:',line):
                         untracked = True
                     elif untracked:
                         look = re.match('#	(\S+)',line)
                         if look:
-                            sys.stdout.write(':'.join([r,'?',
+                            sys.stdout.write(' '.join(['?', r,
                                                        look.group(1)]) + '\n')
                     line = cmd.stdout.readline()
                 cmd.wait()
@@ -3425,7 +3475,7 @@ def unpack(pkgfilename):
         d = 'j'
     elif pkgfilename.endswith('.gz'):
         d = 'z'
-    shellCommand('tar ' + d + 'xf ' + pkgfilename)    
+    shellCommand(['tar', d, 'xf', pkgfilename])    
     return os.path.basename(os.path.splitext(
                os.path.splitext(pkgfilename)[0])[0])
 
