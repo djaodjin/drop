@@ -54,7 +54,7 @@ install:: $(etcs)
 
 install:: $(logs)
 	$(if $^,$(installDirs) $(logDir))
-	$(if $^,dstamp install $(filter-out regression.log,$^) $(logDir))
+	$(if $^,$(binBuildDir)/dstamp install $(filter-out regression.log,$^) $(logDir))
 
 install:: $(resources)
 	$(if $^,$(installDirs) $(resourcesDir))
@@ -129,21 +129,21 @@ $(project)-$(version)::
 		&& ./configure --prefix=${buildUsrLocalDir}
 	cd $(basename $(basename $<)) && ${MAKE} install
 	$(installDirs) ${buildInstallDir}
-	buildpkg --version=$(subst $(project)-,,$(basename $(basename $<))) \
+	$(buildpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/index.xml ${buildInstallDir}
 
 %$(distExtFedora): %.tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
 	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
-	buildpkg --version=$(subst $(project)-,,$(basename $(basename $<))) \
+	$(buildpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/index.xml $(basename $@)
 
 %$(distExtUbuntu): %.tar.bz2
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
 	cd $(basename $(basename $<)) \
-		&& buildpkg \
+		&& $(buildpkg) \
 		 --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/index.xml $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')

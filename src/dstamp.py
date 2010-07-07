@@ -32,7 +32,14 @@
 
 __version__ = None
 
-import datetime, dws, optparse, os, shutil, sys
+import datetime, optparse, os, shutil, sys
+
+# We donot want to install dws.py alongside dws in *binDir* and rely
+# on the search path to find it. Thus dws is imported directly through 
+# a load_source() command here.
+import imp
+dws = imp.load_source('dws',
+   os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
 
 doNotExecute = True
 

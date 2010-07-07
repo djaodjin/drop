@@ -25,6 +25,10 @@
 
 .DEFAULT_GOAL 	:=	all
 
+# We cannot initialize buildpkg to $(binBuildDir)/buildpkg, 
+# else the drop package cannot be built. See comments associated
+# to searchPath() in dws.py
+buildpkg	:=	buildpkg
 ibtool          :=      /Developer/usr/bin/ibtool
 installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -p -m 644

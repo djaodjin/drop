@@ -53,13 +53,16 @@ dws.book: dws
 
 include $(srcDir)/src/suffix.mk
 
-install:: dws.py dstamp.py $(srcDir)/src/prefix.mk \
+install:: $(srcDir)/src/prefix.mk \
 		$(srcDir)/src/suffix.mk \
 		$(srcDir)/src/configure.sh \
 		$(srcDir)/src/index.xsd
-	$(installFiles) $(filter %.py,$^) $(binDir)
 	$(installDirs)  $(etcDir)/dws
 	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(etcDir)/dws
+
+install:: dws.py dstamp.py
+	$(installDirs)  $(libDir)/python
+	$(installFiles) $(filter %.py,$^) $(libDir)/python
 
 install:: dws
 	$(installDirs) $(resourcesDir)

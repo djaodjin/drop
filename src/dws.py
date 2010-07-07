@@ -341,8 +341,7 @@ class Context:
         configFile.close()
 
     def searchPath(self):
-        # \todo should we add binDir here?
-        return [ self.value('binBuildDir') ] \
+        return [ self.value('binBuildDir'), self.value('binDir') ] \
             + os.environ['PATH'].split(':')
 
     def srcDir(self,name):
@@ -1661,7 +1660,8 @@ def createIndexPathname(dbIndexPathname,dbPathnames):
 def derivedRoots(name):
     '''Derives a list of directory names based on the PATH 
     environment variable.'''
-    # \todo use of context.searchPath() ?
+    # We want the actual value of *name*Dir and not one derived
+    # from binDir so we do not use context.searchPath() here.
     dirs = []
     for p in os.environ['PATH'].split(':'):
         dir = os.path.join(os.path.dirname(p),name)
@@ -2516,6 +2516,14 @@ def makeProject(name,targets,dependencies={}):
             os.makedirs(objDir)
         os.chdir(objDir)
     errcode = 0
+    # If we do not set PATH to *binBuildDir*:*binDir*:${PATH}
+    # and the install directory is not in PATH, then we cannot
+    # build a package for drop because 'make dist' depends
+    # on executables installed in *binDir* (dws, buildpkg, ...)
+    # that are not linked into *binBuildDir* at the time 
+    # 'cd drop ; make dist' is run. Note that it is not an issue
+    # for other projects since those can be explicitely depending
+    # on drop as a prerequisite.
     cmdline = ['export PATH=' + ':'.join(context.searchPath()) + ' ;',
                'make', '-f', makefile]
     try:        
@@ -3073,7 +3081,7 @@ def pubContext(args):
             dir, pathname = searchBackToRoot(args[0],
                    os.path.dirname(context.configFilename))
         except IOError:
-            pathname = os.path.join(context.value('etcDir'),'dws',args[0])
+            pathname = os.path.join(context.value('etcBuildDir'),'dws',args[0])
     sys.stdout.write(pathname)
 
 

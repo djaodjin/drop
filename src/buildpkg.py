@@ -39,7 +39,7 @@ __license__ = "FreeBSD"
 
 import re, os, subprocess, sys, glob, fnmatch, shutil, string, copy, getopt
 from os.path import basename, dirname, join, islink, isdir, isfile
-import hashlib, shutil, dws
+import hashlib, shutil
 
 Error = "buildpkg.Error"
 
@@ -613,6 +613,7 @@ def buildPackageSpecification(project,packageName):
 
 
 if __name__ == "__main__":
+    import imp
     from optparse import OptionParser
 
     parser = OptionParser(description=
@@ -628,6 +629,9 @@ if __name__ == "__main__":
                       action='store', help='Set specification of the package')
 
     options, args = parser.parse_args()
+
+    dws = imp.load_source('dws',
+       os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
 
     context = dws.Context()
     context.locate()
