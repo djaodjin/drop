@@ -2548,6 +2548,10 @@ def makeProject(name,targets,dependencies={}):
         # a change to override defaults for installTop, etc.
         for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
             name = context.value(dir + 'Dir')
+        # etcBuildDir is where dws/prefix.mk, etc are linked into.
+        # If we don't set it up here, the "make" subprocess might look
+        # to hang though it is waiting for input.
+        name = context.value('etcBuildDir')
         if len(targets) > 0:
             for target in targets:
                 status = target

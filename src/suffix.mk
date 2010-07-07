@@ -114,10 +114,10 @@ $(project)-$(version)::
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm $@/Makefile
 	$(installDirs) $@/etc
-	$(installExecs) $(shell dws context configure.sh) \
+	$(installExecs) $(etcBuildDir)/dws/configure.sh \
 		$(basename $(basename $@))/configure
 	$(installExecs) $(shell which dws) $@
-	$(installFiles) $(shell dws context prefix.mk) $(shell dws context suffix.mk) $(shell dws context configure.sh) $@/etc
+	$(installFiles) $(etcBuildDir)/dws/prefix.mk $(etcBuildDir)/dws/suffix.mk $(etcBuildDir)/dws/configure.sh $@/etc
 
 
 # 'make install' might just do nothing and we still want to build an empty
