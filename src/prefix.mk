@@ -47,13 +47,13 @@ logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 
 resourcesDir	?=	$(siteTop)/resources
 
-incSearchPath	:=	$(srcDir)/include $(buildIncludeDir) $(includeDir)
-libSearchPath	:=	$(buildLibDir) $(libDir)
+incSearchPath	:=	$(srcDir)/include $(includeBuildDir) $(includeDir)
+libSearchPath	:=	$(libBuildDir) $(libDir)
 
 CFLAGS		:=	-g -MMD -Wall
 CXXFLAGS	:=	-g -MMD -Wall
 CPPFLAGS	+=	$(patsubst %,-I%,$(incSearchPath))
-LDFLAGS		+=	$(patsubst %,-I%,$(libSearchPath))
+LDFLAGS		+=	$(patsubst %,-L%,$(libSearchPath))
 
 # Configuration for distribution packages
 

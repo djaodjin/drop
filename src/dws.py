@@ -2119,7 +2119,12 @@ def findRSync():
     through a project.'''
     rsync = os.path.join(context.value('binBuildDir'),'rsync')
     if not os.path.exists(rsync):
-        index = IndexProjects(context,
+        # We do not use validateControls() here because dws in not
+        # a project in *srcTop* and does not exist on the remote machine. 
+        # We use findBin() and linkContext() directly also because it looks
+        # weird when the script prompts for installing a non-existent dws 
+        # project before looking for the rsync prerequisite.
+        dbindex = IndexProjects(context,
                           '''<?xml version="1.0" ?>
 <projects>
   <project name="dws">
@@ -2131,8 +2136,13 @@ def findRSync():
   </project>
 </projects>
 ''')
-        dgen = DependencyGenerator([ 'dws' ],[],[])
-        index.parse(dgen)
+        rsyncs, version = findBin([ [ 'rsync', None ] ])        
+        if len(rsyncs) == 0 or not rsyncs[0][1]:
+            install(['rsync'],{},dbindex)
+        name, absolutePath = rsyncs.pop()
+        linkName, linkPath = linkPathBin(name, absolutePath)
+        linkContext(linkPath,linkName)
+
     return rsync
 
 
