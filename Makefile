@@ -35,7 +35,8 @@ include $(shell \
 	done ; \
 	echo $$config)
 
-srcDir	:=	$(srcTop)/drop
+srcDir		:=	$(srcTop)/drop
+dropHelperDir	:=	$(srcTop)/drop/src
 
 include $(srcDir)/src/prefix.mk
 

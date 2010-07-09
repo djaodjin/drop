@@ -1698,6 +1698,10 @@ def findBin(names,excludes=[]):
        per executable instead of per-project.
        2. The prototype of findBin() needs to match the ones of 
        findInclude() and findLib().
+
+       Implementation Note: Since the boostrap relies on finding rsync, 
+       it is possible we invoke this function with log == None hence
+       the tests for it.
     '''
     results = []
     version = None
@@ -1713,14 +1717,16 @@ def findBin(names,excludes=[]):
         # does not mangle the search for an executable so we preemptively 
         # trigger an interactive session.
         context.value('binBuildDir')
-        log.write(namePat + '... ')
-        log.flush()
+        if log:
+            log.write(namePat + '... ')
+            log.flush()
         found = False
         if namePat.endswith('.app'):
             bin = os.path.join('/Applications',namePat)
             if os.path.isdir(bin):
                 found = True
-                log.write('yes\n')
+                if log:
+                    log.write('yes\n')
                 results.append((namePat, bin))
         else:
             for p in context.searchPath():
@@ -1761,17 +1767,22 @@ def findBin(names,excludes=[]):
                                 break
                         if not excluded:
                             version = numbers[0]
-                            log.write(str(version) + '\n')
+                            if log:
+                                log.write(str(version) + '\n')
                             results.append((namePat, bin))
                         else:
-                            log.write('excluded (' + str(numbers[0]) + ')\n')
+                            if log:
+                                log.write('excluded (' + str(numbers[0]) \
+                                              + ')\n')
                     else:
-                        log.write('yes\n')
+                        if log:
+                            log.write('yes\n')
                         results.append((namePat, bin))
                     found = True
                     break
         if not found:
-            log.write('no\n')
+            if log:
+                log.write('no\n')
     return results, version
 
 
@@ -2989,6 +3000,9 @@ def pubCollect(args):
                        (example: dws --exclude test collect)
     '''
 
+    global log 
+    log = LogFile(context.logname(),nolog)
+
     # Create the distribution directory, i.e. where packages are stored.
     packageDir = context.cachePath(context.host())
     if not os.path.exists(packageDir):
@@ -3007,9 +3021,9 @@ def pubCollect(args):
     copySrcPackages = None
     srcPackages = findFiles(context.value('buildTop'),'.tar.bz2')
     if len(srcPackages) > 0:
-        copySrcPackages = ' '.join([ findRSync(),
-                                     ' '.join(srcPackages),
-                                     srcPackageDir])
+        copySrcPackages = [ findRSync(),
+                            ' '.join(srcPackages),
+                            srcPackageDir]
     preExcludeIndices = []
     copyBinPackages = None
     if context.host() in extensions:
@@ -3017,9 +3031,9 @@ def pubCollect(args):
         preExcludeIndices = findFiles(context.value('buildTop'),ext[0])
         binPackages = findFiles(context.value('buildTop'),ext[1])
         if len(binPackages) > 0:
-            copyBinPackages = ' '.join([ findRSync(),
-                                         ' '.join(binPackages),
-                                         packageDir])
+            copyBinPackages = [ findRSync(),
+                                ' '.join(binPackages),
+                                packageDir ]
     preExcludeIndices += findFiles(context.value('srcTop'),'index.xml')
     # We exclude any project index files that has been determined 
     # to be irrelevent to the collection being built.
@@ -3497,7 +3511,7 @@ def unpack(pkgfilename):
         d = 'j'
     elif pkgfilename.endswith('.gz'):
         d = 'z'
-    shellCommand(['tar', d, 'xf', pkgfilename])    
+    shellCommand(['tar', d + 'xf', pkgfilename])    
     return os.path.basename(os.path.splitext(
                os.path.splitext(pkgfilename)[0])[0])
 

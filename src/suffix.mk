@@ -52,9 +52,13 @@ install:: $(etcs)
 	$(if $^,$(installDirs) $(etcDir))
 	$(if $^,$(installFiles) $^ $(etcDir))
 
+# install the stamped result logs and builds the regression log in-place.
 install:: $(logs)
 	$(if $^,$(installDirs) $(logDir))
-	$(if $^,$(binBuildDir)/dstamp install $(filter-out regression.log,$^) $(logDir))
+	$(if $^,$(binBuildDir)/dstamp install $^ $(logDir))
+	$(if $^,-dregress -o $(logDir)/regression.log \
+	    $(wildcard $(logDir)/results-*.log)       \
+	    $(wildcard $(srcDir)/data/results-*.log))
 
 install:: $(resources)
 	$(if $^,$(installDirs) $(resourcesDir))
@@ -98,6 +102,11 @@ endef
 $(project)-$(version).tar.bz2: $(project)-$(version)
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' -f $@ $<
 
+# The drop project cannot depend on itslef and thus cannot rely
+# on $(etcBuildDir)/dws to exist. The following variable is overriden 
+# in drop/Makefile to accomodate the special case.
+dropHelperDir	?=	$(etcBuildDir)/dws
+
 $(project)-$(version)::
 	$(if $(patchedSources),          \
 		$(installDirs) $@/cache \
@@ -114,10 +123,10 @@ $(project)-$(version)::
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm $@/Makefile
 	$(installDirs) $@/etc
-	$(installExecs) $(etcBuildDir)/dws/configure.sh \
+	$(installExecs) $(dropHelperDir)/configure.sh \
 		$(basename $(basename $@))/configure
 	$(installExecs) $(shell which dws) $@
-	$(installFiles) $(etcBuildDir)/dws/prefix.mk $(etcBuildDir)/dws/suffix.mk $(etcBuildDir)/dws/configure.sh $@/etc
+	$(installFiles) $(dropHelperDir)/prefix.mk $(dropHelperDir)/suffix.mk $(dropHelperDir)/configure.sh $@/etc
 
 
 # 'make install' might just do nothing and we still want to build an empty
@@ -150,14 +159,6 @@ $(project)-$(version)::
 
 # Rules to build unit test logs
 # -----------------------------
-check: regression.log
-	$(installDirs) $(logDir)
-	$(installFiles) regression.log $(logDir)
-
-regression.log: $(wildcard $(logDir)/results-*.log) \
-		$(wildcard $(srcDir)/data/results-*.log)
-	-dregress -o $@ $^ 
-
 .PHONY: results.log
 
 # \todo When results.log depends on $(wildcard *Test.cout), it triggers 
