@@ -529,7 +529,7 @@ class Unserializer(PdbHandler):
             inc = inc.replace('+','\+')
             if re.match(inc,projectName):
                 for exc in self.excludePats:
-                    if re.match(exc,projectName):
+                    if re.match(exc.replace('+','\+'),projectName):
                         return False
                 return True
         return False
@@ -809,7 +809,7 @@ class DependencyGenerator(Unserializer):
         for name in sorted:
             found = False
             for excludePat in self.excludePats:
-                if re.match(excludePat,name):
+                if re.match(excludePat.replace('+','\+'),name):
                     found = True
                     break
             if not found:
@@ -900,7 +900,7 @@ class HostPlatform(Variable):
             for versionPath in [ '/proc/version', '/etc/apt/sources.list' ]: 
                 # If we can't determine the host platform for /proc/version,
                 # let's try to guess from the package manager installed.
-                if os.path.exits(versionPath):
+                if os.path.exists(versionPath):
                     version = open(versionPath)
                     line = version.readline()
                     while line != '':

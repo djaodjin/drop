@@ -57,8 +57,7 @@ install:: $(logs)
 	$(if $^,$(installDirs) $(logDir))
 	$(if $^,$(binBuildDir)/dstamp install $^ $(logDir))
 	$(if $^,-dregress -o $(logDir)/regression.log \
-	    $(wildcard $(logDir)/results-*.log)       \
-	    $(wildcard $(srcDir)/data/results-*.log))
+	    $(logDir)/results-*.log $(wildcard $(srcDir)/data/results-*.log))
 
 install:: $(resources)
 	$(if $^,$(installDirs) $(resourcesDir))
