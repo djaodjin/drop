@@ -2063,17 +2063,26 @@ def findLib(names,excludes=[]):
                                            numbers[0]))
                 else:
                     libs.append((os.path.join(libSysDir,libname),None))
-            if len(libs) > 0:
-                if libs[0][1]:
-                    version = libs[0][1] 
-                look = re.match('.*' + libPrefix() + namePat + '(.+)',
-                                libs[0][0])
+            if len(libs) > 0:             
+                candidate = libs[0][0]
+                for lib in libs:
+                    if lib[0].endswith(libStaticSuffix()):
+                        # Give priority to static libraries
+                        candidate = lib[0]
+                        if lib[1]:
+                            version = lib[1] 
+                        break
+                    elif lib[1]:
+                        # Then libraries with an associated version number
+                        version = lib[1] 
+                        candidate = lib[0] 
+                look = re.match('.*' + libPrefix() + namePat + '(.+)',candidate)
                 if look:                        
                     suffix = look.group(1)
                     log.write(suffix + '\n')
                 else:
                     log.write('yes (no suffix?)\n')
-                results.append((namePat, libs[0][0]))
+                results.append((namePat, candidate))
                 found = True
                 break
         if not found:
