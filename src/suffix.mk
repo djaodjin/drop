@@ -85,8 +85,7 @@ install:: $(resources)
 
 buildInstallDir	:= 	$(CURDIR)/install
 buildUsrLocalDir:=	$(buildInstallDir)/usr/local
-dists		?=	$(project)-$(version)$(distExt$(distHost)) \
-			$(project)-$(version).tar.bz2
+dists		?=	$(binDist) $(project)-$(version).tar.bz2
 
 dist:: $(dists)
 

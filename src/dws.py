@@ -2039,7 +2039,7 @@ def findLib(names,excludes=[]):
             libs = []
             libPat = libPrefix() + namePat.replace('+','\+') + suffix
             base, ext = os.path.splitext(namePat)
-            if len(ext) > 0:
+            if len(ext) > 0 and not ext.startswith('.*'):
                 libPat = namePat.replace('+','\+')
             for libname in findFirstFiles(libSysDir,libPat):
                 numbers = versionCandidates(libname)
@@ -2066,13 +2066,13 @@ def findLib(names,excludes=[]):
             if len(libs) > 0:
                 if libs[0][1]:
                     version = libs[0][1] 
-                    look = re.match('.*' + libPrefix() + namePat + '(.+)',
-                                    libs[0][0])
-                    if look:
-                        suffix = look.group(1)
+                look = re.match('.*' + libPrefix() + namePat + '(.+)',
+                                libs[0][0])
+                if look:                        
+                    suffix = look.group(1)
                     log.write(suffix + '\n')
                 else:
-                    log.write('yes\n')
+                    log.write('yes (no suffix?)\n')
                 results.append((namePat, libs[0][0]))
                 found = True
                 break
