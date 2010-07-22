@@ -122,8 +122,7 @@ $(project)-$(version)::
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm $@/Makefile
 	$(installDirs) $@/etc
-	$(installExecs) $(dropHelperDir)/configure.sh \
-		$(basename $(basename $@))/configure
+	$(installExecs) $(dropHelperDir)/configure.sh $@/configure
 	$(installExecs) $(shell which dws) $@
 	$(installFiles) $(dropHelperDir)/prefix.mk $(dropHelperDir)/suffix.mk $(dropHelperDir)/configure.sh $@/etc
 

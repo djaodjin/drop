@@ -2516,7 +2516,7 @@ def make(names, targets, dbindex=None):
             makeProject(name,targets)
 
 
-def makeProject(name,targets,dependencies={}):
+def makeProject(name,options,dependencies={}):
     '''Create links for prerequisites when necessary, then issue a make 
     command and log output.'''
     log.header(name)
@@ -2527,6 +2527,13 @@ def makeProject(name,targets,dependencies={}):
             os.makedirs(objDir)
         os.chdir(objDir)
     errcode = 0
+    targets = []
+    overrides = []
+    for opt in options:
+        if re.match('\S+=.*',opt):
+            overrides += [ opt ]
+        else:
+            targets += [ opt ]
     # If we do not set PATH to *binBuildDir*:*binDir*:${PATH}
     # and the install directory is not in PATH, then we cannot
     # build a package for drop because 'make dist' depends
@@ -2566,7 +2573,7 @@ def makeProject(name,targets,dependencies={}):
         if len(targets) > 0:
             for target in targets:
                 status = target
-                shellCommand(cmdline + [ target ])
+                shellCommand(cmdline + [ target ] + overrides)
         else:
             shellCommand(cmdline)
     except Error, e:
