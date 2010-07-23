@@ -35,7 +35,7 @@
 __version__ = None
 
 import datetime, hashlib, re, os, optparse, shutil
-import socket, subprocess, sys, tempfile, urllib2
+import socket, subprocess, sys, tempfile, urllib2, urlparse
 import xml.dom.minidom, xml.sax
 import cStringIO
 
@@ -113,7 +113,14 @@ class Context:
                   default='')
         installTop = Pathname('installTop',
                     'Root of the tree for installed bin/, include/, lib/, ...',
-                          default=os.getcwd())
+                          siteTop,default='')
+        # We use installTop (previously siteTop), such that a command like
+        # "dws build remoteIndexFile *siteTop*" run from a local build 
+        # directory creates intermediate and installed files there while
+        # checking out the sources under siteTop. 
+        # It might just be my preference...
+        # \todo we cannot have a dependency siteTop -> installTop -> buildTop
+        #       right now because the user prompt logic is not recursive :(.
         buildTop = Pathname('buildTop',
                     'Root of the tree where intermediate files are created.',
                             siteTop,default='build')
@@ -1791,7 +1798,8 @@ def findCache(names):
     is a dictionnary of file names used as key and the associated checksum.'''
     results = []
     version = None
-    for name in names:
+    for pathname in names:
+        name = os.path.basename(urlparse.urlparse(pathname).path)
         log.write(name + "... ")
         log.flush()
         fullName = context.cachePath(name)
@@ -2208,8 +2216,8 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                         os.makedirs(dir)
                     downloads += [ filename ]
         remoteCachePath = context.remoteCachePath()
-        dirname, hostname, username, protocol = splitRemotePath(remoteCachePath)
-        if protocol and protocol.startswith('http'):
+        uri = urlparse.urlparse(remoteCachePath)
+        if uri.scheme and remoteCachePath.startswith('http'):
             for remotename in downloads:
                 if not remotename.startswith('http'):
                     remotename = context.remoteCachePath(remotename)
@@ -2222,7 +2230,7 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                 local.close()
                 remote.close()                
         else:
-            downCmdline, upCmdline = remoteSyncCommand(downloads,cacheDir,
+            downCmdlines, upCmdline = remoteSyncCommand(downloads,cacheDir,
                                                        admin,relative)
             # The following command will promt for the sudo password and extend
             # the grace period for 5min such that the following rsync command
@@ -2230,9 +2238,10 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
             # and locks up the system.
             # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
             if admin:
-                shellCommand(['stty -echo;', 'ssh', hostname,
+                shellCommand(['stty -echo;', 'ssh', uri.netloc,
                               'sudo', '-v', '; stty echo'])
-            shellCommand(downCmdline)
+            for d in downCmdlines:
+                shellCommand(d)
 
 
 def install(packages, extraFetches={}, dbindex=None, force=False):
@@ -2651,48 +2660,58 @@ def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
     if not cacheDir:
         cachePath = context.cachePath('')
     remoteCachePath = context.remoteCachePath()
-    dirname, hostname, username, protocol = splitRemotePath(remoteCachePath)
-    if protocol and protocol.startswith('http'):
-        # We are accessing the remote machine through http
-        downCmdline = ['curl', '--create-dirs']
-        for f in filenames:
-            if f.startswith('http'):
-                pathname = f
-            else:
-                pathname = context.remoteCachePath(f)
-            downCmdline += ['-o', pathname.replace(remoteCachePath,cachePath),
-                            pathname ]
-    else:
-        # We are accessing the remote machine through a mounted
-        # drive or through ssh.
-        prefix = ""
-        if username:
-            prefix = prefix + username + '@'
-        cmdline = [ findRSync(), '-avuzb' ]
-        if relative or not cacheDir:
-            cmdline = [ findRSync(), '-avuzbR' ]
-        if hostname:
-            # We are accessing the remote machine through ssh
-            prefix = prefix + hostname + ':'
-            cmdline += [ '--rsh=ssh' ]
-        if admin:
-            cmdline += [ '--rsync-path "sudo rsync"' ]
+    pathnames = []
+    for f in filenames:
+        # Convert all filenames to absolute urls
+        if f.startswith('http') or ':' in f:
+            pathnames += [ f ]
+        elif f.startswith('/'):
+            pathnames += [ '/.' + f ]
+        else:
+            pathnames += [ context.remoteCachePath('./' + f) ]
+    https = []
+    sshs = []
+    for p in pathnames:
+        # Splits between files downloaded through http and ssh.
+        if p.startswith('http'):
+            https += [ p ]
+        else:
+            sshs += [ p ]
+    httpCmds = []
+    for h in https:
+        # create download commands for all http files     
+        # \todo We currently assume that all packages downloaded through
+        #       curl end-up in cachePath/srcs.
+        uri = urlparse.urlparse(h)
+        outname = os.path.join(cachePath,'srcs',os.path.basename(uri.path))
+        httpCmds += [ ['curl', '--create-dirs' ] \
+                          + ['-o', outname, h ] ]
+    # Create the rsync command
+    uri = urlparse.urlparse(remoteCachePath)
+    username = None # \todo find out how urlparse is parsing ssh uris.
+    sources = []
+    for s in sshs:
+        sources += [ s.replace(uri.netloc,'') ]
+    # We are accessing the remote machine through a mounted
+    # drive or through ssh.
+    prefix = ""
+    if username:
+        prefix = prefix + username + '@'
+    cmdline = [ findRSync(), '-avuzb' ]
+    if relative or not cacheDir:
+        cmdline = [ findRSync(), '-avuzbR' ]
+    if uri.netloc:
+        # We are accessing the remote machine through ssh
+        prefix = prefix + uri.netloc + ':'
+        cmdline += [ '--rsh=ssh' ]
+    if admin:
+        cmdline += [ '--rsync-path "sudo rsync"' ]
+#    if uri.path:
+#        prefix = prefix + uri.path
+    upCmdline = cmdline + [ '././' + ' ././'.join(sshs), remoteCachePath ]
+    downCmdline = cmdline + ["'" + prefix + ' '.join(sources) + "'", cachePath ]
 
-        upCmdline = cmdline + [ '././' + ' ././'.join(filenames),
-                                remoteCachePath ]
-
-        pathnames = []
-        for f in filenames:            
-            if f.startswith(context.value('remoteSiteTop')):
-                pathnames += [ f[f.find(':') + 1:] ]
-            elif f.startswith('/'):
-                pathnames += [ '/.' + f ]
-            else:
-                pathnames += [ dirname + '/./' + f ]
-        sources = "'" + prefix + ' '.join(pathnames) + "'"
-        downCmdline = cmdline + [ sources, cachePath ]
-
-    return downCmdline, upCmdline
+    return httpCmds + [ downCmdline ], upCmdline
 
 
 def upload(filenames, cacheDir=None):
@@ -2700,7 +2719,7 @@ def upload(filenames, cacheDir=None):
     to the remote server. See the fetch function for downloading
     files from the remote server.
     '''
-    downCmdline, upCmdline = remoteSyncCommand(filenames,cacheDir)
+    downCmdlines, upCmdline = remoteSyncCommand(filenames,cacheDir)
     prev = os.getcwd()
     os.chdir(cachePath)
     shellCommand(upCmdline)
@@ -2785,29 +2804,6 @@ def sortBuildConfList(dbPathnames,parser):
     dbPrev.close()
     dbUpd.close()
     return dbNext
-
-
-def splitRemotePath(remoteDir=None):
-    '''returns a triplet (dirname, hostname, username) extracted 
-    out of a *remoteDir*'''
-    protocol = None
-    username = None
-    hostname = None
-    dirname = remoteDir
-    if not remoteDir:
-        dirname = context.remoteCachePath()
-    look = re.match('(\S+@)?(\S+):(\S+)',dirname)
-    if look:
-        if look.group(2).startswith('http'):
-            protocol = look.group(2)
-            sep = look.group(3)[2:].find('/')
-            hostname = look.group(3)[2: 2 + sep]
-            dirname = look.group(3)[2 + sep:]
-        else:
-           username = look.group(1)
-           hostname = look.group(2)
-           dirname = look.group(3)
-    return dirname, hostname, username, protocol
 
 
 def validateControls(repositories, dbindex=None, force=False):
@@ -3124,11 +3120,11 @@ def pubDuplicate(args):
                        *duplicateDir* on the local machine. 
     ''' 
     remoteCachePath = context.value('remoteSiteTop')
-    dirname, hostname, username, protocol = splitRemotePath(remoteCachePath)
-    pathnames = [ '/var/log', '/var/lib', dirname ]
+    uri = urlparse.urlparse(remoteCachePath)
+    pathnames = [ '/var/log', '/var/lib', uri.path ]
     duplicateDir = context.value('duplicateDir')
-    if hostname:
-        duplicateDir = os.path.join(duplicateDir,hostname)
+    if uri.netloc:
+        duplicateDir = os.path.join(duplicateDir,uri.netloc)
     if not os.path.exists(duplicateDir):
         os.makedirs(duplicateDir)
     fetch(pathnames,duplicateDir,force=True,admin=True,relative=True)
@@ -3270,7 +3266,8 @@ def pubStatus(args):
 
 
 def pubUpdate(args):
-    '''update                 Update projects installed in the workspace
+    '''update                 [ projectName ... ]
+                            Update projects installed in the workspace
     '''
     global log 
     log = LogFile(context.logname(),nolog)
