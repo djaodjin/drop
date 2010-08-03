@@ -3175,8 +3175,7 @@ def pubCreate(args):
         config.write('\tdenyCurrentBranch = ignore\n')
     config.close()
     index = open(os.path.join('index.xml'),'w')
-    index.write('''
-<?xml version="1.0" ?>
+    index.write('''<?xml version="1.0" ?>
 <projects>
   <project name="''' + projName + '''">
     <title></title>

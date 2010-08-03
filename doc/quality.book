@@ -115,7 +115,7 @@
       <tr><td>source code</td><td>makefiles</td></tr>
       <tr><td>self-contained</td><td>rely on external data sets</td></tr>
     </informaltable>
-    <para> Unit tests will typically start breaking and become deprecated as a project moves forward. As a result, relevant unit tests are the ones that can be run by an automated tool as part of the <link linkend="/contrib/fortylines/doc/usecases.book#snapshotBuilds">build process</link>.</para>
+    <para> Unit tests will typically start breaking and become deprecated as a project moves forward. As a result, relevant unit tests are the ones that can be run by an automated tool as part of the <link linkend="/whitepapers/doc/usecases.book#snapshotBuilds">build process</link>.</para>
     <para>Regardless of the original specification of a unit test, the web presentation engine provides both a test functional view and a test regression view. Functional views are useful in the release process to validate that tests pass on all systems and configurations. A failing test in the context of a functional view usually indicates an unanticipated error that must be further investigated. Regression views tie a change in behavior to a specific source revision and or system. Regression views will thus be most useful to contributors investigating why a previously passing test started to fail.
     </para>
     </section>
