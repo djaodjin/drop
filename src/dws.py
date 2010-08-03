@@ -163,9 +163,13 @@ class Context:
              'Directory where important directory trees on the remote machine are duplicated.',
                                             installTop,'duplicate'),
                          'siteTop': siteTop,
-                         'remoteSiteTop': remoteSiteTop,
-                         'remoteIndex': Pathname('remoteIndex',
+                         'indexFile': Pathname('indexFile',
              'Index file with projects dependencies information',
+                                          siteTop,
+              os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')),
+                         'remoteSiteTop': remoteSiteTop,
+                         'remoteIndexFile': Pathname('remoteIndexFile',
+             'Index file with projects dependencies information stored on the remote server',
                                           remoteSiteTop,
               os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')),
                          'remoteSrcTop': Pathname('remoteSrcTop',
@@ -185,9 +189,13 @@ class Context:
     def cachePath(self,name=None):
         '''Absolute path to a file in the local system cache
         directory hierarchy.'''
+        resourcesDir = os.path.join(self.value('siteTop'),'resources')
         if name:
-            return os.path.join(self.value('siteTop'),'resources',name)
-        return os.path.join(self.value('siteTop'),'resources')
+            relative = name.find('.' + os.sep)
+            if relative > 0:
+                return os.path.join(resourcesDir,name[relative + 2:])
+            return os.path.join(resourcesDir,name)
+        return resourcesDir
 
     def derivedEtc(self,name):
         '''Absolute path to a file which is part of drop but located
@@ -244,10 +252,16 @@ class Context:
 
     def dbPathname(self,remote=False):
         '''Absolute pathname to the project index file.'''
-        remoteIndex = self.value('remoteIndex')
         if remote:
-            return remoteIndex
-        return self.cachePath(os.path.basename(remoteIndex))
+            return self.value('remoteIndexFile')
+        else:
+            if not str(self.environ['indexFile']):                
+                default = str(self.environ['remoteIndexFile'])
+                if default:
+                    self.environ['indexFile'].default \
+                        = default.replace(context.value('remoteSiteTop'),
+                                          context.value('siteTop'))
+            return self.value('indexFile')
 
     def host(self):
         '''Returns the distribution on which the script is running.'''
@@ -303,7 +317,7 @@ class Context:
 
     def logname(self):
         '''Name of the XML tagged log file where sys.stdout is captured.''' 
-        filename = os.path.basename(self.value('remoteIndex'))
+        filename = os.path.basename(self.dbPathname())
         filename = os.path.splitext(filename)[0] + '.log'
         filename = self.logPath(filename)
         if not os.path.exists(os.path.dirname(filename)):
@@ -320,7 +334,7 @@ class Context:
         remoteIndex = indexPath
         if not ':' in remoteIndex:
             remoteIndex = os.path.realpath(remoteIndex)
-        context.environ['remoteIndex'].value = remoteIndex
+        context.environ['remoteIndexFile'].value = remoteIndex
         remoteCachePath = os.path.dirname(indexPath)
         if not ':' in remoteCachePath:
             remoteCachePath = os.path.realpath(remoteCachePath)
@@ -428,7 +442,7 @@ class IndexProjects:
         either by fetching it from a remote server or collecting
         projects indices locally.'''
         if not self.source:
-            self.source = self.context.dbPathname()     
+            self.source = self.context.dbPathname()
         if not self.source.startswith('<?xml'):
             # The source is an actual string, thus we do not fetch any file.
             if not os.path.exists(self.source) or force:
@@ -448,7 +462,7 @@ class IndexProjects:
                 elif selection == 'fetching' or force:
                     if not os.path.exists(os.path.dirname(self.source)):
                         os.makedirs(os.path.dirname(self.source))
-                    fetch({self.context.value('remoteIndex'): None},
+                    fetch({self.context.value('remoteIndexFile'): None},
                           os.path.dirname(self.source),True)                
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
@@ -3012,8 +3026,9 @@ def pubCollect(args):
                        (example: dws --exclude test collect)
     '''
 
-    global log 
-    log = LogFile(context.logname(),nolog)
+    # Collect cannot log or it will prompt for index file.
+    # global log 
+    # log = LogFile(context.logname(),nolog)
 
     # Create the distribution directory, i.e. where packages are stored.
     packageDir = context.cachePath(context.host())
@@ -3113,6 +3128,52 @@ def pubContext(args):
         except IOError:
             pathname = os.path.join(context.value('etcBuildDir'),'dws',args[0])
     sys.stdout.write(pathname)
+
+
+def pubCreate(args):
+    '''create               projectName
+                       Create a new directory and initial it as a project
+                       repository.
+    '''
+    prev = os.getcwd()
+    projName = args[0]
+    projDir = os.path.join(context.value('srcTop'),projName)
+    if os.path.exists(projDir):
+        raise Error(projDir + ' already exists')
+    os.makedirs(projDir)
+    os.chdir(projDir)
+    shellCommand(['git', 'init'])
+    hookSample = os.path.join('.git','hooks','post-update.sample')
+    hook = os.path.join('.git','hooks','post-update')
+    if os.path.isfile(hookSample):
+        shutil.move(hookSample,hook)
+    if os.path.isfile(hook):
+        shellCommand(['chmod', '755', hook])
+    config = open( os.path.join('.git','config'))
+    lines = config.readlines()
+    config.close()
+    foundReceive = -1
+    foundDenyCurrentBranch = -1
+    for i in range(0,len(lines)):
+        if re.match('[receive]',lines[i]):            
+            foundReceive = i
+        elif re.match('\s*denyCurrentBranch = (\S+)',lines[i]):
+            foundDenyCurrentBranch = i
+    config = open(os.path.join('.git','config'),'w')
+    if foundReceive >= 0:
+       if foundDenyCurrentBranch >= 0:
+           config.write(''.join(lines[0:foundDenyCurrentBranch]))
+           config.write('\tdenyCurrentBranch = ignore\n')
+           config.write(''.join(lines[foundDenyCurrentBranch + 1:]))
+       else:
+           config.write(''.join(lines[0:foundDenyCurrentBranch]))
+           config.write('\tdenyCurrentBranch = ignore\n')
+           config.write(''.join(lines[foundDenyCurrentBranch:]))
+    else:
+        config.write(''.join(lines))
+        config.write('[receive]\n')
+        config.write('\tdenyCurrentBranch = ignore\n')
+    config.close()
 
 
 def pubDuplicate(args):

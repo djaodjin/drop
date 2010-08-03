@@ -2,6 +2,7 @@
 <section xmlns="http://docbook.org/ns/docbook" 
 	 xmlns:xlink="http://www.w3.org/1999/xlink"
 	 xml:id="quality.book">
+  <!-- Navigate -->
   <info>
     <title>Source Code Quality</title>
     <date>February 13th, 2010</date>

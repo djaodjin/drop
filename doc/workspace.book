@@ -2,6 +2,7 @@
 <section xmlns="http://docbook.org/ns/docbook" 
 	 xmlns:xlink="http://www.w3.org/1999/xlink"
 	 xml:id="workspace.book">
+  <!-- Create -->
   <info>
     <title>Workspaces</title>
     <date>February 13th, 2010</date>
