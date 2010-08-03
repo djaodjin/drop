@@ -3174,6 +3174,22 @@ def pubCreate(args):
         config.write('[receive]\n')
         config.write('\tdenyCurrentBranch = ignore\n')
     config.close()
+    index = open(os.path.join('index.xml'),'w')
+    index.write('''
+<?xml version="1.0" ?>
+<projects>
+  <project name="''' + projName + '''">
+    <title></title>
+    <description></description>
+    <maintainer name="" email="" />
+    <repository>
+    </repository>
+  </project>
+</projects>
+''')
+    index.close()
+    shellCommand(['git', 'add', '.'])
+    shellCommand(['git', 'commit', '-m', "'initial index (template)'"])
 
 
 def pubDuplicate(args):
