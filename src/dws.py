@@ -426,7 +426,8 @@ class IndexProjects:
                 elif projName in dgen.patches:
                     vars += dgen.projects[projName].patch.vars
                 elif projName in dgen.packages:
-                    vars += dgen.projects[projName].packages[tags].vars
+                    distHost = context.value('distHost')                
+                    vars += dgen.projects[projName].packages[distHost].vars
         # Configure environment variables required by a project 
         # and that need to be present in ws.mk
         configVar(vars)
@@ -698,9 +699,10 @@ class DependencyGenerator(Unserializer):
                 for f in self.projects[target].patch.fetches:
                     fetches[f] = self.projects[target].patch.fetches[f]
             elif target in self.packages:
-                locals += self.projects[target].packages[tags].prerequisites(tags)
-                for f in self.projects[target].packages[tags].fetches:
-                    fetches[f] = self.projects[target].packages[tags].fetches[f]
+                distHost = context.value('distHost')                
+                locals += self.projects[target].packages[distHost].prerequisites(tags)
+                for f in self.projects[target].packages[distHost].fetches:
+                    fetches[f] = self.projects[target].packages[distHost].fetches[f]
         # Find all executables, libraries, etc. that are already 
         # installed on the local system.
         aggDeps = self.buildDeps
@@ -2694,12 +2696,15 @@ def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
     httpCmds = []
     for h in https:
         # create download commands for all http files     
-        # \todo We currently assume that all packages downloaded through
-        #       curl end-up in cachePath/srcs.
         uri = urlparse.urlparse(h)
-        outname = os.path.join(cachePath,'srcs',os.path.basename(uri.path))
-        httpCmds += [ ['curl', '--create-dirs' ] \
-                          + ['-o', outname, h ] ]
+        # \todo look to install curl and/or wget?
+        if context.value('distHost') == 'Darwin':
+            httpCmds += [ ['curl', '--create-dirs', 
+                           '-o', context.cachePath(uri.path), h ] ]
+        else:
+            httpCmds += [ [ '/usr/bin/wget', '-P', 
+                        os.path.dirname(context.cachePath(uri.path)) , h ] ]
+        
     # Create the rsync command
     uri = urlparse.urlparse(remoteCachePath)
     username = None # \todo find out how urlparse is parsing ssh uris.

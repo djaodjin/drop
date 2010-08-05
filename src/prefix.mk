@@ -107,6 +107,7 @@ vpath %.so	$(libSearchPath)
 vpath %.hh      $(incSearchPath)
 vpath %.cc 	$(srcDir)/src
 vpath %.py	$(srcDir)/src
+vpath %.sh	$(srcDir)/src
 vpath %.c 	$(srcDir)/src
 vpath %.m 	$(srcDir)/src
 vpath %.book 	$(srcDir)/doc
