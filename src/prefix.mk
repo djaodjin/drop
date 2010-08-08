@@ -36,7 +36,7 @@ installExecs	:=	/usr/bin/install -p -m 755
 FOP		:=	fop
 LN_S		:=	/bin/ln -fs
 SED		:=	sed
-SEED		:=	$(binBuildDir)/seed
+SEMILLA		:=	$(binBuildDir)/semilla
 XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1

@@ -2240,6 +2240,11 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                 localname = context.localDir(remotename)
                 if not os.path.exists(os.path.dirname(localname)):
                     os.makedirs(os.path.dirname(localname))
+                if log:
+                    log.write('fetching ' + remotename + '...\n')
+                else:
+                    sys.stdout.write('fetching ' + remotename + '...\n')
+                    sys.stdout.flush()
                 remote = urllib2.urlopen(urllib2.Request(remotename))
                 local = open(localname,'w')
                 local.write(remote.read())
@@ -2254,7 +2259,12 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
             # and locks up the system.
             # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
             if admin:
-                shellCommand(['stty -echo;', 'ssh', uri.netloc,
+                hostname = uri.netloc
+                if not uri.netloc:
+                    # If there is no protocol specified, the hostname
+                    # will be in uri.scheme (That seems like a bug in urlparse).
+                    hostname = uri.scheme
+                shellCommand(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
             for d in downCmdlines:
                 shellCommand(d)
@@ -2707,10 +2717,15 @@ def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
         
     # Create the rsync command
     uri = urlparse.urlparse(remoteCachePath)
+    hostname = uri.netloc
+    if not uri.netloc:
+        # If there is no protocol specified, the hostname
+        # will be in uri.scheme (That seems like a bug in urlparse).
+        hostname = uri.scheme
     username = None # \todo find out how urlparse is parsing ssh uris.
     sources = []
     for s in sshs:
-        sources += [ s.replace(uri.netloc,'') ]
+        sources += [ s.replace(hostname + ':','') ]
     # We are accessing the remote machine through a mounted
     # drive or through ssh.
     prefix = ""
@@ -2719,9 +2734,9 @@ def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
     cmdline = [ findRSync(), '-avuzb' ]
     if relative or not cacheDir:
         cmdline = [ findRSync(), '-avuzbR' ]
-    if uri.netloc:
+    if hostname:
         # We are accessing the remote machine through ssh
-        prefix = prefix + uri.netloc + ':'
+        prefix = prefix + hostname + ':'
         cmdline += [ '--rsh=ssh' ]
     if admin:
         cmdline += [ '--rsync-path "sudo rsync"' ]
@@ -3202,10 +3217,16 @@ def pubDuplicate(args):
     ''' 
     remoteCachePath = context.value('remoteSiteTop')
     uri = urlparse.urlparse(remoteCachePath)
-    pathnames = [ '/var/log', '/var/lib', uri.path ]
+    hostname = uri.netloc
+    if not uri.netloc:
+        # If there is no protocol specified, the hostname
+        # will be in uri.scheme (That seems like a bug in urlparse).
+        hostname = uri.scheme
+    pathnames = [ uri.path, '/var/www', '/var/log', 
+                  '/var/lib/awstats', '/var/lib/mailman' ]
     duplicateDir = context.value('duplicateDir')
-    if uri.netloc:
-        duplicateDir = os.path.join(duplicateDir,uri.netloc)
+    if hostname:
+        duplicateDir = os.path.join(duplicateDir,hostname)
     if not os.path.exists(duplicateDir):
         os.makedirs(duplicateDir)
     fetch(pathnames,duplicateDir,force=True,admin=True,relative=True)
