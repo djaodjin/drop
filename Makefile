@@ -25,10 +25,10 @@
 
 include $(shell \
 	d=`pwd` ; \
-	config='ws.mk_not_found' ; \
+	config='dws.mk_not_found' ; \
 	while [ $$d != '/' ] ; do \
-		if [ -f $$d/ws.mk ] ; then \
-			config=$$d/ws.mk ; \
+		if [ -f $$d/dws.mk ] ; then \
+			config=$$d/dws.mk ; \
 			break ; \
 		fi ; \
 		d=`dirname $$d` ; \
@@ -40,7 +40,7 @@ dropHelperDir	:=	$(srcTop)/drop/src
 
 include $(srcDir)/src/prefix.mk
 
-bins	:=	buildpkg dmake dregress dstamp dws
+bins	:=	buildpkg dregress dstamp dws
 shares	:=	drop.pdf
 
 drop.fo: drop.book
@@ -69,6 +69,7 @@ install:: dws
 	$(installDirs) $(resourcesDir)
 	$(installFiles) $^ $(resourcesDir)
 
+# There is already a package called dmake in Ubuntu :(.
 dmake:
 	echo '#!/bin/sh' > $@
 	echo 'dws make $$*' >> $@

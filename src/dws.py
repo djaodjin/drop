@@ -102,7 +102,8 @@ class Context:
     of the general dependency graph as most other routines depend at the least 
     on srcTop and buildTop.'''
 
-    configName = 'ws.mk'
+    configName = 'dws.mk'
+    indexName = 'dws.xml'
 
     def __init__(self):
         siteTop = Pathname('siteTop',
@@ -128,20 +129,8 @@ class Context:
              'Root of the tree where the source code under revision control lives on the local machine.',siteTop,default='reps')
         self.environ = { 'buildTop': buildTop, 
                          'srcTop' : self.srcTop,
-                         'binBuildDir': Pathname('binBuildDir',
-             'Root of the tree where executable prerequisites are linked',
-                                            buildTop),
-                         'includeBuildDir': Pathname('includeBuildDir',
-             'Root of the tree where include prerequisites are linked',
-                                                buildTop),
-                         'libBuildDir': Pathname('libBuildDir',
-             'Root of the tree where library prerequisites are linked',
-                                            buildTop),
                          'etcBuildDir': Pathname('etcBuildDir',
              'Root of the tree where configuration prerequisites are linked',
-                                            buildTop),
-                         'shareBuildDir': Pathname('shareBuildDir',
-             'Directory where the shared prerequisites are linked',
                                             buildTop),
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
@@ -186,6 +175,18 @@ class Context:
 
         self.buildTopRelativeCwd = None
 
+    def binBuildDir(self):
+        return os.path.join(self.value('buildTop'),'bin')
+
+    def includeBuildDir(self):
+        return os.path.join(self.value('buildTop'),'include')
+
+    def libBuildDir(self):
+        return os.path.join(self.value('buildTop'),'lib')
+
+    def shareBuildDir(self):
+        return os.path.join(self.value('buildTop'),'share')
+
     def cachePath(self,name=None):
         '''Absolute path to a file in the local system cache
         directory hierarchy.'''
@@ -199,10 +200,10 @@ class Context:
 
     def derivedEtc(self,name):
         '''Absolute path to a file which is part of drop but located
-        in the etc/dws subdirectory. We first search in etcDir/dws then
+        in the etc/dws subdirectory. We first search in etcBuildDir/dws then
         in dirname(dws)/../etc/dws. The second search is useful when drop
         is not part of the repository but a pre-installed prerequisite.'''
-        path = os.path.join(context.value('etcDir'),'dws',name)
+        path = os.path.join(context.value('etcBuildDir'),'dws',name)
         if not os.path.isfile(path):
             path = os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
                                                  '..','etc','dws',name))
@@ -232,7 +233,7 @@ class Context:
         '''Returns a project name derived out of the current directory.'''
         if not self.buildTopRelativeCwd:
             self.environ['buildTop'].default = os.path.dirname(os.getcwd())
-            log.write('no workspace configuration file could be ' \
+            writetext('no workspace configuration file could be ' \
                + 'found from ' + os.getcwd() \
                + ' all the way up to /. A new one, called ' + self.configName\
                + ', will be created in *buildTop* after that path is set.\n')
@@ -240,6 +241,9 @@ class Context:
                                                self.configName)
             self.save()
             self.locate()
+        #print "!!! os.getcwd()=" + str(os.getcwd())
+        #print "!!! buildTop=" + self.value('buildTop')
+        #print "!!! srcTop=" + self.value('srcTop')
         if os.path.realpath(os.getcwd()).startswith(
             os.path.realpath(self.value('buildTop'))):
                 top = os.path.realpath(self.value('buildTop'))
@@ -254,7 +258,7 @@ class Context:
         '''Absolute pathname to the project index file.'''
         if remote:
             return self.value('remoteIndexFile')
-        else:
+        else:            
             if not str(self.environ['indexFile']):                
                 default = str(self.environ['remoteIndexFile'])
                 if default:
@@ -268,8 +272,13 @@ class Context:
         return self.value('distHost')
 
     def localDir(self,remotename):
-        localname = remotename.replace(context.value('remoteSiteTop'),
-                                       context.value('siteTop'))
+        pos = remotename.find('./')
+        if pos > 0:
+            localname = os.path.join(context.value('siteTop'),
+                                     remotename[pos + 2:])
+        else:
+            localname = remotename.replace(context.value('remoteSiteTop'),
+                                           context.value('siteTop'))
         if localname.endswith('.git'):
             localname = localname[:-4]
         return localname
@@ -291,7 +300,7 @@ class Context:
             # \todo is this code still relevent?
             look = re.match('([^-]+)-.*',self.buildTopRelativeCwd)
             if look:
-                # Change of project name in index.xml on "make dist-src".
+                # Change of project name in *indexName* on "make dist-src".
                 # self.buildTopRelativeCwd = look.group(1)
                 None
         # -- Read the environment variables set in the config file.
@@ -362,7 +371,7 @@ class Context:
         configFile.close()
 
     def searchPath(self):
-        return [ self.value('binBuildDir'), self.value('binDir') ] \
+        return [ self.binBuildDir(), self.value('binDir') ] \
             + os.environ['PATH'].split(':')
 
     def srcDir(self,name):
@@ -376,7 +385,20 @@ class Context:
         if (isinstance(self.environ[name],Variable) 
             and self.environ[name].configure()):
             self.save()
-        return str(self.environ[name])
+        # recursively resolve any variables that might appear 
+        # in the variable value. We do this here and not while loading
+        # the context because those names can have been defined later.
+        value = str(self.environ[name])
+        look = re.match('(.*)\${(\S+)}(.*)',value)
+        while look:
+            indirect = ''
+            if look.group(2) in self.environ:
+                indirect = self.value(look.group(2))
+            elif look.group(2) in os.environ:
+                indirect = os.environ[look.group(2)]
+            value = look.group(1) + indirect + look.group(3)
+            look = re.match('(.*)\${(\S+)}(.*)',value)        
+        return value
 
 # Formats help for script commands. The necessity for this class 
 # can be understood by the following posts on the internet:
@@ -429,7 +451,7 @@ class IndexProjects:
                     distHost = context.value('distHost')                
                     vars += dgen.projects[projName].packages[distHost].vars
         # Configure environment variables required by a project 
-        # and that need to be present in ws.mk
+        # and that need to be present in the workspace make fragment
         configVar(vars)
         return reps, packages, fetches
         
@@ -544,6 +566,9 @@ class Unserializer(PdbHandler):
         self.projects = {}
 
     def asProject(self, name):
+        if not name in self.projects:
+            raise Error("unable to find " + name + "in the index file.",
+                        projectName=name) 
         return self.projects[name]
 
     def filters(self, projectName):
@@ -729,14 +754,18 @@ class DependencyGenerator(Unserializer):
                     if not exclude in aggDeps[local.name].excludes:
                         aggDeps[local.name].excludes += [ exclude ]
             else:
-                aggDeps[local.name] = Dependency(local.name,
-                                                 local.files,local.excludes)
+                aggDeps[local.name] = Dependency(local.name,local.files,
+                                                 local.excludes,local.target)
         newLevel = []
         self.missings = []
         for name in aggDeps:
             files, complete \
-                = findPrerequisites(aggDeps[name].files,aggDeps[name].excludes)
-            self.buildDeps[name] = Dependency(name,files,aggDeps[name].excludes)
+                = findPrerequisites(aggDeps[name].files,
+                                    aggDeps[name].excludes,
+                                    aggDeps[name].target)
+            self.buildDeps[name] = Dependency(name,files,
+                                              aggDeps[name].excludes,
+                                              aggDeps[name].target)
             for edge in self.levels[0]:
                 source = edge[1]
                 if (source in self.projects
@@ -864,7 +893,7 @@ class DerivedSetsGenerator(PdbHandler):
 
 
 class Variable:
-    '''Variable that ends up being defined in ws.mk and thus in Makefile.'''
+    '''Variable that ends up being defined in the workspace make fragment and thus in Makefile.'''
 
     def __init__(self,name,value=None,descr=None):
         self.name = name
@@ -888,8 +917,8 @@ class Variable:
         '''Set value to the string entered at the prompt.'''
         if self.value != None:
             return False
-        log.write('\n' + self.name + ':\n')
-        log.write(self.descr + '\n')
+        writetext('\n' + self.name + ':\n')
+        writetext(self.descr + '\n')
         if useDefaultAnswer:
             self.value = self.default
         else:
@@ -897,13 +926,14 @@ class Variable:
             if self.default:
                 defaultPrompt = " [" + self.default + "]"
             self.value = prompt("Enter a string" + defaultPrompt + ": ")
-        log.write(self.name + ' set to ' + self.value +'\n')
+        writetext(self.name + ' set to ' + self.value +'\n')
         return True
 
 class HostPlatform(Variable):
 
     def __init__(self,name,descr=None):
         Variable.__init__(self,name,None,descr)
+        self.distCodename = None
 
     def configure(self):
         '''Set value to the distribution on which the script is running.'''
@@ -940,6 +970,17 @@ class HostPlatform(Variable):
                         break                    
             if self.value:
                 self.value = self.value.capitalize()
+            if self.value == 'Ubuntu':                
+                if os.path.isfile('/etc/lsb-release'):
+                    release = open('/etc/lsb-release')
+                    line = release.readline()
+                    while line:
+                        look = re.match('DISTRIB_CODENAME=\s*(\S+)',line)
+                        if look:
+                            self.distCodename = look.group(1)
+                            break
+                        line = release.readline()
+                    release.close()
         return True
 
 
@@ -955,14 +996,7 @@ class Pathname(Variable):
         *var* value and returns True if the variable value as been set.'''
         if self.value != None:
             return False
-        if log:
-            # Configuration of logPath (where the log is stored) 
-            # will execute to here before the file is actually open.
-            log.write('\n' + self.name + ':\n')
-            log.write(self.descr + '\n')
-        else:
-            sys.stdout.write('\n' + self.name + ':\n')
-            sys.stdout.write(self.descr + '\n')            
+        writetext('\n' + self.name + ':\n' + self.descr + '\n')
         # compute the default leaf directory from the variable name 
         leafDir = self.name
         for last in range(0,len(self.name)):
@@ -1020,20 +1054,12 @@ class Pathname(Variable):
                 self.value = os.path.join(self.base.value,leafDir)
         if not ':' in dirname:
             if not os.path.exists(self.value):
-                if log:
-                    # Configuration of logPath (where the log is stored) 
-                    # will execute to here before the file is actually open.
-                    log.write(self.value + ' does not exist.\n')
-                else:
-                    sys.stdout.write(self.value + ' does not exist.\n')
+                writetext(self.value + ' does not exist.\n')
                 # We should not assume the pathname is a directory 
                 # (i.e. remoteIndex).
                 if None:
                     os.makedirs(self.value)
-        if log:
-            log.write(self.name + ' set to ' + self.value +'\n')
-        else:
-            sys.stdout.write(self.name + ' set to ' + self.value +'\n')
+        writetext(self.name + ' set to ' + self.value +'\n')
         return True
 
 
@@ -1063,11 +1089,7 @@ class MultipleChoice(Variable):
         if len(self.value) > 0:
             descr +=  " (constrained: " + ", ".join(self.value) + ")"
         self.value += selectMultiple(descr,choices)
-        if log:
-            log.write(self.name + ' set to ' + ', '.join(self.value) +'\n')
-        else:
-            sys.stdout.write(self.name + ' set to ' \
-                                 + ', '.join(self.value) +'\n')
+        writetext(self.name + ' set to ' + ', '.join(self.value) +'\n')
         self.choices = []
         return True
 
@@ -1099,10 +1121,7 @@ class SingleChoice(Variable):
         if self.value:
             return False
         self.value = selectOne(self.descr,self.choices)
-        if log:
-            log.write(self.name + ' set to ' + self.value +'\n')
-        else:
-            sys.stdout.write(self.name + ' set to ' + self.value +'\n')
+        writetext(self.name + ' set to ' + self.value +'\n')
         return True
 
     def constrain(self,vars):
@@ -1123,15 +1142,18 @@ class Dependency:
     '''A dependency of a project on another project 
     as defined by the <dep> tag in the project index.'''
 
-    def __init__(self, name, files, excludes=[]):
+    def __init__(self, name, files, excludes=[], target=None):
         self.name = name
         self.files = files
         self.excludes = excludes
+        self.target = target
 
     def __str__(self):
         result = self.name + ': ' + str(self.files)
         if len(self.excludes) > 0:
             result = result + ', excludes:' + str(self.excludes)
+        if self.target:
+            result = result + ', target:' + str(self.target)
         return result
 
     def populate(self, buildDeps = {}):
@@ -1445,6 +1467,9 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.depName = attrs['name']
             self.deps = {}
             self.excludes = []
+            self.target = None
+            if 'target' in attrs:
+                self.target = attrs['target']
         elif name == self.tagMultiple:
             self.constrain = None
             choiceValue = None
@@ -1547,7 +1572,8 @@ class xmlDbParser(xml.sax.ContentHandler):
                 self.sync = os.path.join(self.project.name,'.git')
             self.project.repository = self.createRepositoryObject()
         elif name == self.tagDepend:
-            self.locals += [ Dependency(self.depName,self.deps,self.excludes) ]
+            self.locals += [ Dependency(self.depName,self.deps,
+                                        self.excludes,self.target) ]
         elif name == self.tagDescription:
             if self.choice:
                 self.choice += [ self.text.strip() ]
@@ -1680,20 +1706,23 @@ def createIndexPathname(dbIndexPathname,dbPathnames):
     dbIndex.close()
 
 
-def derivedRoots(name):
+def derivedRoots(name,target=None):
     '''Derives a list of directory names based on the PATH 
-    environment variable.'''
+    environment variable, *name* and a *target* triplet.'''
     # We want the actual value of *name*Dir and not one derived
     # from binDir so we do not use context.searchPath() here.
     dirs = []
+    subpath = name
+    if target:
+        subpath = os.path.join(target,name)
     for p in os.environ['PATH'].split(':'):
-        dir = os.path.join(os.path.dirname(p),name)
+        dir = os.path.join(os.path.dirname(p),subpath)
         if os.path.isdir(dir):
             dirs += [ dir ]
     return [ context.value(name + 'Dir') ] + dirs
 
 
-def findBin(names,excludes=[]):
+def findBin(names,excludes=[],target=None):
     '''Search for a list of binaries that can be executed from $PATH.
 
        *names* is a list of (pattern,absolutePath) pairs where the absolutePat
@@ -1735,21 +1764,18 @@ def findBin(names,excludes=[]):
             results.append((namePat, absolutePath))
             continue
         # First time ever *findBin* is called, binBuildDir will surely not 
-        # defined in ws.mk and thus we will trigger interactive input from 
+        # defined in the workspace make fragment and thus we will trigger interactive input from 
         # the user. We want to make sure the output of the interactive session 
         # does not mangle the search for an executable so we preemptively 
         # trigger an interactive session.
-        context.value('binBuildDir')
-        if log:
-            log.write(namePat + '... ')
-            log.flush()
+        context.binBuildDir()
+        writetext(namePat + '... ')
         found = False
         if namePat.endswith('.app'):
             bin = os.path.join('/Applications',namePat)
             if os.path.isdir(bin):
                 found = True
-                if log:
-                    log.write('yes\n')
+                writetext('yes\n')
                 results.append((namePat, bin))
         else:
             for p in context.searchPath():
@@ -1790,22 +1816,17 @@ def findBin(names,excludes=[]):
                                 break
                         if not excluded:
                             version = numbers[0]
-                            if log:
-                                log.write(str(version) + '\n')
+                            writetext(str(version) + '\n')
                             results.append((namePat, bin))
                         else:
-                            if log:
-                                log.write('excluded (' + str(numbers[0]) \
-                                              + ')\n')
+                            writetext('excluded (' + str(numbers[0]) + ')\n')
                     else:
-                        if log:
-                            log.write('yes\n')
+                        writetext('yes\n')
                         results.append((namePat, bin))
                     found = True
                     break
         if not found:
-            if log:
-                log.write('no\n')
+            writetext('no\n')
     return results, version
 
 
@@ -1816,9 +1837,9 @@ def findCache(names):
     version = None
     for pathname in names:
         name = os.path.basename(urlparse.urlparse(pathname).path)
-        log.write(name + "... ")
+        writetext(name + "... ")
         log.flush()
-        fullName = context.cachePath(name)
+        fullName = context.localDir(pathname)
         if os.path.exists(fullName):
             if names[name]:
                 f = open(fullName,'rb')
@@ -1826,14 +1847,14 @@ def findCache(names):
                 f.close()
                 if sum == names[name]:
                     # checksum are matching
-                    log.write("cached\n")
+                    writetext("cached\n")
                     results += [ fullName ]
                 else:
-                    log.write("corrupted?\n")
+                    writetext("corrupted?\n")
             else:
-                log.write("yes\n")
+                writetext("yes\n")
         else:
-            log.write("no\n")
+            writetext("no\n")
     return results, version
 
 
@@ -1890,7 +1911,7 @@ def findFirstFiles(base,namePat,subdir=''):
     return results
 
 
-def findData(dir,names,excludes=[]):
+def findData(dir,names,excludes=[],target=None):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by *dir*.'''
     results = []
@@ -1900,16 +1921,16 @@ def findData(dir,names,excludes=[]):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        log.write(namePat + '... ')
+        writetext(namePat + '... ')
         log.flush()
         linkNum = 0
         if namePat.startswith('.*' + os.sep):
             linkNum = len(namePat.split(os.sep)) - 2
         found = False
-        for base in derivedRoots(dir):
+        for base in derivedRoots(dir,target):
             fullNames = findFiles(base,namePat)
             if len(fullNames) > 0:
-                log.write('yes\n')
+                writetext('yes\n')
                 tokens = fullNames[0].split(os.sep)
                 linked = os.sep.join(tokens[:len(tokens) - linkNum])
                 # DEPRECATED: results.append((namePat,linked))
@@ -1917,13 +1938,13 @@ def findData(dir,names,excludes=[]):
                 found = True
                 break
         if not found:
-            log.write('no\n')
+            writetext('no\n')
     return results, None
 
-def findEtc(names,excludes=[]):
+def findEtc(names,excludes=[],target=None):
     return findData('etc',names,excludes)
 
-def findInclude(names,excludes=[]):
+def findInclude(names,excludes=[],target=None):
     '''Search for a list of headers that can be found from $PATH
        where bin was replaced by include.
 
@@ -1943,14 +1964,14 @@ def findInclude(names,excludes=[]):
     a version number.'''
     results = []
     version = None
-    includeSysDirs = derivedRoots('include')
+    includeSysDirs = derivedRoots('include',target)
     for namePat, absolutePath in names:
         if absolutePath:
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        log.write(namePat + '... ')
+        writetext(namePat + '... ')
         log.flush()
         found = False
         for includeSysDir in includeSysDirs:
@@ -2011,19 +2032,19 @@ def findInclude(names,excludes=[]):
             if len(includes) > 0:
                 if includes[0][1]:
                     version = includes[0][1]
-                    log.write(version + '\n')
+                    writetext(version + '\n')
                 else:
-                    log.write('yes\n')
+                    writetext('yes\n')
                 results.append((namePat, includes[0][0]))
                 includeSysDirs = [ os.path.dirname(includes[0][0]) ]
                 found = True
                 break
         if not found:
-            log.write('no\n')
+            writetext('no\n')
     return results, version
     
 
-def findLib(names,excludes=[]):
+def findLib(names,excludes=[],target=None):
     '''Search for a list of libraries that can be found from $PATH
        where bin was replaced by lib.
 
@@ -2051,15 +2072,15 @@ def findLib(names,excludes=[]):
             results.append((namePat, absolutePath))
             continue
         # First time ever *findLib* is called, libDir will surely not defined
-        # in ws.mk and thus we will trigger interactive input from the user.
+        # in the workspace make fragment and thus we will trigger interactive input from the user.
         # We want to make sure the output of the interactive session does not
         # mangle the search for a library so we preemptively trigger 
         # an interactive session.
         context.value('libDir')
-        log.write(namePat + '... ')
+        writetext(namePat + '... ')
         log.flush()
         found = False
-        for libSysDir in derivedRoots('lib'):
+        for libSysDir in derivedRoots('lib',target):
             libs = []
             libPat = libPrefix() + namePat.replace('+','\+') + suffix
             base, ext = os.path.splitext(namePat)
@@ -2103,18 +2124,18 @@ def findLib(names,excludes=[]):
                 look = re.match('.*' + libPrefix() + namePat + '(.+)',candidate)
                 if look:                        
                     suffix = look.group(1)
-                    log.write(suffix + '\n')
+                    writetext(suffix + '\n')
                 else:
-                    log.write('yes (no suffix?)\n')
+                    writetext('yes (no suffix?)\n')
                 results.append((namePat, candidate))
                 found = True
                 break
         if not found:
-            log.write('no\n')
+            writetext('no\n')
     return results, version
 
 
-def findPrerequisites(deps, excludes=[]):
+def findPrerequisites(deps, excludes=[],target=None):
     '''Find a set of executables, headers, libraries, etc. on a local machine.
     
     *deps* is a dictionary where each key associates an install directory 
@@ -2140,7 +2161,7 @@ def findPrerequisites(deps, excludes=[]):
         if dir in deps:
             command = 'find' + dir.capitalize()   
             installed[dir], installedVersion = \
-                modself.__dict__[command](deps[dir],excludes)
+                modself.__dict__[command](deps[dir],excludes,target)
             # Once we have selected a version out of the installed
             # local system, we lock it down and only search for
             # that specific version.
@@ -2152,16 +2173,16 @@ def findPrerequisites(deps, excludes=[]):
     return installed, complete
 
 
-def findShare(names,excludes=[]):
+def findShare(names,excludes=[],target=None):
     return findData('share',names,excludes)
 
 
-def findRSync():
+def findRSync(remotePath, relative=False, admin=False):
     '''Check if rsync is present and install it through the package
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
     through a project.'''
-    rsync = os.path.join(context.value('binBuildDir'),'rsync')
+    rsync = os.path.join(context.binBuildDir(),'rsync')
     if not os.path.exists(rsync):
         # We do not use validateControls() here because dws in not
         # a project in *srcTop* and does not exist on the remote machine. 
@@ -2184,14 +2205,36 @@ def findRSync():
         if len(rsyncs) == 0 or not rsyncs[0][1]:
             install(['rsync'],{},dbindex)
         name, absolutePath = rsyncs.pop()
-        linkName, linkPath = linkPathBin(name, absolutePath)
-        linkContext(linkPath,linkName)
+        linkPatPath(name, absolutePath,'bin')        
 
-    return rsync
+    # Create the rsync command
+    uri = urlparse.urlparse(remotePath)
+    hostname = uri.netloc
+    if not uri.netloc:
+        # If there is no protocol specified, the hostname
+        # will be in uri.scheme (That seems like a bug in urlparse).
+        hostname = uri.scheme
+    username = None # \todo find out how urlparse is parsing ssh uris.
+    # We are accessing the remote machine through a mounted
+    # drive or through ssh.
+    prefix = ""
+    if username:
+        prefix = prefix + username + '@'
+    cmdline = [ rsync, '-avuzb' ]
+    if relative:
+        cmdline = [ rsync, '-avuzbR' ]
+    if hostname:
+        # We are accessing the remote machine through ssh
+        prefix = prefix + hostname + ':'
+        cmdline += [ '--rsh=ssh' ]
+    if admin:
+        cmdline += [ '--rsync-path "sudo rsync"' ]
+
+    return cmdline, prefix
 
 
 def configVar(vars):
-    '''Look up the workspace configuration file ws.mk for definition
+    '''Look up the workspace configuration file the workspace make fragment for definition
     of variables *vars*, instances of classes derived from Variable 
     (ex. Pathname, SingleChoice). 
     If those do not exist, prompt the user for input.'''
@@ -2201,7 +2244,7 @@ def configVar(vars):
         v.constrain(context.environ)           
         if not v.name in context.environ:
             # If we do not add variable to the context, they won't
-            # be saved in ws.mk
+            # be saved in the workspace make fragment
             context.environ[v.name] = v 
             found |= v.configure()
     if found:                
@@ -2232,42 +2275,55 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                         os.makedirs(dir)
                     downloads += [ filename ]
         remoteCachePath = context.remoteCachePath()
+
+        # Convert all filenames to absolute urls
+        pathnames = []
+        for f in downloads:
+            if f.startswith('http') or ':' in f:
+                pathnames += [ f ]
+            elif f.startswith('/'):
+                pathnames += [ '/.' + f ]
+            else:
+                pathnames += [ context.remoteCachePath('./' + f) ]
+            
+        # Split fetches by protocol
+        https = []
+        sshs = []
+        for p in pathnames:
+            # Splits between files downloaded through http and ssh.
+            if p.startswith('http'):
+                https += [ p ]
+            else:
+                sshs += [ p ]
         uri = urlparse.urlparse(remoteCachePath)
-        if uri.scheme and remoteCachePath.startswith('http'):
-            for remotename in downloads:
-                if not remotename.startswith('http'):
-                    remotename = context.remoteCachePath(remotename)
+        hostname = uri.netloc
+        if not uri.netloc:
+            # If there is no protocol specified, the hostname
+            # will be in uri.scheme (That seems like a bug in urlparse).
+            hostname = uri.scheme
+        # fetch https
+        for remotename in https:
                 localname = context.localDir(remotename)
                 if not os.path.exists(os.path.dirname(localname)):
                     os.makedirs(os.path.dirname(localname))
-                if log:
-                    log.write('fetching ' + remotename + '...\n')
-                else:
-                    sys.stdout.write('fetching ' + remotename + '...\n')
-                    sys.stdout.flush()
+                writetext('fetching ' + remotename + '...\n')
                 remote = urllib2.urlopen(urllib2.Request(remotename))
                 local = open(localname,'w')
                 local.write(remote.read())
                 local.close()
                 remote.close()                
-        else:
-            downCmdlines, upCmdline = remoteSyncCommand(downloads,cacheDir,
-                                                       admin,relative)
-            # The following command will promt for the sudo password and extend
-            # the grace period for 5min such that the following rsync command
-            # executes properly since it does not prompt for the sudo password
-            # and locks up the system.
-            # (http://crashingdaily.wordpress.com/2007/06/29/rsync-and-sudo-over-ssh/)
+        # fetch sshs
+        sources = []
+        for s in sshs:
+            sources += [ s.replace(hostname + ':','') ]
+        if len(sources) > 0:
             if admin:
-                hostname = uri.netloc
-                if not uri.netloc:
-                    # If there is no protocol specified, the hostname
-                    # will be in uri.scheme (That seems like a bug in urlparse).
-                    hostname = uri.scheme
                 shellCommand(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-            for d in downCmdlines:
-                shellCommand(d)
+            cmdline, prefix = findRSync(remoteCachePath,
+                                        relative or not cacheDir,admin)
+            shellCommand(cmdline + ["'" + prefix + ' '.join(sources) + "'", 
+                                    cachePath ])
 
 
 def install(packages, extraFetches={}, dbindex=None, force=False):
@@ -2301,7 +2357,7 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
                     for filename in package.fetches:
                         # The package is not part of the local system package 
                         # manager so it has to have been pre-built.
-                        installLocalPackage(context.cachePath(filename))
+                        installLocalPackage(context.localDir(filename))
                 else:
                     managed += [ name ]
             else:
@@ -2359,7 +2415,7 @@ def installDarwinPkg(image,target,pkg=None):
     if target != 'CurrentUserHomeDirectory':
         message = 'ATTENTION: You need administrator privileges on ' \
                 + 'the local machine to execute the following cmmand\n'
-        log.write(message)
+        writetext(message)
         admin = True
     else:
         admin = False
@@ -2433,36 +2489,20 @@ def linkDependencies(projects, cuts=[]):
                 deps = prereq.files
                 for dir in deps:                    
                     for namePat, absolutePath in deps[dir]:
-                        command = 'linkPath' + dir.capitalize()
-                        linkName, linkPath \
-                            = modself.__dict__[command](namePat,
-                                                         absolutePath)
-                        if linkPath:
-                            if not os.path.isfile(linkName):
-                                linkContext(linkPath,linkName)
-                        else:
-                            if not os.path.isfile(linkName):
-                                complete = False
+                        complete |= linkPatPath(namePat,absolutePath,
+                                                dir,prereq.target)
                 if not complete:
-                    deps, complete = findPrerequisites(
-                        prereq.files,
-                        prereq.excludes)
+                    deps, complete = findPrerequisites(prereq.files,
+                                                       prereq.excludes,
+                                                       prereq.target)
                 if not complete:
                     if not prereq in missings:
                         missings += [ prereq.name ]
                 else:
                     for dir in deps:
                         for namePat, absolutePath in deps[dir]:
-                            command = 'linkPath' + dir.capitalize()
-                            linkName, linkPath \
-                                = modself.__dict__[command](namePat,
-                                                            absolutePath)
-                            if linkPath:
-                                if not os.path.isfile(linkName):
-                                    linkContext(linkPath,linkName)
-                            else:
-                                if not os.path.isfile(linkName):
-                                    complete = False
+                            complete |= linkPatPath(namePat,absolutePath,
+                                                    dir,prereq.target)
     if len(missings) > 0:
         raise Error("incomplete prerequisites for " + ' '.join(missings),1)
 
@@ -2484,57 +2524,46 @@ def linkContext(path,linkName):
     if not os.path.exists(linkName) and os.path.exists(path):
         os.symlink(path,linkName)
 
-def linkPatPath(namePat, absolutePath):
-    # Yeah, looking for g++ might be a little bit of trouble. 
-    regex = re.compile(namePat.replace('+','\+') + '$')
+def linkPatPath(namePat, absolutePath, dir, target=None):
     linkPath = absolutePath
-    if regex.groups == 0:
-        linkName = namePat
-        parts = namePat.split(os.sep)
-        if len(parts) > 0:
-            linkName = parts[len(parts) - 1]
-    else:
-        linkName = re.search('\((.+)\)',namePat).group(1)
-        if absolutePath:
-            look = regex.search(absolutePath)
-            parts = absolutePath[look.end(1):].split(os.sep)
-            linkPath = absolutePath[:look.end(1)] + parts[0]
-    return linkName, linkPath
-
-
-def linkPathBin(namePat, absolutePath):
-    linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('binBuildDir'),linkName), linkPath 
-
-
-def linkPathEtc(namePat, absolutePath):
-    linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('etcBuildDir'),linkName), linkPath 
-
-
-def linkPathInclude(namePat, absolutePath):
-    linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('includeBuildDir'),linkName), linkPath 
-
-
-def linkPathLib(namePat, absolutePath):
-    '''Normalize a library name to a name that will be used to create
-    a link in buildLib later referenced from Makefiles.'''
-    ext = '.a'
+    ext = ''
     if absolutePath:
-        pathname, ext = os.path.splitext(absolutePath)    
-    libname = libPrefix() + namePat + ext 
-    return os.path.join(context.value('libBuildDir'),libname), absolutePath
-
-
-def linkPathShare(namePat, absolutePath):
-    linkName, linkPath = linkPatPath(namePat, absolutePath) 
-    return os.path.join(context.value('shareBuildDir'),linkName), linkPath 
+        pathname, ext = os.path.splitext(absolutePath)
+    if ext in [ libStaticSuffix(), libDynSuffix() ]:
+        linkName = libPrefix() + namePat + ext 
+    else:
+        # Yeah, looking for g++ might be a little bit of trouble. 
+        regex = re.compile(namePat.replace('+','\+') + '$')        
+        if regex.groups == 0:
+            linkName = namePat
+            parts = namePat.split(os.sep)
+            if len(parts) > 0:
+                linkName = parts[len(parts) - 1]
+        else:
+            linkName = re.search('\((.+)\)',namePat).group(1)
+            if absolutePath:
+                look = regex.search(absolutePath)
+                parts = absolutePath[look.end(1):].split(os.sep)
+                linkPath = absolutePath[:look.end(1)] + parts[0]
+    # linkName, linkPath
+    subpath = dir
+    if target:
+        subpath = os.path.join(target,dir)
+    linkName = os.path.join(context.value('buildTop'),subpath,linkName)
+    # create links
+    complete = True
+    if linkPath:
+        if not os.path.isfile(linkName):
+            linkContext(linkPath,linkName)
+    else:
+        if not os.path.isfile(linkName):
+            complete = False
+    return complete
 
 
 def make(names, targets, dbindex=None):
     '''invoke the make utility to build a set of projects.'''
-    log.write('### make projects "' + ', '.join(names) \
+    writetext('### make projects "' + ', '.join(names) \
                   + '" with targets "' + ', '.join(targets) + '"\n')
     distHost = context.value('distHost')
     if 'recurse' in targets:
@@ -2602,7 +2631,7 @@ def makeProject(name,options,dependencies={}):
             linkDependencies(dependencies)
         status = 'make'
         # prefix.mk and suffix.mk expects these variables to be defined 
-        # in ws.mk. If they are not you might get some strange errors where
+        # in the workspace make fragment. If they are not you might get some strange errors where
         # a g++ command-line appears with -I <nothing> or -L <nothing> 
         # for example.
         # This code was moved to be executed right before the issue 
@@ -2674,86 +2703,14 @@ def mergeBuildConf(dbPrev,dbUpd,parser):
         parser.trailer(dbNext)
         return dbNext
 
-def remoteSyncCommand(filenames, cacheDir=None,admin=False,relative=False):
-    '''returns a pair (downCmdline, upCmdline) where downCmdline
-    can be used to download from the remote machine onto the local
-    machine and upCmdline can be used to upload from the local
-    machine to the remote machine.
-    '''
-    downCmdline = None
-    upCmdline = None
-    cachePath = cacheDir
-    if not cacheDir:
-        cachePath = context.cachePath('')
-    remoteCachePath = context.remoteCachePath()
-    pathnames = []
-    for f in filenames:
-        # Convert all filenames to absolute urls
-        if f.startswith('http') or ':' in f:
-            pathnames += [ f ]
-        elif f.startswith('/'):
-            pathnames += [ '/.' + f ]
-        else:
-            pathnames += [ context.remoteCachePath('./' + f) ]
-    https = []
-    sshs = []
-    for p in pathnames:
-        # Splits between files downloaded through http and ssh.
-        if p.startswith('http'):
-            https += [ p ]
-        else:
-            sshs += [ p ]
-    httpCmds = []
-    for h in https:
-        # create download commands for all http files     
-        uri = urlparse.urlparse(h)
-        # \todo look to install curl and/or wget?
-        if context.value('distHost') == 'Darwin':
-            httpCmds += [ ['curl', '--create-dirs', 
-                           '-o', context.cachePath(uri.path), h ] ]
-        else:
-            httpCmds += [ [ '/usr/bin/wget', '-P', 
-                        os.path.dirname(context.cachePath(uri.path)) , h ] ]
-        
-    # Create the rsync command
-    uri = urlparse.urlparse(remoteCachePath)
-    hostname = uri.netloc
-    if not uri.netloc:
-        # If there is no protocol specified, the hostname
-        # will be in uri.scheme (That seems like a bug in urlparse).
-        hostname = uri.scheme
-    username = None # \todo find out how urlparse is parsing ssh uris.
-    sources = []
-    for s in sshs:
-        sources += [ s.replace(hostname + ':','') ]
-    # We are accessing the remote machine through a mounted
-    # drive or through ssh.
-    prefix = ""
-    if username:
-        prefix = prefix + username + '@'
-    cmdline = [ findRSync(), '-avuzb' ]
-    if relative or not cacheDir:
-        cmdline = [ findRSync(), '-avuzbR' ]
-    if hostname:
-        # We are accessing the remote machine through ssh
-        prefix = prefix + hostname + ':'
-        cmdline += [ '--rsh=ssh' ]
-    if admin:
-        cmdline += [ '--rsync-path "sudo rsync"' ]
-#    if uri.path:
-#        prefix = prefix + uri.path
-    upCmdline = cmdline + [ '././' + ' ././'.join(sshs), remoteCachePath ]
-    downCmdline = cmdline + ["'" + prefix + ' '.join(sources) + "'", cachePath ]
-
-    return httpCmds + [ downCmdline ], upCmdline
-
 
 def upload(filenames, cacheDir=None):
     '''upload *filenames*, typically a list of result logs, 
     to the remote server. See the fetch function for downloading
     files from the remote server.
     '''
-    downCmdlines, upCmdline = remoteSyncCommand(filenames,cacheDir)
+    cmdline, prefix = findRSync(remoteCachePath,not cacheDir)
+    upCmdline = cmdline + [ '././' + ' ././'.join(sshs), remoteCachePath ]
     prev = os.getcwd()
     os.chdir(cachePath)
     shellCommand(upCmdline)
@@ -2792,24 +2749,14 @@ def shellCommand(commandLine, admin=False):
         cmdline = [ '/usr/bin/sudo' ] + commandLine
     else:
         cmdline = commandLine
-    if log:
-        log.write(' '.join(cmdline) + '\n')
-        log.flush()
-    else:
-        sys.stdout.write(' '.join(cmdline) + '\n')
-        sys.stdout.flush()
+    writetext(' '.join(cmdline) + '\n')
     if not doNotExecute:
         cmd = subprocess.Popen(' '.join(cmdline),shell=True,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
         line = cmd.stdout.readline()
         while line != '':
-            if log:
-                log.write(line)
-                log.flush()
-            else:
-                sys.stdout.write(line)
-                sys.stdout.flush()
+            writetext(line)
             line = cmd.stdout.readline()
         cmd.wait()
         if cmd.returncode != 0:
@@ -2985,20 +2932,27 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
             # that does in order to have a source repled repository.
             # This is a simple way to specify inter-related projects 
             # with complex dependency set and barely any code. 
-            log.write('######## updating project ' + name + '...\n')
+            writetext('######## updating project ' + name + '...\n')
             rep.update(name,context)
         else:
-            log.write('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
+            writetext('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
+
+
+def writetext(message):
+    if log:
+        log.write(message)
+        log.flush()
+    else:
+        sys.stdout.write(message)
+        sys.stdout.flush()
+
 
 def prompt(message):
     '''If the script is run through a ssh command, the message would not
     appear if passed directly in raw_input.'''
-    if log:
-        log.write(message)
-    else:
-        sys.stdout.write(message)
-        sys.stdout.flush()
+    writetext(message)
     return raw_input("")
+
             
 def pubBuild(args):
     '''build              [remoteIndexFile [localTop]]
@@ -3030,8 +2984,8 @@ def pubBuild(args):
     # back to the remote server. We stamp the logfile such that
     # it gets a unique name before uploading it.
     logstamp = stampfile(context.logname())
-    if not os.path.exists(os.path.dirname(context.cachePath(logstamp))):
-        os.makedirs(os.path.dirname(context.cachePath(logstamp)))
+    if not os.path.exists(os.path.dirname(context.logPath(logstamp))):
+        os.makedirs(os.path.dirname(context.logPath(logstamp)))
     shellCommand(['install', '-m', '644', context.logname(),
                   context.logPath(logstamp)])
     if uploadResults:
@@ -3064,24 +3018,29 @@ def pubCollect(args):
                    'Fedora': ('\.spec', '\.rpm'),
                    'Ubuntu': ('\.dsc', '\.deb')
                  }
-    # collect index and packages
+    # collect index files and packages
     copySrcPackages = None
-    srcPackages = findFiles(context.value('buildTop'),'.tar.bz2')
-    if len(srcPackages) > 0:
-        copySrcPackages = [ findRSync(),
-                            ' '.join(srcPackages),
-                            srcPackageDir]
-    preExcludeIndices = []
     copyBinPackages = None
-    if context.host() in extensions:
-        ext = extensions[context.host()]
-        preExcludeIndices = findFiles(context.value('buildTop'),ext[0])
-        binPackages = findFiles(context.value('buildTop'),ext[1])
-        if len(binPackages) > 0:
-            copyBinPackages = [ findRSync(),
-                                ' '.join(binPackages),
-                                packageDir ]
-    preExcludeIndices += findFiles(context.value('srcTop'),'index.xml')
+    preExcludeIndices = []
+    if str(context.environ['buildTop']):
+        # If there are no build directory, then don't bother to look
+        # for built packages and avoid prompty for an unncessary value
+        # for buildTop.
+        srcPackages = findFiles(context.value('buildTop'),'.tar.bz2')
+        if len(srcPackages) > 0:
+            cmdline, prefix = findRSync(srcPackageDir)
+            copySrcPackages = cmdline + [ ' '.join(srcPackages),
+                                          srcPackageDir]
+        if context.host() in extensions:
+            ext = extensions[context.host()]
+            preExcludeIndices = findFiles(context.value('buildTop'),ext[0])
+            binPackages = findFiles(context.value('buildTop'),ext[1])
+            if len(binPackages) > 0:
+                cmdline, prefix = findRSync(packageDir)
+                copyBinPackages = cmdline + [ ' '.join(binPackages),
+                                              packageDir ]
+
+    preExcludeIndices += findFiles(context.value('srcTop'),context.indexName)
     # We exclude any project index files that has been determined 
     # to be irrelevent to the collection being built.
     indices = []
@@ -3116,7 +3075,7 @@ def pubConfigure(args):
     dgen = DependencyGenerator([ projectName ],[],[])
     dbindex = IndexProjects(context,
                             context.srcDir(os.path.join(context.cwdProject(),
-                                                        'index.xml')))
+                                                        context.indexName)))
     dbindex.parse(dgen)
     if len(dgen.missings) > 0 or len(dgen.extraFetches) > 0:
         # This is an opportunity to prompt for missing dependencies.
@@ -3137,7 +3096,7 @@ def pubConfigure(args):
 def pubContext(args):
     '''context                Prints the absolute pathname to a file.
                        If the filename cannot be found from the current 
-                       directory up to the workspace root (i.e where ws.mk 
+                       directory up to the workspace root (i.e where the workspace make fragment 
                        is located), it assumes the file is in *etcDir*.
     '''
     pathname = context.configFilename
@@ -3146,7 +3105,7 @@ def pubContext(args):
             dir, pathname = searchBackToRoot(args[0],
                    os.path.dirname(context.configFilename))
         except IOError:
-            pathname = os.path.join(context.value('etcBuildDir'),'dws',args[0])
+            pathname = context.derivedEtc(args[0])
     sys.stdout.write(pathname)
 
 
@@ -3194,7 +3153,7 @@ def pubCreate(args):
         config.write('[receive]\n')
         config.write('\tdenyCurrentBranch = ignore\n')
     config.close()
-    index = open(os.path.join('index.xml'),'w')
+    index = open(os.path.join(context.indexName),'w')
     index.write('''<?xml version="1.0" ?>
 <projects>
   <project name="''' + projName + '''">
@@ -3252,7 +3211,7 @@ def pubFind(args):
 
 def pubInit(args):
     '''init                   Prompt for variables which have not been 
-                       initialized in ws.mk. Fetch the project index.
+                       initialized in the workspace make fragment. Fetch the project index.
     '''
     configVar(context.environ.values())
     index.validate()
@@ -3422,7 +3381,7 @@ def pubUpstream(args):
         pchdir = context.srcDir(os.path.join(context.cwdProject(),
                                              srcdir + '-patch'))
         integrate(srcdir,pchdir)
-        # In the common case, no variables will be added to ws.mk when 
+        # In the common case, no variables will be added to the workspace make fragment when 
         # the upstream command is run. Hence sys.stdout will only display
         # the patched information. This is important to be able to execute:
         #   dws upstream > patch
@@ -3530,7 +3489,7 @@ def selectMultiple(description,selects):
     choices = [ [ 'all' ] ] + selects
     while len(choices) > 1 and not done:
         showMultiple(description,choices)
-        log.write(str(len(choices) + 1) + ')  done\n')
+        writetext(str(len(choices) + 1) + ')  done\n')
         if useDefaultAnswer:
             selection = "1"
         else:
@@ -3591,34 +3550,14 @@ def showMultiple(description,choices):
             widths[c] = max(widths[c],len(col) + 2)
             c = c + 1
     # Ask user to review selection
-    if log:
-        # Configuration of logPath (where the log is stored) 
-        # will execute to here before the file is actually open.
-        log.write(description + '\n')
-    else:
-        sys.stdout.write(description + '\n')
+    writetext(description + '\n')
     for project in displayed:
         c = 0
         for col in project:
-            if log:
-                # Configuration of logPath (where the log is stored) 
-                # will execute to here before the file is actually open.
-                log.write(col.ljust(widths[c]))
-            else:
-                sys.stdout.write(col.ljust(widths[c]))
+            writetext(col.ljust(widths[c]))
             c = c + 1
-        if log:
-            # Configuration of logPath (where the log is stored) 
-            # will execute to here before the file is actually open.
-            log.write('\n')
-        else:
-            sys.stdout.write('\n')
-    if log:
-        # Configuration of logPath (where the log is stored) 
-        # will execute to here before the file is actually open.
-        log.flush()
-    else:
-        sys.stdout.flush()
+        writetext('\n')
+
 
 def unpack(pkgfilename):
     '''unpack a tar[.gz|.bz2] source distribution package.'''
@@ -3648,7 +3587,8 @@ if __name__ == '__main__':
                 epilog += __main__.__dict__[command].__doc__ + '\n'
         keys = context.environ.keys()
         keys.sort()
-        epilog += 'Variables defined in ws.mk:\n'
+        epilog += 'Variables defined in the workspace make fragment (' \
+            + Context.configName + '):\n'
         for varname in keys:
             var = context.environ[varname]
             if var.descr:
@@ -3799,10 +3739,7 @@ if __name__ == '__main__':
             raise Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
 
     except Error, err:
-        if log:
-            log.error(str(err))
-        else:
-            sys.stderr.write(str(err))
+        writetext(str(err))
         sys.exit(err.code)
 
     if log:

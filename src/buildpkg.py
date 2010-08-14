@@ -471,15 +471,12 @@ make install
 
     elif dist == 'Ubuntu':
         packageVersion = version + '-ubuntu1'
-        os.makedirs('debian')
+        if not os.path.exists('debian'):
+            os.makedirs('debian')
         control = open(os.path.join('debian','control'),'w')
-        control.write('Version:' + version + '\n')
         control.write('Source: ' + project.name + '\n')
-        control.write('Description: ' + project.descr + '\n')
         control.write('Maintainer: ' + project.maintainer.fullname \
                                 + ' <' + project.maintainer.email + '>\n')
-        control.write('\nPackage: ' + project.name + '\n')
-        control.write('Architecture: any\n')
         if project.repository:
             control.write('Build-Depends: ' \
                               + ', '.join(dws.basenames(
@@ -488,14 +485,31 @@ make install
             control.write('Build-Depends: ' \
                               + ', '.join(dws.basenames(
             project.patch.prerequisiteNames([context.host()]))) + '\n')
+
+        control.write('\nPackage: ' + project.name + '\n')
+        control.write('Priority: extra\n')
+        control.write('Description: ' + project.descr + '\n')
+        control.write('Architecture: any\n')
         if context.host() in project.packages:
             control.write('Depends: ' \
                               + ', '.join(dws.basenames(
             project.packages[context.host()].prerequisiteNames([context.host()]))) + '\n')
         control.write('\n')
         control.close()
+        distribCodename = None
+        if os.path.isfile('/etc/lsb-release'):
+            release = open('/etc/lsb-release')
+            line = release.readline()
+            while line:
+                look = re.match('DISTRIB_CODENAME=\s*(\S+)',line)
+                if look:
+                    distribCodename = look.group(1)
+                    break
+                line = release.readline()
+            release.close()
         changelog = open(os.path.join('debian','changelog'),'w')
-        changelog.write(project.name + ' (' + packageVersion + ') jaunty; urgency=low\n\n')
+        changelog.write(project.name + ' (' + packageVersion + ') ' \
+                            + str(distribCodename) + '; urgency=low\n\n')
         changelog.write('  * debian/rules: generate ubuntu package\n\n')
         changelog.write(' -- ' + project.maintainer.fullname \
                             + ' <' + project.maintainer.email + '>  ' \
@@ -510,7 +524,7 @@ make install
 
 export DH_OPTIONS
 
-#include /usr/share/quilt/quilt.make
+.PHONY:    build clean install binary
 
 PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
 

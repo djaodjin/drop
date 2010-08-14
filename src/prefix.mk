@@ -25,6 +25,13 @@
 
 .DEFAULT_GOAL 	:=	all
 
+# Paths to "normalized" prerequisites
+binBuildDir 	:= 	$(buildTop)/bin
+includeBuildDir :=	$(buildTop)/include
+libBuildDir	:=	$(buildTop)/lib
+shareBuildDir	:=	$(buildTop)/share
+
+
 # We cannot initialize buildpkg to $(binBuildDir)/buildpkg, 
 # else the drop package cannot be built. See comments associated
 # to searchPath() in dws.py
@@ -40,6 +47,10 @@ SEMILLA		:=	$(binBuildDir)/semilla
 XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
+
+# workspace make fragment and project index file
+dwsmk		:=	dws.mk
+projindex	:=	dws.xml
 
 # \note For some reason when a '\' is inserted in the following line in order
 #       to keep a maximum of 80 characters per line, the sed command:

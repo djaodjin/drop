@@ -27,7 +27,7 @@
     <para>
       A workspace relies on environment variables (<link linkend="dws.book#srcTop">srcTop</link>, <link linkend="dws.book#buildTop">buildTop</link>, etc.) and a project dependency graph.</para>
     <para>
-      The environment variables are set in a workspace configuration file named ws.mk. The workspace tool populates the configuration file as necessary at the time a variable value is required. The environment variables consist mostly of directory paths where source files are checked out (<link linkend="dws.book#srcTop">srcTop</link>), where object files are built (<link linkend="dws.book#buildTop">buildTop</link>), etc.</para>
+      The environment variables are set in a workspace configuration file named dws.mk. The workspace tool populates the configuration file as necessary at the time a variable value is required. The environment variables consist mostly of directory paths where source files are checked out (<link linkend="dws.book#srcTop">srcTop</link>), where object files are built (<link linkend="dws.book#buildTop">buildTop</link>), etc.</para>
     <para>
       The dependency graph contains information typically found in a package manager (yum, apt, etc.) as well as information usually found in configure scripts (autoconf). In the same way Linux distributions gather packages dependencies into a global dependency database, project dependency information is aggregated in a single index file. A master copy of the project dependency graph is stored on a remote server and cached locally on the development local machine.</para>
     <para>
@@ -74,7 +74,7 @@
       <emphasis>Drop</emphasis>'s prefix.mk and suffix.mk define variables and rules to provide compilation of executables and libraries, installation of different files on the local system, packaging of a project for various distributions and running unit tests.
     </para>
     <para>
-      Using <emphasis>drop</emphasis> to write a project makefile requires to include drop's prefix.mk at the begining of the project makefile and drop's suffix at the end of the project makefile. In order to convieniently support multiple workspaces, it is also required to include ws.mk through a <code>include $(shell dws context)</code> statement as the first line of the project's makefile.
+      Using <emphasis>drop</emphasis> to write a project makefile requires to include drop's prefix.mk at the begining of the project makefile and drop's suffix at the end of the project makefile. In order to convieniently support multiple workspaces, it is also required to include dws.mk through a <code>include $(shell dws context)</code> statement as the first line of the project's makefile.
     </para>
     <programlisting>
 # -*- Makefile -*-

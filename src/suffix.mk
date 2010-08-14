@@ -31,10 +31,14 @@ shareDir	?=	$(shareBuildDir)
 
 .PHONY:	all check dist doc install site
 
-all::	$(bins) $(libs) $(includes) $(etcs) $(logs)
+all::	$(bins) $(libs) $(includes) $(etcs)
+
+all::	$(logs)
+	$(if $^,-dregress -o regression.log $^ \
+	    $(logDir)/results-*.log $(wildcard $(srcDir)/data/results-*.log))
 
 clean::
-	rm -rf *-stamp $(bins) $(libs) *.o *.d *.dSYM
+	rm -rf $(objDir)/*
 
 install:: $(bins)
 	$(if $^,$(installDirs) $(binDir))
@@ -113,11 +117,11 @@ $(project)-$(version)::
 		&& rsync -aR $(patchedSources) $@/cache)
 	rsync -r --exclude=.git $(srcDir)/* $@
 	$(foreach script,$(wildcard $(srcDir)/src/*.py),$(call distVersion,$(script)))
-	if [ -f $(srcDir)/index.xml ] ; then \
+	if [ -f $(srcDir)/$(projindex) ] ; then \
 		$(SED) -e "s,<project  *name=\".*$(project),<project name=\"$@,g" \
-		$(srcDir)/index.xml > $@/index.xml ; \
+		$(srcDir)/$(projindex) > $@/$(projindex) ; \
 	fi
-	$(SED) -e 's,$$(shell dws context),ws.mk,' \
+	$(SED) -e 's,$$(shell dws context),$(dwsmk),' \
 	    -e 's,$$(shell dws context \(..*\)),etc/\1,' \
 	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
 		$(srcDir)/Makefile > $@/Makefile.in
@@ -138,14 +142,14 @@ $(project)-$(version)::
 	cd $(basename $(basename $<)) && ${MAKE} install
 	$(installDirs) ${buildInstallDir}
 	$(buildpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
-	         --spec=$(srcDir)/index.xml ${buildInstallDir}
+	         --spec=$(srcDir)/$(projindex) ${buildInstallDir}
 
 %$(distExtFedora): %.tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
 	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
 	$(buildpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
-	         --spec=$(srcDir)/index.xml $(basename $@)
+	         --spec=$(srcDir)/$(projindex) $(basename $@)
 
 %$(distExtUbuntu): %.tar.bz2
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
@@ -153,7 +157,7 @@ $(project)-$(version)::
 	cd $(basename $(basename $<)) \
 		&& $(buildpkg) \
 		 --version=$(subst $(project)-,,$(basename $(basename $<))) \
-	         --spec=$(srcDir)/index.xml $(shell echo $@ | \
+	         --spec=$(srcDir)/$(projindex) $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
 
 # Rules to build unit test logs
@@ -249,7 +253,7 @@ Makefile.html: Makefile
 
 # Rules to validate the intra-projects dependency file
 # ----------------------------------------------------
-validate: index.xml
+validate: $(projindex)
 	xmllint --noout --schema $(srcTop)/drop/src/index.xsd $<
 
 

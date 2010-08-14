@@ -118,6 +118,9 @@
 		    minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
+      <!-- explicitely specify the target system (i.e. triplet)
+	   for which the dependency needs to be available. -->
+      <xs:attribute name="target" type="xs:string"/>
     </xs:complexType>
   </xs:element>
   

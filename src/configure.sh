@@ -1,10 +1,11 @@
 #!/bin/sh
 #
-# This shell script provides the illusion of an autoconf-like configuration
+# This shell scricpt provides the illusion of an autoconf-like configuration
 # while using the workspace manangement tool (dws) instead. 
 
 set -e
 
+projmk=dws.mk
 prefix=/usr/local
 while [ $# -gt 0 ] ; do
 	case $1 in
@@ -26,30 +27,32 @@ srcTop=`dirname $srcDir`
 binBuildDir=${buildDir}/bin
 etcBuildDir=${buildDir}/etc
 
-echo buildTop=${buildTop} > ws.mk
-echo srcTop=${srcTop} >> ws.mk
-echo siteTop=${buildDir}/cache >> ws.mk
-echo binBuildDir=${binBuildDir} >> ws.mk
-echo etcBuildDir=${etcBuildDir} >> ws.mk
-echo libBuildDir=${buildDir}/lib >> ws.mk
-echo includeBuildDir=${buildDir}/include >> ws.mk
-echo shareBuildDir=${buildDir}/share >> ws.mk
-echo binDir=${prefix}/bin >> ws.mk
-echo etcDir=${prefix}/etc >> ws.mk
-echo includeDir=${prefix}/include >> ws.mk
-echo libDir=${prefix}/lib >> ws.mk
-echo shareDir=${prefix}/share >> ws.mk
+echo buildTop=${buildTop} > ${projmk}
+echo srcTop=${srcTop} >> ${projmk}
+echo siteTop=${buildDir}/cache >> ${projmk}
+echo binBuildDir=${binBuildDir} >> ${projmk}
+echo etcBuildDir=${etcBuildDir} >> ${projmk}
+echo libBuildDir=${buildDir}/lib >> ${projmk}
+echo includeBuildDir=${buildDir}/include >> ${projmk}
+echo shareBuildDir=${buildDir}/share >> ${projmk}
+echo binDir=${prefix}/bin >> ${projmk}
+echo etcDir=${prefix}/etc >> ${projmk}
+echo includeDir=${prefix}/include >> ${projmk}
+echo libDir=${prefix}/lib >> ${projmk}
+echo shareDir=${prefix}/share >> ${projmk}
 
 # Copy dws files into binDir and etcDir because that's where they will 
 # be searched when drop is specified as a prerequisite for the project.
 mkdir -p ${binBuildDir}
 mkdir -p ${etcBuildDir}/dws
 cp ${srcDir}/dws ${binBuildDir}
-cp -r ${srcDir}/etc/*.mk ${etcBuildDir}/dws
-cp -r ${srcDir}/etc/*.sh ${etcBuildDir}/dws
+helpers=`ls -l ${srcDir}/etc/*.{mk,sh} > /dev/null 2>&1 | wc -l`
+if [ ${helpers} -gt 0 ] ; then
+    cp -r ${srcDir}/etc/*.{mk,sh} ${etcBuildDir}/dws
+fi
 ${binBuildDir}/dws --default configure
 
-sed -e s',$(shell dws context),ws.mk,' \
+sed -e s",\$(shell dws context),${projmk}," \
     -e s',$(shell dws context \(.*\)),$(etcDir)/\1,' \
 	Makefile.in > Makefile
 echo "type 'make' to build, followed by 'make install' to install."
