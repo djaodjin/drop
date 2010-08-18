@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2009, Sebastien Mirolo
+# Copyright (c) 2009-2010, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -14,10 +14,10 @@
 #       names of its contributors may be used to endorse or promote products
 #       derived from this software without specific prior written permission.
 #
-#   THIS SOFTWARE IS PROVIDED BY Sebastien Mirolo ''AS IS'' AND ANY
+#   THIS SOFTWARE IS PROVIDED BY Fortylines LLC ''AS IS'' AND ANY
 #   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 #   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-#   DISCLAIMED. IN NO EVENT SHALL Sebastien Mirolo BE LIABLE FOR ANY
+#   DISCLAIMED. IN NO EVENT SHALL Fortylines LLC BE LIABLE FOR ANY
 #   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
 #   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
 #   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
@@ -152,6 +152,9 @@ class Context:
              'Directory where important directory trees on the remote machine are duplicated.',
                                             installTop,'duplicate'),
                          'siteTop': siteTop,
+                         'logDir': Pathname('logDir',
+             'Directory where the generated log files are created',
+                                          siteTop,'log'),
                          'indexFile': Pathname('indexFile',
              'Index file with projects dependencies information',
                                           siteTop,
@@ -217,7 +220,7 @@ class Context:
     def logPath(self,name):
         '''Absolute path to a file in the local system log
         directory hierarchy.'''
-        return os.path.join(self.value('siteTop'),'log',name)
+        return os.path.join(self.value('logDir'),name)
 
     def remoteCachePath(self,name=None):
         '''Absolute path to access a file on the remote machine.'''
@@ -518,7 +521,7 @@ class LogFile:
 
     def footer(self,status,errcode=0):
         if not self.nolog:
-            self.logfile.write(']]>\n<status')
+            self.logfile.write('<status')
             if errcode > 0:
                 self.logfile.write(' error="' + str(errcode) + '"')
             self.logfile.write('>' + status + '</status>\n')
@@ -528,7 +531,6 @@ class LogFile:
         sys.stdout.write('### make ' + text + '...\n')
         if not self.nolog:
             self.logfile.write('<section id="' + text + '">\n')
-            self.logfile.write('<![CDATA[')
 
     def flush(self):
         sys.stdout.flush()
@@ -2749,8 +2751,12 @@ def shellCommand(commandLine, admin=False):
         cmdline = [ '/usr/bin/sudo' ] + commandLine
     else:
         cmdline = commandLine
-    writetext(' '.join(cmdline) + '\n')
+    if log:
+        log.logfile.write('<command><![CDATA[' + ' '.join(cmdline) + ']]></command>\n')
+    sys.stdout.write(' '.join(cmdline) + '\n')
     if not doNotExecute:
+        if log:
+            log.logfile.write('<output><![CDATA[\n')
         cmd = subprocess.Popen(' '.join(cmdline),shell=True,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
@@ -2759,6 +2765,8 @@ def shellCommand(commandLine, admin=False):
             writetext(line)
             line = cmd.stdout.readline()
         cmd.wait()
+        if log:
+            log.logfile.write(']]></output>\n')
         if cmd.returncode != 0:
             raise Error("unable to complete: " + ' '.join(cmdline) + '\n',
                         cmd.returncode)
