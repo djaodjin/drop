@@ -1281,7 +1281,7 @@ class Repository(Configure):
         result = result + Configure.__str__(self) 
         return result        
 
-    def update(self,name,context):
+    def update(self,name,context,force=False):
         raise Error("unknown source control system for " + self.sync)
 
 
@@ -1292,7 +1292,7 @@ class GitRepository(Repository):
     def __init__(self, sync, fetches, locals, vars):
         Repository.__init__(self,sync,fetches,locals,vars)
  
-    def update(self,name,context):
+    def update(self,name,context,force=False):
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will 
         # trigger a potentially unnecessary prompt for remoteCachePath.
@@ -1304,8 +1304,16 @@ class GitRepository(Repository):
         else:
             cwd = os.getcwd()
             os.chdir(local)
-            shellCommand(['git', 'pull'])
-            shellCommand(['git', 'checkout', '-m'])
+            try:
+                shellCommand(['git', 'pull'])
+            except:
+                # It is ok to get an error in case we are running
+                # this on the server machine.
+                None
+            cof = '-m'
+            if force:
+                cof = '-f'
+            shellCommand(['git', 'checkout', cof])
             os.chdir(cwd)
 
  
@@ -1316,7 +1324,7 @@ class SvnRepository(Repository):
     def __init__(self, sync, fetches, locals, vars):
         Repository.__init__(self,sync,fetches,locals,vars)
  
-    def update(self,name,context):
+    def update(self,name,context,force=False):
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will 
         # trigger a potentially unnecessary prompt for remoteCachePath.
@@ -2941,6 +2949,8 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
             # This is a simple way to specify inter-related projects 
             # with complex dependency set and barely any code. 
             writetext('######## updating project ' + name + '...\n')
+            # \todo We do not propagate force= here to avoid messing up
+            #       the local checkouts on pubUpdate()
             rep.update(name,context)
         else:
             writetext('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
