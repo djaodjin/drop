@@ -120,7 +120,7 @@ if __name__ == '__main__':
                 if diffLineNum < logLineNum:
                     # last log failed
                     if prevLogTestName != None:
-                        print prevLogTestName + " different"
+                        # print prevLogTestName + " different"
                         if not prevLogTestName in regressions:
                             regressions[prevLogTestName] = {}
                         regressions[prevLogTestName][reffile] = "different"
@@ -129,7 +129,7 @@ if __name__ == '__main__':
                 elif diffLineNum > logLineNum:
                     # last log passed
                     if prevLogTestName != None:
-                        print prevLogTestName + " identical"
+                        # print prevLogTestName + " identical"
                         if not prevLogTestName in regressions:
                             regressions[prevLogTestName] = {}
                         regressions[prevLogTestName][reffile] = "identical"
@@ -145,12 +145,12 @@ if __name__ == '__main__':
             # tests must have passed.
             if logLineNum != sys.maxint:
                 if prevLogTestName != None:
-                    print prevLogTestName + " identical"
+                    # print prevLogTestName + " identical"
                     if not prevLogTestName in regressions:
                         regressions[prevLogTestName] = {}
                     regressions[prevLogTestName][reffile] = "identical"
                 while logLineNum != sys.maxint:
-                    print logTestName + " identical"
+                    # print logTestName + " identical"
                     if not logTestName in regressions:
                         regressions[logTestName] = {}
                     regressions[logTestName][reffile] = "identical"
@@ -168,6 +168,7 @@ if __name__ == '__main__':
         tests = {}
         testFile = None
         nbFailures = 0
+        failureNames = set([])
         (outno, outname) = tempfile.mkstemp()
         os.close(outno)
         out = open(outname,'w')
@@ -187,6 +188,7 @@ if __name__ == '__main__':
                     else:
                         testStatus = 'unknown'
                     if firstIteration and testStatus != 'pass':
+                        failureNames |= set([testName])
                         nbFailures = nbFailures + 1
                     if not testName in tests:
                         tests[testName] = tempfile.TemporaryFile()
@@ -215,16 +217,26 @@ if __name__ == '__main__':
         # 3. All temporary files have been created, it is time to merge 
         #    them back together.
         nbRegressions = 0
+        regressionNames = set([])
         for testName in sorted(tests): 
             out.write('<test name="' + testName + '">\n')
             # Write the set of regressions for the test
             for reffile in reffiles:
                 out.write('<compare name="' + reffile + '">')
                 if testName in regressions:
-                    if regressions[testName][reffile] == 'fail':
-                        nbRegressions = nbRegressions + 1
-                    out.write(regressions[testName][reffile])
+                    if reffile in regressions[testName]:
+                        # The test might not appear in the reference file 
+                        # if it was created after the reference was generated.
+                        # There are no regressions there is nothing to compare
+                        # against.
+                        if regressions[testName][reffile] == 'fail':
+                            regressionNames |= set([testName])
+                            nbRegressions = nbRegressions + 1
+                        out.write(regressions[testName][reffile])
+                    else:                        
+                        out.write("absent")
                 else:
+                    regressionNames |= set([testName])
                     nbRegressions = nbRegressions + 1
                     out.write('compile')
                 out.write('</compare>\n')
@@ -242,8 +254,10 @@ if __name__ == '__main__':
         os.chmod(outname,stat.S_IRUSR | stat.S_IWUSR 
                  | stat.S_IRGRP | stat.S_IROTH) 
         shutil.move(outname,options.output)
-        print str(nbFailures) + ' failures'
-        print str(nbRegressions) + ' regressions'
+        sys.stdout.write(str(nbFailures) + ' failures (' \
+                             + ' '.join(failureNames) + ')\n')
+        sys.stdout.write(str(nbRegressions) + ' regressions (' \
+                             + ' '.join(regressionNames) + ')\n')
         sys.exit(max(nbFailures,nbRegressions))
 
 
