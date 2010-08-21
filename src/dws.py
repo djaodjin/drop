@@ -31,6 +31,8 @@
 # with third-party prerequisites and source code under revision
 # control such that it is possible to execute a development cycle
 # (edit/build/run) on a local machine.
+#
+# Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 
 __version__ = None
 

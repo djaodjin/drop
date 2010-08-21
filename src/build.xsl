@@ -29,7 +29,10 @@
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
 
 <!-- This xsl is used to display the result of running "dws build"
-     in a nicely formatted HTML table. -->
+     in a nicely formatted HTML table. 
+
+     Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
+  -->
 
 <xsl:template match="book">
   <!-- Title of the page  -->
