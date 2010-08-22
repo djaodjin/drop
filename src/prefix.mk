@@ -53,8 +53,8 @@ XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam fop1.extensions 1
 
 # Strip 
-stripAppdist	=	&& strip $@
-stripApp	=	$(stripApp$(buildextra))
+stripApp_dist	=	&& strip $@
+stripApp	=	$(stripApp_$(buildextra))
 
 
 # workspace make fragment and project index file

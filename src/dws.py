@@ -386,7 +386,7 @@ class Context:
         '''returns the value of the workspace variable *name*. If the variable
         has no value yet, a prompt is displayed for it.'''
         if not name in self.environ:
-            raise Error("Trying to read unknown variable " + name + ".\n")
+            raise Error("Trying to read unknown variable " + name + ".")
         if (isinstance(self.environ[name],Variable) 
             and self.environ[name].configure()):
             self.save()
@@ -2578,6 +2578,8 @@ def make(names, targets, dbindex=None):
     writetext('### make projects "' + ', '.join(names) \
                   + '" with targets "' + ', '.join(targets) + '"\n')
     distHost = context.value('distHost')
+    errcode = 0
+    errors = []
     if 'recurse' in targets:
         targets.remove('recurse')
         # Recurse through projects that need to be rebuilt first 
@@ -2590,15 +2592,22 @@ def make(names, targets, dbindex=None):
         names, projects = validateControls(names,dbindex)
         last = names.pop()
         for name in names:
-            makeProject(name,recursiveTargets,{ name: projects[name]})
+            errcode = makeProject(name,recursiveTargets,{ name: projects[name]})
+            if errcode > 0:
+                errors += [ name ]
         # Make current project
         if len(targets) > 0:
-            makeProject(last,targets,{ last: projects[last]})
+            errcode = makeProject(last,targets,{ last: projects[last]})
+            if errcode > 0:
+                errors += [ name ]
         else:
             linkDependencies({ last: projects[last]})
     else:
         for name in names:
-            makeProject(name,targets)
+            errcode = makeProject(name,targets)
+            if errcode > 0:
+                errors += [ name ]
+    return errors
 
 
 def makeProject(name,options,dependencies={}):
@@ -2665,6 +2674,7 @@ def makeProject(name,options,dependencies={}):
         errcode = e.code
         log.error(str(e))
     log.footer(status,errcode)
+    return errcode
 
 
 def mergeBuildConf(dbPrev,dbUpd,parser):
@@ -2756,7 +2766,7 @@ def shellCommand(commandLine, admin=False):
             # setup before call to apt-get.
             if not commandLine.startswith('/'):
                 raise Error("admin command without a fully quaified path: " \
-                                + commandLine + '\n')
+                                + commandLine)
         # ex: su username -c 'sudo port install icu'        
         cmdline = [ '/usr/bin/sudo' ] + commandLine
     else:
@@ -2778,7 +2788,7 @@ def shellCommand(commandLine, admin=False):
         if log:
             log.logfile.write(']]></output>\n')
         if cmd.returncode != 0:
-            raise Error("unable to complete: " + ' '.join(cmdline) + '\n',
+            raise Error("unable to complete: " + ' '.join(cmdline),
                         cmd.returncode)
 
 
@@ -2997,7 +3007,7 @@ def pubBuild(args):
     log = LogFile(context.logname(),nolog)
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    make(rgen.roots,[ 'recurse', 'install', 'dist' ])
+    errors = make(rgen.roots,[ 'recurse', 'install', 'dist' ])
     log.close()
     log = None
     # Once we have built the repository, let's report the results
@@ -3010,6 +3020,8 @@ def pubBuild(args):
                   context.logPath(logstamp)])
     if uploadResults:
         upload([ logstamp ])
+    if len(errors) > 0:
+        raise Error("Found errors while making " + ' '.join(errors))
 
 
 def pubCollect(args):
@@ -3276,7 +3288,9 @@ def pubMake(args):
         os.path.realpath(os.getcwd())))
     log = LogFile(context.logname(),nolog)
     repositories = [ context.cwdProject() ]
-    make(repositories,args)
+    errors = make(repositories,args)
+    if len(errors) > 0:
+        raise Error("Found errors while making " + ' '.join(errors))
 
 
 def pubStatus(args):
@@ -3337,7 +3351,7 @@ def pubStatus(args):
                     line = cmd.stdout.readline()
                 cmd.wait()
                 if cmd.returncode != 0:
-                    raise Error("unable to complete: " + cmdline + '\n',
+                    raise Error("unable to complete: " + cmdline,
                                 cmd.returncode)
             except Error, e:
                 # It is ok. git will return error code 1 when no changes
