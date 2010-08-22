@@ -76,7 +76,7 @@ install:: $(resources)
 
 %: %.cc
 	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) \
-		$(LOADLIBES) $(LDLIBS) -o $@
+		$(LOADLIBES) $(LDLIBS) -o $@ $(stripApp)
 
 %: %.py
 	$(installExecs)	$< $@
@@ -130,10 +130,10 @@ $(project)-$(version)::
 	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm $@/Makefile
-	$(installDirs) $@/etc
+	$(installDirs) $@/etc/dws
 	$(installExecs) $(dropHelperDir)/configure.sh $@/configure
 	$(installExecs) $(shell which dws) $@
-	$(installFiles) $(dropHelperDir)/prefix.mk $(dropHelperDir)/suffix.mk $(dropHelperDir)/configure.sh $@/etc
+	$(installFiles) $(dropHelperDir)/prefix.mk $(dropHelperDir)/suffix.mk $(dropHelperDir)/configure.sh $@/etc/dws
 
 
 # 'make install' might just do nothing and we still want to build an empty

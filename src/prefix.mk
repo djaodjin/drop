@@ -52,6 +52,11 @@ XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
 
+# Strip 
+stripAppdist	:=	&& strip $@
+stripApp	:=	$(stripApp$(buildextra))
+
+
 # workspace make fragment and project index file
 dwsmk		:=	dws.mk
 projindex	:=	dws.xml

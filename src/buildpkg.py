@@ -480,14 +480,17 @@ make install
         control.write('Source: ' + project.name + '\n')
         control.write('Maintainer: ' + project.maintainer.fullname \
                                 + ' <' + project.maintainer.email + '>\n')
-        if project.repository:
-            control.write('Build-Depends: ' \
-                              + ', '.join(dws.basenames(
-            project.repository.prerequisiteNames([context.host()]))) + '\n')
-        elif project.patch:
-            control.write('Build-Depends: ' \
-                              + ', '.join(dws.basenames(
-            project.patch.prerequisiteNames([context.host()]))) + '\n')
+        # \todo Temporarly disable the Build-Depends because of "boost"
+        #       prerequisites and how debuild makes packages.
+        if None:
+            if project.repository:
+                control.write('Build-Depends: ' \
+                                  + ', '.join(dws.basenames(
+                project.repository.prerequisiteNames([context.host()]))) + '\n')
+            elif project.patch:
+                control.write('Build-Depends: ' \
+                                  + ', '.join(dws.basenames(
+                project.patch.prerequisiteNames([context.host()]))) + '\n')
 
         control.write('\nPackage: ' + project.name + '\n')
         control.write('Priority: extra\n')
@@ -533,7 +536,7 @@ PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
 
 build:
 \tPATH=/usr/local/bin:${PATH} ./configure --prefix=$(PREFIX)
-\tmake
+\tmake buildextra=dist
 
 clean:
 \techo "make clean"
