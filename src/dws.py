@@ -134,8 +134,7 @@ class Context:
                          'makeHelperDir': Pathname('makeHelperDir',
             'Directory to the helper files used in Makefiles (prefix.mk, etc.)',
              default=os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
-                                                 '..','etc','dws',name))),
-
+                                                 '..','share','dws'))),
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
                                             installTop),
@@ -2612,6 +2611,8 @@ def makeProject(name,options,dependencies={}):
     '''Create links for prerequisites when necessary, then issue a make 
     command and log output.'''
     log.header(name)
+    # Make sure the variable will be available in Makefiles.
+    context.value('makeHelperDir')
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
     if objDir != os.getcwd():
@@ -3125,8 +3126,6 @@ def pubContext(args):
                        directory up to the workspace root (i.e where the workspace make fragment 
                        is located), it assumes the file is in *etcDir*.
     '''
-    # Make sure the variable will be available in Makefiles.
-    context.value('makeHelperDir')
     pathname = context.configFilename
     if len(args) >= 1:
         try:

@@ -35,7 +35,7 @@ shareDir	?=	$(shareBuildDir)
 
 .PHONY:	all check dist doc install site
 
-all::	$(bins) $(libs) $(includes) $(etcs)
+all::	$(bins) $(scripts) $(libs) $(includes) $(etcs)
 
 all::	$(logs)
 	$(if $^,-dregress -o regression.log $^ \
@@ -46,7 +46,11 @@ clean::
 
 install:: $(bins)
 	$(if $^,$(installDirs) $(binDir))
-	$(if $^,$(installExecs) $^ $(binDir))
+	$(if $^,$(installBins) $^ $(binDir))
+
+install:: $(scripts)
+	$(if $^,$(installDirs) $(binDir))
+	$(if $^,$(installScripts) $^ $(binDir))
 
 install:: $(libs)
 	$(if $^,$(installDirs) $(libDir))
@@ -76,13 +80,13 @@ install:: $(resources)
 
 %: %.cc
 	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) \
-		$(LOADLIBES) $(LDLIBS) -o $@ $(stripApp)
+		$(LOADLIBES) $(LDLIBS) -o $@
 
 %: %.py
-	$(installExecs)	$< $@
+	$(installScripts) $< $@
 
 %: %.sh
-	$(installExecs)	$< $@
+	$(installScripts) $< $@
 
 # Rules to build packages for distribution
 # ----------------------------------------
@@ -127,8 +131,8 @@ $(project)-$(version)::
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm $@/Makefile
 	$(installDirs) $@/etc/dws
-	$(installExecs) $(makeHelperDir)/configure.sh $@/configure
-	$(installExecs) $(shell which dws) $@
+	$(installScripts) $(makeHelperDir)/configure.sh $@/configure
+	$(installScripts) $(shell which dws) $@
 	$(installFiles) $(makeHelperDir)/prefix.mk $(makeHelperDir)/suffix.mk $(makeHelperDir)/configure.sh $@/etc/dws
 
 

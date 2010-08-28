@@ -47,9 +47,11 @@ makeHelperDir	?=	$(shareBuildDir)/dws
 # to searchPath() in dws.py
 buildpkg	:=	buildpkg
 ibtool          :=      /Developer/usr/bin/ibtool
+installBins	:=	/usr/bin/install -s -p -m 755
 installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -p -m 644
-installExecs	:=	/usr/bin/install -p -m 755
+installScripts	:=	/usr/bin/install -p -m 755
+
 FOP		:=	fop
 LN_S		:=	/bin/ln -fs
 SED		:=	sed
@@ -57,11 +59,6 @@ SEMILLA		:=	$(binBuildDir)/semilla
 XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
-
-# Strip 
-stripApp_dist	=	&& strip $@
-stripApp	=	$(stripApp_$(buildextra))
-
 
 # workspace make fragment and project index file
 dwsmk		:=	dws.mk
@@ -171,6 +168,7 @@ vpath %Makefile $(srcDir)
 # List of files to be installed
 # -----------------------------
 bins	:=
+scripts :=
 libs	:=
 includes:=	$(wildcard $(srcDir)/include/*.hh \
 	          	   $(srcDir)/include/*.tcc)
