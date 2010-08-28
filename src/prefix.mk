@@ -32,8 +32,14 @@
 # Paths to "normalized" prerequisites
 binBuildDir 	:= 	$(buildTop)/bin
 includeBuildDir :=	$(buildTop)/include
+etcBuildDir	:=	$(buildTop)/etc
 libBuildDir	:=	$(buildTop)/lib
 shareBuildDir	:=	$(buildTop)/share
+
+# The drop project cannot depend on itslef and thus cannot rely
+# on $(etcSharedDir)/dws to exist. The following variable is overriden 
+# in drop/Makefile to accomodate the special case.
+makeHelperDir	?=	$(shareBuildDir)/dws
 
 
 # We cannot initialize buildpkg to $(binBuildDir)/buildpkg, 

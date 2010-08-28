@@ -25,13 +25,13 @@ srcDir=`echo $0 | sed -e 's,\(.*\)/.*$,\\1,'`
 srcDir=`cd $srcDir ; pwd`
 srcTop=`dirname $srcDir`
 binBuildDir=${buildDir}/bin
-etcBuildDir=${buildDir}/etc
+shareBuildDir=${buildDir}/share
 
 echo buildTop=${buildTop} > ${projmk}
 echo srcTop=${srcTop} >> ${projmk}
 echo siteTop=${buildDir}/cache >> ${projmk}
 echo binBuildDir=${binBuildDir} >> ${projmk}
-echo etcBuildDir=${etcBuildDir} >> ${projmk}
+echo shareBuildDir=${shareBuildDir} >> ${projmk}
 echo libBuildDir=${buildDir}/lib >> ${projmk}
 echo includeBuildDir=${buildDir}/include >> ${projmk}
 echo shareBuildDir=${buildDir}/share >> ${projmk}
@@ -44,11 +44,11 @@ echo shareDir=${prefix}/share >> ${projmk}
 # Copy dws files into binDir and etcDir because that's where they will 
 # be searched when drop is specified as a prerequisite for the project.
 mkdir -p ${binBuildDir}
-mkdir -p ${etcBuildDir}/dws
+mkdir -p ${shareBuildDir}/dws
 cp ${srcDir}/dws ${binBuildDir}
 helpers=`ls -l ${srcDir}/etc/*.{mk,sh} > /dev/null 2>&1 | wc -l`
 if [ ${helpers} -gt 0 ] ; then
-    cp -r ${srcDir}/etc/*.{mk,sh} ${etcBuildDir}/dws
+    cp -r ${srcDir}/etc/*.{mk,sh} ${shareBuildDir}/dws
 fi
 ${binBuildDir}/dws --default configure
 

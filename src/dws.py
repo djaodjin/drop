@@ -131,9 +131,11 @@ class Context:
              'Root of the tree where the source code under revision control lives on the local machine.',siteTop,default='reps')
         self.environ = { 'buildTop': buildTop, 
                          'srcTop' : self.srcTop,
-                         'etcBuildDir': Pathname('etcBuildDir',
-             'Root of the tree where configuration prerequisites are linked',
-                                            buildTop),
+                         'makeHelperDir': Pathname('makeHelperDir',
+            'Directory to the helper files used in Makefiles (prefix.mk, etc.)',
+             default=os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
+                                                 '..','etc','dws',name))),
+
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
                                             installTop),
@@ -203,16 +205,12 @@ class Context:
             return os.path.join(resourcesDir,name)
         return resourcesDir
 
-    def derivedEtc(self,name):
-        '''Absolute path to a file which is part of drop but located
-        in the etc/dws subdirectory. We first search in etcBuildDir/dws then
-        in dirname(dws)/../etc/dws. The second search is useful when drop
-        is not part of the repository but a pre-installed prerequisite.'''
-        path = os.path.join(context.value('etcBuildDir'),'dws',name)
-        if not os.path.isfile(path):
-            path = os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
-                                                 '..','etc','dws',name))
-        return path
+    def derivedHelper(self,name):
+        '''Absolute path to a file which is part of drop helper files
+        located in the share/dws subdirectory. The absolute directory
+        name to share/dws is derived from the path of the script
+        being executed as such: dirname(sys.argv[0])/../share/dws.'''
+        return os.path.join(self.value('makeHelperDir'),name)
 
     def hostCachePath(self,name):
         '''Absolute path to a file in the local system cache for host 
@@ -2659,10 +2657,6 @@ def makeProject(name,options,dependencies={}):
         # a change to override defaults for installTop, etc.
         for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
             name = context.value(dir + 'Dir')
-        # etcBuildDir is where dws/prefix.mk, etc are linked into.
-        # If we don't set it up here, the "make" subprocess might look
-        # to hang though it is waiting for input.
-        name = context.value('etcBuildDir')
         if len(targets) > 0:
             for target in targets:
                 shellCommand(cmdline + [ target ] + overrides)
@@ -3087,7 +3081,7 @@ def pubCollect(args):
     # Create the index and checks it is valid according to the schema. 
     createIndexPathname(context.dbPathname(),indices)
     shellCommand(['xmllint', '--noout', '--schema ',
-                  context.derivedEtc('index.xsd'),
+                  context.derivedHelper('index.xsd'),
                   context.dbPathname()])
     # We should only copy the index file after we created it.
     if copyBinPackages:
@@ -3131,13 +3125,15 @@ def pubContext(args):
                        directory up to the workspace root (i.e where the workspace make fragment 
                        is located), it assumes the file is in *etcDir*.
     '''
+    # Make sure the variable will be available in Makefiles.
+    context.value('makeHelperDir')
     pathname = context.configFilename
     if len(args) >= 1:
         try:
             dir, pathname = searchBackToRoot(args[0],
                    os.path.dirname(context.configFilename))
         except IOError:
-            pathname = context.derivedEtc(args[0])
+            pathname = context.derivedHelper(args[0])
     sys.stdout.write(pathname)
 
 

@@ -110,10 +110,6 @@ endef
 $(project)-$(version).tar.bz2: $(project)-$(version)
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' -f $@ $<
 
-# The drop project cannot depend on itslef and thus cannot rely
-# on $(etcBuildDir)/dws to exist. The following variable is overriden 
-# in drop/Makefile to accomodate the special case.
-dropHelperDir	?=	$(etcBuildDir)/dws
 
 $(project)-$(version)::
 	$(if $(patchedSources),          \
@@ -131,9 +127,9 @@ $(project)-$(version)::
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm $@/Makefile
 	$(installDirs) $@/etc/dws
-	$(installExecs) $(dropHelperDir)/configure.sh $@/configure
+	$(installExecs) $(makeHelperDir)/configure.sh $@/configure
 	$(installExecs) $(shell which dws) $@
-	$(installFiles) $(dropHelperDir)/prefix.mk $(dropHelperDir)/suffix.mk $(dropHelperDir)/configure.sh $@/etc/dws
+	$(installFiles) $(makeHelperDir)/prefix.mk $(makeHelperDir)/suffix.mk $(makeHelperDir)/configure.sh $@/etc/dws
 
 
 # 'make install' might just do nothing and we still want to build an empty
