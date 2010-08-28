@@ -2599,7 +2599,7 @@ def make(names, targets, dbindex=None):
         if len(targets) > 0:
             errcode = makeProject(last,targets,{ last: projects[last]})
             if errcode > 0:
-                errors += [ name ]
+                errors += [ last ]
         else:
             linkDependencies({ last: projects[last]})
     else:
@@ -2638,8 +2638,8 @@ def makeProject(name,options,dependencies={}):
     # on drop as a prerequisite.
     cmdline = ['export PATH=' + ':'.join(context.searchPath()) + ' ;',
                'make', '-f', makefile]
+    start = datetime.datetime.now()
     try:        
-        status = 'prereqs'
         if len(dependencies) > 0:
             # Dependencies which are concidered to be packages have files 
             # located anywhere on the local system and only links to those
@@ -2650,7 +2650,6 @@ def makeProject(name,options,dependencies={}):
             # will be coming out of the local system package manager at some
             # point in the future.
             linkDependencies(dependencies)
-        status = 'make'
         # prefix.mk and suffix.mk expects these variables to be defined 
         # in the workspace make fragment. If they are not you might get some strange errors where
         # a g++ command-line appears with -I <nothing> or -L <nothing> 
@@ -2666,14 +2665,15 @@ def makeProject(name,options,dependencies={}):
         name = context.value('etcBuildDir')
         if len(targets) > 0:
             for target in targets:
-                status = target
                 shellCommand(cmdline + [ target ] + overrides)
         else:
             shellCommand(cmdline)
     except Error, e:
         errcode = e.code
         log.error(str(e))
-    log.footer(status,errcode)
+    finish = datetime.datetime.now()
+    elapsed = finish - start
+    log.footer(str(elapsed),errcode)
     return errcode
 
 
