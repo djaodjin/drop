@@ -116,9 +116,8 @@ $(project)-$(version).tar.bz2: $(project)-$(version)
 
 
 $(project)-$(version)::
-	$(if $(patchedSources),          \
-		$(installDirs) $@/cache \
-		&& rsync -aR $(patchedSources) $@/cache)
+	$(if $(patchedSources),$(installDirs) $@ \
+	    && rsync -aR $(patchedSources) $@)
 	rsync -r --exclude=.git $(srcDir)/* $@
 	$(foreach script,$(wildcard $(srcDir)/src/*.py),$(call distVersion,$(script)))
 	if [ -f $(srcDir)/$(projindex) ] ; then \
@@ -126,14 +125,14 @@ $(project)-$(version)::
 		$(srcDir)/$(projindex) > $@/$(projindex) ; \
 	fi
 	$(SED) -e 's,$$(shell dws context),$(dwsmk),' \
-	    -e 's,$$(shell dws context \(..*\)),etc/\1,' \
+	    -e 's,$$(shell dws context \(..*\)),share/dws/\1,' \
 	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm $@/Makefile
-	$(installDirs) $@/etc/dws
+	$(installDirs) $@/share/dws
 	$(installScripts) $(makeHelperDir)/configure.sh $@/configure
 	$(installScripts) $(shell which dws) $@
-	$(installFiles) $(makeHelperDir)/prefix.mk $(makeHelperDir)/suffix.mk $(makeHelperDir)/configure.sh $@/etc/dws
+	$(installFiles) $(makeHelperDir)/prefix.mk $(makeHelperDir)/suffix.mk $(makeHelperDir)/configure.sh $@/share/dws
 
 
 # 'make install' might just do nothing and we still want to build an empty

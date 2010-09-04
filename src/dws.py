@@ -49,6 +49,8 @@ log = None
 # When True, the log object is not used and output is only
 # done on sys.stdout.
 nolog = False
+# When True, remove *siteTop* before executing the build command.
+doClean = False
 # When True, all commands invoked through shellCommand() are printed
 # but not executed.
 doNotExecute = False
@@ -193,17 +195,6 @@ class Context:
     def shareBuildDir(self):
         return os.path.join(self.value('buildTop'),'share')
 
-    def cachePath(self,name=None):
-        '''Absolute path to a file in the local system cache
-        directory hierarchy.'''
-        resourcesDir = os.path.join(self.value('siteTop'),'resources')
-        if name:
-            relative = name.find('.' + os.sep)
-            if relative > 0:
-                return os.path.join(resourcesDir,name[relative + 2:])
-            return os.path.join(resourcesDir,name)
-        return resourcesDir
-
     def derivedHelper(self,name):
         '''Absolute path to a file which is part of drop helper files
         located in the share/dws subdirectory. The absolute directory
@@ -224,7 +215,13 @@ class Context:
     def remoteCachePath(self,name=None):
         '''Absolute path to access a file on the remote machine.'''
         if name:
-            return os.path.join(self.value('remoteSiteTop'),'resources',name)
+            if name.startswith('http') or ':' in name:
+                return name
+            elif name.startswith('/'):
+                return '/.' + name
+            else:
+                return os.path.join(self.value('remoteSiteTop'),
+                                    'resources','./' + name)
         return os.path.join(self.value('remoteSiteTop'),'resources')
 
     def remoteSrcPath(self,name):
@@ -273,13 +270,15 @@ class Context:
         '''Returns the distribution on which the script is running.'''
         return self.value('distHost')
 
-    def localDir(self,remotename):
-        pos = remotename.find('./')
+    def localDir(self, name, cacheDir=None):
+        remoteName = self.remoteCachePath(name)
+        if not cacheDir:
+            cacheDir = os.path.join(context.value('siteTop'),'resources')
+        pos = remoteName.find('./')
         if pos > 0:
-            localname = os.path.join(context.value('siteTop'),
-                                     remotename[pos + 2:])
+            localname = os.path.join(cacheDir,remoteName[pos + 2:])
         else:
-            localname = remotename.replace(context.value('remoteSiteTop'),
+            localname = remoteName.replace(context.value('remoteSiteTop'),
                                            context.value('siteTop'))
         if localname.endswith('.git'):
             localname = localname[:-4]
@@ -314,10 +313,11 @@ class Context:
             if look != None:
                 if look.group(1) == 'siteTop':
                     siteTopFound = True
-                if not look.group(1) in self.environ:
-                    self.environ[look.group(1)] = look.group(2)
-                else:
+                if (look.group(1) in self.environ 
+                    and isinstance(self.environ[look.group(1)],Variable)): 
                     self.environ[look.group(1)].value = look.group(2)
+                else:
+                    self.environ[look.group(1)] = look.group(2)
             line = configFile.readline()
         if not siteTopFound:
             # By default we set *siteTop* to be the directory
@@ -450,7 +450,7 @@ class IndexProjects:
                 elif projName in dgen.patches:
                     vars += dgen.projects[projName].patch.vars
                 elif projName in dgen.packages:
-                    distHost = context.value('distHost')                
+                    distHost = context.host()                
                     vars += dgen.projects[projName].packages[distHost].vars
         # Configure environment variables required by a project 
         # and that need to be present in the workspace make fragment
@@ -614,264 +614,247 @@ class DependencyGenerator(Unserializer):
         self.packages = set(packages)
         self.patches = set(patches)
         self.repositories = set(repositories)
+        self.activePrerequisites = {}
+        for p in repositories + patches + packages:
+            self.activePrerequisites[p] = (p, 0)
+        self.levels = {}  
+        self.levels[0] = repositories + patches + packages
+        self.prerequisites = {}
+        self.extraFetches = {}
         # Project which either fullfil all prerequisites or that have been 
         # explicitely excluded from installation by the user will be added 
         # to *excludePats*.
 
-        # This contains a list of list of edges. When levels is traversed last 
-        # to first and each edge's source vertex is outputed, it displays 
-        # a topological ordering of the selected projects.
-        # In other words, levels holds each recursing of a breadth-first search
-        # algorithm through the graph of projects from the roots.
-        # We store edges in each level rather than simply the source vertex 
-        # such that we can detect cycles. That is when an edge would be 
-        # traversed again.
-        # *missings* contains a list of dependency edges (source,target) where
-        # prerequisites required by source and installed by target cannot be 
-        # fullfiled with the current configuration of the local machine.
-        self.missings = []
-        for p in self.includePats:
-            self.missings += [ [ None, p ] ]
-        self.levels = [ [] ]            
-        self.buildDeps = {}
-        self.extraSyncs = []
-        self.extraFetches = {}
+    def addDeps(self, deps, fetches = None):
+        targets = []
+        for p in deps:
+            targets += [ p.name ] 
+            if not p in self.prerequisites:
+                self.prerequisites[p.name] \
+                    = Dependency(p.name,p.files,p.excludes,p.target)
+            else:
+                self.prerequisites[p.name].files += p.files
+                self.prerequisites[p.name].excludes += p.excludes
+                self.prerequisites[p.name].target = p.target
+        if fetches:
+            for f in findCache(fetches):
+                self.extraFetches[f] = fetches[f]
+        return targets
 
-    def candidates(self):
-        '''Returns a triple (repositories, patches, packages) where each element
-        is a list of rows, each row describes a missing prerequisite project. 
-        When a missing project can be installed from either a repository, 
-        a patch or a package, it will be described in each element 
-        of the triplet as appropriate.'''
-        repositories = []
-        patches = []
-        packages = []
-        targets = set([])
-        for miss in self.missings:
-            targets |= set([ miss[1] ])
-        for name in targets:      
-            if (not os.path.isdir(context.srcDir(name))
-                and self.filters(name)):
-                # If a prerequisite project is not defined as an explicit
-                # package, we will assume the prerequisite name is
-                # enough to install the required tools for the prerequisite.
-                row = [ name ]
-                if name in self.projects:                
-                    if self.projects[name].installedVersion:
-                        row += [ self.projects[name].installedVersion ]
-                    if self.projects[name].repository:
-                        repositories += [ row ]
-                    if self.projects[name].patch:
-                        patches += [ row ]
-                    if not (self.projects[name].repository 
-                            or self.projects[name].patch):
-                        packages += [ row ]
-                else:
-                    packages += [ row ]
-        return repositories, patches, packages
+
+    def contextualTargets(self,name):
+        raise Error("DependencyGenerator should not be instantiated directly")
  
     def endParse(self):
         # !!! Debugging Prints !!!
-        # print "* endParse:"
-        # print "     includes: " + str(self.includePats) 
-        # print "     excludes: " + str(self.excludePats) 
-        # print "     levels:   " + str(self.levels)
-        # print "     missings: " + str(self.missings)
+        print "* DependencyGenerator.endParse:"
+        print "     includes: " + str(self.includePats) 
+        print "     excludes: " + str(self.excludePats) 
+        print "     projects: " + str(self.projects)
+        print "     reps:     " + str(self.repositories)
+        print "     patches:  " + str(self.patches)
+        print "     packages: " + str(self.packages)
+        print "     levels:   " + str(self.levels)
+        print "     actives:  " + str(self.activePrerequisites)
 
-        # This is an opportunity to prompt for missing dependencies.
-        reps, patches, packages = self.candidates()
-        reps, patches, packages = selectCheckout(reps,patches,packages)
-        # The user's selection will decide, when available, if the project
-        # should be installed from a repository, a patch, a binary package
-        # or just purely skipped. 
-        self.repositories |= set(reps)
-        self.patches |= set(patches)
-        self.packages |= set(packages)
-
-        # We now know what to do with the missing dependency edges, 
-        # so let's add the ones we have to track. 
-        for newEdge in self.missings:
-            if (newEdge[1] in self.repositories 
-                or newEdge[1] in self.patches
-                or newEdge[1] in self.packages):
-                if newEdge[1] in self.projects:
-                    # If the prerequisite is not a project, it will be 
-                    # installed by the distribution's package manager 
-                    # on the local machine and we do not track 
-                    # its prerequisites explicitely. We leave
-                    # this work to the distribution package manager.
-                    self.levels[0] += [ newEdge ]
+        further = False
+        nextActivePrerequisites = {}
+        for p in self.activePrerequisites:
+            # Each edge is a triplet source: (color, depth)
+            # Gather next active Edges.
+            color = self.activePrerequisites[p][0]
+            depth = self.activePrerequisites[p][1]
+            nextDepth = depth + 1
+            # The algorithm to select targets depends on the command semantic.
+            # The build, make and install commands differ in behavior there 
+            # in the presence of repostory, patch and package tags.
+            needPrompt, targets = self.contextualTargets(p)
+            if needPrompt:
+                nextActivePrerequisites[p] = (color, depth)
             else:
-                self.excludePats |= set([ newEdge[1] ])
-        locals = []
-        fetches = {}
-        syncs = []
-        tags = [ context.host() ]
-        for edge in self.levels[0]:
-            target = edge[1]
-            if (target in self.repositories
-                and not self.projects[target].repository):
-                # Miscategorized, it is actually a patch.
-                self.repositories -= set([target])
-                self.patches |= set([target])
-            if target in self.repositories:
-                syncs += [ target ]
-                locals += self.projects[target].repository.prerequisites(tags)
-                for f in self.projects[target].repository.fetches:
-                    fetches[f] = self.projects[target].repository.fetches[f]
-            elif target in self.patches:
-                syncs += [ target ]
-                locals += self.projects[target].patch.prerequisites(tags)
-                for f in self.projects[target].patch.fetches:
-                    fetches[f] = self.projects[target].patch.fetches[f]
-            elif target in self.packages:
-                distHost = context.value('distHost')                
-                locals += self.projects[target].packages[distHost].prerequisites(tags)
-                for f in self.projects[target].packages[distHost].fetches:
-                    fetches[f] = self.projects[target].packages[distHost].fetches[f]
-        # Find all executables, libraries, etc. that are already 
-        # installed on the local system.
-        aggDeps = self.buildDeps
-        for local in locals:
-            if local.name in aggDeps:
-                for key in local.files:
-                    if key in aggDeps[local.name].files:
-                       for filePat, filePath in local.files[key]:
-                           found = False
-                           for prevPat, prevPath \
-                                   in aggDeps[local.name].files[key]:
-                               if filePat == prevPat:
-                                   # This prerequisite as a pattern has already
-                                   # been searched before so let's not search
-                                   # for it on the local system again.
-                                   found = True
-                                   break
-                           if not found:
-                               aggDeps[local.name].files[key] \
-                                   += [ (filePat, filePath) ]
+                for target in targets:
+                    further = True
+                    if target in nextActivePrerequisites:
+                        if nextActivePrerequisites[target][0] > color:
+                            # We propagate a color attribute through 
+                            # the constructed DAG to detect cycles later on.
+                            nextActivePrerequisites[target] = (color, nextDepth)
                     else:
-                        aggDeps[local.name].files[key] = local.files[key]
-                for exclude in local.excludes:
-                    if not exclude in aggDeps[local.name].excludes:
-                        aggDeps[local.name].excludes += [ exclude ]
-            else:
-                aggDeps[local.name] = Dependency(local.name,local.files,
-                                                 local.excludes,local.target)
-        newLevel = []
-        self.missings = []
-        for name in aggDeps:
-            files, complete \
-                = findPrerequisites(aggDeps[name].files,
-                                    aggDeps[name].excludes,
-                                    aggDeps[name].target)
-            self.buildDeps[name] = Dependency(name,files,
-                                              aggDeps[name].excludes,
-                                              aggDeps[name].target)
-            for edge in self.levels[0]:
-                source = edge[1]
-                if (source in self.projects
-                    and name in self.projects[source].prerequisiteNames(tags)):
-                    if os.path.isdir(context.srcDir(name)):
-                        # Here we will force add the dependencies when 
-                        # a repository is locally checked out such that 
-                        # a "make recurse" rebuilds every prerequisite 
-                        # projects locally checked out.
-                        newLevel += [ [ source, name ] ]
-                        self.repositories |= set([ name ])
-                        self.includePats |= set([ name ])
-                    elif complete:
-                        # All bin. lib, etc. prerequisites have been found
-                        # so we do not look further down the dependency graph.
-                        self.excludePats |= set([ name ])
+                        nextActivePrerequisites[target] = (color, nextDepth)
+                    if not nextDepth in self.levels:
+                         self.levels[nextDepth] = set([])
+                    self.levels[ nextDepth ] |= set([target])
+
+        self.activePrerequisites = nextActivePrerequisites
+        if not further:
+            # This is an opportunity to prompt the user.
+            # The user's selection will decide, when available, if the project
+            # should be installed from a repository, a patch, a binary package
+            # or just purely skipped. 
+            reps = []
+            patches = []
+            packages = []
+            for name in self.activePrerequisites:      
+                if (not os.path.isdir(context.srcDir(name))
+                    and self.filters(name)):
+                    # If a prerequisite project is not defined as an explicit
+                    # package, we will assume the prerequisite name is
+                    # enough to install the required tools for the prerequisite.
+                    row = [ name ]
+                    if name in self.projects:                
+                        project = self.asProject(name)
+                        if project.installedVersion:
+                            row += [ project.installedVersion ]
+                        if project.repository:
+                            reps += [ row ]
+                        if project.patch:
+                            patches += [ row ]
+                        if not (project.repository or project.patch):
+                            packages += [ row ]
                     else:
-                        # Can't find something, we will prompt the user
-                        # for installation from appropriate options.
-                        self.missings += [ [ source, name ] ]
-                        self.includePats |= set([ name ])
-
-        # Check for the presence of a local checkout of required source
-        # control repositories. If it is present, we'll do a recursive make.
-        for name in syncs:
-            if not os.path.isdir(context.srcDir(name)):
-                self.extraSyncs += [ name ]
-        # Check that the extra files required (such as .tar.bz2 source
-        # distribution) are in the local cache.
-        found, version = findCache(fetches)
-        for source in fetches:
-            if not context.cachePath(source) in found:
-                self.extraFetches[source] = fetches[source]
-        # Update project prerequisites that can be satisfied
-        for p in self.projects:
-            self.projects[ p ].populate(self.buildDeps)
-
-        roots = []
-        level = []
-        for newEdge in newLevel:
-            found = False
-            for edge in level:
-                if (edge[0] == newEdge[0] and edge[1] == newEdge[1]):
-                    found = True
-                    break
-            if not found:
-                level += [ newEdge ]
-                if not newEdge[1] in roots:
-                    # Insert each vertex once. 
-                    roots += [ newEdge[1] ]
-        # If an edge's source is matching a vertex added 
-        # to the next level, obviously, it was too "late"
-        # in the topological order.
-        newLevel = []
-        for edge in level:
-            found = False
-            for vertex in roots:
-                if edge[0] == vertex:
-                    found = True
-                    break
-            if not found:
-                newLevel += [ edge ] 
-        self.levels.insert(0,newLevel)
-
-        # Going one step further in the breadth-first recursion introduces 
-        # a new level.
-        if None:
-            # \todo cannot detect cycles like this...
-            print "levels:"
-            print self.levels
-            for newEdge in self.levels[0]:
-                # We first walk the tree of previously recorded edges to find out 
-                # if we detected a cycle.
-                if len(self.levels) > 1:
-                    for level in self.levels[1:]:
-                        for edge in level:
-                            if edge[0] == newEdge[0] and edge[1] == newEdge[1]:
-                                raise CircleError(edge[0],edge[1])
+                        packages += [ row ]
+            # Prompt to choose amongst installing from repository
+            # patch or package when those tags are available.'''
+            reps, patches, packages = selectCheckout(reps,patches,packages)
+            self.repositories |= set(reps)
+            self.patches |= set(patches)
+            self.packages |= set(packages)
+        # Add all these in the includePats such that we load project
+        # information the next time around.
+        for name in self.activePrerequisites:
+            if not name in self.includePats:
+                self.includePats |= set([ name ])
 
     def more(self):
-        '''True if there are more iterations of the breath-first 
-        search to conduct.'''
-        return len(self.levels[0]) > 0 or len(self.missings) > 0
+        '''True if there are more iterations to conduct.'''
+        return len(self.activePrerequisites) > 0
+
 
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
         sorted = []
-        for level in self.levels:
-            for edge in level:
-                if not edge[1] in sorted:
-                    sorted += [ edge[1] ] 
-        results = []
-        for name in sorted:
-            found = False
-            for excludePat in self.excludePats:
-                if re.match(excludePat.replace('+','\+'),name):
-                    found = True
-                    break
-            if not found:
-                results += [ name ]
+        
+        for level in range(len(self.levels),0,-1):
+            for name in self.levels[level - 1]:
+                if not name in sorted:
+                    sorted += [ name ] 
+        reps = []
+        fetches = []
         packages = []
-        for p in self.packages:
-            if self.filters(p):
-                packages += [ p ]
-        return results, packages, self.extraFetches
+        for name in sorted:
+            if name in self.repositories or name in self.patches:
+                reps += [ name ]
+            elif name in self.packages:
+                packages += [ name ]
+
+        print "!!! return topological:"
+        print "\treps: " + str(reps)
+        print "\tpackages: " + str(packages)
+        print "\tfetches: " + str(self.extraFetches)
+        return reps, packages, self.extraFetches
+
+
+class BuildGenerator(DependencyGenerator):
+    '''Forces selection of installing from repository when that tag
+    is available in a project.'''        
+
+    def contextualTargets(self,name):
+        if not name in self.projects:
+            # We leave the native host package manager to deal with this one...
+            files, complete \
+                = findPrerequisites(self.prerequisites[name].files,
+                                    self.prerequisites[name].excludes,
+                                    self.prerequisites[name].target)
+            if not complete:
+                self.packages |= set([ name ])
+            return (False, [])
+
+        targets = []
+        tags = [ context.host() ]
+        project = self.asProject(name)
+        if project.repository:
+            self.repositories |= set([name])
+            targets = self.addDeps(project.repository.prerequisites(tags),
+                                   project.repository.fetches)
+        elif project.patch:
+            self.patches |= set([name])
+            targets = self.addDeps(project.patch.prerequisites(tags),
+                                   project.patch.fetches)
+        elif len(project.packages) > 0:
+           self.packages |= set([name])
+           targets = self.addDeps(project.packages[tags[0]].prerequisites(tags))
+        return (False, targets)
+
+
+class MakeGenerator(DependencyGenerator):
+    '''Forces selection of installing from repository when that tag
+    is available in a project.'''
+
+    def addDeps(self, deps, fetches=None):
+        targets = []
+        for d in deps:
+            name = d.name
+            if os.path.isdir(context.srcDir(name)):
+                targets += [ name ]
+            else:
+                files, complete \
+                    = findPrerequisites(d.files,d.excludes,d.target)
+                if not complete:
+                    targets += [ name ]
+        if fetches:            
+            for f in findCache(fetches):
+                self.extraFetches[f] = fetches[f]
+        return targets
+
+    def contextualTargets(self, name):
+        if not name in self.projects:
+            self.packages |= set([ name ])
+            return (False, [])
+
+        needPrompt = True
+        project = self.asProject(name)
+        if os.path.isdir(context.srcDir(name)):
+            # If there is already a local source directory in *srcTop*, it is
+            # also a no brainer - invoke make.
+            self.repositories |= set([ name ])
+
+        else:
+            # First, compute how many potential installation tags we have here.
+            nbChoices = 0
+            if project.repository:
+                nbChoices = nbChoices + 1
+            if project.patch:
+                nbChoices = nbChoices + 1
+            if len(project.packages) > 0:
+                nbChoices = nbChoices + 1
+
+            if nbChoices == 1:            
+                # Only one choice is easy
+                if project.repository:
+                    self.repositories |= set([name])
+                elif project.patch:
+                    self.patches |= set([name])
+                elif len(project.packages) > 0:
+                    self.packages |= set([name])
+
+        # The repository, patch or package tag to follow through has already 
+        # been decided, so let's check if we need to go deeper through 
+        # the prerequisistes.
+        targets = []
+        tags = [ context.host() ]
+        if name in self.repositories:
+            needPrompt = False
+            targets = self.addDeps(project.repository.prerequisites(tags),
+                                   project.repository.fetches)
+        elif name in self.patches:
+            needPrompt = False
+            targets = self.addDeps(project.patch.prerequisites(tags),
+                                   project.patch.fetches)
+        elif len(project.packages) > 0:
+          needPrompt = False
+          targets = self.addDeps(project.packages[tags[0]].prerequisites(tags))
+
+        return (needPrompt, targets)
 
 
 class DerivedSetsGenerator(PdbHandler):
@@ -1237,6 +1220,7 @@ class Configure:
         return result
 
     def populate(self, buildDeps = {}):
+        print "Configure.populate with locals=" + str(self.locals)
         for local in self.locals:
             local.populate(buildDeps)
 
@@ -1280,6 +1264,14 @@ class Repository(Configure):
         result = result + Configure.__str__(self) 
         return result        
 
+    @staticmethod
+    def associate(pathname):
+        if os.path.isdir(os.path.join(pathname,'.git')):
+            return GitRepository(None,None,None,None)
+        elif os.path.isdir(os.path.join(pathname,'.svn')):
+            return SvnRepository(None,None,None,None)
+        return None
+
     def update(self,name,context,force=False):
         raise Error("unknown source control system for " + self.sync)
 
@@ -1290,6 +1282,13 @@ class GitRepository(Repository):
 
     def __init__(self, sync, fetches, locals, vars):
         Repository.__init__(self,sync,fetches,locals,vars)
+
+    def push(self, pathname):
+        prev = os.getcwd()
+        os.chdir(pathname)
+        shellCommand(['git', 'push' ])
+        os.chdir(prev)
+
  
     def update(self,name,context,force=False):
         # If the path to the remote repository is not absolute,
@@ -1848,23 +1847,24 @@ def findCache(names):
         name = os.path.basename(urlparse.urlparse(pathname).path)
         writetext(name + "... ")
         log.flush()
-        fullName = context.localDir(pathname)
-        if os.path.exists(fullName):
-            if names[name]:
-                f = open(fullName,'rb')
+        localName = context.localDir(pathname)
+        print "!!! findCache.localName=" + localName
+        if os.path.exists(localName):
+            if names[pathname]:
+                f = open(localName,'rb')
                 sum = hashlib.sha1(f.read()).hexdigest()
                 f.close()
-                if sum == names[name]:
+                if sum == names[pathname]:
                     # checksum are matching
                     writetext("cached\n")
-                    results += [ fullName ]
                 else:
                     writetext("corrupted?\n")
             else:
                 writetext("yes\n")
         else:
+            results += [ pathname ]
             writetext("no\n")
-    return results, version
+    return results
 
 
 def findFiles(base,namePat):
@@ -2261,6 +2261,35 @@ def configVar(vars):
     return vars
 
 
+def cwdProjects(reps, recurse=False):
+    '''returns a list of projects based on the current directory 
+    and/or a list passed as argument.'''  
+    if len(reps) == 0:
+        # We try to derive project names from the current directory whever 
+        # it is a subdirectory of buildTop or srcTop.
+        cwd = os.path.realpath(os.getcwd())
+        buildTop = os.path.realpath(context.value('buildTop'))
+        srcTop = os.path.realpath(context.value('srcTop'))
+        projectName = None
+        srcDir = srcTop
+        srcPrefix = os.path.commonprefix([ cwd,srcTop ])
+        buildPrefix = os.path.commonprefix([ cwd, buildTop ])
+        if srcPrefix == srcTop:
+            srcDir = cwd
+            projectName = srcDir[len(srcTop) + 1:]
+        elif buildPrefix == buildTop:
+            srcDir = cwd.replace(buildTop,srcTop)
+            projectName = srcDir[len(srcTop) + 1:]
+        if projectName:
+            reps = [ projectName ]
+        else:
+            for repdir in findFiles(srcDir,'\.git'):
+                reps += [ os.path.dirname(repdir.replace(srcTop + os.sep,'')) ]
+    if recurse:
+        raise NotYetImplemented()
+    return reps
+
+
 def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
     '''download *filenames*, typically a list of distribution packages, 
     from the remote server into *cacheDir*. See the upload function 
@@ -2268,37 +2297,32 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
     When the files to fetch require sudo permissions on the remote
     machine, set *admin* to true.
     '''
-    cachePath = cacheDir
     if not cacheDir:
-        cachePath = context.cachePath()
+        relative = True
+        cacheDir = os.path.join(context.value('siteTop'),'resources')
     if len(filenames) > 0:
-        if force:
-            downloads = filenames
-        else:
-            locals = findCache(filenames)
-            downloads = []
-            for filename in filenames:
-                if not context.cachePath(filename) in locals:
-                    dir = os.path.dirname(context.cachePath(filename))
-                    if not os.path.exists(dir):
-                        os.makedirs(dir)
-                    downloads += [ filename ]
-        remoteCachePath = context.remoteCachePath()
-
         # Convert all filenames to absolute urls
-        pathnames = []
-        for f in downloads:
-            if f.startswith('http') or ':' in f:
-                pathnames += [ f ]
-            elif f.startswith('/'):
-                pathnames += [ '/.' + f ]
-            else:
-                pathnames += [ context.remoteCachePath('./' + f) ]
+        pathnames = {}
+        for f in filenames:
+            pathnames[ context.remoteCachePath(f) ] = filenames[f]
+
+        # Check the local cache
+        if force:
+            downloads = pathnames
+        else:
+            downloads = findCache(pathnames)
+            for filename in downloads:
+                localFilename = context.localDir(filename)
+                dir = os.path.dirname(localFilename)
+                if not os.path.exists(dir):
+                    os.makedirs(dir)
+
             
         # Split fetches by protocol
         https = []
         sshs = []
-        for p in pathnames:
+        remoteCachePath = context.remoteCachePath()
+        for p in downloads:
             # Splits between files downloaded through http and ssh.
             if p.startswith('http'):
                 https += [ p ]
@@ -2329,10 +2353,9 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
             if admin:
                 shellCommand(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-            cmdline, prefix = findRSync(remoteCachePath,
-                                        relative or not cacheDir,admin)
+            cmdline, prefix = findRSync(remoteCachePath,relative,admin)
             shellCommand(cmdline + ["'" + prefix + ' '.join(sources) + "'", 
-                                    cachePath ])
+                                    cacheDir ])
 
 
 def install(packages, extraFetches={}, dbindex=None, force=False):
@@ -2570,11 +2593,11 @@ def linkPatPath(namePat, absolutePath, dir, target=None):
     return complete
 
 
-def make(names, targets, dbindex=None):
+def make(dgen, targets, dbindex=None):
     '''invoke the make utility to build a set of projects.'''
-    writetext('### make projects "' + ', '.join(names) \
+    writetext('### make projects "' + ', '.join(dgen.repositories) \
                   + '" with targets "' + ', '.join(targets) + '"\n')
-    distHost = context.value('distHost')
+    distHost = context.host()
     errcode = 0
     errors = []
     if 'recurse' in targets:
@@ -2586,7 +2609,7 @@ def make(names, targets, dbindex=None):
         recursiveTargets = targets
         if len(recursiveTargets) == 0:
             recursiveTargets = [ 'install' ]
-        names, projects = validateControls(names,dbindex)
+        names, projects = validateControls(dgen,dbindex)
         last = names.pop()
         for name in names:
             errcode = makeProject(name,recursiveTargets,{ name: projects[name]})
@@ -2600,7 +2623,7 @@ def make(names, targets, dbindex=None):
         else:
             linkDependencies({ last: projects[last]})
     else:
-        for name in names:
+        for name in dgen.repositories:
             errcode = makeProject(name,targets)
             if errcode > 0:
                 errors += [ name ]
@@ -2726,12 +2749,11 @@ def upload(filenames, cacheDir=None):
     to the remote server. See the fetch function for downloading
     files from the remote server.
     '''
+    if not filenames:
+        filenames = context.logPath('./*')
     cmdline, prefix = findRSync(remoteCachePath,not cacheDir)
-    upCmdline = cmdline + [ '././' + ' ././'.join(sshs), remoteCachePath ]
-    prev = os.getcwd()
-    os.chdir(cachePath)
+    upCmdline = cmdline + [ ' '.join(filenames), remoteCachePath ]
     shellCommand(upCmdline)
-    os.chdir(prev)
 
 
 def searchBackToRoot(filename,root=os.sep):
@@ -2810,7 +2832,7 @@ def sortBuildConfList(dbPathnames,parser):
     return dbNext
 
 
-def validateControls(repositories, dbindex=None, force=False):
+def validateControls(dgen, dbindex=None, force=False):
     '''Checkout source code files, install packages such that 
     the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency 
@@ -2824,8 +2846,6 @@ def validateControls(repositories, dbindex=None, force=False):
     if not dbindex:
         dbindex = index
     dbindex.validate(force)
-    # note that *excludePats* is global.
-    dgen = DependencyGenerator(repositories,[],[],excludePats) 
 
     # Add deep dependencies
     reps, packages, fetches = dbindex.closure(dgen)
@@ -2833,13 +2853,15 @@ def validateControls(repositories, dbindex=None, force=False):
     # Checkout missing source controlled projects
     # and install missing packages.
     install(packages,fetches,dbindex)
-    if force:
-        # Force update all projects under revision control
-        update(reps,fetches,dbindex,force)
-    else:
+    syncs = reps
+    if not force:
         # Update only projects which are missing from *srcTop*
         # and leave other projects in whatever state they are in.
-        update(dgen.extraSyncs,fetches,dbindex,force)
+        syncs = []
+        for name in reps:
+            if not os.path.isdir(context.srcDir(name)):
+                syncs += [ name ]
+    update(syncs,fetches,dbindex,force)    
     return reps, dgen.projects
 
 
@@ -2932,6 +2954,7 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
     or will install a new binary package through the local package manager.
     *extraFetches* is a list of extra files to fetch from the remote machine,
     usually a list of compressed source tar files.'''
+    print "!!! update.fetches=" + str(extraFetches)
     if not dbindex:
         dbindex = index
     dbindex.validate(force)
@@ -3000,9 +3023,19 @@ def pubBuild(args):
     useDefaultAnswer = True
     global log
     log = LogFile(context.logname(),nolog)
+    if doClean:
+        for d in [ context.value('siteTop') ]:
+            if os.path.isdir(d):
+                os.removedirs(d)
+        # We save the context (again) here because *buildTop*,
+        # thus dws.mk, will no longer exist at this point.
+        context.save()
+
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
-    errors = make(rgen.roots,[ 'recurse', 'install', 'dist' ])
+    # note that *excludePats* is global.
+    dgen = BuildGenerator(rgen.roots,[],[],excludePats) 
+    errors = make(dgen,[ 'recurse', 'install', 'dist' ])
     log.close()
     log = None
     # Once we have built the repository, let's report the results
@@ -3032,10 +3065,10 @@ def pubCollect(args):
     # log = LogFile(context.logname(),nolog)
 
     # Create the distribution directory, i.e. where packages are stored.
-    packageDir = context.cachePath(context.host())
+    packageDir = context.localDir('./' + context.host())
     if not os.path.exists(packageDir):
         os.makedirs(packageDir)
-    srcPackageDir = context.cachePath('srcs')
+    srcPackageDir = context.localDir('./' + 'srcs')
     if not os.path.exists(srcPackageDir):
         os.makedirs(srcPackageDir)
 
@@ -3099,22 +3132,22 @@ def pubConfigure(args):
     global log 
     log = LogFile(context.logname(),nolog)
     projectName = context.cwdProject()
-    dgen = DependencyGenerator([ projectName ],[],[])
+    dgen = MakeGenerator([ projectName ],[],[])
     dbindex = IndexProjects(context,
                             context.srcDir(os.path.join(context.cwdProject(),
                                                         context.indexName)))
     dbindex.parse(dgen)
-    if len(dgen.missings) > 0 or len(dgen.extraFetches) > 0:
+    if len(dgen.activePrerequisites) > 0 or len(dgen.extraFetches) > 0:
         # This is an opportunity to prompt for missing dependencies.
         # After installing both, source controlled and packaged
         # projects, the checked-out projects will be added to 
         # the dependency graph while the packaged projects will
         # be added to the *cut* list.
         prerequisites = set([])
-        for miss in dgen.missings:
-            prerequisites |= set([ miss[1] ])
+        for miss in dgen.activePrerequisites:
+            prerequisites |= set([ miss ])
         for miss in dgen.extraFetches:
-            prerequisites |= set([ miss ])            
+            prerequisites |= set([ miss ])
         raise MissingError(projectName,prerequisites)
     else:
         linkDependencies({ projectName: dgen.projects[projectName]})
@@ -3282,10 +3315,29 @@ def pubMake(args):
     context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
         os.path.realpath(os.getcwd())))
     log = LogFile(context.logname(),nolog)
-    repositories = [ context.cwdProject() ]
-    errors = make(repositories,args)
+    # note that *excludePats* is global.
+    errors = make(MakeGenerator([ context.cwdProject() ],
+                                [],[],excludePats),args)
     if len(errors) > 0:
         raise Error("Found errors while making " + ' '.join(errors))
+
+
+def pubPush(args):
+    '''push                 Push commits to projects checked out 
+                       in the workspace.
+    '''
+    global log 
+    log = LogFile(context.logname(),nolog)
+    reps = args
+    recurse = False
+    if 'recurse' in args:
+        recurse = True
+        reps.remove('recurse')
+    reps = cwdProjects(reps,recurse)
+    for r in reps:
+        srcDir = context.srcDir(r)
+        svc = Repository.associate(srcDir)
+        svc.push(srcDir)
 
 
 def pubStatus(args):
@@ -3299,60 +3351,41 @@ def pubStatus(args):
     if 'recurse' in args:
         recurse = True
         reps.remove('recurse')
-    if len(reps) == 0:
-        # We try to derive project names from the current directory whever 
-        # it is a subdirectory of buildTop or srcTop.
-        cwd = os.path.realpath(os.getcwd())
-        buildTop = os.path.realpath(context.value('buildTop'))
-        srcTop = os.path.realpath(context.value('srcTop'))
-        srcDir = srcTop
-        srcPrefix = os.path.commonprefix([ cwd,srcTop ])
-        buildPrefix = os.path.commonprefix([ cwd, buildTop ])
-        if srcPrefix == srcTop:
-            srcDir = cwd
-        elif buildPrefix == buildTop:
-            srcDir = cwd.replace(buildTop,srcTop)
-        if os.path.exists(srcDir):
-            for repdir in findFiles(srcDir,'\.git'):
-                reps += [ os.path.dirname(repdir.replace(srcTop + os.sep,'')) ]
-        else:
-            reps = [ context.cwdProject() ]
-    if recurse:
-        raise NotYetImplemented()
-    else:
-        cmdline = 'git status'
-        prev = os.getcwd()
-        for r in reps:            
-            os.chdir(context.srcDir(r))
-            try:                
-                cmd = subprocess.Popen(cmdline,shell=True,
-                                       stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT)
-                line = cmd.stdout.readline()
-                untracked = False
-                while line != '':
-                    look = re.match('#\s+([a-z]+):\s+(\S+)',line)
+    reps = cwdProjects(reps,recurse)
+
+    cmdline = 'git status'
+    prev = os.getcwd()
+    for r in reps:            
+        os.chdir(context.srcDir(r))
+        try:                
+            cmd = subprocess.Popen(cmdline,shell=True,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+            line = cmd.stdout.readline()
+            untracked = False
+            while line != '':
+                look = re.match('#\s+([a-z]+):\s+(\S+)',line)
+                if look:
+                    sys.stdout.write(' '.join([
+                                look.group(1).capitalize()[0],
+                                r, look.group(2)]) + '\n')
+                elif re.match('# Untracked files:',line):
+                    untracked = True
+                elif untracked:
+                    look = re.match('#	(\S+)',line)
                     if look:
-                        sys.stdout.write(' '.join([
-                                    look.group(1).capitalize()[0],
-                                    r, look.group(2)]) + '\n')
-                    elif re.match('# Untracked files:',line):
-                        untracked = True
-                    elif untracked:
-                        look = re.match('#	(\S+)',line)
-                        if look:
-                            sys.stdout.write(' '.join(['?', r,
-                                                       look.group(1)]) + '\n')
-                    line = cmd.stdout.readline()
-                cmd.wait()
-                if cmd.returncode != 0:
-                    raise Error("unable to complete: " + cmdline,
-                                cmd.returncode)
-            except Error, e:
-                # It is ok. git will return error code 1 when no changes
-                # are to be committed.
-                None
-        os.chdir(prev)
+                        sys.stdout.write(' '.join(['?', r,
+                                                   look.group(1)]) + '\n')
+                line = cmd.stdout.readline()
+            cmd.wait()
+            if cmd.returncode != 0:
+                raise Error("unable to complete: " + cmdline,
+                            cmd.returncode)
+        except Error, e:
+            # It is ok. git will return error code 1 when no changes
+            # are to be committed.
+            None
+    os.chdir(prev)
 
 
 def pubUpdate(args):
@@ -3366,32 +3399,23 @@ def pubUpdate(args):
     if 'recurse' in args:
         recurse = True
         reps.remove('recurse')
-    if len(reps) == 0:
-        # We try to derive project names from the current directory whever 
-        # it is a subdirectory of buildTop or srcTop.
-        cwd = os.path.realpath(os.getcwd())
-        buildTop = os.path.realpath(context.value('buildTop'))
-        srcTop = os.path.realpath(context.value('srcTop'))
-        projectName = None
-        srcDir = srcTop
-        srcPrefix = os.path.commonprefix([ cwd,srcTop ])
-        buildPrefix = os.path.commonprefix([ cwd, buildTop ])
-        if srcPrefix == srcTop:
-            srcDir = cwd
-            projectName = srcDir[len(srcTop) + 1:]
-        elif buildPrefix == buildTop:
-            srcDir = cwd.replace(buildTop,srcTop)
-            projectName = srcDir[len(srcTop) + 1:]
-        if projectName:
-            reps = [ projectName ]
-        else:
-            for repdir in findFiles(srcDir,'\.git'):
-                reps += [ os.path.dirname(repdir.replace(srcTop + os.sep,'')) ]
+    reps = cwdProjects(reps)
     if recurse:
-        names, projects = validateControls(reps,force=True)
+        # note that *excludePats* is global.
+        dgen = MakeGenerator(reps,[],[],excludePats) 
+        names, projects = validateControls(dgen,force=True)
     else:
         update(reps,force=True)
-    
+ 
+
+def pubUpload(args):
+    '''upload          Upload the log files to the remote machine.
+    '''
+    if args:
+        upload(args)
+    else:
+        upload(None)
+
 
 def pubUpstream(args):
     '''upstream          [ srcPackage ... ]
@@ -3404,7 +3428,7 @@ def pubUpstream(args):
         srcdir = unpack(pkgfilename)
         orgdir = srcdir + '.orig'
         if os.path.exists(orgdir):
-            os.removedirs(orgdir)        
+            shutil.rmtree(orgdir,ignore_errors=True)
         shutil.move(srcdir,orgdir)
         srcdir = unpack(pkgfilename)
         pchdir = context.srcDir(os.path.join(context.cwdProject(),
@@ -3628,6 +3652,8 @@ if __name__ == '__main__':
                 + str(__version__),
             formatter=CommandsFormatter(),
             epilog=epilog)
+	parser.add_option('--clean', dest='clean', action='store_true',
+	    help='Be extra careful, this option will remove *siteTop* before executing the build command. As result, everything will be fetched again from *remoteSiteTop* and rebuilt. This option is mostly intended for cron jobs.')
 	parser.add_option('--default', dest='default', action='store_true',
 	    help='Use default answer for every interactive prompt.')
 	parser.add_option('--exclude', dest='excludePats', action='append',
@@ -3741,6 +3767,7 @@ if __name__ == '__main__':
         if options.installTop:
             context.environ['installTop'].value = options.installTop
 
+        doClean = options.clean
         useDefaultAnswer = options.default
         uploadResults = options.uploadResults
         nolog = options.nolog

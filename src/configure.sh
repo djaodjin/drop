@@ -29,7 +29,7 @@ shareBuildDir=${buildDir}/share
 
 echo buildTop=${buildTop} > ${projmk}
 echo srcTop=${srcTop} >> ${projmk}
-echo siteTop=${buildDir}/cache >> ${projmk}
+echo siteTop=${srcDir} >> ${projmk}
 echo binBuildDir=${binBuildDir} >> ${projmk}
 echo shareBuildDir=${shareBuildDir} >> ${projmk}
 echo libBuildDir=${buildDir}/lib >> ${projmk}

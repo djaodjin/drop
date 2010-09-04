@@ -219,7 +219,7 @@ if __name__ == '__main__':
         # 3. All temporary files have been created, it is time to merge 
         #    them back together.
         nbRegressions = 0
-        regressionNames = set([])
+        regressionNames = {}
         for testName in sorted(tests): 
             out.write('<test name="' + testName + '">\n')
             # Write the set of regressions for the test
@@ -232,13 +232,17 @@ if __name__ == '__main__':
                         # There are no regressions there is nothing to compare
                         # against.
                         if regressions[testName][reffile] == 'fail':
-                            regressionNames |= set([testName])
+                            if not reffile in regressionNames:
+                                regressionNames[reffile] = set([])
+                            regressionNames[reffile] |= set([testName])
                             nbRegressions = nbRegressions + 1
                         out.write(regressions[testName][reffile])
                     else:                        
                         out.write("absent")
                 else:
-                    regressionNames |= set([testName])
+                    if not reffile in regressionNames:
+                        regressionNames[reffile] = set([])
+                    regressionNames[reffile] |= set([testName])
                     nbRegressions = nbRegressions + 1
                     out.write('compile')
                 out.write('</compare>\n')
@@ -256,10 +260,15 @@ if __name__ == '__main__':
         os.chmod(outname,stat.S_IRUSR | stat.S_IWUSR 
                  | stat.S_IRGRP | stat.S_IROTH) 
         shutil.move(outname,options.output)
-        sys.stdout.write(str(nbFailures) + ' failures (' \
-                             + ' '.join(failureNames) + ')\n')
-        sys.stdout.write(str(nbRegressions) + ' regressions (' \
-                             + ' '.join(regressionNames) + ')\n')
+        sys.stdout.write(str(nbFailures) + ' failures\n')
+        if len(failureNames) > 0:
+            sys.stdout.write('\t' + '\n\t'.join(failureNames) + '\n')
+        sys.stdout.write(str(nbRegressions) + ' regressions\n')
+        if len(regressionNames) > 0:
+            for reffile in regressionNames:
+                sys.stdout.write('\t(' + os.path.basename(reffile) + ')\n')
+                sys.stdout.write('\t' \
+                    + '\n\t'.join(regressionNames[reffile]) + '\n')
         sys.exit(max(nbFailures,nbRegressions))
 
 
