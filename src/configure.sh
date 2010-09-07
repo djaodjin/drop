@@ -46,14 +46,14 @@ echo shareDir=${prefix}/share >> ${projmk}
 mkdir -p ${binBuildDir}
 mkdir -p ${shareBuildDir}/dws
 cp ${srcDir}/dws ${binBuildDir}
-helpers=`ls -l ${srcDir}/etc/*.{mk,sh} > /dev/null 2>&1 | wc -l`
+helpers=`ls -l ${srcDir}/share/dws/*.{mk,sh} > /dev/null 2>&1 | wc -l`
 if [ ${helpers} -gt 0 ] ; then
-    cp -r ${srcDir}/etc/*.{mk,sh} ${shareBuildDir}/dws
+    cp -r ${srcDir}/share/dws/*.{mk,sh} ${shareBuildDir}/dws
 fi
 ${binBuildDir}/dws --default configure
 
 sed -e s",\$(shell dws context),${projmk}," \
-    -e s',$(shell dws context \(.*\)),$(etcDir)/\1,' \
+    -e s',$(shell dws context \(.*\)),$(makeHelperDir)/\1,' \
 	Makefile.in > Makefile
 echo "type 'make' to build, followed by 'make install' to install."
 

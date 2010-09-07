@@ -135,8 +135,10 @@ class Context:
                          'srcTop' : self.srcTop,
                          'makeHelperDir': Pathname('makeHelperDir',
             'Directory to the helper files used in Makefiles (prefix.mk, etc.)',
-             default=os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
-                                                 '..','share','dws'))),
+           # This does not work when we run the downloaded dws.
+           #default=os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
+           #                                      '..','share','dws'))
+           buildTop,os.path.join('share','dws')),
                          'binDir': Pathname('binDir',
              'Root of the tree where executables are installed',
                                             installTop),
@@ -240,9 +242,6 @@ class Context:
                                                self.configName)
             self.save()
             self.locate()
-        #print "!!! os.getcwd()=" + str(os.getcwd())
-        #print "!!! buildTop=" + self.value('buildTop')
-        #print "!!! srcTop=" + self.value('srcTop')
         if os.path.realpath(os.getcwd()).startswith(
             os.path.realpath(self.value('buildTop'))):
                 top = os.path.realpath(self.value('buildTop'))
@@ -446,7 +445,12 @@ class IndexProjects:
         for projName in projs:
             if projName in dgen.projects:
                 if projName in dgen.repositories:
-                    vars += dgen.projects[projName].repository.vars
+                    # At times, we don't distinguish between repositories
+                    # and patches.
+                    if dgen.projects[projName].repository:
+                        vars += dgen.projects[projName].repository.vars
+                    elif dgen.projects[projName].patch:
+                        vars += dgen.projects[projName].patch.vars
                 elif projName in dgen.patches:
                     vars += dgen.projects[projName].patch.vars
                 elif projName in dgen.packages:
@@ -647,15 +651,15 @@ class DependencyGenerator(Unserializer):
  
     def endParse(self):
         # !!! Debugging Prints !!!
-        print "* DependencyGenerator.endParse:"
-        print "     includes: " + str(self.includePats) 
-        print "     excludes: " + str(self.excludePats) 
-        print "     projects: " + str(self.projects)
-        print "     reps:     " + str(self.repositories)
-        print "     patches:  " + str(self.patches)
-        print "     packages: " + str(self.packages)
-        print "     levels:   " + str(self.levels)
-        print "     actives:  " + str(self.activePrerequisites)
+        #print "* DependencyGenerator.endParse:"
+        #print "     includes: " + str(self.includePats) 
+        #print "     excludes: " + str(self.excludePats) 
+        #print "     projects: " + str(self.projects)
+        #print "     reps:     " + str(self.repositories)
+        #print "     patches:  " + str(self.patches)
+        #print "     packages: " + str(self.packages)
+        #print "     levels:   " + str(self.levels)
+        #print "     actives:  " + str(self.activePrerequisites)
 
         further = False
         nextActivePrerequisites = {}
@@ -747,10 +751,6 @@ class DependencyGenerator(Unserializer):
             elif name in self.packages:
                 packages += [ name ]
 
-        print "!!! return topological:"
-        print "\treps: " + str(reps)
-        print "\tpackages: " + str(packages)
-        print "\tfetches: " + str(self.extraFetches)
         return reps, packages, self.extraFetches
 
 
@@ -1220,7 +1220,6 @@ class Configure:
         return result
 
     def populate(self, buildDeps = {}):
-        print "Configure.populate with locals=" + str(self.locals)
         for local in self.locals:
             local.populate(buildDeps)
 
@@ -1848,7 +1847,6 @@ def findCache(names):
         writetext(name + "... ")
         log.flush()
         localName = context.localDir(pathname)
-        print "!!! findCache.localName=" + localName
         if os.path.exists(localName):
             if names[pathname]:
                 f = open(localName,'rb')
@@ -2521,7 +2519,7 @@ def linkDependencies(projects, cuts=[]):
                 deps = prereq.files
                 for dir in deps:                    
                     for namePat, absolutePath in deps[dir]:
-                        complete |= linkPatPath(namePat,absolutePath,
+                        complete &= linkPatPath(namePat,absolutePath,
                                                 dir,prereq.target)
                 if not complete:
                     deps, complete = findPrerequisites(prereq.files,
@@ -2531,9 +2529,10 @@ def linkDependencies(projects, cuts=[]):
                     if not prereq in missings:
                         missings += [ prereq.name ]
                 else:
+                    complete = True
                     for dir in deps:
                         for namePat, absolutePath in deps[dir]:
-                            complete |= linkPatPath(namePat,absolutePath,
+                            complete &= linkPatPath(namePat,absolutePath,
                                                     dir,prereq.target)
     if len(missings) > 0:
         raise Error("incomplete prerequisites for " + ' '.join(missings),1)
@@ -2555,6 +2554,7 @@ def linkContext(path,linkName):
         os.remove(linkName)
     if not os.path.exists(linkName) and os.path.exists(path):
         os.symlink(path,linkName)
+
 
 def linkPatPath(namePat, absolutePath, dir, target=None):
     linkPath = absolutePath
@@ -2642,6 +2642,7 @@ def makeProject(name,options,dependencies={}):
         if not os.path.exists(objDir):
             os.makedirs(objDir)
         os.chdir(objDir)
+
     errcode = 0
     targets = []
     overrides = []
@@ -2954,7 +2955,6 @@ def update(reps, extraFetches={}, dbindex = None, force=False):
     or will install a new binary package through the local package manager.
     *extraFetches* is a list of extra files to fetch from the remote machine,
     usually a list of compressed source tar files.'''
-    print "!!! update.fetches=" + str(extraFetches)
     if not dbindex:
         dbindex = index
     dbindex.validate(force)
@@ -3335,6 +3335,7 @@ def pubPush(args):
         reps.remove('recurse')
     reps = cwdProjects(reps,recurse)
     for r in reps:
+        sys.stdout.write('### ' + str(r) + '\n')
         srcDir = context.srcDir(r)
         svc = Repository.associate(srcDir)
         svc.push(srcDir)
