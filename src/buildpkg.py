@@ -532,10 +532,10 @@ export DH_OPTIONS
 
 .PHONY:    build clean install binary
 
-PREFIX 		:=	$(CURDIR)/debian/tmp/usr/local
+PREFIX 		:=	$(CURDIR)/debian/tmp/usr
 
 build:
-\tPATH=/usr/local/bin:${PATH} ./configure --prefix=$(PREFIX)
+\tPATH=''' + context.value('binDir') + ''':${PATH} ./configure --prefix=$(PREFIX)
 \tmake buildextra=dist
 
 clean:
