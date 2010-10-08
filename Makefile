@@ -40,7 +40,7 @@ makeHelperDir	:=	$(srcTop)/drop/src
 
 include $(srcDir)/src/prefix.mk
 
-scripts	:=	buildpkg dregress dstamp dws
+scripts	:=	dbldpkg dregress dstamp dws
 shares	:=	drop.pdf
 
 drop.fo: drop.book
@@ -59,7 +59,8 @@ install:: $(srcDir)/src/prefix.mk \
 		$(srcDir)/src/configure.sh \
 		$(srcDir)/src/index.xsd
 	$(installDirs)  $(shareDir)/dws
-	$(installFiles) $(filter %.sh %.mk %.xsd,$^) $(shareDir)/dws
+	$(installBins) $(filter %.sh,$^) $(shareDir)/dws
+	$(installFiles) $(filter %.mk %.xsd,$^) $(shareDir)/dws
 
 install:: dws.py dstamp.py
 	$(installDirs)  $(libDir)/python

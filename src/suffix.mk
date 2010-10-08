@@ -39,7 +39,8 @@ all::	$(bins) $(scripts) $(libs) $(includes) $(etcs)
 
 all::	$(logs)
 	$(if $^,-dregress -o regression.log $^ \
-	    $(logDir)/results-*.log $(wildcard $(srcDir)/data/results-*.log))
+	    	$(wildcard $(logDir)/results-*.log) \
+		$(wildcard $(srcDir)/data/results-*.log))
 
 clean::
 	rm -rf $(objDir)/*
@@ -136,7 +137,7 @@ $(project)-$(version)::
 
 
 # 'make install' might just do nothing and we still want to build an empty
-# package for that case so we create ${buildInstallDir} before buildpkg 
+# package for that case so we create ${buildInstallDir} before dbldpkg 
 # regardless such that mkbom has something to work with. 
 %$(distExtDarwin): %.tar.bz2 
 	tar jxf $<
@@ -144,21 +145,21 @@ $(project)-$(version)::
 		&& ./configure --prefix=${buildUsrLocalDir}
 	cd $(basename $(basename $<)) && ${MAKE} install
 	$(installDirs) ${buildInstallDir}
-	$(buildpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
+	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/$(projindex) ${buildInstallDir}
 
 %$(distExtFedora): %.tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
 	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
-	$(buildpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
+	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/$(projindex) $(basename $@)
 
 %$(distExtUbuntu): %.tar.bz2
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
 	cd $(basename $(basename $<)) \
-		&& $(buildpkg) \
+		&& $(dbldpkg) \
 		 --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/$(projindex) $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')

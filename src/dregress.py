@@ -40,10 +40,12 @@ def diffAdvance(diff):
         diffLine = diff.readline()
         if diffLine == '':
             break
-        # print "advance diff: " + diffLine
         look = re.match('@@ -(\d+),',diffLine)
     if look != None:
-        diffLineNum = int(look.group(1))
+        # The "diff -U 1" is invoked. This seems to all offset all starting
+        # chunks by 1. In case the test result is only one line long, it might
+        # indicate the wrong test as "different" in a regression.
+        diffLineNum = int(look.group(1)) + 1
     return diffLineNum
 
 
@@ -51,7 +53,6 @@ def logAdvance(log):
     logTestName = None
     logLineNum = sys.maxint
     logLine = log.readline()
-    # print "advance log: " + logLine
     look = re.match('(\d+):@@ test: (\S+) (\S+)? @@',logLine)
     if look != None:
         logLineNum = int(look.group(1))
@@ -93,8 +94,8 @@ if __name__ == '__main__':
             # that would change value of diffLineNum and mess the following
             # algorithm.
             diffCmdLine = 'diff -U 1 ' + logfile + ' ' + reffile
-            print "log cmd line: " + logCmdLine
-            print "diff cmd line: " + diffCmdLine
+            # print "!!! log cmd line: " + logCmdLine
+            # print "!!! diff cmd line: " + diffCmdLine
             log = os.popen(logCmdLine)
             diff = os.popen(diffCmdLine)
 
@@ -117,12 +118,12 @@ if __name__ == '__main__':
             # of logLineNum and diffLineNum as set by logAdvance() 
             # and diffAdvance().
             while logLineNum != sys.maxint and diffLineNum != sys.maxint:
-#                print str(prevLogTestName) + ', log@' + str(logLineNum) + ' '\
-#                    + str(logTestName) + ' and diff@' + str(diffLineNum)
+                #print "!!! " + str(prevLogTestName) \
+                #    + ', log@' + str(logLineNum) \
+                #    + ' ' + str(logTestName) + ' and diff@' + str(diffLineNum)
                 if diffLineNum < logLineNum:
                     # last log failed
                     if prevLogTestName != None:
-                        # print prevLogTestName + " different"
                         if not prevLogTestName in regressions:
                             regressions[prevLogTestName] = {}
                         regressions[prevLogTestName][reffile] = "different"
@@ -131,33 +132,40 @@ if __name__ == '__main__':
                 elif diffLineNum > logLineNum:
                     # last log passed
                     if prevLogTestName != None:
-                        # print prevLogTestName + " identical"
                         if not prevLogTestName in regressions:
                             regressions[prevLogTestName] = {}
                         regressions[prevLogTestName][reffile] = "identical"
                     prevLogTestName = logTestName
                     logLineNum, logTestName = logAdvance(log)
                 else:
-                    diffLineNum = diffAdvance(diff)
+                    if prevLogTestName != None:
+                        if not prevLogTestName in regressions:
+                            regressions[prevLogTestName] = {}
+                        regressions[prevLogTestName][reffile] = "identical"
                     prevLogTestName = logTestName
                     logLineNum, logTestName = logAdvance(log)
+                    diffLineNum = diffAdvance(diff)
 
             # If we donot have any more differences and we haven't
             # reached the end of the list of tests, all remaining
-            # tests must have passed.
+            # tests must be identical or be absent...
             if logLineNum != sys.maxint:
-                if prevLogTestName != None:
-                    # print prevLogTestName + " identical"
-                    if not prevLogTestName in regressions:
-                        regressions[prevLogTestName] = {}
-                    regressions[prevLogTestName][reffile] = "identical"
+                # Gather all the tests in the reference file in order 
+                # to distinguish between identical and absent.
+                refs = set([])
+                reflogCmdLine = "grep -n '@@ test:' " + reffile
+                reflog = os.popen(reflogCmdLine)
+                reflogLineNum, reflogTestName = logAdvance(reflog)
+                while reflogLineNum != sys.maxint:
+                    refs |= set([ reflogTestName ])
+                    reflogLineNum, reflogTestName = logAdvance(reflog)
+                reflog.close()
                 while logLineNum != sys.maxint:
-                    # print logTestName + " identical"
-                    if not logTestName in regressions:
-                        regressions[logTestName] = {}
-                    regressions[logTestName][reffile] = "identical"
+                    if logTestName in refs:
+                        if not logTestName in regressions:
+                            regressions[logTestName] = {}
+                        regressions[logTestName][reffile] = "identical"
                     logLineNum, logTestName = logAdvance(log)
- 
             diff.close()
             log.close()
 
@@ -231,7 +239,7 @@ if __name__ == '__main__':
                         # if it was created after the reference was generated.
                         # There are no regressions there is nothing to compare
                         # against.
-                        if regressions[testName][reffile] == 'fail':
+                        if regressions[testName][reffile] == 'different':
                             if not reffile in regressionNames:
                                 regressionNames[reffile] = set([])
                             regressionNames[reffile] |= set([testName])

@@ -187,9 +187,9 @@
 	<xs:element ref="maintainer"/>
 	<xs:element name="url" type="xs:string" minOccurs="0"/>
 	<xs:element name="repository" type="repositoryType" 
-		    minOccurs="0" maxOccurs="unbounded"/>
+		    minOccurs="0" maxOccurs="1"/>
 	<xs:element name="patch" type="repositoryType"
-		    minOccurs="0" maxOccurs="unbounded"/>	
+		    minOccurs="0" maxOccurs="1"/>	
 	<xs:element name="package" type="packageType"
 		    minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>

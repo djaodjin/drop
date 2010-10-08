@@ -51,5 +51,11 @@
 	</alternate>
       </alternates>
     </repository>
+    <package>
+      <tag>Ubuntu</tag>
+      <dep name="python">
+	<bin>python</bin>
+      </dep>
+    </package>
   </project>
 </projects>

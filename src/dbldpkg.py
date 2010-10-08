@@ -42,9 +42,9 @@ __license__ = "FreeBSD"
 
 import re, os, subprocess, sys, glob, fnmatch, shutil, string, copy, getopt
 from os.path import basename, dirname, join, islink, isdir, isfile
-import hashlib, shutil
+import datetime, hashlib, shutil
 
-Error = "buildpkg.Error"
+Error = "dbldpkg.Error"
 
 PKG_INFO_FIELDS = """\
 Title
@@ -293,11 +293,11 @@ class PackageMaker:
 <plist version="1.0">
 <dict>
 	<key>CFBundleGetInfoString</key>
-	<string>1.0, buildpkg, Inc</string>
+	<string>1.0, dbldpkg, Inc</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.fortylines.application</string>
 	<key>CFBundleName</key>
-	<string>buildpkg</string>
+	<string>dbldpkg</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>IFMajorVersion</key>
@@ -443,7 +443,6 @@ def buildPackage(project, version, installTop):
     '''
 
     dist = context.host()
-    name = context.cwdProject() 
     if dist == 'Darwin':
         pm = PackageMaker(project, version, installTop)
         pm.build()
@@ -494,7 +493,8 @@ make install
 
         control.write('\nPackage: ' + project.name + '\n')
         control.write('Priority: extra\n')
-        control.write('Description: ' + project.descr + '\n')
+        control.write('Description: ' + project.title + '\n' \
+                          + project.descr + '\n')
         control.write('Architecture: any\n')
         if context.host() in project.packages:
             control.write('Depends: ' \
@@ -555,8 +555,16 @@ binary: install
 
 ''')
         rules.close()
-        copyright = open(os.path.join('debian','copyright'),'w')
-        copyright.close()
+        if os.path.exists('LICENSE'):
+            # The function is executed from within the source tree
+            # so we just need to copy the copyright file if it exists
+            # from the currrent directory.
+            shutil.copy('LICENSE',os.path.join('debian','copyright'))
+        else:
+            copyright = open(os.path.join('debian','copyright'),'w')
+            copyright.write('Copyright ' + datetime.datetime.now().year \
+                                + str(project.maintainer))
+            copyright.close()
 
         # We have generated all files debuild requires to create a binary 
         # package so now let's invoke it.
@@ -587,7 +595,7 @@ binary: install
 
     else:
         # unknown host, we don't know how to make a package for it.
-        raise
+        raise dws.Error("unknown distribution '" + dist + "'")
 
 def tabStop(n):
     result = ''
@@ -637,7 +645,7 @@ if __name__ == "__main__":
     from optparse import OptionParser
 
     parser = OptionParser(description=
-'''builds an OSX package
+'''builds a distribution package
     Usage: %s [options] <root> [<resources>]"
     with arguments:
            (mandatory) root:         the package root folder

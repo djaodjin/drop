@@ -54,10 +54,6 @@ doClean = False
 # When True, all commands invoked through shellCommand() are printed
 # but not executed.
 doNotExecute = False
-# *uploadResults* is false by default such that everyone can download and build
-# the source repository locally but only users with an account can upload to
-# to the forum server.
-uploadResults = False
 # When True, the script runs in batch mode and assumes the default answer
 # for every question where it would have prompted the user for an answer.
 useDefaultAnswer = False
@@ -273,7 +269,7 @@ class Context:
         remoteName = self.remoteCachePath(name)
         if not cacheDir:
             cacheDir = os.path.join(context.value('siteTop'),'resources')
-        pos = remoteName.find('./')
+        pos = remoteName.rfind('./')
         if pos > 0:
             localname = os.path.join(cacheDir,remoteName[pos + 2:])
         else:
@@ -282,6 +278,12 @@ class Context:
         if localname.endswith('.git'):
             localname = localname[:-4]
         return localname
+
+    def remoteDir(self, name):
+        if name.startswith(context.value('siteTop')):
+            return name.replace(context.value('siteTop'),
+                                context.value('remoteSiteTop'))
+        return None
 
     def locate(self):
         '''Locate the workspace configuration file and derive the project
@@ -615,6 +617,7 @@ class DependencyGenerator(Unserializer):
         the final topological order.'''
         Unserializer.__init__(self, packages + patches + repositories,
                               excludePats)
+        self.force = False
         self.packages = set(packages)
         self.patches = set(patches)
         self.repositories = set(repositories)
@@ -636,12 +639,15 @@ class DependencyGenerator(Unserializer):
             if not p in self.prerequisites:
                 self.prerequisites[p.name] \
                     = Dependency(p.name,p.files,p.excludes,p.target)
-            else:
+            else:                
                 self.prerequisites[p.name].files += p.files
                 self.prerequisites[p.name].excludes += p.excludes
                 self.prerequisites[p.name].target = p.target
         if fetches:
-            for f in findCache(fetches):
+            for f in fetches:
+                # We unconditionally add all fetches to the extraFetches set
+                # since the fetch() function will perform a findCache before
+                # downloading missing files.
                 self.extraFetches[f] = fetches[f]
         return targets
 
@@ -758,10 +764,15 @@ class BuildGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''        
 
+    def __init__(self, repositories, patches, packages, excludePats = []):
+        DependencyGenerator.__init__(self, repositories, patches, packages, 
+                                     excludePats)
+        self.force = True
+
     def contextualTargets(self,name):
         if not name in self.projects:
             # We leave the native host package manager to deal with this one...
-            files, complete \
+            self.prerequisites[name].files, complete \
                 = findPrerequisites(self.prerequisites[name].files,
                                     self.prerequisites[name].excludes,
                                     self.prerequisites[name].target)
@@ -797,7 +808,7 @@ class MakeGenerator(DependencyGenerator):
             if os.path.isdir(context.srcDir(name)):
                 targets += [ name ]
             else:
-                files, complete \
+                d.files, complete \
                     = findPrerequisites(d.files,d.excludes,d.target)
                 if not complete:
                     targets += [ name ]
@@ -1193,6 +1204,10 @@ class Maintainer:
     def __init__(self, fullname, email):
         self.fullname = fullname
         self.email = email
+
+    def __str__(self):
+        return self.fullname + '<' + self.email + '>'
+
 
 class Configure:
     '''All prerequisites information to check in order to install a project. 
@@ -1775,7 +1790,7 @@ def findBin(names,excludes=[],target=None):
         # the user. We want to make sure the output of the interactive session 
         # does not mangle the search for an executable so we preemptively 
         # trigger an interactive session.
-        context.binBuildDir()
+        context.searchPath()
         writetext(namePat + '... ')
         found = False
         if namePat.endswith('.app'):
@@ -1922,6 +1937,9 @@ def findData(dir,names,excludes=[],target=None):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by *dir*.'''
     results = []
+    droots = []
+    if len(names) > 0:
+        droots = derivedRoots(dir,target)
     for namePat, absolutePath in names:
         if absolutePath:
             # absolute paths only occur when the search has already been
@@ -1934,7 +1952,7 @@ def findData(dir,names,excludes=[],target=None):
         if namePat.startswith('.*' + os.sep):
             linkNum = len(namePat.split(os.sep)) - 2
         found = False
-        for base in derivedRoots(dir,target):
+        for base in droots:
             fullNames = findFiles(base,namePat)
             if len(fullNames) > 0:
                 writetext('yes\n')
@@ -2210,7 +2228,7 @@ def findRSync(remotePath, relative=False, admin=False):
 ''')
         rsyncs, version = findBin([ [ 'rsync', None ] ])        
         if len(rsyncs) == 0 or not rsyncs[0][1]:
-            install(['rsync'],{},dbindex)
+            install(['rsync'],dbindex)
         name, absolutePath = rsyncs.pop()
         linkPatPath(name, absolutePath,'bin')        
 
@@ -2314,7 +2332,6 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                 dir = os.path.dirname(localFilename)
                 if not os.path.exists(dir):
                     os.makedirs(dir)
-
             
         # Split fetches by protocol
         https = []
@@ -2356,10 +2373,9 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                                     cacheDir ])
 
 
-def install(packages, extraFetches={}, dbindex=None, force=False):
+def install(packages, dbindex):
     '''install a pre-built (also pre-fetched) package.
     '''
-
     projects = []
     for name in packages:
         if os.path.isfile(name):
@@ -2367,13 +2383,7 @@ def install(packages, extraFetches={}, dbindex=None, force=False):
         else:
             projects += [ name ]
 
-    if len(extraFetches) > 0:
-        fetch(extraFetches)
-
     if len(projects) > 0:
-        if not dbindex:
-            dbindex = index
-        dbindex.validate(force)
         handler = Unserializer(projects)
         dbindex.parse(handler)
 
@@ -2516,22 +2526,21 @@ def linkDependencies(projects, cuts=[]):
                 # not exist and the pathname for it in buildDeps is not 
                 # an absolute path.  
                 complete = True
-                deps = prereq.files
-                for dir in deps:                    
-                    for namePat, absolutePath in deps[dir]:
+                for dir in prereq.files:                    
+                    for namePat, absolutePath in prereq.files[dir]:
                         complete &= linkPatPath(namePat,absolutePath,
                                                 dir,prereq.target)
                 if not complete:
-                    deps, complete = findPrerequisites(prereq.files,
-                                                       prereq.excludes,
-                                                       prereq.target)
+                    prereq.files, complete = findPrerequisites(prereq.files,
+                                                               prereq.excludes,
+                                                               prereq.target)
                 if not complete:
                     if not prereq in missings:
                         missings += [ prereq.name ]
                 else:
                     complete = True
-                    for dir in deps:
-                        for namePat, absolutePath in deps[dir]:
+                    for dir in prereq.files:
+                        for namePat, absolutePath in prereq.files[dir]:
                             complete &= linkPatPath(namePat,absolutePath,
                                                     dir,prereq.target)
     if len(missings) > 0:
@@ -2654,7 +2663,7 @@ def makeProject(name,options,dependencies={}):
     # If we do not set PATH to *binBuildDir*:*binDir*:${PATH}
     # and the install directory is not in PATH, then we cannot
     # build a package for drop because 'make dist' depends
-    # on executables installed in *binDir* (dws, buildpkg, ...)
+    # on executables installed in *binDir* (dws, dbldpkg, ...)
     # that are not linked into *binBuildDir* at the time 
     # 'cd drop ; make dist' is run. Note that it is not an issue
     # for other projects since those can be explicitely depending
@@ -2682,11 +2691,7 @@ def makeProject(name,options,dependencies={}):
         # a change to override defaults for installTop, etc.
         for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
             name = context.value(dir + 'Dir')
-        if len(targets) > 0:
-            for target in targets:
-                shellCommand(cmdline + [ target ] + overrides)
-        else:
-            shellCommand(cmdline)
+        shellCommand(cmdline + targets + overrides)
     except Error, e:
         errcode = e.code
         log.error(str(e))
@@ -2750,8 +2755,9 @@ def upload(filenames, cacheDir=None):
     to the remote server. See the fetch function for downloading
     files from the remote server.
     '''
+    remoteCachePath = context.remoteDir(context.logPath(''))
     if not filenames:
-        filenames = context.logPath('./*')
+        filenames = [ context.logPath('./*') ]
     cmdline, prefix = findRSync(remoteCachePath,not cacheDir)
     upCmdline = cmdline + [ ' '.join(filenames), remoteCachePath ]
     shellCommand(upCmdline)
@@ -2833,7 +2839,7 @@ def sortBuildConfList(dbPathnames,parser):
     return dbNext
 
 
-def validateControls(dgen, dbindex=None, force=False):
+def validateControls(dgen, dbindex=None):
     '''Checkout source code files, install packages such that 
     the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency 
@@ -2846,23 +2852,24 @@ def validateControls(dgen, dbindex=None, force=False):
     each prerequisite project in order.'''
     if not dbindex:
         dbindex = index
-    dbindex.validate(force)
+    dbindex.validate(dgen.force)
 
-    # Add deep dependencies
+    # Add deep dependencies    
     reps, packages, fetches = dbindex.closure(dgen)
-
-    # Checkout missing source controlled projects
-    # and install missing packages.
-    install(packages,fetches,dbindex)
     syncs = reps
-    if not force:
+    if not dgen.force:
         # Update only projects which are missing from *srcTop*
         # and leave other projects in whatever state they are in.
         syncs = []
         for name in reps:
             if not os.path.isdir(context.srcDir(name)):
                 syncs += [ name ]
-    update(syncs,fetches,dbindex,force)    
+
+    # Fetch required binary/source package files, install missing packages
+    # and update source controlled projects.
+    fetch(fetches)
+    install(packages,dbindex)
+    update(syncs,dbindex)    
     return reps, dgen.projects
 
 
@@ -2949,20 +2956,14 @@ def integrate(srcdir, pchdir, verbose=True):
                     os.chdir(prev)
 
 
-def update(reps, extraFetches={}, dbindex = None, force=False):
+def update(reps, dbindex):
     '''Update a list of *reps* within the workspace. The update will either 
     sync with a source rep repository if the project is present in *srcTop*
     or will install a new binary package through the local package manager.
     *extraFetches* is a list of extra files to fetch from the remote machine,
     usually a list of compressed source tar files.'''
-    if not dbindex:
-        dbindex = index
-    dbindex.validate(force)
     handler = Unserializer(reps)
     dbindex.parse(handler)
-
-    if len(extraFetches) > 0:
-        fetch(extraFetches)
 
     # If an error occurs, at least save previously configured variables.
     context.save()
@@ -3004,16 +3005,16 @@ def prompt(message):
             
 def pubBuild(args):
     '''build              [remoteIndexFile [localTop]]
-                        This bootstrap command will download an index 
-                        database file from *remoteTop* and starts issuing
-                        make for every project listed in it with targets 
-                        'install' and 'dist'. 
-                        This command is meant to be used as part of cron
-                        jobs on build servers and thus designed to run 
-                        to completion with no human interaction. As such, 
-                        in order to be really useful in an automatic build 
-                        system, authentication to the remote server should 
-                        also be setup to run with no human interaction.
+                       This bootstrap command will download an index database 
+                       file, *remoteIndexFile*, and issue a *make* command 
+                       for all projects which have a *repository* node 
+                       defined. 
+                       This command is meant to be used as part of cron
+                       jobs on build servers and thus designed to run 
+                       to completion with no human interaction. As such, 
+                       in order to be really useful in an automatic build 
+                       system, authentication to the remote server should 
+                       also be setup to run with no human interaction.
     '''
     if len(args) > 0:
         context.remoteSite(args[0])
@@ -3046,8 +3047,6 @@ def pubBuild(args):
         os.makedirs(os.path.dirname(context.logPath(logstamp)))
     shellCommand(['install', '-m', '644', context.logname(),
                   context.logPath(logstamp)])
-    if uploadResults:
-        upload([ logstamp ])
     if len(errors) > 0:
         raise Error("Found errors while making " + ' '.join(errors))
 
@@ -3125,9 +3124,9 @@ def pubCollect(args):
 
 
 def pubConfigure(args):
-    '''configure              Configure the local machine with direct 
-                       dependencies of a project such that the project 
-                       can be built later on.
+    '''configure              Locate direct dependencies of a project on
+                       the local machine and create the appropriate symbolic
+                       links such that the project can be made later on.
     '''
     global log 
     log = LogFile(context.logname(),nolog)
@@ -3154,10 +3153,12 @@ def pubConfigure(args):
 
 
 def pubContext(args):
-    '''context                Prints the absolute pathname to a file.
-                       If the filename cannot be found from the current 
-                       directory up to the workspace root (i.e where the workspace make fragment 
-                       is located), it assumes the file is in *etcDir*.
+    '''context            [file]
+                       Prints the absolute pathname to a *file*.
+                       If the file cannot be found from the current 
+                       directory up to the workspace root, i.e where the .mk
+                       fragment is located (usually *buildTop*, it assumes the 
+                       file is in *shareDir* alongside other make helpers.
     '''
     pathname = context.configFilename
     if len(args) >= 1:
@@ -3169,70 +3170,11 @@ def pubContext(args):
     sys.stdout.write(pathname)
 
 
-def pubCreate(args):
-    '''create               projectName
-                       Create a new directory and initial it as a project
-                       repository.
-    '''
-    prev = os.getcwd()
-    projName = args[0]
-    projDir = os.path.join(context.value('srcTop'),projName)
-    if os.path.exists(projDir):
-        raise Error(projDir + ' already exists')
-    os.makedirs(projDir)
-    os.chdir(projDir)
-    shellCommand(['git', 'init'])
-    hookSample = os.path.join('.git','hooks','post-update.sample')
-    hook = os.path.join('.git','hooks','post-update')
-    if os.path.isfile(hookSample):
-        shutil.move(hookSample,hook)
-    if os.path.isfile(hook):
-        shellCommand(['chmod', '755', hook])
-    config = open( os.path.join('.git','config'))
-    lines = config.readlines()
-    config.close()
-    foundReceive = -1
-    foundDenyCurrentBranch = -1
-    for i in range(0,len(lines)):
-        if re.match('[receive]',lines[i]):            
-            foundReceive = i
-        elif re.match('\s*denyCurrentBranch = (\S+)',lines[i]):
-            foundDenyCurrentBranch = i
-    config = open(os.path.join('.git','config'),'w')
-    if foundReceive >= 0:
-       if foundDenyCurrentBranch >= 0:
-           config.write(''.join(lines[0:foundDenyCurrentBranch]))
-           config.write('\tdenyCurrentBranch = ignore\n')
-           config.write(''.join(lines[foundDenyCurrentBranch + 1:]))
-       else:
-           config.write(''.join(lines[0:foundDenyCurrentBranch]))
-           config.write('\tdenyCurrentBranch = ignore\n')
-           config.write(''.join(lines[foundDenyCurrentBranch:]))
-    else:
-        config.write(''.join(lines))
-        config.write('[receive]\n')
-        config.write('\tdenyCurrentBranch = ignore\n')
-    config.close()
-    index = open(os.path.join(context.indexName),'w')
-    index.write('''<?xml version="1.0" ?>
-<projects>
-  <project name="''' + projName + '''">
-    <title></title>
-    <description></description>
-    <maintainer name="" email="" />
-    <repository>
-    </repository>
-  </project>
-</projects>
-''')
-    index.close()
-    shellCommand(['git', 'add', '.'])
-    shellCommand(['git', 'commit', '-m', "'initial index (template)'"])
-
-
 def pubDuplicate(args):
-    '''duplicate              Duplicate pathnames from the remote machine into
-                       *duplicateDir* on the local machine. 
+    '''duplicate              Duplicate a fixed set of pathnames from the 
+                       remote machine into *duplicateDir* on the local machine.
+                       This implements crude backup functionality for the 
+                       remote server.
     ''' 
     remoteCachePath = context.value('remoteSiteTop')
     uri = urlparse.urlparse(remoteCachePath)
@@ -3278,9 +3220,15 @@ def pubInit(args):
 
 
 def pubInstall(args):
-    '''install                Install a package on the local system.
+    '''install            [binPackage|project ...]
+                      Install a package *binPackage* on the local system
+                      or a binary package associated to *project* 
+                      through either a *package* or *patch* node in the
+                      index database or through the local package 
+                      manager.
     '''
-    install(args)
+    index.validate()
+    install(args,index)
 
 
 def pubIntegrate(args):
@@ -3323,7 +3271,7 @@ def pubMake(args):
 
 
 def pubPush(args):
-    '''push                 Push commits to projects checked out 
+    '''push                   Push commits to projects checked out 
                        in the workspace.
     '''
     global log 
@@ -3390,8 +3338,16 @@ def pubStatus(args):
 
 
 def pubUpdate(args):
-    '''update                 [ projectName ... ]
-                            Update projects installed in the workspace
+    '''update             [ project ... ]
+                       Update projects that have a *repository* or *patch*
+                       node in the index database and are also present in 
+                       the workspace by pulling changes from the remote
+                       server. "update recurse" will recursively update all
+                       dependencies for *project*.
+                       If a project only contains a *package* node in the index
+                       database, the local system will be modified only if the
+                       version provided is greater than the version currently
+                       installed.
     '''
     global log 
     log = LogFile(context.logname(),nolog)
@@ -3404,13 +3360,17 @@ def pubUpdate(args):
     if recurse:
         # note that *excludePats* is global.
         dgen = MakeGenerator(reps,[],[],excludePats) 
-        names, projects = validateControls(dgen,force=True)
+        names, projects = validateControls(dgen)
     else:
-        update(reps,force=True)
+        index.validate(True)
+        update(reps,index)
  
 
 def pubUpload(args):
-    '''upload          Upload the log files to the remote machine.
+    '''upload             [filename ...]
+                       Upload the generated log files to the remote machine.
+                       Only users with an account can upload to the forum 
+                       server.
     '''
     if args:
         upload(args)
@@ -3419,7 +3379,7 @@ def pubUpload(args):
 
 
 def pubUpstream(args):
-    '''upstream          [ srcPackage ... ]
+    '''upstream           [ srcPackage ... ]
                        Generate a patch to submit to upstream 
                        maintainer out of a source package and 
                        a -patch subdirectory in a project srcDir.
@@ -3665,8 +3625,6 @@ if __name__ == '__main__':
 	    help='Do not generate output in the log file')
 	parser.add_option('--prefix', dest='installTop', action='append',
 	    help='Set the root for installed bin, include, lib, etc. ')
-	parser.add_option('--upload', dest='uploadResults', action='store_true',
-	    help='Upload log files to the server after building the repository')
 	parser.add_option('--version', dest='version', action='store_true',
 	    help='Print version information')
         
@@ -3770,7 +3728,6 @@ if __name__ == '__main__':
 
         doClean = options.clean
         useDefaultAnswer = options.default
-        uploadResults = options.uploadResults
         nolog = options.nolog
         if options.excludePats:
             excludePats = options.excludePats

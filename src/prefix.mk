@@ -42,10 +42,10 @@ shareBuildDir	:=	$(buildTop)/share
 makeHelperDir	?=	$(shareBuildDir)/dws
 
 
-# We cannot initialize buildpkg to $(binBuildDir)/buildpkg, 
+# We cannot initialize dbldpkg to $(binBuildDir)/dbldpkg, 
 # else the drop package cannot be built. See comments associated
 # to searchPath() in dws.py
-buildpkg	:=	buildpkg
+dbldpkg		:=	dbldpkg
 ibtool          :=      /Developer/usr/bin/ibtool
 installBins	:=	/usr/bin/install -s -p -m 755
 installDirs 	:=	/usr/bin/install -d

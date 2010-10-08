@@ -23,42 +23,46 @@
     <para>
       When development requires changes in multiple projects, there are also no way to rebuilt those projects in dependence topological order. In most of these cases, custom shell scripts and/or recursive makes are put together as needed.</para>
     <para>
-      A workspace concept and a workspace manager tool, <link linkend="dws.book">dws</link>, has been put together to alleviate the time each contributor deals with dependency troubles.</para>
+      A workspace concept and a workspace manager tool (<link linkend="dws.book">dws</link>) has been put together to alleviate the time each contributor deals with dependency troubles.</para>
     <para>
       A workspace relies on environment variables (<link linkend="dws.book#srcTop">srcTop</link>, <link linkend="dws.book#buildTop">buildTop</link>, etc.) and a project dependency graph.</para>
     <para>
-      The environment variables are set in a workspace configuration file named dws.mk. The workspace tool populates the configuration file as necessary at the time a variable value is required. The environment variables consist mostly of directory paths where source files are checked out (<link linkend="dws.book#srcTop">srcTop</link>), where object files are built (<link linkend="dws.book#buildTop">buildTop</link>), etc.</para>
+      The environment variables are set in a workspace configuration file (dws.mk) which is also interpreted as a makefile fragment. The workspace tool populates the configuration file as necessary at the time a variable value is required. The environment variables consist mostly of directory paths where source files are checked out (<link linkend="dws.book#srcTop">srcTop</link>), where object files are built (<link linkend="dws.book#buildTop">buildTop</link>), etc.</para>
     <para>
-      The dependency graph contains information typically found in a package manager (yum, apt, etc.) as well as information usually found in configure scripts (autoconf). In the same way Linux distributions gather packages dependencies into a global dependency database, project dependency information is aggregated in a single index file. A master copy of the project dependency graph is stored on a remote server and cached locally on the development local machine.</para>
+      The dependency graph contains information typically found in a package manager (yum, apt, etc.) as well as information usually found in configure scripts (autoconf). In the same way Linux distributions gather packages dependencies into a global dependency database, project dependency information is aggregated in a single index file (<emphasis>dws collect</emphasis>). A master copy of the project dependency graph is stored on a remote server and cached locally on the development local machine.</para>
     <para>
-      The workspace tool will extract a subset of the dependency graph from a set of projects. All projects in the extracted subset which are neither present as a directory in <link linkend="dws.book#srcTop">srcTop</link> nor generated executables, headers, libraries, etc. found pre-installed on the local machines will be flagged as <emphasis>missing</emphasis>.</para>
+      The workspace tool will extract a subset of the dependency graph from a set of projects. All projects in the extracted subset which are neither present as a directory in <link linkend="dws.book#srcTop">srcTop</link> nor whose generated executables, headers, libraries, etc. found pre-installed on the local machines will be flagged as <emphasis>missing</emphasis>.</para>
     <para>
-      A project does not built as long as there are <emphasis>missing</emphasis> prerequisites. Those prerequisites will have to be installed from either:
-    </para>
+      A project does not built as long as there are missing prerequisites and missing prerequisistes can either be classified as development or stable. A development prerequisiste is based on a source repository because a developer pulling down a prerequisiste project as a source repository expects to run edit/build/run cycles on it. With a stable prerequisiste, a developer expects headers and libraries to be present on the local system in order to compile development projects but that is it. This difference is embodied in the <emphasis>dws build</emphasis> and <emphasis>dws install</emphasis> commands in conjunction with the <emphasis>repository</emphasis>, <emphasis>patch</emphasis> and <emphasis>package</emphasis> tags in the project index file.
+    </para>    
     <variablelist>
       <varlistentry>
-	<term>Compiling a source repository</term>
+	<term>Development</term>
 	<listitem>
-	  <para>The project is considered to be part of the workspace and will be checked-out as a source controlled directory in <link linkend="dws.book#srcTop">srcTop</link>. A project can either contain all its sources code under revision control or just a patch into another source package.</para>
+	  <para>
+	    The <emphasis>dws build</emphasis> command does a deep traversal of the dependency graph and re-make every project that has a <emphasis>repository</emphasis> tag. Those projects are considered to be part of the development workspace and will be checked-out as a source controlled directory in <link linkend="dws.book#srcTop">srcTop</link>.
+	  </para>
 	</listitem>
       </varlistentry>
       <varlistentry>
-	<term>A custom package</term>
+	<term>Stable</term>
 	<listitem>
-	  <para>A custom package has already been built from a source controlled directory and uploaded to the remote server. This is a typical method of installation for projects that are not part of a contributor's focus or third-party packages unavailable through the official distribution package manager.</para>
-	</listitem>
-      </varlistentry>
-      <varlistentry>
-	<term>A distribution package</term>
-	<listitem>
-	  <para>An official binary distribution package installed through the platform package manager.</para>
+	  <para>
+	    When the goal is to bring a local system with a set of applications and libraries instead of developing those, the <emphasis>dws install</emphasis> command  will be used. It does a shallow traversal of the dependency graph, installing packages only as necessary to bring the local system in sync with the definitions in the index file.
+	  </para>
+	  <para>
+	    If the prerequisites for a project in the project index file cannot be found, a binary or source package will be installed to statisfy those. First, if the prerequisite project contains a custom binary package previously uploaded to the remote server this package will be installed. If the prerequisite project contains a patch tag, it is assumed that patch can be used to build a custom binary package that can then be installed. These are typical methods of installation for projects that are not part of a contributor's focus or for third-party packages unavailable through the local machine package manager.
+	  </para>
+	  <para>
+	    If there are no custom packages, it is assumed the official binary distribution package installed through the platform package manager will do.
+	  </para>
 	</listitem>
       </varlistentry>
     </variablelist>
     <para>
       Only in the most unlikely case where all else breaks, the installation will have to be done manually.</para>
   </section>
-  
+
   <section>
     <title>Make</title>
     <para>
@@ -85,6 +89,9 @@ include $(etcDir)/dws/suffix.mk
     </programlisting>
     <para>
       <emphasis>Drop</emphasis> is especially relevent in large cross-platform build systems. By including crossprefix.mk and crosssuffix.mk instead of the usual prefix.mk and suffix.mk, each variable (ex. CC) is doubled with a host equivalent (ex. CC.host) and the associated rules. The cross*.mk fragments enable building both target and host executables in the same makefile, a feature often required for development of virtual machines.
+    </para>
+    <para>
+      The <emphasis>dws integrate</emphasis> command is particularly useful to integrate a patch (under source control) into a source package fetched from a remote machine. Accordingly, <emphasis>dws upstream</emphasis> is used to easily generate patches that can be submitted to upstream maintainers of third-party packages. 
     </para>
   </section>   
 
@@ -126,7 +133,7 @@ include $(etcDir)/dws/suffix.mk
 	There is no official update tool for all software deployed on an OSX platform even though packaging projects as disk images is a common practise. The internals of OSX (aka Darwin), as a derivative from the BSD family, it is also common to find open source software distributed through <link xlink:href="http://freshmeat.net/projects/macports">macports</link>.</para>
       <para>Simple applications on OSX come as a .app that needs to be dragged into the /Applications folder while complex applications come as .pkg directory. Both typically come bundled as a .dmg disk image.</para>
       <para>The <link xlink:href="http://www.apple.com/downloads/">Apple Website</link> and <link xlink:href="http://freshmeat.net/projects/macports">macports</link> are the two main repositories to search for OSX packages.</para>
-      <para>The documentation to package OSX software is sparse and most times explained as a sequence of clicks through the XCode GUI which is far from convenient for automation. See <link xlink:href="http://developer.apple.com/documentation/developertools/conceptual/SoftwareDistribution/Introduction/Introduction.html#//apple_ref/doc/uid/10000145i-CH1-DontLinkElementID_69">Packaging and Distribution Software</link> by Apple, <link xlink:href="http://developer.apple.com/documentation/Darwin/Reference/Manpages/man1/packagemaker.1.html">packagemaker man pages</link> and the <link xlink:href="http://python.net/~gherman/projects/buildpkg/">buildpkg.py</link> python script which is a food starting point for understanding the command line tools available.</para>
+      <para>The documentation to package OSX software is sparse and most times explained as a sequence of clicks through the XCode GUI which is far from convenient for automation. See <link xlink:href="http://developer.apple.com/documentation/developertools/conceptual/SoftwareDistribution/Introduction/Introduction.html#//apple_ref/doc/uid/10000145i-CH1-DontLinkElementID_69">Packaging and Distribution Software</link> by Apple, <link xlink:href="http://developer.apple.com/documentation/Darwin/Reference/Manpages/man1/packagemaker.1.html">packagemaker man pages</link> and the <link xlink:href="http://python.net/~gherman/projects/dbldpkg/">dbldpkg.py</link> python script which is a food starting point for understanding the command line tools available.</para>
     </section>
 
     <section>
