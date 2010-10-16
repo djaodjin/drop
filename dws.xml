@@ -5,6 +5,7 @@
     <description>Drop is an inter-project dependencies tool that binds functionality of source control systems, autoconf scripts, make and package managers. Its efficiency is measured by the time it takes to setup a random machine for code development first and subsequently the time spent in rebuilding the source base after any change.
     </description>
     <maintainer name="Sebastien Mirolo" email="smirolo@fortylines.com" />
+    <metainfo name="section">devel</metainfo>
     <repository>
       <dep name="make">
 	<!-- For some reason the Python XML parser throws up a not well-formed

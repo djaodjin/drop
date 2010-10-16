@@ -827,7 +827,7 @@ class MakeGenerator(DependencyGenerator):
         if os.path.isdir(context.srcDir(name)):
             # If there is already a local source directory in *srcTop*, it is
             # also a no brainer - invoke make.
-            self.repositories |= set([ name ])
+            nbChoices = 1
 
         else:
             # First, compute how many potential installation tags we have here.
@@ -839,14 +839,14 @@ class MakeGenerator(DependencyGenerator):
             if len(project.packages) > 0:
                 nbChoices = nbChoices + 1
 
-            if nbChoices == 1:            
-                # Only one choice is easy
-                if project.repository:
-                    self.repositories |= set([name])
-                elif project.patch:
-                    self.patches |= set([name])
-                elif len(project.packages) > 0:
-                    self.packages |= set([name])
+        if nbChoices == 1:            
+            # Only one choice is easy
+            if project.repository:
+                self.repositories |= set([name])
+            elif project.patch:
+                self.patches |= set([name])
+            elif len(project.packages) > 0:
+                self.packages |= set([name])
 
         # The repository, patch or package tag to follow through has already 
         # been decided, so let's check if we need to go deeper through 
@@ -1057,6 +1057,11 @@ class Pathname(Variable):
         writetext(self.name + ' set to ' + self.value +'\n')
         return True
 
+class Metainfo(Variable):
+
+    def __init__(self,name,value,descr=None):
+        Variable.__init__(self,name,value,descr)
+    
 
 class MultipleChoice(Variable):
 
@@ -1367,6 +1372,7 @@ class Project:
         self.patch = None
         self.repository = None
         self.installedVersion = None
+        self.metainfos = []
 
     def __str__(self):
         result = 'project ' + self.name + '\n' \
@@ -1434,6 +1440,7 @@ class xmlDbParser(xml.sax.ContentHandler):
     tagFetch = 'fetch'
     tagHash = 'sha1'
     tagMaintainer = 'maintainer'
+    tagMetainfo = 'metainfo'
     tagMultiple = 'multiple'
     tagPackage = 'package'
     tagPatch = 'patch'
@@ -1454,6 +1461,7 @@ class xmlDbParser(xml.sax.ContentHandler):
         self.handler = None
         self.choice = None
         self.constrain = None
+        self.name = None
  
     def startElement(self, name, attrs):
         '''Start populating an element.'''
@@ -1492,6 +1500,8 @@ class xmlDbParser(xml.sax.ContentHandler):
             self.target = None
             if 'target' in attrs:
                 self.target = attrs['target']
+        elif name == self.tagMetainfo:
+            self.name = attrs['name']
         elif name == self.tagMultiple:
             self.constrain = None
             choiceValue = None
@@ -1579,6 +1589,8 @@ class xmlDbParser(xml.sax.ContentHandler):
                 self.var.default = self.text.strip()
         elif name == self.tagTag:
             self.tags += [ self.text ]
+        elif name == self.tagMetainfo:
+            self.project.metainfos += [ Metainfo(self.name,self.text) ]
         elif name == self.tagPackage:
             package = Package(self.fetches,self.locals,self.vars)
             if len(self.tags) == 0:
@@ -2480,6 +2492,108 @@ def installLocalPackage(filename):
     else:
         raise Error("Does not know how to install '" \
                         + filename + "' on " + context.host())
+
+def helpBook(help):
+    '''Print a text string help message as formatted docbook.'''
+
+    firstTerm = True
+    firstSection = True
+    lines = help.getvalue().split('\n')
+    while len(lines) > 0:                
+        line = lines.pop(0)
+        if line.strip().startswith('Usage'):
+            look = re.match('Usage: (\S+)',line.strip())
+            cmdname = look.group(1)
+            # /usr/share/xml/docbook/schema/dtd/4.5/docbookx.dtd
+            # dtd/docbook-xml/docbookx.dtd
+            sys.stdout.write("""<?xml version="1.0"?>
+<refentry xmlns="http://docbook.org/ns/docbook" 
+         xmlns:xlink="http://www.w3.org/1999/xlink"
+         xml:id=\"""" + cmdname + """.book">
+<info>
+<author><contrib><personname>Sebastien Mirolo &lt;smirolo@fortylines.com&gt;</personname></contrib></author>
+</info>
+<refmeta>
+<refentrytitle>""" + cmdname + """</refentrytitle>
+<manvolnum>1</manvolnum>
+<refmiscinfo class="manual">User Commands</refmiscinfo>
+<refmiscinfo class="source">drop</refmiscinfo>
+<refmiscinfo class="version">""" + str(__version__) + """</refmiscinfo>
+</refmeta>
+<refnamediv>
+<refname>""" + cmdname + """</refname>
+<refpurpose>inter-project dependencies tool</refpurpose>
+</refnamediv>
+<refsynopsisdiv>
+<cmdsynopsis>
+<command>""" + cmdname + """</command>
+<arg choice="opt">
+  <option>options</option>
+</arg>
+<arg>command</arg>
+</cmdsynopsis>
+</refsynopsisdiv>
+""")
+        elif (line.strip().startswith('Version')
+            or re.match('\S+ version',line.strip())):
+            None
+        elif line.strip().endswith(':'):
+            if not firstTerm:
+                sys.stdout.write("</para>\n")
+                sys.stdout.write("</listitem>\n")
+                sys.stdout.write("</varlistentry>\n")
+            if not firstSection:
+                sys.stdout.write("</variablelist>\n")
+                sys.stdout.write("</refsection>\n")
+            firstSection = False
+            sys.stdout.write("<refsection>\n")
+            sys.stdout.write('<title>' + line.strip() + '</title>\n')
+            sys.stdout.write("<variablelist>")
+            firstTerm = True
+        elif len(line) > 0 and (re.search("[a-z]",line[0]) 
+                                or line.startswith("  -")):
+            s = line.strip().split(' ')
+            if not firstTerm:
+                sys.stdout.write("</para>\n")
+                sys.stdout.write("</listitem>\n")
+                sys.stdout.write("</varlistentry>\n")
+            firstTerm = False                    
+            for w in s[1:]:
+                if len(w) > 0:
+                    break
+            sys.stdout.write("<varlistentry>\n")
+            if line.startswith("  -h,"):
+                # Hack because "show" does not start
+                # with uppercase.
+                sys.stdout.write("<term>" + ' '.join(s[0:2])
+                                 + "</term>\n")
+                w = 'S'
+                s = s[1:]
+            elif not re.search("[A-Z]",w[0]):
+                sys.stdout.write("<term>" + line + "</term>\n")
+            else:
+                if not s[0].startswith('-'):
+                    sys.stdout.write("<term xml:id=\"" + s[0] + "\">\n")
+                else:
+                    sys.stdout.write("<term>\n")
+                sys.stdout.write(s[0] + "</term>\n")
+            sys.stdout.write("<listitem>\n")
+            sys.stdout.write("<para>\n")
+            if not re.search("[A-Z]",w[0]):
+                None
+            else:
+                sys.stdout.write(' '.join(s[1:]) + '\n')
+        else:
+            sys.stdout.write(line + '\n')
+    if not firstTerm:
+        sys.stdout.write("</para>\n")
+        sys.stdout.write("</listitem>\n")
+        sys.stdout.write("</varlistentry>\n")
+    if not firstSection:
+        sys.stdout.write("</variablelist>\n")
+        sys.stdout.write("</refsection>\n")
+    sys.stdout.write("</refentry>\n")
+
 
 def libPrefix():
     '''Returns the prefix for library names.'''
@@ -3636,92 +3750,7 @@ if __name__ == '__main__':
         if options.helpBook:
             help = cStringIO.StringIO()
             parser.print_help(help)
-            sys.stdout.write("""<?xml version="1.0"?>
-<refentry xmlns="http://docbook.org/ns/docbook" 
-         xmlns:xlink="http://www.w3.org/1999/xlink"
-         xml:id="dws.book">
-<refmeta>
-<refentrytitle>dws</refentrytitle>
-</refmeta>
-<refnamediv>
-<refname>dws</refname>
-<refpurpose>inter-project dependencies tool</refpurpose>
-</refnamediv>
-<refsynopsisdiv>
-<cmdsynopsis>
-<command>dws</command>
-<arg choice="opt">
-  <option>options</option>
-</arg>
-<arg>command</arg>
-</cmdsynopsis>
-</refsynopsisdiv>
-""")
-            firstTerm = True
-            firstSection = True
-            lines = help.getvalue().split('\n')
-            while len(lines) > 0:                
-                line = lines.pop(0)
-                if (line.strip().startswith('Usage')
-                    or line.strip().startswith('Version')
-                    or line.strip().startswith('dws version')):
-                    None
-                elif line.strip().endswith(':'):
-                    if not firstTerm:
-                        sys.stdout.write("</para>\n")
-                        sys.stdout.write("</listitem>\n")
-                        sys.stdout.write("</varlistentry>\n")
-                    if not firstSection:
-                        sys.stdout.write("</variablelist>\n")
-                        sys.stdout.write("</refsection>\n")
-                    firstSection = False
-                    sys.stdout.write("<refsection>\n")
-                    sys.stdout.write('<title>' + line.strip() + '</title>\n')
-                    sys.stdout.write("<variablelist>")
-                    firstTerm = True
-                elif len(line) > 0 and (re.search("[a-z]",line[0]) 
-                                        or line.startswith("  -")):
-                    s = line.strip().split(' ')
-                    if not firstTerm:
-                        sys.stdout.write("</para>\n")
-                        sys.stdout.write("</listitem>\n")
-                        sys.stdout.write("</varlistentry>\n")
-                    firstTerm = False                    
-                    for w in s[1:]:
-                        if len(w) > 0:
-                            break
-                    sys.stdout.write("<varlistentry>\n")
-                    if line.startswith("  -h,"):
-                        # Hack because "show" does not start
-                        # with uppercase.
-                        sys.stdout.write("<term>" + ' '.join(s[0:2])
-                                         + "</term>\n")
-                        w = 'S'
-                        s = s[1:]
-                    elif not re.search("[A-Z]",w[0]):
-                        sys.stdout.write("<term>" + line + "</term>\n")
-                    else:
-                        if not s[0].startswith('-'):
-                            sys.stdout.write("<term xml:id=\"" + s[0] + "\">\n")
-                        else:
-                            sys.stdout.write("<term>\n")
-                        sys.stdout.write(s[0] + "</term>\n")
-                    sys.stdout.write("<listitem>\n")
-                    sys.stdout.write("<para>\n")
-                    if not re.search("[A-Z]",w[0]):
-                        None
-                    else:
-                        sys.stdout.write(' '.join(s[1:]) + '\n')
-                else:
-                    sys.stdout.write(line + '\n')
-            if not firstTerm:
-                sys.stdout.write("</para>\n")
-                sys.stdout.write("</listitem>\n")
-                sys.stdout.write("</varlistentry>\n")
-            if not firstSection:
-                sys.stdout.write("</variablelist>\n")
-                sys.stdout.write("</refsection>\n")
-            sys.stdout.write("</refentry>\n")
+            helpBook(help)
             sys.exit(0)
         if options.installTop:
             context.environ['installTop'].value = options.installTop

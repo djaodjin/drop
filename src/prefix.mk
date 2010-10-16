@@ -111,6 +111,7 @@ binDist		:=	$(project)-$(version)$(distExt$(distHost))
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
 htmlxsl		:=	$(shareBuildDir)/docbook-xsl/html/docbook.xsl
 foxsl		:=	$(shareBuildDir)/docbook-xsl/fo/docbook.xsl
+manxsl		:=	$(shareBuildDir)/docbook-xsl/manpages/docbook.xsl
 graphicSuffix	:=	png
 #graphicSuffix	:=	svg
 

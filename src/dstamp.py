@@ -164,12 +164,21 @@ if __name__ == '__main__':
             epilog=epilog)
         parser.add_option('--version', dest='version', action='store_true',
                           help='Print version information')
+        parser.add_option('--help-book', dest='helpBook', action='store_true',
+                          help='Print help in docbook format')
 
         options, args = parser.parse_args()
         if options.version:
             sys.stdout.write(sys.argv[0] + ' version ' + str(__version__) \
                                  + '\n')
             sys.exit(0)
+
+        if options.helpBook:
+            import cStringIO
+            help = cStringIO.StringIO()
+            parser.print_help(help)
+            dws.helpBook(help)
+            sys.exit(0)        
 
         arg = args.pop(0)
         command = 'pub' + arg.capitalize()

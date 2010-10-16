@@ -129,7 +129,7 @@ $(project)-$(version)::
 	    -e 's,$$(shell dws context \(..*\)),share/dws/\1,' \
 	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
 		$(srcDir)/Makefile > $@/Makefile.in
-	rm $@/Makefile
+	rm -f $@/Makefile
 	$(installDirs) $@/share/dws
 	$(installScripts) $(makeHelperDir)/configure.sh $@/configure
 	$(installScripts) $(shell which dws) $@
@@ -207,15 +207,23 @@ results: $(patsubst %,%.cout,$(testunits))
 # We install documentation files, both in shareDir and resourcesDir
 # such that those are available for generating a distribution package
 # as well as acessible through the website.
-doc: $(shares)
-	$(installFiles) $^ $(shareDir)
+install-doc:: $(shares)
+	$(installDirs) $(shareDir)/doc/$(subst -%,,$(project))
+	$(installFiles) $^ $(shareDir)/doc/$(subst -%,,$(project))
 	$(installFiles) $^ $(resourcesDir)
+
+install-doc:: $(manpages)
+	$(installDirs) $(shareDir)/man/man1
+	$(installFiles) $(filter %.1,$^) $(shareDir)/man/man1
 
 %.pdf:	%.fo
 	$(FOP) -fo $< -pdf $@
 
 %.fo: %.book
 	$(XSLTPROC) --output $@ $(foxsl) $<
+
+%.1: %.book
+	$(XSLTPROC) --output $@ $(manxsl) $<
 
 
 # Rules to build the website

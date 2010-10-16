@@ -43,6 +43,7 @@ __license__ = "FreeBSD"
 import re, os, subprocess, sys, glob, fnmatch, shutil, string, copy, getopt
 from os.path import basename, dirname, join, islink, isdir, isfile
 import datetime, hashlib, shutil
+import cStringIO
 
 Error = "dbldpkg.Error"
 
@@ -493,13 +494,22 @@ make install
 
         control.write('\nPackage: ' + project.name + '\n')
         control.write('Priority: extra\n')
-        control.write('Description: ' + project.title + '\n' \
-                          + project.descr + '\n')
         control.write('Architecture: any\n')
+
+        for metainfo  in project.metainfos:
+            control.write(metainfo.name.capitalize() + ': ' \
+                              + metainfo.value + '\n')
+
         if context.host() in project.packages:
             control.write('Depends: ' \
                               + ', '.join(dws.basenames(
-            project.packages[context.host()].prerequisiteNames([context.host()]))) + '\n')
+            project.packages[context.host()].prerequisiteNames([context.host()]))) + '\n')        
+        descr = ''
+        for i in range(0,len(project.descr),77):
+            descr += ' ' + project.descr[i:i+77] + '\n'
+        #descr += ' ' + project.descr[i:] + '\n'
+        control.write('Description: ' + project.title + '\n' \
+                          + descr + '\n')
         control.write('\n')
         control.close()
         distribCodename = None
@@ -546,6 +556,10 @@ install:
 \tdh_testroot
 \tdh_clean -k
 \tmake install
+\tmake install-doc
+\tdh_installchangelogs
+\tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
+\tdh_compress
 
 binary: install
 \tdh_installdeb
@@ -554,6 +568,10 @@ binary: install
 \tdh_builddeb
 
 ''')
+
+#\tinstall -d $(PREFIX)/share/doc/''' + project.name + '''
+#\tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
+ 
         rules.close()
         if os.path.exists('LICENSE'):
             # The function is executed from within the source tree
@@ -562,7 +580,7 @@ binary: install
             shutil.copy('LICENSE',os.path.join('debian','copyright'))
         else:
             copyright = open(os.path.join('debian','copyright'),'w')
-            copyright.write('Copyright ' + datetime.datetime.now().year \
+            copyright.write('Copyright ' + str(datetime.datetime.now().year) \
                                 + str(project.maintainer))
             copyright.close()
 
@@ -644,22 +662,29 @@ if __name__ == "__main__":
     import imp
     from optparse import OptionParser
 
-    parser = OptionParser(description=
-'''builds a distribution package
-    Usage: %s [options] <root> [<resources>]"
-    with arguments:
-           (mandatory) root:         the package root folder
-           (optional)  resources:    the package resources folder
-''')
+    dws = imp.load_source('dws',
+       os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
+    parser = OptionParser(usage="%prog [options] <root> [<resources>]",
+                          description=
+'''builds a distribution package''',
+                          epilog='''with arguments:
+    root          the package root folder
+    resources     the package resources folder
+''',formatter=dws.CommandsFormatter())
     parser.add_option('-v', '--version', dest='version', action='store',
                       help='Set version of the package')
     parser.add_option('-s', '--spec', dest='spec', 
                       action='store', help='Set specification of the package')
+    parser.add_option('--help-book', dest='helpBook', action='store_true',
+                      help='Print help in docbook format')
 
     options, args = parser.parse_args()
 
-    dws = imp.load_source('dws',
-       os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
+    if options.helpBook:
+        help = cStringIO.StringIO()
+        parser.print_help(help)
+        dws.helpBook(help)
+        sys.exit(0)        
 
     context = dws.Context()
     context.locate()

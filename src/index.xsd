@@ -61,6 +61,13 @@
       </xs:sequence>
     </xs:complexType>
   </xs:element>
+
+  <!-- metainfo elements are used for additional information required
+       in packager control files but which are not relevent typically
+       relevent to build nor install the package (ex. section-field). -->
+  <xs:element name="metainfo">
+      <xs:attribute name="name" type="xs:string" use="required" />
+  </xs:element>
   
   <xs:element name="multiple">
     <xs:complexType>

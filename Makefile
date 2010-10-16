@@ -40,8 +40,11 @@ makeHelperDir	:=	$(srcTop)/drop/src
 
 include $(srcDir)/src/prefix.mk
 
+docbook2man	:=	docbook-to-man
+
 scripts	:=	dbldpkg dregress dstamp dws
 shares	:=	drop.pdf
+manpages:=	$(addsuffix .1,$(scripts))
 
 drop.fo: drop.book
 
@@ -49,8 +52,8 @@ drop.book: $(srcDir)/doc/drop.py dropintro.book workspace.book quality.book \
 		dws.book glossary.book
 	python $^ > $@
 
-dws.book: dws
-	python dws --help-book > $@ || rm -f $@
+%.book: %
+	python $< --help-book > $@ || rm -f $@
 
 include $(srcDir)/src/suffix.mk
 
