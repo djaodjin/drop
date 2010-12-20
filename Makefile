@@ -42,7 +42,7 @@ include $(srcDir)/src/prefix.mk
 
 docbook2man	:=	docbook-to-man
 
-scripts	:=	dbldpkg dregress dstamp dws
+scripts	:=	dbldpkg dregress dstamp dws dtimeout
 shares	:=	drop.pdf
 manpages:=	$(addsuffix .1,$(scripts))
 

@@ -53,6 +53,8 @@ installFiles	:=	/usr/bin/install -p -m 644
 installScripts	:=	/usr/bin/install -p -m 755
 
 FOP		:=	fop
+JAR		:=	jar
+JAVAC		:=	javac
 LN_S		:=	/bin/ln -fs
 SED		:=	sed
 SEMILLA		:=	$(binBuildDir)/semilla
@@ -77,8 +79,21 @@ resourcesDir	?=	$(siteTop)/resources
 incSearchPath	:=	$(srcDir)/include $(includeBuildDir) $(includeDir)
 libSearchPath	:=	$(libBuildDir) $(libDir)
 
-CFLAGS		:=	-g -MMD -Wall
-CXXFLAGS	:=	-g -MMD -Wall
+# Building dynamic libraries
+dylSuffixDarwin		:=	.dylib
+dylSuffixFedora		:=	.so
+dylSuffixUbuntu		:=	.so
+dylSuffix		:=	$(dylSuffix$(distHost))
+
+SHAREDLIBFLAGSDarwin  	:= 	-dynamiclib
+SHAREDLIBFLAGSFedora  	:= 	-shared
+SHAREDLIBFLAGSUbuntu  	:= 	-shared
+SHAREDLIBFLAGS		:=	$(SHAREDLIBFLAGS$(distHost))
+
+
+# Need -fPIC to build shared libraries
+CFLAGS		:=	-g -MMD -Wall -fPIC
+CXXFLAGS	:=	-g -MMD -Wall -fPIC
 CPPFLAGS	+=	$(patsubst %,-I%,$(incSearchPath))
 LDFLAGS		+=	$(patsubst %,-L%,$(libSearchPath))
 
@@ -106,6 +121,9 @@ endif
 endif
 
 # Name of the binary distribution package
+binDistDarwin	:=	$(project)-$(version)$(distExtDarwin)
+binDistUbuntu	:=	$(project)-$(version)$(distExtUbuntu)
+binDistFedora	:=	$(project)-$(version)$(distExtFedora)
 binDist		:=	$(project)-$(version)$(distExt$(distHost))
 
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
@@ -126,15 +144,15 @@ unexpectedZeroExit =	@echo "$(1)" && ($(1) \
 	&& echo "$@:$$?:error: functional test expected non-zero exit code")
 
 
-vpath %.a 	$(libSearchPath)
-vpath %.so	$(libSearchPath)
-vpath %.hh      $(incSearchPath)
-vpath %.cc 	$(srcDir)/src
-vpath %.py	$(srcDir)/src
-vpath %.sh	$(srcDir)/src
-vpath %.c 	$(srcDir)/src
-vpath %.m 	$(srcDir)/src
-vpath %.book 	$(srcDir)/doc
+vpath %.a 		$(libSearchPath)
+vpath %$(dylSuffix)	$(libSearchPath)
+vpath %.hh      	$(incSearchPath)
+vpath %.cc 		$(srcDir)/src
+vpath %.py		$(srcDir)/src
+vpath %.sh		$(srcDir)/src
+vpath %.c 		$(srcDir)/src
+vpath %.m 		$(srcDir)/src
+vpath %.book 		$(srcDir)/doc
 
 define bldUnitTest
 

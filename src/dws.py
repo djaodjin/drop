@@ -839,31 +839,48 @@ class MakeGenerator(DependencyGenerator):
             if len(project.packages) > 0:
                 nbChoices = nbChoices + 1
 
+        prereqs = None
+        fetches = None
+        tags = [ context.host() ]
         if nbChoices == 1:            
-            # Only one choice is easy
+            # Only one choice is easy. We just have to make sure we won't
+            # put the project in two different sets.
+            chosen = self.repositories | self.patches | self.packages
             if project.repository:
-                self.repositories |= set([name])
+                prereqs = project.repository.prerequisites(tags)
+                fetches = project.repository.fetches
+                if not name in chosen:
+                    self.repositories |= set([name])
             elif project.patch:
-                self.patches |= set([name])
+                prereqs = project.patch.prerequisites(tags)
+                fetches = project.patch.fetches
+                if not name in chosen:
+                    self.patches |= set([name])
             elif len(project.packages) > 0:
-                self.packages |= set([name])
+                prereqs = project.packages[tags[0]].prerequisites(tags)
+                fetches = project.packages[tags[0]].fetches
+                if not name in chosen:
+                    self.packages |= set([name])
+
+        # At this point there is more than one choice to install the project
+        # so we pick based on the set the project belongs to.
+        if not prereqs:
+            if name in self.repositories:
+                prereqs = project.repository.prerequisites(tags)
+                fetches = project.repository.fetches
+            elif name in self.patches:
+                prereqs = project.patch.prerequisites(tags)
+                fetches = project.patch.fetches
+            elif len(project.packages) > 0:
+                prereqs = project.packages[tags[0]].prerequisites(tags)
 
         # The repository, patch or package tag to follow through has already 
         # been decided, so let's check if we need to go deeper through 
         # the prerequisistes.
         targets = []
-        tags = [ context.host() ]
-        if name in self.repositories:
+        if prereqs:
             needPrompt = False
-            targets = self.addDeps(project.repository.prerequisites(tags),
-                                   project.repository.fetches)
-        elif name in self.patches:
-            needPrompt = False
-            targets = self.addDeps(project.patch.prerequisites(tags),
-                                   project.patch.fetches)
-        elif len(project.packages) > 0:
-          needPrompt = False
-          targets = self.addDeps(project.packages[tags[0]].prerequisites(tags))
+            targets = self.addDeps(prereqs,fetches)
 
         return (needPrompt, targets)
 
@@ -1273,7 +1290,13 @@ class Repository(Configure):
     def __init__(self, sync, fetches, locals, vars):
         Configure.__init__(self,fetches,locals,vars)
         self.type = None
-        self.sync = sync
+        revidx = sync.find('@')
+        if revidx > 0:
+            self.sync = sync[:revidx]
+            self.rev = sync[revidx:]
+        else:
+            self.sync = sync
+            self.rev = None
         self.fetches = fetches
         self.vars = vars
         self.locals = locals
@@ -1316,10 +1339,12 @@ class GitRepository(Repository):
         if not ':' in self.sync and context:
             self.sync = context.remoteSrcPath(self.sync)
         local = context.srcDir(name)
+        pulled = False
+        cwd = os.getcwd()
         if not os.path.exists(os.path.join(local,'.git')):
             shellCommand(['git', 'clone', self.sync, local])
         else:
-            cwd = os.getcwd()
+            pulled = True
             os.chdir(local)
             try:
                 shellCommand(['git', 'pull'])
@@ -1327,11 +1352,15 @@ class GitRepository(Repository):
                 # It is ok to get an error in case we are running
                 # this on the server machine.
                 None
-            cof = '-m'
-            if force:
-                cof = '-f'
-            shellCommand(['git', 'checkout', cof])
-            os.chdir(cwd)
+        cof = '-m'
+        if force:
+            cof = '-f'
+        cmd = [ 'git', 'checkout', cof ]
+        if self.rev:
+            cmd += [ self.rev ]
+        if self.rev or pulled:
+            shellCommand(cmd)
+        os.chdir(cwd)
 
  
 class SvnRepository(Repository):
@@ -1747,13 +1776,17 @@ def derivedRoots(name,target=None):
     # from binDir so we do not use context.searchPath() here.
     dirs = []
     subpath = name
+    dir = context.value(name + 'Dir')
     if target:
         subpath = os.path.join(target,name)
+        dir = os.path.join(os.path.dirname(dir),target,os.path.basename(dir))
+    if os.path.isdir(dir):
+        dirs += [ dir ]
     for p in os.environ['PATH'].split(':'):
         dir = os.path.join(os.path.dirname(p),subpath)
         if os.path.isdir(dir):
             dirs += [ dir ]
-    return [ context.value(name + 'Dir') ] + dirs
+    return dirs
 
 
 def findBin(names,excludes=[],target=None):
@@ -1789,20 +1822,19 @@ def findBin(names,excludes=[],target=None):
        it is possible we invoke this function with log == None hence
        the tests for it.
     '''
-    results = []
     version = None
+    results = []
+    droots = []
+    if len(names) > 0:
+        droots = context.searchPath()
     for namePat, absolutePath in names:
         if absolutePath:
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        # First time ever *findBin* is called, binBuildDir will surely not 
-        # defined in the workspace make fragment and thus we will trigger interactive input from 
-        # the user. We want to make sure the output of the interactive session 
-        # does not mangle the search for an executable so we preemptively 
-        # trigger an interactive session.
-        context.searchPath()
+        if target:
+            writetext(target + '/')
         writetext(namePat + '... ')
         found = False
         if namePat.endswith('.app'):
@@ -1812,7 +1844,7 @@ def findBin(names,excludes=[],target=None):
                 writetext('yes\n')
                 results.append((namePat, bin))
         else:
-            for p in context.searchPath():
+            for p in droots:
                 bin = os.path.realpath(os.path.join(p,namePat))
                 if (os.path.isfile(bin) 
                     and os.access(bin, os.X_OK)):
@@ -1958,6 +1990,8 @@ def findData(dir,names,excludes=[],target=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
+        if target:
+            writetext(target + '/')
         writetext(namePat + '... ')
         log.flush()
         linkNum = 0
@@ -2008,6 +2042,8 @@ def findInclude(names,excludes=[],target=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
+        if target:
+            writetext(target + '/')
         writetext(namePat + '... ')
         log.flush()
         found = False
@@ -2101,7 +2137,10 @@ def findLib(names,excludes=[],target=None):
     in order to deduce a version number if possible.'''
     results = []
     version = None
-    suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() + '|\\' + libDynSuffix() + ')'
+    suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() \
+        + '|\\' + libDynSuffix() + ')'
+    if len(names) > 0:
+        droots = derivedRoots('lib',target)
     for namePat, absolutePath in names:
         if absolutePath:
             # absolute paths only occur when the search has already been
@@ -2114,10 +2153,12 @@ def findLib(names,excludes=[],target=None):
         # mangle the search for a library so we preemptively trigger 
         # an interactive session.
         context.value('libDir')
+        if target:
+            writetext(target + '/')
         writetext(namePat + '... ')
         log.flush()
         found = False
-        for libSysDir in derivedRoots('lib',target):
+        for libSysDir in droots:
             libs = []
             libPat = libPrefix() + namePat.replace('+','\+') + suffix
             base, ext = os.path.splitext(namePat)
@@ -2905,8 +2946,13 @@ def shellCommand(commandLine, admin=False):
             if not commandLine.startswith('/'):
                 raise Error("admin command without a fully quaified path: " \
                                 + commandLine)
-        # ex: su username -c 'sudo port install icu'        
-        cmdline = [ '/usr/bin/sudo' ] + commandLine
+        # ex: su username -c 'sudo port install icu'  
+        cmdline = [ '/usr/bin/sudo' ]      
+        if useDefaultAnswer:
+            # Error out if sudo prompts for a password because this should 
+            # never happen in non-interactive mode.
+            cmdline += [ '-n' ]
+        cmdline += commandLine
     else:
         cmdline = commandLine
     if log:
@@ -3377,9 +3423,17 @@ def pubMake(args):
     context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
         os.path.realpath(os.getcwd())))
     log = LogFile(context.logname(),nolog)
+    top = os.path.realpath(os.getcwd())
+    if (top == os.path.realpath(context.value('buildTop'))
+        or top ==  os.path.realpath(context.value('srcTop'))):
+        # make from the top directory makes every project in the index file.
+        rgen = DerivedSetsGenerator()
+        index.parse(rgen)
+        roots = rgen.roots
+    else:
+        roots = [ context.cwdProject() ]
     # note that *excludePats* is global.
-    errors = make(MakeGenerator([ context.cwdProject() ],
-                                [],[],excludePats),args)
+    errors = make(MakeGenerator(roots,[],[],excludePats),args)
     if len(errors) > 0:
         raise Error("Found errors while making " + ' '.join(errors))
 

@@ -79,9 +79,15 @@ install:: $(resources)
 %.a:
 	$(AR) $(ARFLAGS) $@ $^
 
+%$(dylSuffix):
+	$(LINK.cc) $(SHAREDLIBFLAGS) $^ -o $@
+
 %: %.cc
 	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) \
 		$(LOADLIBES) $(LDLIBS) -o $@
+
+%.class: %.java
+	$(JAVAC) $(JAVAC_FLAGS) $(subst $(srcDir)/src/,,$<)
 
 %: %.py
 	$(installScripts) $< $@
@@ -217,7 +223,7 @@ install-doc:: $(manpages)
 	$(installFiles) $(filter %.1,$^) $(shareDir)/man/man1
 
 %.pdf:	%.fo
-	$(FOP) -fo $< -pdf $@
+	$(FOP) --execdebug -fo $< -pdf $@
 
 %.fo: %.book
 	$(XSLTPROC) --output $@ $(foxsl) $<
