@@ -54,6 +54,9 @@ doClean = False
 # When True, all commands invoked through shellCommand() are printed
 # but not executed.
 doNotExecute = False
+# When True, makeProject() raises an error when the underlying make exit
+# with an error code, otherwise it moves on to the next project.
+stopMakeAfterError = False
 # When True, the script runs in batch mode and assumes the default answer
 # for every question where it would have prompted the user for an answer.
 useDefaultAnswer = False
@@ -266,15 +269,14 @@ class Context:
         return self.value('distHost')
 
     def localDir(self, name, cacheDir=None):
-        remoteName = self.remoteCachePath(name)
         if not cacheDir:
             cacheDir = os.path.join(context.value('siteTop'),'resources')
-        pos = remoteName.rfind('./')
-        if pos > 0:
-            localname = os.path.join(cacheDir,remoteName[pos + 2:])
+        pos = name.rfind('./')
+        if pos >= 0:
+            localname = os.path.join(cacheDir,name[pos + 2:])
         else:
-            localname = remoteName.replace(context.value('remoteSiteTop'),
-                                           context.value('siteTop'))
+            localname = name.replace(context.value('remoteSiteTop'),
+                                     context.value('siteTop'))
         if localname.endswith('.git'):
             localname = localname[:-4]
         return localname
@@ -285,12 +287,17 @@ class Context:
                                 context.value('remoteSiteTop'))
         return None
 
-    def locate(self):
+    def locate(self,configFilename=None):
         '''Locate the workspace configuration file and derive the project
         name out of its location.'''
         try:
-            self.buildTopRelativeCwd, self.configFilename \
-                = searchBackToRoot(self.configName)
+            if configFilename:
+                self.configFilename = configFilename
+                self.configName = os.path.basename(configFilename)
+                self.buildTopRelativeCwd = os.path.dirname(configFilename)
+            else:
+                self.buildTopRelativeCwd, self.configFilename \
+                    = searchBackToRoot(self.configName)
         except IOError, e:
             self.buildTopRelativeCwd = None
             self.configFilename = os.path.join(self.environ['buildTop'].default,
@@ -385,7 +392,7 @@ class Context:
         has no value yet, a prompt is displayed for it.'''
         if not name in self.environ:
             raise Error("Trying to read unknown variable " + name + ".")
-        if (isinstance(self.environ[name],Variable) 
+        if (isinstance(self.environ[name],Variable)
             and self.environ[name].configure()):
             self.save()
         # recursively resolve any variables that might appear 
@@ -636,13 +643,14 @@ class DependencyGenerator(Unserializer):
         targets = []
         for p in deps:
             targets += [ p.name ] 
-            if not p in self.prerequisites:
+            if not p.name in self.prerequisites:
                 self.prerequisites[p.name] \
                     = Dependency(p.name,p.files,p.excludes,p.target)
             else:                
-                self.prerequisites[p.name].files += p.files
-                self.prerequisites[p.name].excludes += p.excludes
-                self.prerequisites[p.name].target = p.target
+                self.prerequisites[p.name].insert(Dependency(p.name,
+                                                             p.files,
+                                                             p.excludes,
+                                                             p.target))
         if fetches:
             for f in fetches:
                 # We unconditionally add all fetches to the extraFetches set
@@ -803,17 +811,30 @@ class MakeGenerator(DependencyGenerator):
 
     def addDeps(self, deps, fetches=None):
         targets = []
-        for d in deps:
-            name = d.name
+        for p in deps:
+            name = p.name
             if os.path.isdir(context.srcDir(name)):
                 targets += [ name ]
             else:
-                d.files, complete \
-                    = findPrerequisites(d.files,d.excludes,d.target)
+                if not p.name in self.prerequisites:
+                    self.prerequisites[p.name] \
+                        = Dependency(p.name,p.files,p.excludes,p.target)
+                else:
+                    self.prerequisites[p.name].insert(Dependency(p.name,
+                                                                 p.files,
+                                                                 p.excludes,
+                                                                 p.target))
+                self.prerequisites[p.name].files, complete \
+                    = findPrerequisites(self.prerequisites[p.name].files,
+                                        self.prerequisites[p.name].excludes,
+                                        self.prerequisites[p.name].target)
                 if not complete:
                     targets += [ name ]
         if fetches:            
-            for f in findCache(fetches):
+            for f in fetches:
+                # We unconditionally add all fetches to the extraFetches set
+                # since the fetch() function will perform a findCache before
+                # downloading missing files.
                 self.extraFetches[f] = fetches[f]
         return targets
 
@@ -839,48 +860,51 @@ class MakeGenerator(DependencyGenerator):
             if len(project.packages) > 0:
                 nbChoices = nbChoices + 1
 
-        prereqs = None
-        fetches = None
+        targets = []
         tags = [ context.host() ]
         if nbChoices == 1:            
             # Only one choice is easy. We just have to make sure we won't
             # put the project in two different sets.
             chosen = self.repositories | self.patches | self.packages
             if project.repository:
-                prereqs = project.repository.prerequisites(tags)
-                fetches = project.repository.fetches
+                needPrompt = False
+                targets = self.addDeps(project.repository.prerequisites(tags),
+                                       project.repository.fetches)
                 if not name in chosen:
                     self.repositories |= set([name])
             elif project.patch:
-                prereqs = project.patch.prerequisites(tags)
-                fetches = project.patch.fetches
+                needPrompt = False
+                targets = self.addDeps(project.patch.prerequisites(tags),
+                                       project.patch.fetches)
                 if not name in chosen:
                     self.patches |= set([name])
             elif len(project.packages) > 0:
-                prereqs = project.packages[tags[0]].prerequisites(tags)
-                fetches = project.packages[tags[0]].fetches
+                needPrompt = False
+                targets = \
+                    self.addDeps(project.packages[tags[0]].prerequisites(tags))
                 if not name in chosen:
                     self.packages |= set([name])
 
-        # At this point there is more than one choice to install the project
-        # so we pick based on the set the project belongs to.
-        if not prereqs:
-            if name in self.repositories:
-                prereqs = project.repository.prerequisites(tags)
-                fetches = project.repository.fetches
-            elif name in self.patches:
-                prereqs = project.patch.prerequisites(tags)
-                fetches = project.patch.fetches
-            elif len(project.packages) > 0:
-                prereqs = project.packages[tags[0]].prerequisites(tags)
-
-        # The repository, patch or package tag to follow through has already 
-        # been decided, so let's check if we need to go deeper through 
+        # At this point there is more than one choice to install the project.
+        # When the repository, patch or package tag to follow through has 
+        # already been decided, let's check if we need to go deeper through 
         # the prerequisistes.
-        targets = []
-        if prereqs:
-            needPrompt = False
-            targets = self.addDeps(prereqs,fetches)
+        if needPrompt:
+            if name in self.repositories:
+                needPrompt = False
+                targets = self.addDeps(project.repository.prerequisites(tags),
+                                       project.repository.fetches)
+            elif name in self.patches:
+                needPrompt = False
+                targets = self.addDeps(project.patch.prerequisites(tags),
+                                       project.patch.fetches)
+            elif len(project.packages) > 0:
+                needPrompt = False
+                targets = \
+                    self.addDeps(project.packages[tags[0]].prerequisites(tags))
+
+        if not needPrompt:
+            project.populate(self.prerequisites)
 
         return (needPrompt, targets)
 
@@ -1172,6 +1196,25 @@ class Dependency:
         if self.target:
             result = result + ', target:' + str(self.target)
         return result
+
+    def insert(self,dep):
+        '''We only add prerequisites from *dep* which are not already present
+        in *self*. This is important because *findPrerequisites* will initialize
+        tuples (namePat,absolutePath).'''
+        for dir in dep.files:
+            if not dir in self.files:
+                self.files[dir] = dep.files[dir]
+            else:
+                found = False
+                for t1 in dep.files[dir]:
+                    for t2 in self.files[dir]:
+                        if t2[0] == t1[0]:
+                            found = True
+                            break
+                    if not found:
+                        self.files[dir] += [ t1 ]
+        self.excludes += dep.excludes
+        self.target = dep.target
 
     def populate(self, buildDeps = {}):
         if self.name in buildDeps:
@@ -1984,6 +2027,10 @@ def findData(dir,names,excludes=[],target=None):
     droots = []
     if len(names) > 0:
         droots = derivedRoots(dir,target)
+    if target:
+        buildDir = os.path.join(context.value('buildTop'),target,dir)
+    else:
+        buildDir = os.path.join(context.value('buildTop'),dir)
     for namePat, absolutePath in names:
         if absolutePath:
             # absolute paths only occur when the search has already been
@@ -1998,16 +2045,30 @@ def findData(dir,names,excludes=[],target=None):
         if namePat.startswith('.*' + os.sep):
             linkNum = len(namePat.split(os.sep)) - 2
         found = False
-        for base in droots:
-            fullNames = findFiles(base,namePat)
-            if len(fullNames) > 0:
+        # The structure of share/ directories is not as standard as others
+        # and requires a recursive search for prerequisites. As a result,
+        # it might take a lot of time to update unmodified links.
+        # We thus first check links in buildDir are still valid.
+        fullNames = findFiles(buildDir,namePat)
+        if len(fullNames) > 0:
+            try:
+                s = os.stat(fullNames[0])
                 writetext('yes\n')
-                tokens = fullNames[0].split(os.sep)
-                linked = os.sep.join(tokens[:len(tokens) - linkNum])
-                # DEPRECATED: results.append((namePat,linked))
                 results.append((namePat,fullNames[0]))
                 found = True
-                break
+            except:
+                None
+        if not found:
+            for base in droots:
+                fullNames = findFiles(base,namePat)
+                if len(fullNames) > 0:
+                    writetext('yes\n')
+                    tokens = fullNames[0].split(os.sep)
+                    linked = os.sep.join(tokens[:len(tokens) - linkNum])
+                    # DEPRECATED: results.append((namePat,linked))
+                    results.append((namePat,fullNames[0]))
+                    found = True
+                    break
         if not found:
             writetext('no\n')
     return results, None
@@ -2370,38 +2431,31 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
         relative = True
         cacheDir = os.path.join(context.value('siteTop'),'resources')
     if len(filenames) > 0:
-        # Convert all filenames to absolute urls
-        pathnames = {}
-        for f in filenames:
-            pathnames[ context.remoteCachePath(f) ] = filenames[f]
-
         # Check the local cache
         if force:
-            downloads = pathnames
+            pathnames = filenames
         else:
-            downloads = findCache(pathnames)
-            for filename in downloads:
+            pathnames = findCache(filenames)
+            for filename in pathnames:
                 localFilename = context.localDir(filename)
                 dir = os.path.dirname(localFilename)
                 if not os.path.exists(dir):
                     os.makedirs(dir)
-            
+
+        # Convert all filenames to absolute urls
+        downloads = {}
+        for f in pathnames:
+            downloads[ context.remoteCachePath(f) ] = pathnames[f]            
+
         # Split fetches by protocol
         https = []
         sshs = []
-        remoteCachePath = context.remoteCachePath()
         for p in downloads:
             # Splits between files downloaded through http and ssh.
             if p.startswith('http'):
                 https += [ p ]
             else:
                 sshs += [ p ]
-        uri = urlparse.urlparse(remoteCachePath)
-        hostname = uri.netloc
-        if not uri.netloc:
-            # If there is no protocol specified, the hostname
-            # will be in uri.scheme (That seems like a bug in urlparse).
-            hostname = uri.scheme
         # fetch https
         for remotename in https:
                 localname = context.localDir(remotename)
@@ -2414,15 +2468,23 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                 local.close()
                 remote.close()                
         # fetch sshs
-        sources = []
-        for s in sshs:
-            sources += [ s.replace(hostname + ':','') ]
-        if len(sources) > 0:
-            if admin:
-                shellCommand(['stty -echo;', 'ssh', hostname,
+        if len(sshs) > 0:
+            sources = []
+            remoteCachePath = context.remoteCachePath()
+            uri = urlparse.urlparse(remoteCachePath)
+            hostname = uri.netloc
+            if not uri.netloc:
+                # If there is no protocol specified, the hostname
+                # will be in uri.scheme (That seems like a bug in urlparse).
+                hostname = uri.scheme
+                for s in sshs:
+                    sources += [ s.replace(hostname + ':','') ]
+            if len(sources) > 0:
+                if admin:
+                    shellCommand(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-            cmdline, prefix = findRSync(remoteCachePath,relative,admin)
-            shellCommand(cmdline + ["'" + prefix + ' '.join(sources) + "'", 
+                cmdline, prefix = findRSync(remoteCachePath,relative,admin)
+                shellCommand(cmdline + ["'" + prefix + ' '.join(sources) + "'", 
                                     cacheDir ])
 
 
@@ -2798,8 +2860,6 @@ def makeProject(name,options,dependencies={}):
     '''Create links for prerequisites when necessary, then issue a make 
     command and log output.'''
     log.header(name)
-    # Make sure the variable will be available in Makefiles.
-    context.value('makeHelperDir')
     makefile = context.srcDir(os.path.join(name,'Makefile'))
     objDir = context.objDir(name)
     if objDir != os.getcwd():
@@ -2807,6 +2867,7 @@ def makeProject(name,options,dependencies={}):
             os.makedirs(objDir)
         os.chdir(objDir)
 
+    errexcept = None
     errcode = 0
     targets = []
     overrides = []
@@ -2823,8 +2884,15 @@ def makeProject(name,options,dependencies={}):
     # 'cd drop ; make dist' is run. Note that it is not an issue
     # for other projects since those can be explicitely depending
     # on drop as a prerequisite.
+    # We also include the configfile (i.e. variable=value) before 
+    # the project Makefile for convenience. Adding a statement
+    # include $(shell dws context) at the top of the Makefile 
+    # is still a good idea to permit "make" from the command line.
+    # Otherwise it just duplicates setting some variables.
     cmdline = ['export PATH=' + ':'.join(context.searchPath()) + ' ;',
-               'make', '-f', makefile]
+               'make', 
+               '-f', context.configFilename,
+               '-f', makefile]
     start = datetime.datetime.now()
     try:        
         if len(dependencies) > 0:
@@ -2848,11 +2916,19 @@ def makeProject(name,options,dependencies={}):
             name = context.value(dir + 'Dir')
         shellCommand(cmdline + targets + overrides)
     except Error, e:
+        errexcept = e
         errcode = e.code
         log.error(str(e))
     finish = datetime.datetime.now()
-    elapsed = finish - start
+    td = finish - start
+    # \todo until most system move to python 2.7, we compute the number
+    # of seconds ourselves. +1 insures we run for at least a second.
+    # elapsed = datetime.timedelta(seconds=td.total_seconds())
+    elapsed = datetime.timedelta(seconds=((td.microseconds \
+                    + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6)+1)
     log.footer(str(elapsed),errcode)
+    if stopMakeAfterError and errcode > 0:
+        raise errexcept
     return errcode
 
 
@@ -3124,9 +3200,6 @@ def update(reps, dbindex):
     usually a list of compressed source tar files.'''
     handler = Unserializer(reps)
     dbindex.parse(handler)
-
-    # If an error occurs, at least save previously configured variables.
-    context.save()
     for name in reps:
         # The project is present in *srcTop*, so we will update the source 
         # code from a repository. 
@@ -3320,6 +3393,12 @@ def pubContext(args):
                        fragment is located (usually *buildTop*, it assumes the 
                        file is in *shareDir* alongside other make helpers.
     '''
+    # Makefiles are including a $(shell dws context) statement to import
+    # the workspace configuration (binDir, etc.) into the Makefile scope.
+    # We make sure the makeHelperDir variable will be available for Makefiles
+    # preferring "include $(makeHelperDir)/prefix.mk" statements over
+    # "include $(shell dws context prefix.mk)" statements.
+    context.value('makeHelperDir')
     pathname = context.configFilename
     if len(args) >= 1:
         try:
@@ -3433,6 +3512,8 @@ def pubMake(args):
     else:
         roots = [ context.cwdProject() ]
     # note that *excludePats* is global.
+    global stopMakeAfterError
+    stopMakeAfterError = True
     errors = make(MakeGenerator(roots,[],[],excludePats),args)
     if len(errors) > 0:
         raise Error("Found errors while making " + ' '.join(errors))
@@ -3783,6 +3864,8 @@ if __name__ == '__main__':
             epilog=epilog)
 	parser.add_option('--clean', dest='clean', action='store_true',
 	    help='Be extra careful, this option will remove *siteTop* before executing the build command. As result, everything will be fetched again from *remoteSiteTop* and rebuilt. This option is mostly intended for cron jobs.')
+	parser.add_option('--config', dest='config', action='store',
+	    help='Set the path to the config file instead of deriving it from the current directory.')
 	parser.add_option('--default', dest='default', action='store_true',
 	    help='Use default answer for every interactive prompt.')
 	parser.add_option('--exclude', dest='excludePats', action='append',
@@ -3822,7 +3905,7 @@ if __name__ == '__main__':
         # Find the build information
         arg = args.pop(0)
         try:
-            context.locate()
+            context.locate(options.config)
         except IOError:
             None
         except:

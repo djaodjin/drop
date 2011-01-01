@@ -27,6 +27,11 @@
 #
 # Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 
+# Copy install directories for host platform
+binDir.host	:=	$(binDir)
+includeDir.host	:=	$(includeDir)
+libDir.host	:=	$(libDir)
+
 CC.host		:= gcc
 CXX.host      	:= g++
 AR.host	     	:= ar
@@ -37,8 +42,9 @@ CXXFLAGS.host	:=	-g -MMD
 targetOS	:=	
 target 		:= 
 
-include $(etcDir)/builder/prefix.mk
+include $(makeHelperDir)/prefix.mk
 
-# Fix installed directory
-includeDir	:=	$(buildTop)/$(target)/include
-libDir		:=	$(buildTop)/$(target)/lib
+# Fix install directories for target
+binDir		:=	$(installTop)/$(target)/bin
+includeDir	:=	$(installTop)/$(target)/include
+libDir		:=	$(installTop)/$(target)/lib
