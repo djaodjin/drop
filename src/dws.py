@@ -2914,6 +2914,14 @@ def makeProject(name,options,dependencies={}):
         # a change to override defaults for installTop, etc.
         for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
             name = context.value(dir + 'Dir')
+        # Makefiles are including a $(shell dws context) statement to import
+        # the workspace configuration (binDir, etc.) into the Makefile scope.
+        # We make sure the makeHelperDir variable will be available 
+        # for Makefiles preferring "include $(makeHelperDir)/prefix.mk" 
+        # statements over "include $(shell dws context prefix.mk)" statements.
+        # We have to get the value here (and not in dws context) to avoid
+        # an interactive prompt when executing make.
+        context.value('makeHelperDir')
         shellCommand(cmdline + targets + overrides)
     except Error, e:
         errexcept = e
@@ -3393,12 +3401,6 @@ def pubContext(args):
                        fragment is located (usually *buildTop*, it assumes the 
                        file is in *shareDir* alongside other make helpers.
     '''
-    # Makefiles are including a $(shell dws context) statement to import
-    # the workspace configuration (binDir, etc.) into the Makefile scope.
-    # We make sure the makeHelperDir variable will be available for Makefiles
-    # preferring "include $(makeHelperDir)/prefix.mk" statements over
-    # "include $(shell dws context prefix.mk)" statements.
-    context.value('makeHelperDir')
     pathname = context.configFilename
     if len(args) >= 1:
         try:
