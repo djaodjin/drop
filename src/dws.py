@@ -2445,7 +2445,7 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
         # Convert all filenames to absolute urls
         downloads = {}
         for f in pathnames:
-            downloads[ context.remoteCachePath(f) ] = pathnames[f]            
+            downloads[ context.remoteCachePath(f) ] = f            
 
         # Split fetches by protocol
         https = []
