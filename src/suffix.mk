@@ -45,6 +45,9 @@ all::	$(logs)
 clean::
 	rm -rf $(objDir)/*
 
+# OSX GUI Applications are compiled but not installed. 
+install:: $(apps)
+
 install:: $(bins)
 	$(if $^,$(installDirs) $(binDir))
 	$(if $^,$(installBins) $^ $(binDir))
@@ -222,8 +225,12 @@ install-doc:: $(manpages)
 	$(installDirs) $(shareDir)/man/man1
 	$(installFiles) $(filter %.1,$^) $(shareDir)/man/man1
 
+# For debugging issues running fop the following command used to work
+#   fop --execdebug -fo $< -pdf $@
+# With 0.95, it fails with an invalid argument and the command should be
+#   DEBUG_WRAPPER=1 fop -fo $< -pdf $@
 %.pdf:	%.fo
-	$(FOP) --execdebug -fo $< -pdf $@
+	$(FOP) -fo $< -pdf $@
 
 %.fo: %.book
 	$(XSLTPROC) --output $@ $(foxsl) $<

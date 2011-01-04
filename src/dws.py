@@ -639,27 +639,6 @@ class DependencyGenerator(Unserializer):
         # explicitely excluded from installation by the user will be added 
         # to *excludePats*.
 
-    def addDeps(self, deps, fetches = None):
-        targets = []
-        for p in deps:
-            targets += [ p.name ] 
-            if not p.name in self.prerequisites:
-                self.prerequisites[p.name] \
-                    = Dependency(p.name,p.files,p.excludes,p.target)
-            else:                
-                self.prerequisites[p.name].insert(Dependency(p.name,
-                                                             p.files,
-                                                             p.excludes,
-                                                             p.target))
-        if fetches:
-            for f in fetches:
-                # We unconditionally add all fetches to the extraFetches set
-                # since the fetch() function will perform a findCache before
-                # downloading missing files.
-                self.extraFetches[f] = fetches[f]
-        return targets
-
-
     def contextualTargets(self,name):
         raise Error("DependencyGenerator should not be instantiated directly")
  
@@ -775,33 +754,72 @@ class BuildGenerator(DependencyGenerator):
     def __init__(self, repositories, patches, packages, excludePats = []):
         DependencyGenerator.__init__(self, repositories, patches, packages, 
                                      excludePats)
+        self.activeCuts = set([])
         self.force = True
 
-    def contextualTargets(self,name):
-        if not name in self.projects:
-            # We leave the native host package manager to deal with this one...
-            self.prerequisites[name].files, complete \
-                = findPrerequisites(self.prerequisites[name].files,
-                                    self.prerequisites[name].excludes,
-                                    self.prerequisites[name].target)
-            if not complete:
-                self.packages |= set([ name ])
-            return (False, [])
-
+    def addDeps(self, deps, fetches = None):
         targets = []
-        tags = [ context.host() ]
-        project = self.asProject(name)
-        if project.repository:
-            self.repositories |= set([name])
-            targets = self.addDeps(project.repository.prerequisites(tags),
-                                   project.repository.fetches)
-        elif project.patch:
-            self.patches |= set([name])
-            targets = self.addDeps(project.patch.prerequisites(tags),
-                                   project.patch.fetches)
-        elif len(project.packages) > 0:
-           self.packages |= set([name])
-           targets = self.addDeps(project.packages[tags[0]].prerequisites(tags))
+        for p in deps:
+            if not p.name in self.prerequisites:
+                self.prerequisites[p.name] \
+                    = Dependency(p.name,p.files,p.excludes,p.target)
+            else:
+                self.prerequisites[p.name].insert(Dependency(p.name,
+                                                             p.files,
+                                                             p.excludes,
+                                                             p.target))
+            self.prerequisites[p.name].files, complete \
+                = findPrerequisites(self.prerequisites[p.name].files,
+                                    self.prerequisites[p.name].excludes,
+                                    self.prerequisites[p.name].target)
+            if complete:
+                self.activeCuts |= set([ p.name ])
+            targets += [ p.name ]
+        if fetches:            
+            for f in fetches:
+                # We unconditionally add all fetches to the extraFetches set
+                # since the fetch() function will perform a findCache before
+                # downloading missing files.
+                self.extraFetches[f] = fetches[f]
+        return targets
+
+    def contextualTargets(self,name):
+        '''At this point we want to add all prerequisites which are either
+        a repository or a patch/package for which the dependencies are not
+        complete.'''
+        print "!!! contextualTargets(" + name + ")"
+        print "!!!     activeCuts=" + str(self.activeCuts)  
+        cut = False
+        targets = []
+        if name in self.projects:
+            tags = [ context.host() ]
+            project = self.asProject(name)
+            if project.repository:
+                self.repositories |= set([name])
+                targets = self.addDeps(project.repository.prerequisites(tags),
+                                       project.repository.fetches)
+            else:
+                if name in self.activeCuts:
+                    for level in range(len(self.levels),0,-1):
+                        if name in self.levels[level - 1]:
+                            self.levels[level - 1].remove(name)
+                else:
+                    if len(project.packages) > 0:
+                        self.packages |= set([name])
+                        targets = self.addDeps(project.packages[tags[0]].prerequisites(tags))
+                    elif project.patch:
+                        self.patches |= set([name])
+                        targets = self.addDeps(project.patch.prerequisites(tags),
+                                               project.patch.fetches)
+        else:
+            # We leave the native host package manager to deal with this one...
+            if name in self.activeCuts:            
+                for level in range(len(self.levels),0,-1):
+                    if name in self.levels[level - 1]:
+                        self.levels[level - 1].remove(name)
+            else:
+                self.packages |= set([ name ])
+          
         return (False, targets)
 
 
@@ -2926,7 +2944,6 @@ def makeProject(name,options,dependencies={}):
     except Error, e:
         errexcept = e
         errcode = e.code
-        log.error(str(e))
     finish = datetime.datetime.now()
     td = finish - start
     # \todo until most system move to python 2.7, we compute the number
@@ -2934,9 +2951,13 @@ def makeProject(name,options,dependencies={}):
     # elapsed = datetime.timedelta(seconds=td.total_seconds())
     elapsed = datetime.timedelta(seconds=((td.microseconds \
                     + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6)+1)
+    if errcode > 0:
+        if stopMakeAfterError:
+            log.footer(str(elapsed),errcode)
+            raise errexcept
+        else:
+            log.error(str(e))
     log.footer(str(elapsed),errcode)
-    if stopMakeAfterError and errcode > 0:
-        raise errexcept
     return errcode
 
 

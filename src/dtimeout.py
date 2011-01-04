@@ -25,7 +25,7 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import subprocess, datetime, os, time, signal
+import subprocess, datetime, os, time, signal, sys
 
 __version__ = None
 
@@ -58,9 +58,11 @@ if __name__ == '__main__':
     parser = optparse.OptionParser(\
         usage='%prog [options] command\n\nVersion\n  %prog version ' \
             + str(__version__))
-    parser.add_option('--timeout', dest='timeout', action='int',
+    parser.add_option('--timeout', dest='timeout', action='store',
         default=10,
         help='sets the time out in seconds')
+    parser.add_option('--help-book', dest='helpBook', action='store_true',
+	    help='Print help in docbook format')
     parser.add_option('--version', dest='version', action='store_true',
         help='Print version information')
 
@@ -70,12 +72,30 @@ if __name__ == '__main__':
                              + '\n')
         sys.exit(0)
 
+    if options.helpBook:
+        import cStringIO
+        # We donot want to install dws.py alongside dws in *binDir* and rely
+        # on the search path to find it. Thus dws is imported directly through 
+        # a load_source() command here.
+        dwsDerivePath \
+            = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),
+                                     'dws')
+        if os.path.exists(dwsDerivePath):
+            import imp
+            dws = imp.load_source('dws',dwsDerivePath)
+        else:
+            import dws
+        help = cStringIO.StringIO()
+        parser.print_help(help)
+        dws.helpBook(help)
+        sys.exit(0)
+
     if len(args) < 1:
         parser.print_help()
         sys.exit(1)
 
     timeout = 10
     if options.timeout:
-        timeout = options.timeout
+        timeout = int(options.timeout)
 
-    return timeoutCommand(args, timeout)
+    sys.exit(timeoutCommand(args, timeout))

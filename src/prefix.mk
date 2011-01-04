@@ -101,7 +101,7 @@ LDFLAGS		+=	$(patsubst %,-L%,$(libSearchPath))
 
 distExtDarwin	:=	.dmg
 distExtFedora	:=	$(shell uname -r | sed -e 's/.*\(\.fc.*\)/\1/').rpm
-distExtUbuntu	:=	_i386.deb
+distExtUbuntu	:=	-ubuntu1_i386.deb
 project		:=	$(notdir $(srcDir))
 
 # ATTENTION: We use ifeq ... endif here instead of ?= because
@@ -116,15 +116,15 @@ endif
 ifeq ($(distHost),Ubuntu)
 # cat /etc/lsb-release
 ifneq ($(shell getconf LONG_BIT),32)
-distExtUbuntu	:=	_amd64.deb
+distExtUbuntu	:=	-ubuntu1_amd64.deb
 endif
 endif
 
 # Name of the binary distribution package
 binDistDarwin	:=	$(project)-$(version)$(distExtDarwin)
-binDistUbuntu	:=	$(project)-$(version)$(distExtUbuntu)
+binDistUbuntu	:=	$(project)_$(version)$(distExtUbuntu)
 binDistFedora	:=	$(project)-$(version)$(distExtFedora)
-binDist		:=	$(project)-$(version)$(distExt$(distHost))
+binDist		:=	$(binDist$(distHost))
 
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
 htmlxsl		:=	$(shareBuildDir)/docbook-xsl/html/docbook.xsl

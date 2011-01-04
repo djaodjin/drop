@@ -45,6 +45,8 @@ from os.path import basename, dirname, join, islink, isdir, isfile
 import datetime, hashlib, shutil
 import cStringIO
 
+noInstallDoc = False
+
 Error = "dbldpkg.Error"
 
 PKG_INFO_FIELDS = """\
@@ -531,6 +533,10 @@ make install
                             + ' <' + project.maintainer.email + '>  ' \
                             + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
         changelog.close()
+        if noInstallDoc:
+            installDocTarget = ''
+        else:
+            installDocTarget = '\n\tmake install-doc'
         rules = open(os.path.join('debian','rules'),'w')
         rules.write('''#! /usr/bin/make -f
 
@@ -555,8 +561,7 @@ install:
 \tdh_testdir
 \tdh_testroot
 \tdh_clean -k
-\tmake install
-\tmake install-doc
+\tmake install''' + installDocTarget + '''
 \tdh_installchangelogs
 \tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
 \tdh_compress
@@ -677,6 +682,9 @@ if __name__ == "__main__":
                       action='store', help='Set specification of the package')
     parser.add_option('--help-book', dest='helpBook', action='store_true',
                       help='Print help in docbook format')
+    parser.add_option('--no-install-doc', dest='noInstallDoc', 
+                      action='store_true',
+                      help='Does not execute "make install-doc"')
 
     options, args = parser.parse_args()
 
@@ -685,6 +693,9 @@ if __name__ == "__main__":
         parser.print_help(help)
         dws.helpBook(help)
         sys.exit(0)        
+    
+    if options.noInstallDoc:
+        noInstallDoc = True
 
     context = dws.Context()
     context.locate()
