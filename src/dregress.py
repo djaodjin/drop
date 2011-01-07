@@ -230,6 +230,8 @@ if __name__ == '__main__':
         out.write('<reference id="' + id \
                       + '" name="' + reffile + '"/>\n')
 
+    #print "!!! regressions=" + str(regressions)
+
     # 3. All temporary files have been created, it is time to merge 
     #    them back together.
     nbRegressions = 0

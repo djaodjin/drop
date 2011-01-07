@@ -776,19 +776,18 @@ class BuildGenerator(DependencyGenerator):
                 self.activeCuts |= set([ p.name ])
             targets += [ p.name ]
         if fetches:            
-            for f in fetches:
-                # We unconditionally add all fetches to the extraFetches set
-                # since the fetch() function will perform a findCache before
-                # downloading missing files.
-                self.extraFetches[f] = fetches[f]
+                # We could unconditionally add all source tarball since 
+                # the *fetch* function will perform a *findCache* before
+                # downloading missing files. Unfortunately this would 
+                # interfere with *pubConfigure* which checks there are 
+                # no missing prerequisites whithout fetching anything.
+                self.extraFetches = findCache(fetches)
         return targets
 
     def contextualTargets(self,name):
         '''At this point we want to add all prerequisites which are either
         a repository or a patch/package for which the dependencies are not
         complete.'''
-        print "!!! contextualTargets(" + name + ")"
-        print "!!!     activeCuts=" + str(self.activeCuts)  
         cut = False
         targets = []
         if name in self.projects:
@@ -850,10 +849,12 @@ class MakeGenerator(DependencyGenerator):
                     targets += [ name ]
         if fetches:            
             for f in fetches:
-                # We unconditionally add all fetches to the extraFetches set
-                # since the fetch() function will perform a findCache before
-                # downloading missing files.
-                self.extraFetches[f] = fetches[f]
+                # We could unconditionally add all source tarball since 
+                # the *fetch* function will perform a *findCache* before
+                # downloading missing files. Unfortunately this would 
+                # interfere with *pubConfigure* which checks there are 
+                # no missing prerequisites whithout fetching anything.
+                self.extraFetches = findCache(fetches)
         return targets
 
     def contextualTargets(self, name):
@@ -3249,6 +3250,35 @@ def update(reps, dbindex):
             writetext('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
 
 
+def waitUntilSSHUp(hostname,login=None,port=22,timeout=120):
+    '''wait until an ssh connection can be established to *hostname*
+    or the attempt timed out after *timeout* seconds.'''
+    up = False
+    waited = 0
+    sshConnect = hostname
+    if login:
+        sshConnect = login + '@' + hostname
+    while not up and (waited <= timeout):
+        time.sleep(30)
+        waited = waited + 30
+        cmd = subprocess.Popen(['ssh',
+                                '-o', '"BatchMode yes"',
+                                '-o', 'StrictHostKeyChecking no',
+                                '-p', str(port),
+                                sshConnect,
+                                'echo'],
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
+        cmd.wait()
+        if cmd.returncode == 0:
+            up = True
+        else:
+            sys.stdout.write("waiting 30 more seconds (" \
+                                 + str(waited) + " so far)...\n")
+    if waited > timeout:
+        raise Error("ssh connection attempt to " + hostname + " timed out.")
+
+
 def writetext(message):
     if log:
         log.write(message)
@@ -3266,11 +3296,16 @@ def prompt(message):
 
             
 def pubBuild(args):
-    '''build              [remoteIndexFile [localTop]]
-                       This bootstrap command will download an index database 
-                       file, *remoteIndexFile*, and issue a *make* command 
+    '''build              [remoteIndexFile [siteTop]]
+                       This bootstrap command will fetch an index file, 
+                       *remoteIndexFile*, which contains inter projects
+                       dependencies. It will then issue a *make* command 
                        for all projects which have a *repository* node 
-                       defined. 
+                       defined. When necessary, prerequisites will either 
+                       be install through the local package manager, a
+                       previously built package, or a patched source tarball,
+                       depending on the definitions of none, *package* or 
+                       *patch* nodes in the index file.
                        This command is meant to be used as part of cron
                        jobs on build servers and thus designed to run 
                        to completion with no human interaction. As such, 
@@ -3394,9 +3429,9 @@ def pubConfigure(args):
     log = LogFile(context.logname(),nolog)
     projectName = context.cwdProject()
     dgen = MakeGenerator([ projectName ],[],[])
-    dbindex = IndexProjects(context,
-                            context.srcDir(os.path.join(context.cwdProject(),
-                                                        context.indexName)))
+    context.environ['indexFile'].value \
+        = context.srcDir(os.path.join(context.cwdProject(),context.indexName))
+    dbindex = IndexProjects(context,context.value('indexFile'))
     dbindex.parse(dgen)
     if len(dgen.activePrerequisites) > 0 or len(dgen.extraFetches) > 0:
         # This is an opportunity to prompt for missing dependencies.

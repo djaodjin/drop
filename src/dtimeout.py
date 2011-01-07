@@ -38,8 +38,7 @@ def timeoutCommand(cmdline, timeout):
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT)
     line = cmd.stdout.readline()
-    while process.poll() is None:
-    #while line != '':
+    while cmd.poll() is None:
        writetext(line)
        line = cmd.stdout.readline()
        time.sleep(0.1)
