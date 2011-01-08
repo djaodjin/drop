@@ -510,8 +510,7 @@ make install
         for i in range(0,len(project.descr),77):
             descr += ' ' + project.descr[i:i+77] + '\n'
         #descr += ' ' + project.descr[i:] + '\n'
-        control.write('Description: ' + project.title + '\n' \
-                          + descr + '\n')
+        control.write('Description: ' + project.title + '\n' + descr + '\n')
         control.write('\n')
         control.close()
         distribCodename = None

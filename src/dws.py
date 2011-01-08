@@ -3253,20 +3253,23 @@ def update(reps, dbindex):
 def waitUntilSSHUp(hostname,login=None,port=22,timeout=120):
     '''wait until an ssh connection can be established to *hostname*
     or the attempt timed out after *timeout* seconds.'''
+    import time
+
     up = False
     waited = 0
     sshConnect = hostname
     if login:
         sshConnect = login + '@' + hostname
-    while not up and (waited <= timeout):
+    while (not up) and (waited <= timeout):
         time.sleep(30)
         waited = waited + 30
-        cmd = subprocess.Popen(['ssh',
-                                '-o', '"BatchMode yes"',
-                                '-o', 'StrictHostKeyChecking no',
-                                '-p', str(port),
-                                sshConnect,
-                                'echo'],
+        cmdline = ['ssh',
+                   '-o', 'BatchMode yes',
+                   '-o', 'StrictHostKeyChecking no',
+                   '-p', str(port),
+                   sshConnect,
+                   'echo']
+        cmd = subprocess.Popen(cmdline,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
         cmd.wait()
