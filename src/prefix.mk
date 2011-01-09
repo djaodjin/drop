@@ -101,7 +101,7 @@ LDFLAGS		+=	$(patsubst %,-L%,$(libSearchPath))
 
 distExtDarwin	:=	.dmg
 distExtFedora	:=	$(shell uname -r | sed -e 's/.*\(\.fc.*\)/\1/').rpm
-distExtUbuntu	:=	-ubuntu1_i386.deb
+distExtUbuntu	:=	_i386.deb
 project		:=	$(notdir $(srcDir))
 
 # ATTENTION: We use ifeq ... endif here instead of ?= because
@@ -116,7 +116,7 @@ endif
 ifeq ($(distHost),Ubuntu)
 # cat /etc/lsb-release
 ifneq ($(shell getconf LONG_BIT),32)
-distExtUbuntu	:=	-ubuntu1_amd64.deb
+distExtUbuntu	:=	_amd64.deb
 endif
 endif
 

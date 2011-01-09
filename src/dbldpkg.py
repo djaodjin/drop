@@ -475,7 +475,7 @@ make install
         return projet.name + '-' + version + '.rpm'
 
     elif dist == 'Ubuntu':
-        packageVersion = version + '-ubuntu1'
+        packageVersion = version
         if not os.path.exists('debian'):
             os.makedirs('debian')
         control = open(os.path.join('debian','control'),'w')
