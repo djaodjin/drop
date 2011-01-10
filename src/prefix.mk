@@ -145,7 +145,7 @@ unexpectedZeroExit =	@echo "$(1)" && ($(1) \
 
 
 vpath %.a 		$(libSearchPath)
-vpath %$(dylSuffix)	$(libSearchPath)
+vpath %.so		$(libSearchPath)
 vpath %.hh      	$(incSearchPath)
 vpath %.cc 		$(srcDir)/src
 vpath %.py		$(srcDir)/src

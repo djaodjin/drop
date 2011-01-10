@@ -2806,8 +2806,14 @@ def linkPatPath(namePat, absolutePath, dir, target=None):
     ext = ''
     if absolutePath:
         pathname, ext = os.path.splitext(absolutePath)
-    if ext in [ libStaticSuffix(), libDynSuffix() ]:
-        linkName = libPrefix() + namePat + ext 
+    # We normalize the library link name such as to make use of the default
+    # definitions of .LIBPATTERNS and search paths in make. It also avoids
+    # having to prefix and suffix library names in Makefile with complex
+    # variable substitution logic.
+    if ext == libStaticSuffix():
+        linkName = 'lib' + namePat + '.a'
+    elif ext == libDynSuffix():
+        linkName = 'lib' + namePat + '.so' 
     else:
         # Yeah, looking for g++ might be a little bit of trouble. 
         regex = re.compile(namePat.replace('+','\+') + '$')        
