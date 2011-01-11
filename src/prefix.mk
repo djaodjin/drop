@@ -143,6 +143,11 @@ nonZeroExit	   =	@echo "$(1)" && ($(1) \
 unexpectedZeroExit =	@echo "$(1)" && ($(1) \
 	&& echo "$@:$$?:error: functional test expected non-zero exit code")
 
+# Favor static libraries over dynamic ones. This matches *findLib* in dws.py
+# If we leave the default, dynamic before static, since make search for 
+# -llibname in vpath, VPATH and /lib, /usr/lib, and prefix/lib, it will always
+# find the dynamic one instead of the one we linked in *libBuildDir*.
+.LIBPATTERNS	:=	lib%.a lib%.so
 
 vpath %.a 		$(libSearchPath)
 vpath %.so		$(libSearchPath)

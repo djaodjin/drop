@@ -1890,10 +1890,17 @@ def findBin(names,excludes=[],target=None):
     if len(names) > 0:
         droots = context.searchPath()
     for namePat, absolutePath in names:
+        linkName = os.path.join(context.binBuildDir(),namePat)
         if absolutePath:
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
+            continue        
+        elif os.path.islink(linkName): 
+            # If we already have a symbolic link in the binBuildDir,
+            # we will assume it is the one to use in order to cut off
+            # recomputing of things that hardly change.
+            results.append((namePat,os.path.realpath(linkName)))
             continue
         if target:
             writetext(target + '/')
@@ -2217,6 +2224,8 @@ def findLib(names,excludes=[],target=None):
     in order to deduce a version number if possible.'''
     results = []
     version = None
+    # prioritySuffix = libDynSuffix()
+    prioritySuffix = libStaticSuffix()
     suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() \
         + '|\\' + libDynSuffix() + ')'
     if len(names) > 0:
@@ -2228,7 +2237,8 @@ def findLib(names,excludes=[],target=None):
             results.append((namePat, absolutePath))
             continue
         # First time ever *findLib* is called, libDir will surely not defined
-        # in the workspace make fragment and thus we will trigger interactive input from the user.
+        # in the workspace make fragment and thus we will trigger interactive 
+        # input from the user.
         # We want to make sure the output of the interactive session does not
         # mangle the search for a library so we preemptively trigger 
         # an interactive session.
@@ -2246,6 +2256,9 @@ def findLib(names,excludes=[],target=None):
                 libPat = namePat.replace('+','\+')
             for libname in findFirstFiles(libSysDir,libPat):
                 numbers = versionCandidates(libname)
+                absolutePath = os.path.join(libSysDir,libname)
+                absolutePathBase, absolutePathExt \
+                    = os.path.splitext(absolutePath)
                 if len(numbers) == 1:
                     excluded = False
                     for exclude in excludes:
@@ -2256,29 +2269,37 @@ def findLib(names,excludes=[],target=None):
                             excluded = True
                             break
                     if not excluded:
+                        # Insert candidate into a sorted list. First to last,
+                        # higher version number, dynamic libraries.
                         index = 0
                         for lib in libs:
+                            libPathBase, libPathExt = os.path.splitext(lib[0])
                             if ((not lib[1]) 
                                 or versionCompare(lib[1],numbers[0]) < 0):
                                 break
+                            elif (absolutePathBase == libPathBase
+                                  and absolutePathExt == prioritySuffix):
+                                break
                             index = index + 1
-                        libs.insert(index,(os.path.join(libSysDir,libname),
-                                           numbers[0]))
+                        libs.insert(index,(absolutePath,numbers[0]))
                 else:
-                    libs.append((os.path.join(libSysDir,libname),None))
+                    # Insert candidate into a sorted list. First to last,
+                    # higher version number, shortest name, dynamic libraries.
+                    index = 0
+                    for lib in libs:
+                        libPathBase, libPathExt = os.path.splitext(lib[0])
+                        if lib[1]:
+                            None
+                        elif absolutePathBase == libPathBase:
+                            if absolutePathExt == prioritySuffix:
+                                break
+                        elif libPathBase.startswith(absolutePathBase):
+                            break
+                        index = index + 1
+                    libs.insert(index,(absolutePath,None))
             if len(libs) > 0:             
                 candidate = libs[0][0]
-                for lib in libs:
-                    if lib[0].endswith(libStaticSuffix()):
-                        # Give priority to static libraries
-                        candidate = lib[0]
-                        if lib[1]:
-                            version = lib[1] 
-                        break
-                    elif lib[1]:
-                        # Then libraries with an associated version number
-                        version = lib[1] 
-                        candidate = lib[0] 
+                version = libs[0][1]
                 look = re.match('.*' + libPrefix() + namePat + '(.+)',candidate)
                 if look:                        
                     suffix = look.group(1)
