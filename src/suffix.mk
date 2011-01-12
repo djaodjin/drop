@@ -111,7 +111,15 @@ buildInstallDir	:= 	$(CURDIR)/install
 buildUsrLocalDir:=	$(buildInstallDir)/usr/local
 dists		?=	$(binDist) $(project)-$(version).tar.bz2
 
+# The *dist* and *dist-release* targets create a distribution binanry package.
+# The difference between both is the source tree used to build the package.
+# *dist* builds the package out of the sources currently present in *srcTop*
+# while *dist-release* clone the release repository first and update 
+# an optional release log file.
 dist:: $(dists)
+
+dist-release:
+	echo "Not Yet Implemented" && false
 
 dist-src: $(project)-$(version).tar.bz2
 

@@ -54,15 +54,18 @@ doClean = False
 # When True, all commands invoked through shellCommand() are printed
 # but not executed.
 doNotExecute = False
+# When processing a project dependency index file, all project names matching 
+# one of the *excludePats* will be considered non-existant.
+excludePats = []
+# When True, *findLib* will prefer static libraries over dynamic ones if both
+# exist for a specific libname. This should match .LIBPATTERNS in prefix.mk.
+staticLibFirst = True
 # When True, makeProject() raises an error when the underlying make exit
 # with an error code, otherwise it moves on to the next project.
 stopMakeAfterError = False
 # When True, the script runs in batch mode and assumes the default answer
 # for every question where it would have prompted the user for an answer.
 useDefaultAnswer = False
-# When processing a project dependency index file, all project names matching 
-# one of the *excludePats* will be considered non-existant.
-excludePats = []
 
 
 class Error(Exception):
@@ -2224,8 +2227,10 @@ def findLib(names,excludes=[],target=None):
     in order to deduce a version number if possible.'''
     results = []
     version = None
-    # prioritySuffix = libDynSuffix()
-    prioritySuffix = libStaticSuffix()
+    if staticLibFirst:
+        prioritySuffix = libStaticSuffix()    
+    else:
+        prioritySuffix = libDynSuffix()    
     suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() \
         + '|\\' + libDynSuffix() + ')'
     if len(names) > 0:

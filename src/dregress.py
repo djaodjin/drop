@@ -51,14 +51,20 @@ def diffAdvance(diff):
 
 
 def logAdvance(log):
-    logTestName = None
-    logLineNum = sys.maxint
     logLine = log.readline()
-    look = re.match('(\d+):@@ test: (\S+) (\S+)? @@',logLine)
-    if look != None:
-        logLineNum = int(look.group(1))
-        logTestName = look.group(2)
-        # group(3) if present is status
+    if logLine == '':
+        logLineNum = sys.maxint
+        logTestName = None
+    else:
+        look = re.match('(\d+):@@ test: (\S+) (\S+)? @@',logLine)
+        if look != None:
+            logLineNum = int(look.group(1))
+            logTestName = look.group(2)
+            # group(3) if present is status
+        else:
+            raise dws.Error("unexpected format of result log. Line '" \
+                                + logLine + "' does not match " \
+                                + "'(\d+):@@ test: (\S+) (\S+)? @@'.")
     return logLineNum, logTestName
 
 
@@ -100,8 +106,8 @@ if __name__ == '__main__':
         # that would change value of diffLineNum and mess the following
         # algorithm.
         diffCmdLine = 'diff -U 1 ' + logfile + ' ' + reffile
-        # print "!!! log cmd line: " + logCmdLine
-        # print "!!! diff cmd line: " + diffCmdLine
+        #print "!!! log cmd line: " + logCmdLine
+        #print "!!! diff cmd line: " + diffCmdLine
         log = os.popen(logCmdLine)
         diff = os.popen(diffCmdLine)
 
@@ -172,6 +178,14 @@ if __name__ == '__main__':
                         regressions[logTestName] = {}
                     regressions[logTestName][reffile] = "identical"
                 logLineNum, logTestName = logAdvance(log)
+        elif logLineNum == diffLineNum:
+            # Both finish at the same time, let's flush the last testName
+            # and be done with it.
+            if prevLogTestName != None:
+                if not prevLogTestName in regressions:
+                    regressions[prevLogTestName] = {}
+                regressions[prevLogTestName][reffile] = "different"
+                prevLogTestName = None            
         diff.close()
         log.close()
 
@@ -250,7 +264,8 @@ if __name__ == '__main__':
                     if regressions[testName][reffile] == 'different':
                         if not reffile in regressionNames:
                             regressionNames[reffile] = set([])
-                        regressionNames[reffile] |= set([testName])
+                        regressionNames[reffile] \
+                            |= set([testName])
                         nbRegressions = nbRegressions + 1
                     out.write(regressions[testName][reffile])
                 else:                        
@@ -258,7 +273,7 @@ if __name__ == '__main__':
             else:
                 if not reffile in regressionNames:
                     regressionNames[reffile] = set([])
-                regressionNames[reffile] |= set([testName])
+                regressionNames[reffile] |= set(['- ' + testName])
                 nbRegressions = nbRegressions + 1
                 out.write('compile')
             out.write('</compare>\n')

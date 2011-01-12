@@ -103,9 +103,44 @@ include $(etcDir)/dws/suffix.mk
       Most operating systems distribute software in the form of packages. At a high-level, each package defines prerequisites packages that need to be installed on the system before it, itself, can be used. The operating system uses a package manager to analyze the packages dependency graph and determine how to update the local system based on an end-user selection.</para>
     <para>
       Software is always in an ever-evolving state. In order to keep a local system up-to-date with latest available features and fixes, software is tested, built, packaged and stored on remote update servers. Each package comes with a small specification file that primary contains information about a package prerequisite dependencies. The remote server aggregates all specification files into a small index file that contains the packages dependency graph. On a local system update, the local package manager downloads the index file and through the analysis of the packages dependency graph, decides to download actual packages and install them on the local system.</para>
+    <table>
+      <caption>Packaging-style Examples</caption>
+      <tr>
+	<th></th>
+	<th>Debian</th>
+	<th>Redhat</th>
+	<th>FreeBSD</th>
+      </tr>
+      <tr>
+	<td>local tools</td>
+	<td>apt-*</td>
+	<td>yum</td>
+	<td>port</td>
+      </tr>
+      <tr>
+	<td>package files</td>
+	<td>.deb</td>
+	<td>.rpm</td>
+	<td>.tar.bz2 + patches</td>
+      </tr>
+      <tr>
+	<td>index database</td>
+	<td>Packages.bz2</td>
+	<td>SQLlite database</td>
+	<td>Set of Portfiles</td>
+      </tr>
+      <tr>
+	<td>building packages</td>
+	<td>debuild</td>
+	<td>rpmbuild</td>
+	<td><emphasis>built on local</emphasis></td>
+      </tr>
+    </table>
     <para>The inter-project dependencies tool (<link linkend="dws.book">dws</link>) naturally extends the ideas of distribution packages to projects and the development cycle. It is thus natural to be able to build and install binary packages through dws while relying on the local system package manager as much as possible.
     </para>
 
+    <section>
+      <title>Information specific to OSes used at fortylines</title>
     <section>
       <title><link xlink:href="http://www.ubuntu.com">Ubuntu</link></title>
       <para>Ubuntu is a derivative of the Debian family and thus uses most of the same tools and file formats for package distribution.</para>
@@ -160,6 +195,7 @@ include $(etcDir)/dws/suffix.mk
 	<link xlink:href="https://help.ubuntu.com/community/SwitchingToUbuntu/FromLinux/%20RedHatEnterpriseLinuxAndFedora">apt-*</link>
       </para>
       <para>Looking at <link xlink:href="http://trac.project-builder.org/">Project-Builder.org</link> might be a good step to find more details information. These perl scripts aim to provide support to automate packaging for different distribution.</para>
+      </section>
     </section>
   </section>
 </section>
