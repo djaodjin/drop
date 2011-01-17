@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2010, Fortylines LLC
+# Copyright (c) 2009-2011, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -43,14 +43,7 @@ include $(srcDir)/src/prefix.mk
 docbook2man	:=	docbook-to-man
 
 scripts	:=	dbldpkg dregress dstamp dws dtimeout
-shares	:=	drop.pdf
 manpages:=	$(addsuffix .1,$(scripts))
-
-drop.fo: drop.book
-
-drop.book: $(srcDir)/doc/drop.py dropintro.book workspace.book quality.book \
-		dws.book glossary.book
-	python $^ > $@
 
 %.book: %
 	python $< --help-book > $@ || rm -f $@
