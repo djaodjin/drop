@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2009, Fortylines LLC
+# Copyright (c) 2009-2011, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -180,11 +180,12 @@ if __name__ == '__main__':
                 logLineNum, logTestName = logAdvance(log)
         elif logLineNum == diffLineNum:
             # Both finish at the same time, let's flush the last testName
-            # and be done with it.
+            # and be done with it. It seems the test is new and wasn't run
+            # in the reference.
             if prevLogTestName != None:
                 if not prevLogTestName in regressions:
                     regressions[prevLogTestName] = {}
-                regressions[prevLogTestName][reffile] = "different"
+                regressions[prevLogTestName][reffile] = "absent"
                 prevLogTestName = None            
         diff.close()
         log.close()
@@ -244,7 +245,7 @@ if __name__ == '__main__':
         out.write('<reference id="' + id \
                       + '" name="' + reffile + '"/>\n')
 
-    #print "!!! regressions=" + str(regressions)
+    # print "!!! regressions=" + str(regressions)
 
     # 3. All temporary files have been created, it is time to merge 
     #    them back together.
