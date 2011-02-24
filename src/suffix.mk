@@ -92,6 +92,9 @@ install:: $(resources)
 %.class: %.java
 	$(JAVAC) $(JAVAC_FLAGS) $(subst $(srcDir)/src/,,$<)
 
+%.swf: %.mxml
+	$(MXMLC) $(MXMLFLAGS) -output $@ $<
+
 %: %.py
 	$(installScripts) $< $@
 

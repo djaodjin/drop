@@ -1,4 +1,4 @@
-# Copyright (c) 2009, Fortylines LLC
+# Copyright (c) 2009-2011, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -56,6 +56,7 @@ FOP		:=	fop
 JAR		:=	jar
 JAVAC		:=	javac
 LN_S		:=	/bin/ln -fs
+MXMLC		:=	mxmlc
 SED		:=	sed
 SEMILLA		:=	$(binBuildDir)/semilla
 XSLTPROC	:=	xsltproc -xinclude 		\
@@ -80,10 +81,13 @@ incSearchPath	:=	$(srcDir)/include $(includeBuildDir) $(includeDir)
 libSearchPath	:=	$(libBuildDir) $(libDir)
 
 # Building dynamic libraries
-dylSuffixDarwin		:=	.dylib
-dylSuffixFedora		:=	.so
-dylSuffixUbuntu		:=	.so
-dylSuffix		:=	$(dylSuffix$(distHost))
+# If we do not set the default *dylSuffix*, the rule %$(dylSuffix): in suffix.mk
+# will be triggered by accident when *distHost* is undefined.
+_dylSuffix		:=	.so
+_dylSuffixDarwin	:=	.dylib
+_dylSuffixFedora	:=	.so
+_dylSuffixUbuntu	:=	.so
+dylSuffix		:=	$(_dylSuffix$(distHost))
 
 SHAREDLIBFLAGSDarwin  	:= 	-dynamiclib
 SHAREDLIBFLAGSFedora  	:= 	-shared
@@ -158,6 +162,7 @@ vpath %.sh		$(srcDir)/src
 vpath %.c 		$(srcDir)/src
 vpath %.m 		$(srcDir)/src
 vpath %.book 		$(srcDir)/doc
+vpath %.mxml 		$(srcDir)/src
 
 define bldUnitTest
 
