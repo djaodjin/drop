@@ -647,6 +647,17 @@ class DependencyGenerator(Unserializer):
         # explicitely excluded from installation by the user will be added 
         # to *excludePats*.
 
+    def addFetches(self,fetches):
+        if fetches:            
+                # We could unconditionally add all source tarball since 
+                # the *fetch* function will perform a *findCache* before
+                # downloading missing files. Unfortunately this would 
+                # interfere with *pubConfigure* which checks there are 
+                # no missing prerequisites whithout fetching anything.
+            fetches = findCache(fetches)
+            for f in fetches:
+                self.extraFetches[f] = fetches[f]
+
     def contextualTargets(self,variant):
         raise Error("DependencyGenerator should not be instantiated directly")
  
@@ -792,13 +803,7 @@ class BuildGenerator(DependencyGenerator):
             if complete:
                 self.activeCuts |= set([ p.name ])
             targets += [ Variant(p.name,targetName) ]
-        if fetches:            
-                # We could unconditionally add all source tarball since 
-                # the *fetch* function will perform a *findCache* before
-                # downloading missing files. Unfortunately this would 
-                # interfere with *pubConfigure* which checks there are 
-                # no missing prerequisites whithout fetching anything.
-                self.extraFetches = findCache(fetches)
+        self.addFetches(fetches)
         return targets
 
     def contextualTargets(self,variant):
@@ -825,7 +830,8 @@ class BuildGenerator(DependencyGenerator):
                     if len(project.packages) > 0:
                         self.packages |= set([name])
                         targets = self.addDeps(variant.target,
-                                project.packages[tags[0]].prerequisites(tags))
+                                project.packages[tags[0]].prerequisites(tags),
+                                project.packages[tags[0]].fetches)
                     elif project.patch:
                         self.patches |= set([name])
                         targets = self.addDeps(variant.target,
@@ -870,14 +876,7 @@ class MakeGenerator(DependencyGenerator):
                                         targetName)
                 if not complete:
                     targets += [ Variant(p.name,targetName) ]
-        if fetches:            
-            for f in fetches:
-                # We could unconditionally add all source tarball since 
-                # the *fetch* function will perform a *findCache* before
-                # downloading missing files. Unfortunately this would 
-                # interfere with *pubConfigure* which checks there are 
-                # no missing prerequisites whithout fetching anything.
-                self.extraFetches = findCache(fetches)
+        self.addFetches(fetches)
         return targets
 
     def contextualTargets(self, variant):
@@ -927,7 +926,8 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = \
                     self.addDeps(variant.target,
-                                 project.packages[tags[0]].prerequisites(tags))
+                                 project.packages[tags[0]].prerequisites(tags),
+                                 project.packages[tags[0]].fetches)
                 if not name in chosen:
                     self.packages |= set([name])
 
@@ -2023,7 +2023,7 @@ def findBin(names,excludes=[],variant=None):
 def findCache(names):
     '''Search for the presence of files in the cache directory. *names* 
     is a dictionnary of file names used as key and the associated checksum.'''
-    results = []
+    results = {}
     version = None
     for pathname in names:
         name = os.path.basename(urlparse.urlparse(pathname).path)
@@ -2042,7 +2042,7 @@ def findCache(names):
             else:
                 writetext("yes\n")
         else:
-            results += [ pathname ]
+            results[ pathname ] = names[pathname]
             writetext("no\n")
     return results
 
@@ -2511,6 +2511,19 @@ def cwdProjects(reps, recurse=False):
     if recurse:
         raise NotYetImplemented()
     return reps
+
+def deps(roots, index, outfile=sys.stdout):    
+    '''output the dependencies in topological order for a set of project 
+    names in *roots*.'''
+    dgen = MakeGenerator(roots,[],[],excludePats)
+    index.closure(dgen)
+    sorted = []
+    for level in range(len(dgen.levels),0,-1):
+        for variant in dgen.levels[level - 1]:
+            name = str(variant)
+            if not name in sorted:
+                sorted += [ name ]
+    outfile.write(' '.join(sorted) + '\n')
 
 
 def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
@@ -3357,7 +3370,11 @@ def update(reps, dbindex):
             writetext('######## updating project ' + name + '...\n')
             # \todo We do not propagate force= here to avoid messing up
             #       the local checkouts on pubUpdate()
-            rep.update(name,context)
+            try:
+                rep.update(name,context)
+            except:
+                writetext('warning: cannot update repository from ' \
+                              + str(rep.sync) + '\n')
         else:
             writetext('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
 
@@ -3615,18 +3632,7 @@ def pubDeps(args):
         rgen = DerivedSetsGenerator()
         index.parse(rgen)
         roots = rgen.roots
-    dgen = MakeGenerator(roots,[],[],excludePats)
-    #dgen = BuildGenerator(roots,[],[],excludePats)
-    index.closure(dgen)
-    indent=''
-    sorted = []
-    for level in range(len(dgen.levels),0,-1):
-        for variant in dgen.levels[level - 1]:
-            name = str(variant)
-            if not name in sorted:
-                sorted += [ name ] 
-                sys.stdout.write(indent + name + '\n')
-        indent += '\t'
+    deps(roots,index)
 
 
 def pubDuplicate(args):

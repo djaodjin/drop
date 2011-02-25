@@ -46,8 +46,7 @@ import datetime, hashlib, shutil
 import cStringIO
 
 noInstallDoc = False
-
-Error = "dbldpkg.Error"
+noPathUpdate = False
 
 PKG_INFO_FIELDS = """\
 Title
@@ -231,7 +230,7 @@ class PackageMaker:
             if k in fields:
                 self.packageInfo[k] = v
             elif not k in ["OutputDir"]:
-                raise Error, "Unknown package option: %s" % k
+                raise dws.Error("Unknown package option: %s" % k)
         
         # Check where we should leave the output. Default is current directory
         outputdir = options.get("OutputDir", os.getcwd())
@@ -536,6 +535,10 @@ make install
             installDocTarget = ''
         else:
             installDocTarget = '\n\tmake install-doc'
+        if noPathUpdate:
+            path = ''
+        else:
+            path = 'PATH=' + context.binBuildDir() + ':${PATH} '
         rules = open(os.path.join('debian','rules'),'w')
         rules.write('''#! /usr/bin/make -f
 
@@ -550,7 +553,7 @@ export DH_OPTIONS
 PREFIX 		:=	$(CURDIR)/debian/tmp/usr
 
 build:
-\tPATH=''' + context.value('binDir') + ''':${PATH} ./configure --prefix=$(PREFIX)
+\t''' + path + '''./configure --prefix=$(PREFIX)
 \tmake buildextra=dist
 
 clean:
@@ -666,8 +669,12 @@ if __name__ == "__main__":
     import imp
     from optparse import OptionParser
 
-    dws = imp.load_source('dws',
-       os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
+    try:
+        import dws
+    except:
+        dws = imp.load_source('dws',
+                              os.path.join(os.path.dirname(\
+                    os.path.realpath(sys.argv[0])),'dws'))
     parser = OptionParser(usage="%prog [options] <root> [<resources>]",
                           description=
 '''builds a distribution package''',
@@ -683,7 +690,10 @@ if __name__ == "__main__":
                       help='Print help in docbook format')
     parser.add_option('--no-install-doc', dest='noInstallDoc', 
                       action='store_true',
-                      help='Does not execute "make install-doc"')
+                      help='Do not execute "make install-doc"')
+    parser.add_option('--no-path-update', dest='noPathUpdate', 
+                      action='store_true',
+                      help='Assumes all tools required by configure (dws, etc.) are already in PATH.')
 
     options, args = parser.parse_args()
 
@@ -695,6 +705,9 @@ if __name__ == "__main__":
     
     if options.noInstallDoc:
         noInstallDoc = True
+
+    if options.noPathUpdate:
+        noPathUpdate = True
 
     context = dws.Context()
     context.locate()
