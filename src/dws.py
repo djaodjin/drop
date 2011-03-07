@@ -124,7 +124,7 @@ class Context:
                     'Root of the tree for installed bin/, include/, lib/, ...',
                           siteTop,default='')
         # We use installTop (previously siteTop), such that a command like
-        # "dws build remoteIndexFile *siteTop*" run from a local build 
+        # "dws build *remoteRep* *siteTop*" run from a local build 
         # directory creates intermediate and installed files there while
         # checking out the sources under siteTop. 
         # It might just be my preference...
@@ -171,13 +171,12 @@ class Context:
                                           siteTop,
               os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')),
                          'remoteSiteTop': remoteSiteTop,
-                         'remoteIndexFile': Pathname('remoteIndexFile',
-             'Index file with projects dependencies information stored on the remote server',
-                                          remoteSiteTop,
-              os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')),
                          'remoteSrcTop': Pathname('remoteSrcTop',
-             'Root of the tree on the remote machine where repositories are located',
+             'Root of the tree on the remote machine where repositories are located.',
                                           remoteSiteTop,'reps'),
+                         'remoteRep': Pathname('remoteRep',
+             'Url to the remote toplevel (aka world) repository.',
+                                          remoteSiteTop,'reps/dws.git'),
                         'darwinTargetVolume': SingleChoice('darwinTargetVolume',
                                                            None,
               descr='Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
@@ -256,18 +255,20 @@ class Context:
         return os.getcwd()[len(prefix) + 1:]
         # return self.buildTopRelativeCwd
 
-    def dbPathname(self,remote=False):
+    def dbPathname(self):
         '''Absolute pathname to the project index file.'''
-        if remote:
-            return self.value('remoteIndexFile')
-        else:            
-            if not str(self.environ['indexFile']):                
-                default = str(self.environ['remoteIndexFile'])
-                if default:
-                    self.environ['indexFile'].default \
-                        = default.replace(context.value('remoteSiteTop'),
-                                          context.value('siteTop'))
-            return self.value('indexFile')
+        if not str(self.environ['indexFile']):
+            remoteRep = context.value('remoteRep')
+            if remoteRep.endswith('.git'):
+                remoteRep = remoteRep[:-4]
+            else:
+                remoteRep = os.path.splitext(remoteRep)[0]
+            default = os.path.join(remoteRep,self.indexName)
+            if default:
+                self.environ['indexFile'].default \
+                    = default.replace(context.value('remoteSiteTop'),
+                                      context.value('siteTop'))
+        return self.value('indexFile')
 
     def host(self):
         '''Returns the distribution on which the script is running.'''
@@ -305,10 +306,11 @@ class Context:
                     = searchBackToRoot(self.configName)
         except IOError, e:
             self.buildTopRelativeCwd = None
-            self.configFilename = os.path.join(self.environ['buildTop'].default,
+            self.environ['buildTop'].configure()
+            self.configFilename = os.path.join(str(self.environ['buildTop']),
                                               self.configName)
             if not os.path.isfile(self.configFilename):
-                raise e
+                self.save()
         if self.buildTopRelativeCwd == '.':
             self.buildTopRelativeCwd = os.path.basename(os.getcwd())
             # \todo is this code still relevent?
@@ -351,23 +353,18 @@ class Context:
     def objDir(self,name):
         return os.path.join(self.value('buildTop'),name)
 
-    def remoteSite(self,indexPath):
-        '''We need to set the remoteIndex to a realpath when we are dealing
+    def remoteSite(self,remotePath):
+        '''We need to set the *remoteRep* to a realpath when we are dealing
         with a local file else links could end-up generating a different prefix
-        than remoteSiteTop for remoteIndex.'''
-        remoteIndex = indexPath
-        if not ':' in remoteIndex:
-            remoteIndex = os.path.realpath(remoteIndex)
-        context.environ['remoteIndexFile'].value = remoteIndex
-        remoteCachePath = os.path.dirname(indexPath)
-        if not ':' in remoteCachePath:
-            remoteCachePath = os.path.realpath(remoteCachePath)
-        if remoteCachePath.endswith('resources'):
-            context.environ['remoteSiteTop'].default \
-                = os.path.dirname(remoteCachePath)
-        else:
-            context.environ['remoteSiteTop'].default = remoteCachePath
-
+        than *remoteSiteTop* for *remoteRep*/*indexName*.'''
+        if not ':' in remotePath:
+            remotePath = os.path.realpath(remotePath)
+        context.environ['remoteRep'].default = remotePath
+        context.environ['remoteSrcTop'].default \
+            = os.path.dirname(remotePath)
+        context.environ['remoteSiteTop'].default \
+            = os.path.dirname(context.environ['remoteSrcTop'].default)
+        
     def save(self):
         '''Write the config back to a file.'''
         if not self.configFilename:
@@ -506,8 +503,9 @@ class IndexProjects:
                 elif selection == 'fetching' or force:
                     if not os.path.exists(os.path.dirname(self.source)):
                         os.makedirs(os.path.dirname(self.source))
-                    fetch({self.context.value('remoteIndexFile'): None},
-                          os.path.dirname(self.source),True)                
+                    remoteRep = self.context.value('remoteRep')
+                    vcs = Repository.associate(remoteRep)
+                    vcs.update(None,self.context)
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
 
@@ -1140,10 +1138,8 @@ class Pathname(Variable):
         if not ':' in dirname:
             if not os.path.exists(self.value):
                 writetext(self.value + ' does not exist.\n')
-                # We should not assume the pathname is a directory 
-                # (i.e. remoteIndex).
-                if None:
-                    os.makedirs(self.value)
+                # We should not assume the pathname is a directory,
+                # hence we do not issue a os.makedirs(self.value)
         writetext(self.name + ' set to ' + self.value +'\n')
         return True
 
@@ -1395,10 +1391,16 @@ class Repository(Configure):
 
     @staticmethod
     def associate(pathname):
-        if os.path.isdir(os.path.join(pathname,'.git')):
-            return GitRepository(None,None,None,None,None)
-        elif os.path.isdir(os.path.join(pathname,'.svn')):
-            return SvnRepository(None,None,None,None,None)
+        if pathname.endswith('.git'):
+            return GitRepository(pathname,None,None,None,None)
+        elif pathname.endswith('.svn'):
+            return SvnRepository(pathname,None,None,None,None)
+        else:
+            # We will guess, assuming the repository is on the local system
+            if os.path.isdir(os.path.join(pathname,'.git')):
+                return GitRepository(pathname,None,None,None,None)
+            elif os.path.isdir(os.path.join(pathname,'.svn')):
+                return SvnRepository(pathname,None,None,None,None)
         return None
 
     def update(self,name,context,force=False):
@@ -1425,6 +1427,11 @@ class GitRepository(Repository):
         # trigger a potentially unnecessary prompt for remoteCachePath.
         if not ':' in self.sync and context:
             self.sync = context.remoteSrcPath(self.sync)
+        if not name:
+            name = self.sync.replace(context.value('remoteSrcTop'),
+                                     context.value('srcTop'))
+        if name.endswith('.git'):
+            name = name[:-4]
         local = context.srcDir(name)
         pulled = False
         cwd = os.getcwd()
@@ -3428,10 +3435,11 @@ def prompt(message):
 
             
 def pubBuild(args):
-    '''build              [remoteIndexFile [siteTop]]
-                       This bootstrap command will fetch an index file, 
-                       *remoteIndexFile*, which contains inter projects
-                       dependencies. It will then issue a *make* command 
+    '''build              [remoteRep [siteTop]]
+                       This bootstrap command will fetch the remote repository, 
+                       *remoteRep* which should contain a dws.xml file at
+                       the top level. This file embodies the inter projects
+                       dependencies information. A make command will be issued
                        for all projects which have a *repository* node 
                        defined. When necessary, prerequisites will either 
                        be install through the local package manager, a
@@ -3445,13 +3453,12 @@ def pubBuild(args):
                        system, authentication to the remote server should 
                        also be setup to run with no human interaction.
                        Note that the "--clean" argument will remove *siteTop*
-                       completely and will only take effect when a *siteTop*
+                       completely. It will only take effect when a *siteTop*
                        is actually specified (just in case).
     '''
     if len(args) > 0:
         context.remoteSite(args[0])
     if len(args) > 1:
-        context.environ['siteTop'].value = os.path.realpath(args[1])
         if doClean:
             for d in [ context.value('siteTop') ]:
                 if os.path.isdir(d):
@@ -3459,8 +3466,6 @@ def pubBuild(args):
             # We save the context (again) here because *buildTop*,
             # thus dws.mk, will no longer exist at this point.
             context.save()
-    global useDefaultAnswer
-    useDefaultAnswer = True
     global log
     log = LogFile(context.logname(),nolog)
 
@@ -4112,21 +4117,12 @@ if __name__ == '__main__':
             sys.stdout.write(sys.argv[0] + ' version ' + str(__version__) \
                                  + '\n')
             sys.exit(0)
+
         if options.helpBook:
             help = cStringIO.StringIO()
             parser.print_help(help)
             helpBook(help)
             sys.exit(0)
-        if options.installTop:
-            context.environ['installTop'].value = options.installTop
-
-        doClean = options.clean
-        useDefaultAnswer = options.default
-        nolog = options.nolog
-        if options.excludePats:
-            excludePats = options.excludePats
-        if options.output:
-            collectedIndex = os.path.abspath(options.output)
 
         if len(args) < 1:
             parser.print_help()
@@ -4134,6 +4130,23 @@ if __name__ == '__main__':
 
         # Find the build information
         arg = args.pop(0)
+        doClean = options.clean
+        useDefaultAnswer = options.default
+        if arg == 'build':
+            # We need to set useDefaultAnswer here because we need to know
+            # *buildTop* before we can locate the context file (i.e. dws.mk).
+            # For the same reason we thus need to set the default value
+            # for *siteTop* as well since *buildTop* is based on *siteTop*.
+            useDefaultAnswer = True
+            if len(args) > 1:
+                context.environ['siteTop'].value = os.path.realpath(args[1])
+        nolog = options.nolog
+        if options.installTop:
+            context.environ['installTop'].value = options.installTop
+        if options.excludePats:
+            excludePats = options.excludePats
+        if options.output:
+            collectedIndex = os.path.abspath(options.output)
         try:
             context.locate(options.config)
         except IOError:
