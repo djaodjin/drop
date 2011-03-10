@@ -360,8 +360,10 @@ class Context:
         if not ':' in remotePath:
             remotePath = os.path.realpath(remotePath)
         context.environ['remoteRep'].default = remotePath
-        context.environ['remoteSrcTop'].default \
-            = os.path.dirname(remotePath)
+        base = remotePath
+        if remotePath.endswith('/.git'):
+            base = os.path.dirname(remotePath)
+        context.environ['remoteSrcTop'].default  = os.path.dirname(base)
         context.environ['remoteSiteTop'].default \
             = os.path.dirname(context.environ['remoteSrcTop'].default)
         
@@ -585,7 +587,7 @@ class Unserializer(PdbHandler):
 
     def asProject(self, name):
         if not name in self.projects:
-            raise Error("unable to find " + name + "in the index file.",
+            raise Error("unable to find " + name + " in the index file.",
                         projectName=name) 
         return self.projects[name]
 
@@ -3144,8 +3146,6 @@ def upload(filenames, cacheDir=None):
     files from the remote server.
     '''
     remoteCachePath = context.remoteDir(context.logPath(''))
-    if not filenames:
-        filenames = [ context.logPath('./*') ]
     cmdline, prefix = findRSync(remoteCachePath,not cacheDir)
     upCmdline = cmdline + [ ' '.join(filenames), remoteCachePath ]
     shellCommand(upCmdline)
@@ -3462,7 +3462,8 @@ def pubBuild(args):
         if doClean:
             for d in [ context.value('siteTop') ]:
                 if os.path.isdir(d):
-                    os.removedirs(d)
+                    sys.stdout.write('removing ' + d + '...\n')
+                    shutil.rmtree(d)
             # We save the context (again) here because *buildTop*,
             # thus dws.mk, will no longer exist at this point.
             context.save()
@@ -3472,8 +3473,13 @@ def pubBuild(args):
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
     # note that *excludePats* is global.
-    dgen = BuildGenerator(rgen.roots,[],[],excludePats) 
-    errors = make(dgen,[ 'recurse', 'install' ]) # \todo 'dist' should be optional
+    dgen = BuildGenerator(rgen.roots,[],[],excludePats)
+    targets = [ 'recurse', 'install' ]
+    if True:
+        # \todo this is not generally needed in a test environment
+        #       but absolutely necessary for "dws publish"
+        targets += [ 'dist' ]
+    errors = make(dgen,targets)
     log.close()
     log = None
     # Once we have built the repository, let's report the results
@@ -3714,8 +3720,28 @@ def pubIntegrate(args):
 
 class ListPdbHandler(PdbHandler):
 
+    def __init__(self):
+        self.firstTime = True
+
     def project(self, p):
-        sys.stdout.write(str(p))
+        if self.firstTime:
+            sys.stdout.write('HEAD                                     name\n')
+            self.firstTime = False
+        if os.path.exists(context.srcDir(p.name)):
+            prev = os.getcwd()
+            os.chdir(context.srcDir(p.name))
+            cmd = subprocess.Popen(' '.join(['git','rev-parse','HEAD']),
+                                   shell=True,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+            lines = cmd.stdout.readlines()
+            cmd.wait()
+            if cmd.returncode != 0:
+                raise Error("unable to complete: " + cmdline,
+                            cmd.returncode)
+            sys.stdout.write(' '.join(lines).strip() + ' ')
+            os.chdir(prev)
+        sys.stdout.write(p.name + '\n')
 
 
 def pubList(args):
@@ -3748,6 +3774,23 @@ def pubMake(args):
     errors = make(MakeGenerator(roots,[],[],excludePats),args)
     if len(errors) > 0:
         raise Error("Found errors while making " + ' '.join(errors))
+
+
+def pubPublish(args):
+    '''publish                Run build, collect and upload in a single 
+                       command. Systems that are used to verify repositories
+                       build and tests pass will use "build", maybe with 
+                       the --upload flag. Systems that publish snapshots
+                       that could potentially installed on other systems
+                       will used the "publish" command. There is only one
+                       such system per packaging distribution since pubish will
+                       override files in the common resources/ directory on
+                       the server.
+    '''
+    pubBuild(args)
+    pubCollect(args)
+    pubUpload(None)
+    pubList(args)
 
 
 def pubPush(args):
@@ -3855,7 +3898,7 @@ def pubUpload(args):
     if args:
         upload(args)
     else:
-        upload(None)
+        upload([ context.logPath('./*'), context.localDir(context.host()) ])
 
 
 def pubUpstream(args):
@@ -4132,7 +4175,7 @@ if __name__ == '__main__':
         arg = args.pop(0)
         doClean = options.clean
         useDefaultAnswer = options.default
-        if arg == 'build':
+        if arg in [ 'build', 'publish' ]:
             # We need to set useDefaultAnswer here because we need to know
             # *buildTop* before we can locate the context file (i.e. dws.mk).
             # For the same reason we thus need to set the default value

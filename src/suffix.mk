@@ -175,7 +175,8 @@ $(project)-$(version)::
 	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/$(projindex) $(basename $@)
 
-%$(distExtUbuntu): %.tar.bz2
+# Ubuntu can sometimes be annoying using '_' instead of '-' here and there.
+$(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
 	cd $(basename $(basename $<)) \
@@ -230,13 +231,13 @@ doc: $(shares)
 # such that those are available for generating a distribution package
 # as well as acessible through the website.
 install-doc:: $(shares)
-	$(installDirs) $(shareDir)/doc/$(subst -%,,$(project))
-	$(installFiles) $^ $(shareDir)/doc/$(subst -%,,$(project))
-	$(installFiles) $^ $(resourcesDir)
+	$(if $^,$(installDirs) $(shareDir)/doc/$(subst -%,,$(project)))
+	$(if $^,$(installFiles) $^ $(shareDir)/doc/$(subst -%,,$(project)))
+	$(if $^,$(installFiles) $^ $(resourcesDir))
 
 install-doc:: $(manpages)
-	$(installDirs) $(shareDir)/man/man1
-	$(installFiles) $(filter %.1,$^) $(shareDir)/man/man1
+	$(if $^,$(installDirs) $(shareDir)/man/man1)
+	$(if $^,$(installFiles) $(filter %.1,$^) $(shareDir)/man/man1)
 
 # For debugging issues running fop the following command used to work
 #   fop --execdebug -fo $< -pdf $@
