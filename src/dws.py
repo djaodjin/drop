@@ -1689,7 +1689,6 @@ class xmlDbParser(xml.sax.ContentHandler):
         if look:
             sync = look.group(1)
             rev = look.group(2)
-        # print "!!! create repository sync=" + sync + ", rev=" + str(rev)
         if sync.endswith('.git'):
             return GitRepository(sync,rev,self.fetches,
                                  self.locals,self.vars)
@@ -3787,7 +3786,12 @@ def pubPublish(args):
                        override files in the common resources/ directory on
                        the server.
     '''
-    pubBuild(args)
+    try:
+        pubBuild(args)
+    except Error, err:
+        # Errors are part of life with continuous builds. Let's keep going
+        # and gather log information and packages that have successfully built
+        None
     pubCollect(args)
     pubUpload(None)
     pubList(args)

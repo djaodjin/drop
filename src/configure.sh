@@ -7,20 +7,26 @@ set -e
 
 projmk=dws.mk
 prefix=/usr/local
+sysconfdir=/etc
 while [ $# -gt 0 ] ; do
-	case $1 in
-		--prefix=*)
-		    prefix=${1#--prefix=}
-			shift
-		    ;;
-		*)
-			echo "warning: $1 is an unknown option."
-			shift
-	esac
+    case $1 in
+	--prefix=*)
+	prefix=${1#--prefix=}
+	shift
+	;;
+	--sysconfdir=*)
+	sysconfdir=${1#--sysconfdir=}
+	shift
+	;;
+	*)
+	    echo "warning: $1 is an unknown option."
+	    shift
+    esac
 done
 
 buildDir=`pwd`
 buildTop=`dirname $buildDir`
+etcDir=${sysconfdir}
 srcDir=`echo $0 | sed -e 's,\(.*\)/.*$,\\1,'`
 srcDir=`cd $srcDir ; pwd`
 srcTop=`dirname $srcDir`
@@ -37,12 +43,12 @@ echo includeBuildDir=${buildDir}/include >> ${projmk}
 echo shareBuildDir=${shareBuildDir} >> ${projmk}
 echo makeHelperDir=${makeHelperDir} >> ${projmk}
 echo binDir=${prefix}/bin >> ${projmk}
-echo etcDir=${prefix}/etc >> ${projmk}
+echo etcDir=${etcDir} >> ${projmk}
 echo includeDir=${prefix}/include >> ${projmk}
 echo libDir=${prefix}/lib >> ${projmk}
 echo shareDir=${prefix}/share >> ${projmk}
 
-# Copy dws files into binDir and etcDir because that's where they will 
+# Copy dws files into binDir and makeHelperDir because that's where they will 
 # be searched when drop is specified as a prerequisite for the project.
 mkdir -p ${binBuildDir}
 mkdir -p ${makeHelperDir}

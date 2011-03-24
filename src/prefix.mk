@@ -96,9 +96,9 @@ SHAREDLIBFLAGS		:=	$(SHAREDLIBFLAGS$(distHost))
 
 
 # Need -fPIC to build shared libraries
-CFLAGS		:=	-g -MMD -Wall -fPIC
-CXXFLAGS	:=	-g -MMD -Wall -fPIC
-CPPFLAGS	+=	$(patsubst %,-I%,$(incSearchPath))
+CFLAGS		?=	-g -Wall -fPIC
+CXXFLAGS	?=	-g -Wall -fPIC
+CPPFLAGS	+=	-MMD $(patsubst %,-I%,$(incSearchPath))
 LDFLAGS		+=	$(patsubst %,-L%,$(libSearchPath))
 
 # Configuration for distribution packages

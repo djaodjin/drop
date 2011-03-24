@@ -531,6 +531,16 @@ make install
                             + ' <' + project.maintainer.email + '>  ' \
                             + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
         changelog.close()
+        if None:
+            # \todo getting rid of the warning actually produces a completely
+            # different output. For some reasons /usr/bin, etc. do not make
+            # it into the package...
+            # write debian/compat to fix 'Compatibility level before ...' 
+            # messages, see 'man debhelper'.
+            compat = open(os.path.join('debian','compat'),'w')
+            compat.write('5\n')
+            compat.close()
+
         if noInstallDoc:
             installDocTarget = ''
         else:
@@ -550,10 +560,12 @@ export DH_OPTIONS
 
 .PHONY:    build clean install binary
 
-PREFIX 		:=	$(CURDIR)/debian/tmp/usr
+DEBROOT         :=      $(CURDIR)/debian/tmp
+PREFIX 		:=	$(DEBROOT)/usr
+SYSCONFDIR      :=      $(DEBROOT)/etc
 
 build:
-\t''' + path + '''./configure --prefix=$(PREFIX)
+\t''' + path + '''./configure --prefix=$(PREFIX) --sysconfdir=$(SYSCONFDIR)
 \tmake buildextra=dist
 
 clean:
@@ -564,8 +576,22 @@ install:
 \tdh_testroot
 \tdh_clean -k
 \tmake install''' + installDocTarget + '''
+\tinstall -d $(PREFIX)/share/doc/''' + project.name + ''' 
 \tdh_installchangelogs
 \tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
+\tif [ `cd $(SYSCONFDIR) && find . -type f | wc -l` -gt 0 ] ; then \
+        echo "#!/bin/sh" > $(CURDIR)/debian/postinst ; \
+        echo >> $(CURDIR)/debian/postinst ; \
+        echo "set -e" >> $(CURDIR)/debian/postinst ; \
+        echo >> $(CURDIR)/debian/postinst ; \
+    fi
+\tfor conf in `cd $(SYSCONFDIR) && find . -type f` ; do \
+        echo "cat > /etc/$$conf <<EOF" >> $(CURDIR)/debian/postinst ; \
+        cat $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
+        echo "EOF" >> $(CURDIR)/debian/postinst ; \
+        echo >> $(CURDIR)/debian/postinst ; \
+    done
+\trm -rf $(SYSCONFDIR)
 \tdh_compress
 
 binary: install
