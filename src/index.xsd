@@ -163,7 +163,6 @@
 		    minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element ref="dep"
 		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="alternates" minOccurs="0" maxOccurs="unbounded"/>	
     </xs:sequence>
   </xs:complexType>
 

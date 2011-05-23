@@ -579,6 +579,9 @@ install:
 \tinstall -d $(PREFIX)/share/doc/''' + project.name + ''' 
 \tdh_installchangelogs
 \tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
+\tif [ -f $(CURDIR)/debian/postinst ] ; then \
+        mv $(CURDIR)/debian/postinst $(CURDIR)/debian/postinst~ ; \
+     fi
 \tif [ `cd $(SYSCONFDIR) && find . -type f | wc -l` -gt 0 ] ; then \
         echo "#!/bin/sh" > $(CURDIR)/debian/postinst ; \
         echo >> $(CURDIR)/debian/postinst ; \
@@ -586,11 +589,16 @@ install:
         echo >> $(CURDIR)/debian/postinst ; \
     fi
 \tfor conf in `cd $(SYSCONFDIR) && find . -type f` ; do \
+        echo "install -d `dirname /etc/$$conf`" >> $(CURDIR)/debian/postinst ; \
         echo "cat > /etc/$$conf <<EOF" >> $(CURDIR)/debian/postinst ; \
-        cat $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
+        sed -e 's,\\$$,\\\\$$,g' $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
+        echo >> $(CURDIR)/debian/postinst ; \
         echo "EOF" >> $(CURDIR)/debian/postinst ; \
         echo >> $(CURDIR)/debian/postinst ; \
     done
+\tif [ -f $(CURDIR)/debian/postinst~ ] ; then \
+        cat $(CURDIR)/debian/postinst~ | sed 1,3d >> $(CURDIR)/debian/postinst ; \
+     fi
 \trm -rf $(SYSCONFDIR)
 \tdh_compress
 

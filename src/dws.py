@@ -59,6 +59,8 @@ doNotExecute = False
 # When processing a project dependency index file, all project names matching 
 # one of the *excludePats* will be considered non-existant.
 excludePats = []
+# Address to email log reports to.
+mailto= []
 # When True, *findLib* will prefer static libraries over dynamic ones if both
 # exist for a specific libname. This should match .LIBPATTERNS in prefix.mk.
 staticLibFirst = True
@@ -663,15 +665,16 @@ class DependencyGenerator(Unserializer):
  
     def endParse(self):
         # !!! Debugging Prints !!!
-        #print "* DependencyGenerator.endParse:"
-        #print "     includes: " + str(self.includePats) 
-        #print "     excludes: " + str(self.excludePats) 
-        #print "     projects: " + str(self.projects)
-        #print "     reps:     " + str(self.repositories)
-        #print "     patches:  " + str(self.patches)
-        #print "     packages: " + str(self.packages)
-        #print "     levels:   " + str(self.levels)
-        #print "     actives:  " + str(self.activePrerequisites)
+        if False:
+            print "* DependencyGenerator.endParse:"
+            print "     includes: " + str(self.includePats) 
+            print "     excludes: " + str(self.excludePats) 
+            print "     projects: " + str(self.projects)
+            print "     reps:     " + str(self.repositories)
+            print "     patches:  " + str(self.patches)
+            print "     packages: " + str(self.packages)
+            print "     levels:   " + str(self.levels)
+            print "     actives:  " + str(self.activePrerequisites)
 
         further = False
         nextActivePrerequisites = {}
@@ -956,6 +959,20 @@ class MakeGenerator(DependencyGenerator):
             project.populate(self.prerequisites)
 
         return (needPrompt, targets)
+
+
+class MakeDepGenerator(MakeGenerator):
+    '''Generate the set of prerequisite projects regardless of the executables,
+    libraries, etc. which are already installed.'''
+
+    def addDeps(self, target, deps, fetches=None):
+        targets = []
+        for p in deps:
+            targetName = p.target
+            if not p.target:
+                targetName = target
+            targets += [ Variant(p.name,targetName) ]
+        return targets
 
 
 class DerivedSetsGenerator(PdbHandler):
@@ -2520,19 +2537,18 @@ def cwdProjects(reps, recurse=False):
         raise NotYetImplemented()
     return reps
 
-def deps(roots, index, outfile=sys.stdout):    
-    '''output the dependencies in topological order for a set of project 
+def deps(roots, index):    
+    '''returns the dependencies in topological order for a set of project 
     names in *roots*.'''
-    dgen = MakeGenerator(roots,[],[],excludePats)
+    dgen = MakeDepGenerator(roots,[],[],excludePats)
     index.closure(dgen)
-    sorted = []
+    flat = []
     for level in range(len(dgen.levels),0,-1):
         for variant in dgen.levels[level - 1]:
             name = str(variant)
-            if not name in sorted:
-                sorted += [ name ]
-    outfile.write(' '.join(sorted) + '\n')
-
+            if not name in flat:
+                flat += [ name ]
+    return flat
 
 def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
     '''download *filenames*, typically a list of distribution packages, 
@@ -2606,9 +2622,10 @@ def install(packages, dbindex):
     '''install a pre-built (also pre-fetched) package.
     '''
     projects = []
+    localFiles = []
     for name in packages:
         if os.path.isfile(name):
-            installLocalPackage(name)
+            localFiles += [ name ]
         else:
             projects += [ name ]
 
@@ -2626,7 +2643,7 @@ def install(packages, dbindex):
                     for filename in package.fetches:
                         # The package is not part of the local system package 
                         # manager so it has to have been pre-built.
-                        installLocalPackage(context.localDir(filename))
+                        localFiles += [ context.localDir(filename) ]
                 else:
                     managed += [ name ]
             else:
@@ -2640,8 +2657,8 @@ def install(packages, dbindex):
                 # in /etc afterwards anyway.
                 shellCommand(['/usr/bin/apt-get', 'update'], admin=True)
                 shellCommand(['DEBIAN_FRONTEND=noninteractive',
-                              '/usr/bin/apt-get','-y ',
-                              'install'] + projects, admin=True)
+                              '/usr/bin/apt-get', '-y ',
+                              'install'] + managed, admin=True)
             elif context.host() == 'Darwin':
                 darwinNames = {
                     # translation of package names. It is simpler than
@@ -2672,6 +2689,10 @@ def install(packages, dbindex):
             else:
                 raise Error("Use of package manager for '" \
                                 + context.host() + " not yet implemented.'")
+
+    if len(localFiles) > 0:
+        for name in localFiles:
+            installLocalPackage(name)
 
 
 def installDarwinPkg(image,target,pkg=None):
@@ -2726,9 +2747,11 @@ def helpBook(help):
             sys.stdout.write("""<?xml version="1.0"?>
 <refentry xmlns="http://docbook.org/ns/docbook" 
          xmlns:xlink="http://www.w3.org/1999/xlink"
-         xml:id=\"""" + cmdname + """.book">
+         xml:id=\"""" + cmdname + """">
 <info>
-<author><contrib><personname>Sebastien Mirolo &lt;smirolo@fortylines.com&gt;</personname></contrib></author>
+<author>
+<personname>Sebastien Mirolo &lt;smirolo@fortylines.com&gt;</personname>
+</author>
 </info>
 <refmeta>
 <refentrytitle>""" + cmdname + """</refentrytitle>
@@ -2778,21 +2801,20 @@ def helpBook(help):
             for w in s[1:]:
                 if len(w) > 0:
                     break
-            sys.stdout.write("<varlistentry>\n")
             if line.startswith("  -h,"):
                 # Hack because "show" does not start
                 # with uppercase.
-                sys.stdout.write("<term>" + ' '.join(s[0:2])
+                sys.stdout.write("<varlistentry>\n<term>" + ' '.join(s[0:2])
                                  + "</term>\n")
                 w = 'S'
                 s = s[1:]
             elif not re.search("[A-Z]",w[0]):
-                sys.stdout.write("<term>" + line + "</term>\n")
+                sys.stdout.write("<varlistentry>\n<term>" + line + "</term>\n")
             else:
                 if not s[0].startswith('-'):
-                    sys.stdout.write("<term xml:id=\"" + s[0] + "\">\n")
+                    sys.stdout.write("<varlistentry xml:id=\"dws." + s[0] + "\">\n<term>")
                 else:
-                    sys.stdout.write("<term>\n")
+                    sys.stdout.write("<term>")
                 sys.stdout.write(s[0] + "</term>\n")
             sys.stdout.write("<listitem>\n")
             sys.stdout.write("<para>\n")
@@ -3149,6 +3171,37 @@ def upload(filenames, cacheDir=None):
     upCmdline = cmdline + [ ' '.join(filenames), remoteCachePath ]
     shellCommand(upCmdline)
 
+def sendmail(filenames):
+    '''Send a list of files to the forum daemon.'''
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    msg = MIMEMultipart()
+    msg['Subject'] = 'report files'
+    msg['From'] = context.value('user.email')
+    msg['To'] = context.value('forum.email')
+    msg.preamble = 'The contents of %s' % ', '.join(filenames)
+
+    for filename in filenames:
+        fp = open(filename, 'rb')
+        content = MIMEText(fp.read())
+        fp.close()
+        msg.attach(content)
+
+    # Send the message via our own SMTP server, but don't include the
+    # envelope header.
+    s = smtplib.SMTP(context.value('forum.hostname'))
+    s.set_debuglevel(1)
+    s.ehlo()
+    s.starttls()
+    s.ehlo()
+    s.login('foo', 'bar')
+    s.sendmail(context.value('user.email'), [context.value('forum.email')],
+               msg.as_string())
+    s.close()
+    # or s.quit()?
+
 
 def searchBackToRoot(filename,root=os.sep):
     '''Search recursively from the current directory to the *root*
@@ -3489,6 +3542,8 @@ def pubBuild(args):
         os.makedirs(os.path.dirname(context.logPath(logstamp)))
     shellCommand(['install', '-m', '644', context.logname(),
                   context.logPath(logstamp)])
+    if len(mailto) > 0:
+        sendmail([ context.logPath(logstamp) ])
     if len(errors) > 0:
         raise Error("Found errors while making " + ' '.join(errors))
 
@@ -3642,7 +3697,7 @@ def pubDeps(args):
         rgen = DerivedSetsGenerator()
         index.parse(rgen)
         roots = rgen.roots
-    deps(roots,index)
+    sys.stdout.write(' '.join(deps(roots,index)) + '\n')
 
 
 def pubDuplicate(args):
@@ -3659,7 +3714,8 @@ def pubDuplicate(args):
         # will be in uri.scheme (That seems like a bug in urlparse).
         hostname = uri.scheme
     pathnames = [ uri.path, '/var/www', '/var/log', 
-                  '/var/lib/awstats', '/var/lib/mailman' ]
+                  '/var/lib/awstats', '/var/lib/mailman',
+                  '/home', '/etc' ]
     duplicateDir = context.value('duplicateDir')
     if hostname:
         duplicateDir = os.path.join(duplicateDir,hostname)
@@ -3902,7 +3958,7 @@ def pubUpload(args):
     if args:
         upload(args)
     else:
-        upload([ context.logPath('./*'), context.localDir(context.host()) ])
+        upload([ context.logPath('./*'), context.remoteDir('log') ])
 
 
 def pubUpstream(args):
@@ -4156,6 +4212,8 @@ if __name__ == '__main__':
 	    help='Explicitely specify the output index file for collect commands')
 	parser.add_option('--prefix', dest='installTop', action='append',
 	    help='Set the root for installed bin, include, lib, etc. ')
+	parser.add_option('--mailto', dest='mailto', action='append',
+	    help='Add an email address to send log reports to')
 	parser.add_option('--version', dest='version', action='store_true',
 	    help='Print version information')
         
