@@ -60,7 +60,7 @@ doNotExecute = False
 # one of the *excludePats* will be considered non-existant.
 excludePats = []
 # Address to email log reports to.
-mailto= []
+mailto = []
 # When True, *findLib* will prefer static libraries over dynamic ones if both
 # exist for a specific libname. This should match .LIBPATTERNS in prefix.mk.
 staticLibFirst = True
@@ -186,8 +186,17 @@ class Context:
                          'install packages on the system root for all users'],
                         ['CurrentUserHomeDirectory', 
                          'install packages for the current user only'] ]),
-                         'distHost': HostPlatform('distHost') }
-
+                         'distHost': HostPlatform('distHost'),
+                         'smtpHost': Variable('smtpHost',
+             descr='Hostname for the SMTP server through which logs are sent.'),
+                         'smtpPort': Variable('smtpPort',
+             descr='Port for the SMTP server through which logs are sent.'),
+                         'userSmtpLogin': Variable('userSmtpLogin',
+             descr='Login on the SMTP server for the user through which logs are sent.'),
+                         'userSmtpPasswd': Variable('userSmtpPasswd',
+             descr='Password on the SMTP server for the user through which logs are sent.'),
+                         'userEmail': Variable('userEmail',
+             descr='Email address that will be shown in the *From* field.') }
         self.buildTopRelativeCwd = None
 
     def binBuildDir(self):
@@ -3171,16 +3180,22 @@ def upload(filenames, cacheDir=None):
     upCmdline = cmdline + [ ' '.join(filenames), remoteCachePath ]
     shellCommand(upCmdline)
 
-def sendmail(filenames):
+def sendmail(filenames, dests):
     '''Send a list of files to the forum daemon.'''
+    print str(dests)
+    if len(dests) == 0:
+        # Silently return if there are not destinaries. This avoids
+        # checking for an empty set before calling this function.
+        return
+
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
     msg = MIMEMultipart()
     msg['Subject'] = 'report files'
-    msg['From'] = context.value('user.email')
-    msg['To'] = context.value('forum.email')
+    msg['From'] = context.value('userEmail')
+    msg['To'] = ';'.join(dests)
     msg.preamble = 'The contents of %s' % ', '.join(filenames)
 
     for filename in filenames:
@@ -3191,14 +3206,14 @@ def sendmail(filenames):
 
     # Send the message via our own SMTP server, but don't include the
     # envelope header.
-    s = smtplib.SMTP(context.value('forum.hostname'))
+    s = smtplib.SMTP(context.value('smtpHost'),
+                     context.value('smtpPort'))
     s.set_debuglevel(1)
     s.ehlo()
     s.starttls()
     s.ehlo()
-    s.login('foo', 'bar')
-    s.sendmail(context.value('user.email'), [context.value('forum.email')],
-               msg.as_string())
+    s.login(context.value('userSmtpLogin'), context.value('userSmtpPasswd'))
+    s.sendmail(context.value('userEmail'), mailto, msg.as_string())
     s.close()
     # or s.quit()?
 
@@ -3543,7 +3558,7 @@ def pubBuild(args):
     shellCommand(['install', '-m', '644', context.logname(),
                   context.logPath(logstamp)])
     if len(mailto) > 0:
-        sendmail([ context.logPath(logstamp) ])
+        sendmail([ context.logPath(logstamp) ],mailto)
     if len(errors) > 0:
         raise Error("Found errors while making " + ' '.join(errors))
 
@@ -3831,26 +3846,28 @@ def pubMake(args):
         raise Error("Found errors while making " + ' '.join(errors))
 
 
-def pubPublish(args):
-    '''publish                Run build, collect and upload in a single 
-                       command. Systems that are used to verify repositories
-                       build and tests pass will use "build", maybe with 
-                       the --upload flag. Systems that publish snapshots
-                       that could potentially installed on other systems
-                       will used the "publish" command. There is only one
-                       such system per packaging distribution since pubish will
-                       override files in the common resources/ directory on
-                       the server.
+def pubPatch(args):
+    '''patch                Generate a patch vs. the last pull from a remote
+                       repository, optionally send it to a list of receipients.
     '''
-    try:
-        pubBuild(args)
-    except Error, err:
-        # Errors are part of life with continuous builds. Let's keep going
-        # and gather log information and packages that have successfully built
-        None
-    pubCollect(args)
-    pubUpload(None)
-    pubList(args)
+    global log 
+    log = LogFile(context.logname(),nolog)
+    reps = args
+    recurse = False
+    if 'recurse' in args:
+        recurse = True
+        reps.remove('recurse')
+    reps = cwdProjects(reps,recurse)
+
+    cmdline = 'git format-patch -o ' + context.value('buildTop') + ' origin'
+    prev = os.getcwd()
+    for r in reps:
+        log.write('### ' + r + '\n')
+        os.chdir(context.srcDir(r))
+        shellCommand(['git', 'format-patch', '-o', context.value('buildTop'),
+                      'origin'])
+    os.chdir(prev)
+    sendmail([],mailto)
 
 
 def pubPush(args):
@@ -3955,10 +3972,15 @@ def pubUpload(args):
                        Only users with an account can upload to the forum 
                        server.
     '''
+    if None:
+        if args:
+            upload(args)
+        else:
+            upload([ context.logPath('./*'), context.remoteDir('log') ])
     if args:
-        upload(args)
+        sendmail(args,mailto)
     else:
-        upload([ context.logPath('./*'), context.remoteDir('log') ])
+        sendmail([ context.logPath('./*'), context.remoteDir('log') ],mailto)
 
 
 def pubUpstream(args):
@@ -4232,6 +4254,9 @@ if __name__ == '__main__':
         if len(args) < 1:
             parser.print_help()
             sys.exit(1)
+
+        if options.mailto:
+            mailto = options.mailto
 
         # Find the build information
         arg = args.pop(0)
