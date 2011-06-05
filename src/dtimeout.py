@@ -39,7 +39,7 @@ def timeoutCommand(cmdline, timeout):
                            stderr=subprocess.STDOUT)
     line = cmd.stdout.readline()
     while cmd.poll() is None:
-       writetext(line)
+       sys.stdout.write(line)
        line = cmd.stdout.readline()
        time.sleep(0.1)
        now = datetime.datetime.now()
