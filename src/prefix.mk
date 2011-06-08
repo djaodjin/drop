@@ -143,9 +143,9 @@ bookdeps	=	$(1) $(shell grep 'include xlink:href' $(1) \
 				| sed -e 's/.*href="\(.*\)".*/\1/')
 
 nonZeroExit	   =	@echo "$(1)" && ($(1) \
-	|| echo "$@:$$?:error: functional test expected zero exit code")
+	|| echo "$@:$$?:error: functional test expected zero exit code") $(testOutputFilter)
 unexpectedZeroExit =	@echo "$(1)" && ($(1) \
-	&& echo "$@:$$?:error: functional test expected non-zero exit code")
+	&& echo "$@:$$?:error: functional test expected non-zero exit code") $(testOutputFilter) 
 
 # Favor static libraries over dynamic ones. This matches *findLib* in dws.py
 # If we leave the default, dynamic before static, since make search for 
