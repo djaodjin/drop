@@ -86,8 +86,7 @@ install:: $(resources)
 	$(LINK.cc) $(SHAREDLIBFLAGS) $^ -o $@
 
 %: %.cc
-	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) \
-		$(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 %.class: %.java
 	$(JAVAC) $(JAVAC_FLAGS) $(subst $(srcDir)/src/,,$<)

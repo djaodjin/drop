@@ -126,7 +126,7 @@ def cleanUpAgedFiles(dirname,keepPerYear=1,keepPerMonth=1,keepPerWeek=1):
         keep = cleanUpAgedStamps(files[filename],keepPerYear,keepPerMonth,keepPerWeek)
         for d in files[filename]:
             if not d in keep:
-                pathname = os.path.join(dirname,stamp(filename,d))
+                pathname = os.path.join(dirname,dws.mark(filename,dws.stamp(d)))
                 if not doNotExecute:
                     os.remove(pathname)
 

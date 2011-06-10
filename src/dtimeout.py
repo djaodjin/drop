@@ -35,18 +35,24 @@ def timeoutCommand(cmdline, timeout):
     in *timeout* seconds. returns the error code returned by the process.'''
     start = datetime.datetime.now()
     cmd = subprocess.Popen(' '.join(cmdline),shell=True,
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT)
-    line = cmd.stdout.readline()
+                           stdout=None,
+                           stderr=None)
+    sys.stdout.write("started a " + str(timeout) + " seconds timeout on PID "\
+                         + str(cmd.pid) + "...\n") 
     while cmd.poll() is None:
-       sys.stdout.write(line)
-       line = cmd.stdout.readline()
        time.sleep(0.1)
        now = datetime.datetime.now()
        if (now - start).seconds > timeout:
-           os.kill(cmd.pid, signal.SIGKILL)
-           os.waitpid(-1, os.WNOHANG)
-    cmd.wait()
+           try:
+               os.kill(cmd.pid, signal.SIGKILL)
+               os.waitpid(-1, os.WNOHANG)
+           except OSError, err:
+               err = str(err)
+               if err.find("No such process") > 0:
+                   # We had to force kill the job.
+                   return 1
+               else:
+                   raise err
     return cmd.returncode
 
 # Main Entry Point

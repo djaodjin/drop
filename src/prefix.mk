@@ -78,7 +78,7 @@ logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 resourcesDir	?=	$(siteTop)/resources
 
 incSearchPath	:=	$(srcDir)/include $(includeBuildDir) $(includeDir)
-libSearchPath	:=	$(libBuildDir) $(libDir)
+libSearchPath	:=	$(if $(wildcard $(libBuildDir)/*),$(libBuildDir)) $(if $(wildcard $(libBuildDir)/*),$(libDir))
 
 # Building dynamic libraries
 # If we do not set the default *dylSuffix*, the rule %$(dylSuffix): in suffix.mk

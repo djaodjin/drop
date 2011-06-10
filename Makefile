@@ -36,7 +36,7 @@ include $(shell \
 	echo $$config)
 
 srcDir		:=	$(srcTop)/drop
-makeHelperDir	:=	$(srcTop)/drop/src
+#makeHelperDir	:=	$(srcTop)/drop/src
 
 include $(srcDir)/src/prefix.mk
 
@@ -61,10 +61,6 @@ install:: $(srcDir)/src/prefix.mk \
 install:: dws.py dstamp.py
 	$(installDirs)  $(libDir)/python
 	$(installFiles) $(filter %.py,$^) $(libDir)/python
-
-install:: dws
-	$(installDirs) $(resourcesDir)
-	$(installFiles) $^ $(resourcesDir)
 
 # There is already a package called dmake in Ubuntu :(.
 dmake:

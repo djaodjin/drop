@@ -605,6 +605,7 @@ class Unserializer(PdbHandler):
 
     def asProject(self, name):
         if not name in self.projects:
+            raise "WTH?"
             raise Error("unable to find " + name + " in the index file.",
                         projectName=name) 
         return self.projects[name]
@@ -1905,20 +1906,24 @@ def basenames(pathnames):
         bases += [ os.path.basename(p) ]
     return bases
 
+
 def mark(filename,suffix):    
     base, ext = os.path.splitext(filename)
     return base + '-' + suffix + ext
 
-def stamp(filename,date=datetime.datetime.now()):
-    base, ext = os.path.splitext(filename)
-    return base + '-' + str(date.year) \
-               + ('_%02d' % (date.month)) \
-               + ('_%02d' % (date.day)) \
-               + ('-%02d' % (date.hour)) + ext
+
+def stamp(date=datetime.datetime.now()):
+    return str(date.year) \
+            + ('_%02d' % (date.month)) \
+            + ('_%02d' % (date.day)) \
+            + ('-%02d' % (date.hour))
+
 
 def stampfile(filename):
-    return stamp(mark(os.path.basename(filename),
-                      socket.gethostname()))
+    if not 'buildstamp' in context.environ:
+        context.environ['buildstamp'] = stamp(datetime.datetime.now())
+        context.save()
+    return mark(os.path.basename(filename),context.value('buildstamp'))
 
 
 def createIndexPathname(dbIndexPathname,dbPathnames):
@@ -3015,6 +3020,10 @@ def make(dgen, targets, dbindex=None):
         if len(recursiveTargets) == 0:
             recursiveTargets = [ 'install' ]
         variants, projects = validateControls(dgen,dbindex)
+        if None:
+            print "!!! [make] variants"
+            for v in variants:
+                print "\t* " + str(v)
         last = variants.pop()
         for variant in variants:
             errcode = makeProject(variant,
@@ -3101,8 +3110,7 @@ def makeProject(variant,options,dependencies={}):
     # include $(shell dws context) at the top of the Makefile 
     # is still a good idea to permit "make" from the command line.
     # Otherwise it just duplicates setting some variables.
-    cmdline = ['export PATH=' + ':'.join(localContext.searchPath()) + ' ;',
-               'make', 
+    cmdline = ['make', 
                '-f', localContext.configFilename,
                '-f', makefile]
     start = datetime.datetime.now()
@@ -3126,7 +3134,8 @@ def makeProject(variant,options,dependencies={}):
         # a change to override defaults for installTop, etc.
         for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
             name = localContext.value(dir + 'Dir')
-        shellCommand(cmdline + targets + overrides)
+        shellCommand(cmdline + targets + overrides,
+                     PATH=localContext.searchPath())
     except Error, e:
         errexcept = e
         errcode = e.code
@@ -3261,7 +3270,7 @@ def searchBackToRoot(filename,root=os.sep):
     return dirname, os.path.join(d,filename)
 
 
-def shellCommand(commandLine, admin=False):
+def shellCommand(commandLine, admin=False, PATH=[]):
     '''Execute a shell command and throws an exception when the command fails'''
     if admin:
         if None:
@@ -3285,6 +3294,9 @@ def shellCommand(commandLine, admin=False):
     if not doNotExecute:
         if log:
             log.logfile.write('<output><![CDATA[\n')
+        if len(PATH) > 0:
+            # It is important the export is a single command string.
+            cmdline = [ 'export PATH=' + ':'.join(PATH) + ' ;' ] + cmdline
         cmd = subprocess.Popen(' '.join(cmdline),shell=True,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
@@ -3359,7 +3371,7 @@ def validateControls(dgen, dbindex=None):
     fetch(fetches)
     install(packageSyncs,dbindex)
     update(syncs,dbindex)    
-    applyPatches(syncs)
+    applyPatches(syncs)    
     return reps, dgen.projects
 
 
@@ -3457,6 +3469,11 @@ def update(reps, dbindex):
     for name in reps:
         # The project is present in *srcTop*, so we will update the source 
         # code from a repository. 
+        if not name in handler.projects:
+            # We found a directory that contains source control information
+            # but which is not in the interdependencies index file. Let's 
+            # just skip it.
+            continue
         rep = handler.asProject(name).repository
         if not rep:
             rep = handler.asProject(name).patch
@@ -3575,9 +3592,13 @@ def pubBuild(args):
             prefix = os.path.commonprefix(tardirs)
             if prefix == siteTop:
                 # optimize common case: *buildTop* and *installTop* are within 
-                # *siteTop*.
-                shellCommand(['tar', 'jcf', '/tmp/pre-dws-build.tar.bz2' , 
-                              siteTop ])
+                # *siteTop*. We cd into the parent directory to create the tar
+                # in order to avoid 'Removing leading /' messages. Those do
+                # not display the same on Darwin and Ubuntu, creating false
+                # positive regressions between both systems.
+                shellCommand(['cd', os.path.dirname(siteTop),
+                              '&&', 'tar', 'jcf', '/tmp/pre-dws-build.tar.bz2', 
+                              os.path.basename(siteTop) ])
             else:
                 shellCommand(['tar', 'jcf', '/tmp/pre-dws-build.tar.bz2' ] \
                                  + tardirs)
@@ -3588,17 +3609,17 @@ def pubBuild(args):
                 sys.stdout.write('removing ' + d + '...\n')
                 # shutil.rmtree(d)
 
-    # We save the context (again) here because *buildTop*,
-    # thus dws.mk, will no longer exist at this point.
-    # !!! context.save()
     global log
     log = LogFile(context.logname(),nolog)
-
     rgen = DerivedSetsGenerator()
     index.parse(rgen)
     # note that *excludePats* is global.
     dgen = BuildGenerator(rgen.roots,[],[],excludePats)
     targets = [ 'recurse', 'install' ]
+    # Set the buildstamp that will be use by all "install" commands.
+    context.environ['buildstamp'] = '-'.join([socket.gethostname(),
+                                             stamp(datetime.datetime.now())])
+    context.save()
     errors = make(dgen,targets)
     log.close()
     log = None
