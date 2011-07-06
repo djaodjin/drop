@@ -32,6 +32,16 @@
 # control such that it is possible to execute a development cycle
 # (edit/build/run) on a local machine.
 #
+# The script will email build reports when the --mailto command line option
+# is specified. There are no sensible default values for the following
+# variables thus those should be set in the shell environment before 
+# invoking the script.
+#  dwsEmail=
+#  smtpHost=
+#  smtpPort=
+#  dwsSmtpLogin=
+#  dwsSmtpPasswd=
+
 # Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 
 __version__ = None
@@ -164,7 +174,7 @@ class Context:
                                             installTop,'etc'),
                          'shareDir': Pathname('shareDir',
              'Directory where the shared files are installed.',
-                                            installTop,'share'),
+                                            installTop),
                          'siteTop': siteTop,
                          'logDir': Pathname('logDir',
              'Directory where the generated log files are created',
@@ -191,7 +201,8 @@ class Context:
                          'smtpHost': Variable('smtpHost',
              descr='Hostname for the SMTP server through which logs are sent.'),
                          'smtpPort': Variable('smtpPort',
-             descr='Port for the SMTP server through which logs are sent.'),
+             descr='Port for the SMTP server through which logs are sent.',
+                                              default='587'),
                          'dwsSmtpLogin': Variable('dwsSmtpLogin',
              descr='Login on the SMTP server for the user through which logs are sent.'),
                          'dwsSmtpPasswd': Variable('dwsSmtpPasswd',
@@ -1034,6 +1045,11 @@ class Variable:
 
     def configure(self):
         '''Set value to the string entered at the prompt.'''
+        if self.name in os.environ:
+            # In case the variable was set in the environment,
+            # we do not print its value on the terminal, as a very 
+            # rudimentary way to avoid leaking sensitive information.
+            self.value = os.environ[self.name]
         if self.value != None:
             return False
         writetext('\n' + self.name + ':\n')
@@ -1045,7 +1061,7 @@ class Variable:
             if self.default:
                 defaultPrompt = " [" + self.default + "]"
             self.value = prompt("Enter a string" + defaultPrompt + ": ")
-        writetext(self.name + ' set to ' + self.value +'\n')
+        writetext(self.name + ' set to ' + str(self.value) +'\n')
         return True
 
 class HostPlatform(Variable):
@@ -3571,7 +3587,7 @@ def pubBuild(args):
         siteTop = args[1]
     else:
         siteTop = os.path.join(os.getcwd(),
-                               os.path.splitext(os.path.basename(args[0]))[0])
+                               os.path.basename(context.value('remoteSiteTop')))
     context.environ['siteTop'].value = siteTop
     if len(args) > 2:
         context.environ['buildTop'].value = args[2]

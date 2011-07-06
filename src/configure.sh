@@ -32,7 +32,6 @@ srcDir=`cd $srcDir ; pwd`
 srcTop=`dirname $srcDir`
 binBuildDir=${buildDir}/bin
 shareBuildDir=${buildDir}/share
-makeHelperDir=${shareBuildDir}/dws
 
 echo buildTop=${buildTop} > ${projmk}
 echo srcTop=${srcTop} >> ${projmk}
@@ -41,26 +40,26 @@ echo binBuildDir=${binBuildDir} >> ${projmk}
 echo libBuildDir=${buildDir}/lib >> ${projmk}
 echo includeBuildDir=${buildDir}/include >> ${projmk}
 echo shareBuildDir=${shareBuildDir} >> ${projmk}
-echo makeHelperDir=${makeHelperDir} >> ${projmk}
 echo binDir=${prefix}/bin >> ${projmk}
 echo etcDir=${etcDir} >> ${projmk}
 echo includeDir=${prefix}/include >> ${projmk}
 echo libDir=${prefix}/lib >> ${projmk}
 echo shareDir=${prefix}/share >> ${projmk}
 
-# Copy dws files into binDir and makeHelperDir because that's where they will 
-# be searched when drop is specified as a prerequisite for the project.
+# Copy dws files into binDir and *shareBuildDir*/dws because that's where they
+#  will be searched for when drop is specified as a prerequisite 
+# for the project.
 mkdir -p ${binBuildDir}
-mkdir -p ${makeHelperDir}
+mkdir -p ${shareBuildDir}/dws
 cp ${srcDir}/dws ${binBuildDir}
 helpers=`ls -l ${srcDir}/share/dws/*.{mk,sh} > /dev/null 2>&1 | wc -l`
 if [ ${helpers} -gt 0 ] ; then
-    cp -r ${srcDir}/share/dws/*.{mk,sh} ${makeHelperDir}
+    cp -r ${srcDir}/share/dws/*.{mk,sh} ${shareBuildDir}/dws
 fi
 ${binBuildDir}/dws --default configure
 
 sed -e s",\$(shell dws context),${projmk}," \
-    -e s',$(shell dws context \(.*\)),$(makeHelperDir)/\1,' \
+    -e s',$(shell dws context \(.*\)),$(shareBuildDir)/dws/\1,' \
 	Makefile.in > Makefile
 echo "type 'make' to build, followed by 'make install' to install."
 

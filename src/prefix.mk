@@ -36,12 +36,6 @@ etcBuildDir	:=	$(buildTop)/etc
 libBuildDir	:=	$(buildTop)/lib
 shareBuildDir	:=	$(buildTop)/share
 
-# The drop project cannot depend on itslef and thus cannot rely
-# on $(etcSharedDir)/dws to exist. The following variable is overriden 
-# in drop/Makefile to accomodate the special case.
-makeHelperDir	?=	$(shareBuildDir)/dws
-
-
 # We cannot initialize dbldpkg to $(binBuildDir)/dbldpkg, 
 # else the drop package cannot be built. See comments associated
 # to searchPath() in dws.py
@@ -58,7 +52,7 @@ JAVAC		:=	javac
 LN_S		:=	/bin/ln -fs
 MXMLC		:=	mxmlc
 SED		:=	sed
-SEMILLA		:=	$(binBuildDir)/semilla
+SEMILLA		:=	semilla
 XSLTPROC	:=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1

@@ -36,13 +36,13 @@ CC.host		:= gcc
 CXX.host      	:= g++
 AR.host	     	:= ar
 
-CFLAGS.host	:=	-g -MMD
-CXXFLAGS.host	:=	-g -MMD
+CFLAGS.host	:= -g -MMD
+CXXFLAGS.host	:= -g -MMD
 
 targetOS	:=	
 target 		:= 
 
-include $(makeHelperDir)/prefix.mk
+include $(shareBuildDir)/dws/prefix.mk
 
 # Fix install directories for target
 binDir		:=	$(installTop)/$(target)/bin

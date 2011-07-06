@@ -85,8 +85,9 @@ install:: $(resources)
 %$(dylSuffix):
 	$(LINK.cc) $(SHAREDLIBFLAGS) $^ -o $@
 
+# %.def appears in dependency (.d) files through an #include of LLVM headers.
 %: %.cc
-	$(LINK.cc) $(filter-out %.hh %.hpp %.ipp %.tcc,$^) $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 %.class: %.java
 	$(JAVAC) $(JAVAC_FLAGS) $(subst $(srcDir)/src/,,$<)
@@ -150,9 +151,9 @@ $(project)-$(version)::
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm -f $@/Makefile
 	$(installDirs) $@/share/dws
-	$(installScripts) $(makeHelperDir)/configure.sh $@/configure
+	$(installScripts) $(shareBuildDir)/dws/configure.sh $@/configure
 	$(installScripts) $(shell which dws) $@
-	$(installFiles) $(makeHelperDir)/prefix.mk $(makeHelperDir)/suffix.mk $(makeHelperDir)/configure.sh $@/share/dws
+	$(installFiles) $(shareBuildDir)/dws/prefix.mk $(shareBuildDir)/dws/suffix.mk $(shareBuildDir)/dws/configure.sh $@/share/dws
 
 
 # 'make install' might just do nothing and we still want to build an empty
@@ -266,27 +267,31 @@ site-stamp:: $(htmlSite)
 
 %.html: %.cc
 	@$(installDirs) $(dir $@)
-	$(SEED) $< | tail +2 > $@
+	$(SEMILLA) $< | tail +2 > $@
+
+%.html: %.h
+	@$(installDirs) $(dir $@)
+	$(SEMILLA) $< | tail +2 > $@
 
 %.html: %.hh
 	@$(installDirs) $(dir $@)
-	$(SEED) $< | tail +2 > $@
+	$(SEMILLA) $< | tail +2 > $@
 
 %.html: %.py
 	@$(installDirs) $(dir $@)
-	$(SEED) $< | tail +2 > $@
+	$(SEMILLA) $< | tail +2 > $@
 
 %.html: %.book
 	@$(installDirs) $(dir $@)
-	$(SEED) $< | tail +2 > $@
+	$(SEMILLA) $< | tail +2 > $@
 
 Makefile.html: Makefile
 	@[ -d $(dir $@) ] || $(installDirs) $(dir $@)
-	$(SEED) $< | tail +2 > $@
+	$(SEMILLA) $< | tail +2 > $@
 
 %Makefile.html: %Makefile
 	@$(installDirs) $(dir $@)
-	$(SEED) $< | tail +2 > $@
+	$(SEMILLA) $< | tail +2 > $@
 
 
 # Rules to validate the intra-projects dependency file
