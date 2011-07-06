@@ -1092,7 +1092,8 @@ class HostPlatform(Variable):
                     version = open(versionPath)
                     line = version.readline()
                     while line != '':
-                        for d in [ 'Ubuntu', 'ubuntu', 'fedora' ]:
+                        for d in [ 'Debian', 'debian', 'Ubuntu', 'ubuntu', 
+                                   'fedora' ]:
                             look = re.match('.*' + d + '.*',line)
                             if look:
                                 self.value = d
@@ -1105,7 +1106,7 @@ class HostPlatform(Variable):
                         break                    
             if self.value:
                 self.value = self.value.capitalize()
-            if self.value == 'Ubuntu':                
+            if self.value in [ 'Debian', 'Ubuntu' ]:                
                 if os.path.isfile('/etc/lsb-release'):
                     release = open('/etc/lsb-release')
                     line = release.readline()
@@ -2706,7 +2707,7 @@ def install(packages, dbindex):
                 managed += [ name ]
 
         if len(managed) > 0:
-            if context.host() == 'Ubuntu':
+            if context.host() in [ 'Debian', 'Ubuntu' ]:
                 # Add DEBIAN_FRONTEND=noninteractive such that interactive
                 # configuration of packages do not pop up in the middle 
                 # of installation. We are going to update the configuration
@@ -2779,7 +2780,7 @@ def installLocalPackage(filename):
     '''Install a package from a file on the local system.'''
     if context.host() == 'Darwin':
         installDarwinPkg(filename,context.value('darwinTargetVolume'))
-    elif context.host() == 'Ubuntu':
+    elif context.host() in [ 'Debian', 'Ubuntu' ]:
         shellCommand(['dpkg', '-i', filename], admin=True)
     elif context.host() == 'Fedora':
         shellCommand(['rpm', '-i', filename], admin=True)
@@ -3688,6 +3689,7 @@ def pubCollect(args):
     # and copy the packages in the distribution directory.
     extensions = { 'Darwin': ('\.dsx', '\.dmg'),
                    'Fedora': ('\.spec', '\.rpm'),
+                   'Debian': ('\.dsc', '\.deb'),
                    'Ubuntu': ('\.dsc', '\.deb')
                  }
     # collect index files and packages
