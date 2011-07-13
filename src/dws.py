@@ -135,7 +135,7 @@ class Context:
                   default='')
         installTop = Pathname('installTop',
                     'Root of the tree for installed bin/, include/, lib/, ...',
-                          siteTop,default='')
+                          siteTop,default='install')
         # We use installTop (previously siteTop), such that a command like
         # "dws build *remoteRep* *siteTop*" run from a local build 
         # directory creates intermediate and installed files there while
@@ -149,13 +149,7 @@ class Context:
         self.srcTop = Pathname('srcTop',
              'Root of the tree where the source code under revision control lives on the local machine.',siteTop,default='reps')
         self.environ = { 'buildTop': buildTop, 
-                         'srcTop' : self.srcTop,
-                         'makeHelperDir': Pathname('makeHelperDir',
-            'Directory to the helper files used in Makefiles (prefix.mk, etc.)',
-           # This does not work when we run the downloaded dws.
-           #default=os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]),
-           #                                      '..','share','dws'))
-           buildTop,os.path.join('share','dws')),
+                         'srcTop' : self.srcTop,                         
                          'patchTop': Pathname('patchTop',
              'Root of the tree where patches are stored',
                                             siteTop,default='patch'),
@@ -230,7 +224,11 @@ class Context:
         located in the share/dws subdirectory. The absolute directory
         name to share/dws is derived from the path of the script
         being executed as such: dirname(sys.argv[0])/../share/dws.'''
-        return os.path.join(self.value('makeHelperDir'),name)
+        return os.path.join(
+          os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))),
+          'share','dws',name)
+#       That code does not work when we are doing dws make (no recurse).
+#        return os.path.join(self.shareBuildDir(),'dws',name)
 
     def hostCachePath(self,name):
         '''Absolute path to a file in the local system cache for host 
@@ -1487,15 +1485,26 @@ class GitRepository(Repository):
             name = name[:-4]
         local = context.srcDir(name)
         pulled = False
+        updated = False
         cwd = os.getcwd()
         if not os.path.exists(os.path.join(local,'.git')):
             shellCommand(['git', 'clone', self.sync, local])
+            updated = True
         else:
             pulled = True
             os.chdir(local)
-            try:
-                shellCommand(['git', 'pull'])
-            except:
+            cmd = subprocess.Popen(' '.join(['git', 'pull']),shell=True,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+            line = cmd.stdout.readline()
+            while line != '':
+                writetext(line)
+                look = re.match('^updating',line)
+                if look:
+                    updated = True
+                line = cmd.stdout.readline()
+            cmd.wait()
+            if cmd.returncode != 0:
                 # It is ok to get an error in case we are running
                 # this on the server machine.
                 None
@@ -1509,6 +1518,7 @@ class GitRepository(Repository):
             os.chdir(local)
             shellCommand(cmd)
         os.chdir(cwd)
+        return updated
 
  
 class SvnRepository(Repository):
@@ -3073,12 +3083,6 @@ def makeProject(variant,options,dependencies={}):
     log.header(str(variant))
     # Makefiles include a $(shell dws context) statement to import
     # the workspace configuration (binDir, etc.) into the Makefile scope.
-    # We make sure the makeHelperDir variable will be available 
-    # for Makefiles preferring "include $(makeHelperDir)/prefix.mk" 
-    # statements over "include $(shell dws context prefix.mk)" statements.
-    # We have to get the value here (and not in dws context) to avoid
-    # an interactive prompt when executing make.
-    context.value('makeHelperDir')
     if variant.target:
         localContext = Context()
         localContext.environ['buildTop'] \
@@ -3089,8 +3093,6 @@ def makeProject(variant,options,dependencies={}):
             localContext.locate(localContext.configFilename)
         else:
             localContext.environ['srcTop'] = context.value('srcTop')
-            localContext.environ['makeHelperDir'] \
-                = context.value('makeHelperDir')
             localContext.environ['siteTop'] = context.value('siteTop')
             localContext.environ['installTop'].default \
                 = os.path.join(context.value('installTop'),variant.target)
@@ -3149,8 +3151,8 @@ def makeProject(variant,options,dependencies={}):
         # This code was moved to be executed right before the issue 
         # of a "make" subprocess in order to let the project index file 
         # a change to override defaults for installTop, etc.
-        for dir in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
-            name = localContext.value(dir + 'Dir')
+        for d in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
+            name = localContext.value(d + 'Dir')
         shellCommand(cmdline + targets + overrides,
                      PATH=localContext.searchPath())
     except Error, e:
@@ -3476,24 +3478,25 @@ def integrate(srcdir, pchdir, verbose=True):
 
 
 def update(reps, dbindex):
-    '''Update a list of *reps* within the workspace. The update will either 
-    sync with a source rep repository if the project is present in *srcTop*
-    or will install a new binary package through the local package manager.
-    *extraFetches* is a list of extra files to fetch from the remote machine,
-    usually a list of compressed source tar files.'''
+    '''Update a list of *reps* within the workspace. The update will sync 
+    with a source rep repository if the project is present in *srcTop*.'''
     handler = Unserializer(reps)
     dbindex.parse(handler)
+    nbUpdatedProjects = 0
     for name in reps:
         # The project is present in *srcTop*, so we will update the source 
-        # code from a repository. 
+        # code from a repository.
+        rep = None
         if not name in handler.projects:
             # We found a directory that contains source control information
-            # but which is not in the interdependencies index file. Let's 
-            # just skip it.
-            continue
-        rep = handler.asProject(name).repository
-        if not rep:
-            rep = handler.asProject(name).patch
+            # but which is not in the interdependencies index file.
+            srcDir = context.srcDir(name)
+            if os.path.exists(srcDir):
+                rep = Repository.associate(srcDir)
+        else:
+            rep = handler.asProject(name).repository
+            if not rep:
+                rep = handler.asProject(name).patch
         if rep:
             # Not every project is made a first-class citizen. If there are 
             # no rep structure for a project, it must depend on a project
@@ -3504,12 +3507,18 @@ def update(reps, dbindex):
             # \todo We do not propagate force= here to avoid messing up
             #       the local checkouts on pubUpdate()
             try:
-                rep.update(name,context)
+                if rep.update(name,context):
+                    nbUpdatedProjects = nbUpdatedProjects + 1
             except:
                 writetext('warning: cannot update repository from ' \
                               + str(rep.sync) + '\n')
         else:
             writetext('warning: ' + name + ' is not a project under source control. It is most likely a psuedo-project and will be updated through an "update recurse" command.\n')
+    if nbUpdatedProjects > 0:
+        writetext(str(nbUpdatedProjects) + ' updated project(s).\n')
+    else:
+        writetext('all project(s) are up-to-date.\n')
+    return nbUpdatedProjects > 0
 
 
 def waitUntilSSHUp(hostname,login=None,port=22,timeout=120):
@@ -3637,24 +3646,32 @@ def pubBuild(args):
     context.environ['buildstamp'] = '-'.join([socket.gethostname(),
                                              stamp(datetime.datetime.now())])
     context.save()
-    errors = make(dgen,targets)
-    log.close()
-    log = None
-    # Once we have built the repository, let's report the results
-    # back to the remote server. We stamp the logfile such that
-    # it gets a unique name before uploading it.
-    logstamp = stampfile(context.logname())
-    if not os.path.exists(os.path.dirname(context.logPath(logstamp))):
-        os.makedirs(os.path.dirname(context.logPath(logstamp)))
-    shellCommand(['install', '-m', '644', context.logname(),
-                  context.logPath(logstamp)])   
-    look = re.match('.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)',logstamp)
-    logs = findFiles(context.logPath(''),look.group(1))
-    if len(mailto) > 0:
-        writetext('forwarding logs ' + ' '.join(logs) + '...\n')
-        sendmail(createmail('build report',logs),mailto)
-    if len(errors) > 0:
-        raise Error("Found errors while making " + ' '.join(errors))
+    # We force update all projects in the index file and record
+    # the result. Later on, we will rebuild and send an email
+    # if any changes was recorded otherwise this is a no-op.
+    reps, packages, fetches = index.closure(dgen)    
+    syncs = set([])
+    for variant in reps:
+        syncs |= set([ variant.projectName ])    
+    if update(syncs,index):
+        errors = make(dgen,targets)
+        log.close()
+        log = None
+        # Once we have built the repository, let's report the results
+        # back to the remote server. We stamp the logfile such that
+        # it gets a unique name before uploading it.
+        logstamp = stampfile(context.logname())
+        if not os.path.exists(os.path.dirname(context.logPath(logstamp))):
+            os.makedirs(os.path.dirname(context.logPath(logstamp)))
+        shellCommand(['install', '-m', '644', context.logname(),
+                      context.logPath(logstamp)])   
+        look = re.match('.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)',logstamp)
+        logs = findFiles(context.logPath(''),look.group(1))
+        if len(mailto) > 0:
+            writetext('forwarding logs ' + ' '.join(logs) + '...\n')
+            sendmail(createmail('build report',logs),mailto)
+        if len(errors) > 0:
+            raise Error("Found errors while making " + ' '.join(errors))
 
 
 def pubCollect(args):
