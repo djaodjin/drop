@@ -96,7 +96,8 @@ install:: $(resources)
 	$(MXMLC) $(MXMLFLAGS) -output $@ $<
 
 %: %.py
-	$(installScripts) $< $@
+	sed -e "s,\$${libDir},$(libDir),g" $< > $@ || (rm -f $@ ; false)
+	chmod 755 $@
 
 %: %.sh
 	$(installScripts) $< $@
