@@ -27,12 +27,6 @@
 #
 # Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 
-binDir		?=	$(binBuildDir)
-etcDir		?=	$(etcBuildDir)
-includeDir	?=	$(includeBuildDir)
-libDir		?=	$(libBuildDir)
-shareDir	?=	$(shareBuildDir)
-
 .PHONY:	all check dist doc install site
 
 all::	$(bins) $(scripts) $(libs) $(includes) $(etcs)
@@ -305,7 +299,7 @@ validate: $(projindex)
 # schema taken from http://www.docbook.org/xml/5.0/xsd/docbook.xsd
 validbook: $(shell find $(srcDir) -name '*.book') \
 	   $(shell find $(srcDir) -name '*.corp')
-	xmllint --noout --schema $(shareDir)/schemas/docbook.xsd $^
+	xmllint --noout --schema $(shareBuildDir)/schemas/docbook.xsd $^
 
 validxhtml: $(subst .book,.html,\
 		$(notdir $(shell find $(srcDir) -name '*.book')))

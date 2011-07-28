@@ -32,8 +32,8 @@
 # Paths to "normalized" prerequisites
 binBuildDir 	:= 	$(buildTop)/bin
 includeBuildDir :=	$(buildTop)/include
-etcBuildDir	:=	$(buildTop)/etc
-libBuildDir	:=	$(buildTop)/lib
+etcBuildDir		:=	$(buildTop)/etc
+libBuildDir		:=	$(buildTop)/lib
 shareBuildDir	:=	$(buildTop)/share
 
 # We cannot initialize dbldpkg to $(binBuildDir)/dbldpkg, 

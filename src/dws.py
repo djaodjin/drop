@@ -34,7 +34,7 @@
 #
 # The script will email build reports when the --mailto command line option
 # is specified. There are no sensible default values for the following
-# variables thus those should be set in the shell environment before 
+# variables thus those should be set in the shell environment before
 # invoking the script.
 #  dwsEmail=
 #  smtpHost=
@@ -86,11 +86,11 @@ useDefaultAnswer = False
 
 
 class Error(Exception):
-    '''This type of exception is used to identify "expected" 
-    error condition and will lead to a useful message. 
+    '''This type of exception is used to identify "expected"
+    error condition and will lead to a useful message.
     Other exceptions are not caught when *__main__* executes,
     and an internal stack trace will be displayed. Exceptions
-    which are not *Error*s are concidered bugs in the workspace 
+    which are not *Error*s are concidered bugs in the workspace
     management script.'''
     def __init__(self, msg='unknow error', code=1, projectName=None):
         self.code = code
@@ -101,7 +101,7 @@ class Error(Exception):
         if self.projectName:
             return ':'.join([self.projectName,str(self.code),' error']) \
                 + ' ' + self.msg + '\n'
-        return 'error: ' + self.msg + ' (error ' + str(self.code) + ')\n' 
+        return 'error: ' + self.msg + ' (error ' + str(self.code) + ')\n'
 
 
 class CircleError(Error):
@@ -139,7 +139,7 @@ class Context:
                     'Root of the tree for installed bin/, include/, lib/, ...',
                           base='siteTop',default='install')
         # We use installTop (previously siteTop), such that a command like
-        # "dws build *remoteRep* *siteTop*" run from a local build
+        # "dws build *remoteIndex* *siteTop*" run from a local build
         # directory creates intermediate and installed files there while
         # checking out the sources under siteTop.
         # It might just be my preference...
@@ -182,8 +182,8 @@ class Context:
                          'remoteSrcTop': Pathname('remoteSrcTop',
              'Root of the tree on the remote machine where repositories are located.',
                                           base='remoteSiteTop',default='reps'),
-                         'remoteRep': Pathname('remoteRep',
-             'Url to the remote toplevel (aka world) repository.',
+                         'remoteIndex': Pathname('remoteIndex',
+             'Url to the remote index file with projects dependencies information',
                                                base='remoteSiteTop',
                                                default='reps/dws.git'),
                         'darwinTargetVolume': SingleChoice('darwinTargetVolume',
@@ -284,16 +284,8 @@ class Context:
     def dbPathname(self):
         '''Absolute pathname to the project index file.'''
         if not str(self.environ['indexFile']):
-            remoteRep = context.value('remoteRep')
-            if remoteRep.endswith('.git'):
-                remoteRep = remoteRep[:-4]
-            else:
-                remoteRep = os.path.splitext(remoteRep)[0]
-            default = os.path.join(remoteRep,self.indexName)
-            if default:
-                self.environ['indexFile'].default \
-                    = default.replace(context.value('remoteSiteTop'),
-                                      context.value('siteTop'))
+            self.environ['indexFile'].default \
+                = context.localDir(context.value('remoteIndex'))
         return self.value('indexFile')
 
     def host(self):
@@ -309,8 +301,14 @@ class Context:
         else:
             localname = name.replace(context.value('remoteSiteTop'),
                                      context.value('siteTop'))
-        if localname.endswith('.git'):
-            localname = localname[:-4]
+        pathList = localname.split(os.sep)
+        localname = '/'
+        for part in pathList:
+            if part.endswith('.git'):
+                if part != '.git':
+                    localname = os.path.join(localname,part[:-4])
+            else:
+                localname = os.path.join(localname,part)
         return localname
 
     def remoteDir(self, name):
@@ -396,18 +394,27 @@ class Context:
         return os.path.join(self.value('patchTop'),name)
 
     def remoteSite(self,remotePath):
-        '''We need to set the *remoteRep* to a realpath when we are dealing
+        '''We need to set the *remoteIndex* to a realpath when we are dealing
         with a local file else links could end-up generating a different prefix
-        than *remoteSiteTop* for *remoteRep*/*indexName*.'''
+        than *remoteSiteTop* for *remoteIndex*/*indexName*.'''
         if not ':' in remotePath:
             remotePath = os.path.realpath(remotePath)
-        base = remotePath
-        if remotePath.endswith('/.git'):
-            base = os.path.dirname(remotePath)
+        if not remotePath.endswith('.xml'):
+            remotePath = os.path.join(remotePath,
+                                      self.environ['remoteIndex'].default)
+        remotePathList = remotePath.split(os.sep)
+        repIndex = len(remotePathList)
+        for i in range(0,len(remotePathList)):
+            if remotePathList[i].endswith('.git'):
+                repIndex = i + 1
+                if remotePathList[i] == '.git':
+                    repIndex = repIndex - 1
+                break
+        base = os.sep.join(remotePathList[0:repIndex])
         self.environ['remoteSrcTop'].default  = os.path.dirname(base)
         self.environ['remoteSiteTop'].default \
             = os.path.dirname(self.environ['remoteSrcTop'].default)
-        self.environ['remoteRep'].default = remotePath.replace(\
+        self.environ['remoteIndex'].default = remotePath.replace(\
             self.environ['remoteSiteTop'].default + os.sep,'')
         look = re.match('(\S+@)?(\S+):.*',remotePath)
         if look:
@@ -551,8 +558,8 @@ class IndexProjects:
                 elif selection == 'fetching' or force:
                     if not os.path.exists(os.path.dirname(self.source)):
                         os.makedirs(os.path.dirname(self.source))
-                    remoteRep = self.context.value('remoteRep')
-                    vcs = Repository.associate(remoteRep)
+                    remoteIndex = self.context.value('remoteIndex')
+                    vcs = Repository.associate(remoteIndex)
                     vcs.update(None,self.context)
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
@@ -572,11 +579,11 @@ class LogFile:
     def close(self):
         if not self.nolog:
             self.logfile.write('</book>\n')
-            self.logfile.close()        
+            self.logfile.close()
 
     def error(self,text):
         if not text.startswith('error'):
-            text = 'error: ' + text 
+            text = 'error: ' + text
         sys.stdout.flush()
         self.logfile.flush()
         sys.stderr.write(text)
@@ -730,7 +737,7 @@ class DependencyGenerator(Unserializer):
             variant = self.activePrerequisites[p][2]
             nextDepth = depth + 1
             # The algorithm to select targets depends on the command semantic.
-            # The build, make and install commands differ in behavior there 
+            # The build, make and install commands differ in behavior there
             # in the presence of repostory, patch and package tags.
             needPrompt, targets = self.contextualTargets(variant)
             if needPrompt:
@@ -741,13 +748,13 @@ class DependencyGenerator(Unserializer):
                     targetName = str(target)
                     if targetName in nextActivePrerequisites:
                         if nextActivePrerequisites[targetName][0] > color:
-                            # We propagate a color attribute through 
+                            # We propagate a color attribute through
                             # the constructed DAG to detect cycles later on.
-                            nextActivePrerequisites[targetName] = (color, 
+                            nextActivePrerequisites[targetName] = (color,
                                                                    nextDepth,
                                                                    target)
                     else:
-                        nextActivePrerequisites[targetName] = (color, 
+                        nextActivePrerequisites[targetName] = (color,
                                                                nextDepth,
                                                                target)
                     if not nextDepth in self.levels:
@@ -802,7 +809,6 @@ class DependencyGenerator(Unserializer):
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
         sorted = []
-                    
         reps = []
         packages = []
         for level in range(len(self.levels),0,-1):
@@ -810,12 +816,11 @@ class DependencyGenerator(Unserializer):
                 variantName = str(variant)
                 if not variantName in sorted:
                     sorted += [ variantName ]
-                    if (variant.projectName in self.repositories 
+                    if (variant.projectName in self.repositories
                         or variant.projectName in self.patches):
-                        reps += [ variant ] 
+                        reps += [ variant ]
                     elif variant.projectName in self.packages:
                         packages += [ variant ]
-       
         return reps, packages, self.extraFetches
 
 
@@ -824,7 +829,7 @@ class BuildGenerator(DependencyGenerator):
     is available in a project.'''
 
     def __init__(self, repositories, patches, packages, excludePats = []):
-        DependencyGenerator.__init__(self, repositories, patches, packages, 
+        DependencyGenerator.__init__(self, repositories, patches, packages,
                                      excludePats)
         self.activeCuts = set([])
 
@@ -885,13 +890,12 @@ class BuildGenerator(DependencyGenerator):
                                        project.patch.fetches)
         else:
             # We leave the native host package manager to deal with this one...
-            if name in self.activeCuts:            
+            if name in self.activeCuts:
                 for level in range(len(self.levels),0,-1):
                     if name in self.levels[level - 1]:
                         self.levels[level - 1].remove(name)
             else:
                 self.packages |= set([ name ])
-          
         return (False, targets)
 
 
@@ -950,7 +954,7 @@ class MakeGenerator(DependencyGenerator):
 
         targets = []
         tags = [ context.host() ]
-        if nbChoices == 1:            
+        if nbChoices == 1:
             # Only one choice is easy. We just have to make sure we won't
             # put the project in two different sets.
             chosen = self.repositories | self.patches | self.packages
@@ -1019,9 +1023,9 @@ class MakeDepGenerator(MakeGenerator):
 
 
 class DerivedSetsGenerator(PdbHandler):
-    '''Generate the set of projects which are not dependency 
+    '''Generate the set of projects which are not dependency
     for any other project.'''
-   
+
     def __init__(self):
         self.roots = []
         self.nonroots = []
@@ -1032,7 +1036,7 @@ class DerivedSetsGenerator(PdbHandler):
                 self.roots.remove(depName)
             if not depName in self.nonroots:
                 self.nonroots += [ depName ]
-        if (not p.name in self.nonroots 
+        if (not p.name in self.nonroots
             and not p.name in self.roots):
             self.roots += [ p.name ]
 
@@ -1165,7 +1169,7 @@ class Pathname(Variable):
         offbaseChosen = False
         default = self.default
         if (not default
-            or (not (':' in default) or default.startswith(os.sep))):
+            or (not ((':' in default) or default.startswith(os.sep)))):
             # If there are no default values or the default is not
             # an absolute pathname.
             if self.base:
@@ -1269,8 +1273,8 @@ class MultipleChoice(Variable):
                             and self.name in vars[var].constrains[val]):
                             self.value += vars[var].constrains[val][self.name]
                 else:
-                    val = vars[var].value 
-                    if (val in vars[var].constrains 
+                    val = vars[var].value
+                    if (val in vars[var].constrains
                         and self.name in vars[var].constrains[val]):
                         self.value += vars[var].constrains[val][self.name]
 
@@ -1470,16 +1474,19 @@ class Repository(Configure):
 
     @staticmethod
     def associate(pathname):
-        if pathname.endswith('.git'):
+        pathList = pathname.split(os.sep)
+        for i in range(0,len(pathList)):
+            if pathList[i].endswith('.git'):
+                return GitRepository(os.sep.join(pathList[:i + 1]),
+                                     None,None,None,None)
+            elif pathList[i].endswith('.svn'):
+                return SvnRepository(os.sep.join(pathList[:i + 1]),
+                                     None,None,None,None)
+        # We will guess, assuming the repository is on the local system
+        if os.path.isdir(os.path.join(pathname,'.git')):
             return GitRepository(pathname,None,None,None,None)
-        elif pathname.endswith('.svn'):
+        elif os.path.isdir(os.path.join(pathname,'.svn')):
             return SvnRepository(pathname,None,None,None,None)
-        else:
-            # We will guess, assuming the repository is on the local system
-            if os.path.isdir(os.path.join(pathname,'.git')):
-                return GitRepository(pathname,None,None,None,None)
-            elif os.path.isdir(os.path.join(pathname,'.svn')):
-                return SvnRepository(pathname,None,None,None,None)
         return None
 
     def update(self,name,context,force=False):
@@ -1487,7 +1494,7 @@ class Repository(Configure):
 
 
 class GitRepository(Repository):
-    '''All prerequisites information to install a project 
+    '''All prerequisites information to install a project
     from a git source control repository.'''
 
     def __init__(self, sync, rev, fetches, locals, vars):
@@ -1502,7 +1509,7 @@ class GitRepository(Repository):
  
     def update(self,name,context,force=False):
         # If the path to the remote repository is not absolute,
-        # derive it from *remoteTop*. Binding any sooner will 
+        # derive it from *remoteTop*. Binding any sooner will
         # trigger a potentially unnecessary prompt for remoteCachePath.
         if not ':' in self.sync and context:
             self.sync = context.remoteSrcPath(self.sync)
@@ -3184,21 +3191,24 @@ def makeProject(variant,options,dependencies={}):
             # files end-up in build{Bin,Lib,etc.}. 
             # Those links cannot be created in validateControls though since
             # we also have "package patches projects", i.e. projects which
-            # are only there as temporary workarounds for packages which 
+            # are only there as temporary workarounds for packages which
             # will be coming out of the local system package manager at some
             # point in the future.
             linkDependencies(dependencies,variant.target)
-        # prefix.mk and suffix.mk expects these variables to be defined 
-        # in the workspace make fragment. If they are not you might get some strange errors where
-        # a g++ command-line appears with -I <nothing> or -L <nothing> 
-        # for example.
-        # This code was moved to be executed right before the issue 
-        # of a "make" subprocess in order to let the project index file 
+        # prefix.mk and suffix.mk expects these variables to be defined
+        # in the workspace make fragment. If they are not you might get
+        # some strange errors where a g++ command-line appears with
+        # -I <nothing> or -L <nothing> for example.
+        # This code was moved to be executed right before the issue
+        # of a "make" subprocess in order to let the project index file
         # a change to override defaults for installTop, etc.
         for d in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
             name = localContext.value(d + 'Dir')
-        shellCommand(cmdline + targets + overrides,
-                     PATH=localContext.searchPath())
+        if os.path.exists(makefile):
+            shellCommand(cmdline + targets + overrides,
+                         PATH=localContext.searchPath())
+        else:
+            log.write('warning: ' + makefile + ' not found.\n')
     except Error, e:
         errexcept = e
         errcode = e.code
@@ -3656,11 +3666,11 @@ def prompt(message):
 
 
 def pubBuild(args):
-    '''build              remoteRep [siteTop [buildTop]]
+    '''build              remoteIndex [siteTop [buildTop]]
                        This command executes a complete build cycle:
                          - (optional) delete all files in *siteTop*, *buildTop*
                            and *installTop*.
-                         - fetch the build dependency file from *remoteRep*
+                         - fetch the build dependency file *remoteIndex*
                          - setup third-party prerequisites through the local
                            package manager.
                          - update a local source tree from remote repositories
