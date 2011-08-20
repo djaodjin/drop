@@ -5,18 +5,20 @@
       Schema for intra-projects dependencies
     </xs:documentation>
   </xs:annotation>
-
+  
   <xs:element name="maintainer">
-  <xs:complexType>
-    <xs:simpleContent>      
-      <xs:extension base="xs:string">
-        <xs:attribute name="name" type="xs:string"/>
-        <xs:attribute name="email" type="xs:string"/>
-      </xs:extension>
-    </xs:simpleContent>
-  </xs:complexType>
+	<!-- The *maintainer* of a project is responsible to review commits
+		 and insures the stability of the project source base. -->	
+	<xs:complexType>
+	  <xs:simpleContent>      
+		<xs:extension base="xs:string">
+		  <xs:attribute name="name" type="xs:string"/>
+		  <xs:attribute name="email" type="xs:string"/>
+		</xs:extension>
+	  </xs:simpleContent>
+	</xs:complexType>
   </xs:element>
-
+  
   <xs:complexType name="depType">
     <xs:simpleContent>      
       <xs:extension base="xs:string">
@@ -24,14 +26,14 @@
       </xs:extension>
     </xs:simpleContent>
   </xs:complexType>
-
+  
   <xs:element name="fetch">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="size" type="xs:string" minOccurs="0" />
-	<xs:element name="md5" type="xs:string" minOccurs="0" />
-	<xs:element name="sha1" type="xs:string" minOccurs="0" />
-	<xs:element name="sha256" type="xs:string" minOccurs="0" />
+		<xs:element name="size" type="xs:string" minOccurs="0" />
+		<xs:element name="md5" type="xs:string" minOccurs="0" />
+		<xs:element name="sha1" type="xs:string" minOccurs="0" />
+		<xs:element name="sha256" type="xs:string" minOccurs="0" />
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
@@ -40,32 +42,32 @@
   <xs:element name="choices">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="value" 
-		    minOccurs="0" maxOccurs="unbounded">
-	  <xs:complexType>
-	    <xs:sequence>
-	      <xs:element name="description" type="xs:string"/>
-	      <xs:element name="constrain" minOccurs="0" maxOccurs="unbounded">
-		<xs:complexType>
-		  <xs:sequence>
-		    <xs:element name="value" type="xs:string" 
-				minOccurs="0" maxOccurs="unbounded"/>
-		  </xs:sequence>
-		  <xs:attribute name="name" type="xs:string" use="required"/>
-		</xs:complexType>
-	      </xs:element>
-	    </xs:sequence>
-	    <xs:attribute name="name" type="xs:string" use="required"/>
-	  </xs:complexType>
-	</xs:element>
+		<xs:element name="value" 
+					minOccurs="0" maxOccurs="unbounded">
+		  <xs:complexType>
+			<xs:sequence>
+			  <xs:element name="description" type="xs:string"/>
+			  <xs:element name="constrain" minOccurs="0" maxOccurs="unbounded">
+				<xs:complexType>
+				  <xs:sequence>
+					<xs:element name="value" type="xs:string" 
+								minOccurs="0" maxOccurs="unbounded"/>
+				  </xs:sequence>
+				  <xs:attribute name="name" type="xs:string" use="required"/>
+				</xs:complexType>
+			  </xs:element>
+			</xs:sequence>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+		  </xs:complexType>
+		</xs:element>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
-
-  <!-- metainfo elements are used for additional information required
-       in packager control files but which are not relevent typically
-       relevent to build nor install the package (ex. section-field). -->
+  
   <xs:element name="metainfo">
+	<!-- *metainfo* elements are used for additional information required
+		 in packager control files but which are not relevent typically
+		 relevent to build nor install the package (ex. section-field). -->
     <xs:complexType>
       <xs:attribute name="name" type="xs:string" use="required" />
     </xs:complexType>
@@ -74,8 +76,8 @@
   <xs:element name="multiple">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="description" type="xs:string"/>
-	<xs:element ref="choices"/>
+		<xs:element name="description" type="xs:string"/>
+		<xs:element ref="choices"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
@@ -84,19 +86,19 @@
   <xs:element name="variable">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="description" type="xs:string"/>
-	<xs:element name="default" type="xs:string" minOccurs="0" />
+		<xs:element name="description" type="xs:string"/>
+		<xs:element name="default" type="xs:string" minOccurs="0" />
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
   </xs:element>
-
+  
   <xs:element name="pathname">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="description" type="xs:string"/>
-	<xs:element name="base" type="xs:string" minOccurs="0" />
-	<xs:element name="default" type="xs:string" minOccurs="0" />
+		<xs:element name="description" type="xs:string"/>
+		<xs:element name="base" type="xs:string" minOccurs="0" />
+		<xs:element name="default" type="xs:string" minOccurs="0" />
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
@@ -105,30 +107,30 @@
   <xs:element name="single">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="description" type="xs:string"/>
-	<xs:element ref="choices"/>
+		<xs:element name="description" type="xs:string"/>
+		<xs:element ref="choices"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
   </xs:element>
-
+  
   <xs:element name="dep">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="bin" type="depType"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element name="include" type="depType"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element name="etc" type="depType"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element name="lib" type="depType"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element name="share" type="depType"
-		    minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="bin" type="depType"
+					minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="include" type="depType"
+					minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="etc" type="depType"
+					minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="lib" type="depType"
+					minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="share" type="depType"
+					minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
       <!-- explicitely specify the build target (i.e. triplet)
-	   for which the dependency needs to be available. -->
+		   for which the dependency needs to be available. -->
       <xs:attribute name="target" type="xs:string"/>
     </xs:complexType>
   </xs:element>
@@ -136,11 +138,11 @@
   <xs:element name="alternate">  
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="tag" type="xs:string"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="fetch"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="dep"/>
+		<xs:element name="tag" type="xs:string"
+					minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element ref="fetch"
+					minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element ref="dep"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
@@ -148,58 +150,63 @@
   <xs:element name="alternates">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="alternate" minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="alternate" minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
   
   <xs:complexType name="packageType">
     <xs:sequence>
-	<xs:element name="tag" type="xs:string"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="fetch"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="pathname" 
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="dep"
-		    minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element name="tag" type="xs:string"
+				  minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="fetch"
+				  minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="pathname" 
+				  minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="dep"
+				  minOccurs="0" maxOccurs="unbounded"/>
     </xs:sequence>
   </xs:complexType>
-
+  
   <xs:complexType name="repositoryType">
+	<!-- setup step:
+		   *dep*, *alternates*
+         update step:
+		   *sync* and *fetch* are used to download the required files
+		   on the local system.
+		 configure step:
+		   *variable*, *pathname*, *single* and *multiple* are used
+		   to configure the environment in which the make is executed. 
+		 make step:
+		   *shell* is the shell code to execute. By default runs GNU make.
+	-->
     <xs:sequence>
-	<xs:element name="sync" type="xs:string"
-		    minOccurs="0"/>
-	<xs:element ref="fetch"
-		    minOccurs="0" maxOccurs="unbounded"/>	
-	<xs:element ref="variable" 
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="pathname" 
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="single" 
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="multiple" 
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="dep"
-		    minOccurs="0" maxOccurs="unbounded"/>
-	<xs:element ref="alternates" minOccurs="0" maxOccurs="unbounded"/>	
+	  <xs:element name="sync" type="xs:string" minOccurs="0"/>
+	  <xs:element ref="fetch" minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element name="shell" type="xs:string" minOccurs="0"/>
+	  <xs:element ref="variable" minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="pathname" minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="single" minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="multiple" minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="dep" minOccurs="0" maxOccurs="unbounded"/>
+	  <xs:element ref="alternates" minOccurs="0" maxOccurs="unbounded"/>	
     </xs:sequence>
   </xs:complexType>
   
   <xs:element name="project">
     <xs:complexType>
       <xs:sequence>
-	<xs:element name="version" type="xs:string" minOccurs="0"/>
-	<xs:element name="title" type="xs:string" minOccurs="0" maxOccurs="1"/>
-	<xs:element name="description" type="xs:string"/>
-	<xs:element ref="maintainer"/>
-	<xs:element name="url" type="xs:string" minOccurs="0"/>
-	<xs:element name="repository" type="repositoryType" 
-		    minOccurs="0" maxOccurs="1"/>
-	<xs:element name="patch" type="repositoryType"
-		    minOccurs="0" maxOccurs="1"/>	
-	<xs:element name="package" type="packageType"
-		    minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="version" type="xs:string" minOccurs="0"/>
+		<xs:element name="title" type="xs:string" minOccurs="0" maxOccurs="1"/>
+		<xs:element name="description" type="xs:string"/>
+		<xs:element ref="maintainer"/>
+		<xs:element name="url" type="xs:string" minOccurs="0"/>
+		<xs:element name="repository" type="repositoryType" 
+					minOccurs="0" maxOccurs="1"/>
+		<xs:element name="patch" type="repositoryType"
+					minOccurs="0" maxOccurs="1"/>	
+		<xs:element name="package" type="packageType"
+					minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required" />
     </xs:complexType>
@@ -210,7 +217,7 @@
   <xs:element name="projects">
     <xs:complexType>
       <xs:sequence>
-	<xs:element ref="project" minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element ref="project" minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
