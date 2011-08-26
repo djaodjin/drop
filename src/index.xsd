@@ -181,9 +181,9 @@
 		   *shell* is the shell code to execute. By default runs GNU make.
 	-->
     <xs:sequence>
+	  <xs:element name="shell" type="xs:string" minOccurs="0"/>
 	  <xs:element name="sync" type="xs:string" minOccurs="0"/>
 	  <xs:element ref="fetch" minOccurs="0" maxOccurs="unbounded"/>
-	  <xs:element name="shell" type="xs:string" minOccurs="0"/>
 	  <xs:element ref="variable" minOccurs="0" maxOccurs="unbounded"/>
 	  <xs:element ref="pathname" minOccurs="0" maxOccurs="unbounded"/>
 	  <xs:element ref="single" minOccurs="0" maxOccurs="unbounded"/>

@@ -285,7 +285,6 @@ class Context:
                 top = os.path.realpath(self.value('srcTop'))
         prefix = os.path.commonprefix([top,os.getcwd()])
         return os.getcwd()[len(prefix) + 1:]
-        # return self.buildTopRelativeCwd
 
     def dbPathname(self):
         '''Absolute pathname to the project index file.'''
@@ -403,6 +402,8 @@ class Context:
         '''We need to set the *remoteIndex* to a realpath when we are dealing
         with a local file else links could end-up generating a different prefix
         than *remoteSiteTop* for *remoteIndex*/*indexName*.'''
+        if remotePath.endswith('.git'):
+            remotePath = os.path.join(remotePath,self.indexName)
         remotePathList = remotePath.split(os.sep)
         repIndex = len(remotePathList)
         for i in range(0,len(remotePathList)):
@@ -684,12 +685,15 @@ class DependencyGenerator(Unserializer):
         #   - setups: set of SetupStep
         #   - updates: set of UpdateStep
         #   - makes: set of MakeStep/ShellStep
-        self.setups = {}
+        self.installs = {}
         self.updates = {}
         self.configures = {}
         self.makes = {}
+        self.setups = {}
 
     def __str__(self):
+        s = "installs:\n"
+        s += str(self.installs)
         s = "setups:\n"
         s += str(self.setups)
         s += "updates:\n"
@@ -700,18 +704,56 @@ class DependencyGenerator(Unserializer):
         s += str(self.makes)
         return s
 
+    def connectToSetup(self, name, step):
+        for setupName in self.setups:
+            if re.match(name,setupName):
+                self.setups[setupName].prerequisites += [ step ]
 
     def addConfigMake(self, variant, configure, make, prerequisites):
         name = str(variant)
+        config = None
         if not name in self.configures:
-            self.configures[name] = configure.associate(variant.target)
+            config = configure.associate(variant.target)
+            self.configures[name] = config
+        else:
+            config = self.configures[name]
         if not name in self.makes:
-            self.makes[name] = make.associate(variant.target)
-            self.makes[name].prerequisites = []
+            make = make.associate(variant.target)
+            self.makes[name] = make
             for p in prerequisites:
-                self.makes[name].prerequisites += [ p ]
-            self.makes[name].prerequisites += [ self.configures[name] ]
+                make.prerequisites += [ p ]
+            if config:
+                make.prerequisites += [ config ]
+            self.connectToSetup(name,make)
         return self.makes[name]
+
+    def addInstall(self, name, updateStep = None):
+        installStep = None
+        if updateStep:
+            packagename = updateStep.fetches[0]
+            if context.host() in [ 'Debian', 'Ubuntu' ]:
+                installStep = [ DpkgInstallStep(packagename) ]
+                installStep.prerequisites += [ updateStep ]
+            elif context.host() in [ 'Darwin' ]:
+                installStep = [ DarwinInstallStep(packagename) ]
+                installStep.prerequisites += [ updateStep ]
+            elif context.host() in [ 'Fedora' ]:
+                installStep = [ RpmInstallStep(packagename) ]
+                installStep.prerequisites += [ updateStep ]
+            else:
+                installStep = InstallStep(packagename)
+                installStep.prerequisites += [ updateStep ]
+        else:
+            if context.host() in [ 'Debian', 'Ubuntu' ]:
+                installStep = AptInstallStep(name)
+            elif context.host() in [ 'Darwin' ]:
+                installStep = MacPortInstallStep(name)
+            elif context.host() in [ 'Fedora' ]:
+                installStep = YumInstallStep(name)
+            else:
+                installStep = InstallStep(name)
+        self.installs[name] = installStep
+        self.connectToSetup(name,installStep)
 
     def addUpdate(self, name, update):
         fetches = {}
@@ -811,6 +853,8 @@ class DependencyGenerator(Unserializer):
         '''Returns a topological ordering of projects selected.'''
         ordered = []
         remains = []
+        for s in self.installs:
+            remains += [ self.installs[s] ]
         for s in self.setups:
             remains += [ self.setups[s] ]
         for s in self.updates:
@@ -876,11 +920,11 @@ class BuildGenerator(DependencyGenerator):
                 targetName = target
             if targetName:
                 setupName = p.name + targetName
+            setup = SetupStep(p.name,p.files,p.excludes,targetName)
             if not setupName in self.setups:
-                self.setups[setupName] \
-                    = SetupStep(p.name,p.files,p.excludes,targetName)
+                self.setups[setupName] = setup
             else:
-                self.setups[setupName].insert(p.files,p.excludes)
+                self.setups[setupName].insert(setup)
             if self.setups[setupName].run(context):
                 self.activeCuts |= set([ p.name ])
             targets += [ self.setups[setupName] ]
@@ -900,26 +944,33 @@ class BuildGenerator(DependencyGenerator):
                 self.repositories |= set([name])
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(variant.project,project.repository.update)
+                self.addUpdate(name,project.repository.update)
                 self.addConfigMake(variant,
                                    project.repository.configure,
                                    project.repository.make,
                                    targets)
             elif not self.activeCut(name):
-                if len(project.packages) > 0:
+                # We will prefer installing from a binary package over
+                # a patched version of the source tree when possible.
+                if project.packages and tags[0] in project.packages:
                     self.packages |= set([name])
                     targets = self.addSetup(variant.target,
                                   project.packages[tags[0]].prerequisites(tags))
-                    self.addUpdate(variant.project,
-                                   project.packages[tags[0]].update)
+                    self.addUpdate(name,project.packages[tags[0]].update)
+                    self.addInstall(name,self.updates[name])
                 elif project.patch:
                     self.patches |= set([name])
                     targets = self.addSetup(variant.target,
                                    project.patch.prerequisites(tags))
-                    self.addUpdate(variant.project,project.patch.update)
+                    self.addUpdate(name,project.patch.update)
+                    self.addConfigMake(variant,
+                                       project.patch.configure,
+                                       project.patch.make,
+                                       targets)
         elif not self.activeCut(name):
             # We leave the native host package manager to deal with this one...
             self.packages |= set([ name ])
+            self.addInstall(name)
         return (False, targets)
 
 
@@ -939,11 +990,11 @@ class MakeGenerator(DependencyGenerator):
             if os.path.isdir(context.srcDir(p.name)):
                 targets += [ self.setups[setupName] ]
             else:
+                setup = SetupStep(p.name,p.files,p.excludes,targetName)
                 if not setupName in self.setups:
-                    self.setups[setupName] \
-                        = SetupStep(p.name,p.files,p.excludes,targetName)
+                    self.setups[setupName] = setup
                 else:
-                    self.setups[setupName].insert(p.files,p.excludes)
+                    self.setups[setupName].insert(setup)
                 if not self.setups[setupName].run(context):
                     targets += [ self.setups[setupName] ]
         return targets
@@ -1482,6 +1533,9 @@ class InstallStep(Step):
     def __init__(self, name):
         Step.__init__(self,Step.install,name)
 
+    def insert(self, install):
+        self.managed += install.managed
+
     def run(self, context):
         raise Error("Does not know how to install '" \
                         + self.name + "' on " + context.host())
@@ -1493,9 +1547,6 @@ class AptInstallStep(InstallStep):
     def __init__(self, name, managed = []):
         InstallStep.__init__(self,name)
         self.managed = [ name ] + managed
-
-    def insert(self, install):
-        self.managed += install.managed
 
     def run(self, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
@@ -1654,23 +1705,23 @@ class SetupStep(TargetStep):
         self.files = files
         self.excludes = excludes
 
-    def insert(self, files, excludes=[] ):
+    def insert(self, setup):
         '''We only add prerequisites from *dep* which are not already present
         in *self*. This is important because *findPrerequisites* will initialize
         tuples (namePat,absolutePath).'''
-        for dir in files:
+        for dir in setup.files:
             if not dir in self.files:
-                self.files[dir] = files[dir]
+                self.files[dir] = setup.files[dir]
             else:
                 found = False
-                for t1 in files[dir]:
+                for t1 in setup.files[dir]:
                     for t2 in self.files[dir]:
                         if t2[0] == t1[0]:
                             found = True
                             break
                     if not found:
                         self.files[dir] += [ t1 ]
-        self.excludes += excludes
+        self.excludes += setup.excludes
 
     def run(self, context):
         self.files, complete = findPrerequisites(self.files,
@@ -1716,11 +1767,11 @@ class Repository:
 
     def __init__(self, sync, rev):
         self.type = None
-        self.sync = sync
+        self.url = sync
         self.rev = rev
 
     def __str__(self):
-        result = '\t\tsync repository from ' + self.sync + '\n'
+        result = '\t\tsync repository from ' + self.url + '\n'
         if self.rev:
             result = result + '\t\t\tat revision' + str(self.rev) + '\n'
         else:
@@ -1728,7 +1779,7 @@ class Repository:
         return result
 
     def applyPatches(self, name, context):
-        raise Error("unknown patch control system for " + self.sync)
+        raise Error("unknown patch control system for " + self.url)
 
     @staticmethod
     def associate(pathname):
@@ -1752,7 +1803,7 @@ class Repository:
         return None
 
     def update(self,name,context,force=False):
-        raise Error("unknown source control system for " + self.sync)
+        raise Error("unknown source control system for " + self.url)
 
 
 class GitRepository(Repository):
@@ -1787,13 +1838,14 @@ class GitRepository(Repository):
         os.chdir(prev)
 
     def update(self, name, context, force=False):
+        git = findBootBin('git','git-core')
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will
         # trigger a potentially unnecessary prompt for remoteCachePath.
-        if not ':' in self.sync and context:
-            self.sync = context.remoteSrcPath(self.sync)
+        if not ':' in self.url and context:
+            self.url = context.remoteSrcPath(self.url)
         if not name:
-            name = self.sync.replace(context.value('remoteSrcTop'),
+            name = self.url.replace(context.value('remoteSrcTop'),
                                      context.value('srcTop'))
         if name.endswith('.git'):
             name = name[:-4]
@@ -1803,12 +1855,12 @@ class GitRepository(Repository):
         updated = False
         cwd = os.getcwd()
         if not os.path.exists(os.path.join(local,'.git')):
-            shellCommand(['git', 'clone', self.sync, local])
+            shellCommand([git, 'clone', self.url, local])
             updated = True
         else:
             pulled = True
             os.chdir(local)
-            cmd = subprocess.Popen(' '.join(['git', 'pull']),shell=True,
+            cmd = subprocess.Popen(' '.join([git, 'pull']),shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
             line = cmd.stdout.readline()
@@ -1826,7 +1878,7 @@ class GitRepository(Repository):
         cof = '-m'
         if force:
             cof = '-f'
-        cmd = [ 'git', 'checkout', cof ]
+        cmd = [ git, 'checkout', cof ]
         if self.rev:
             cmd += [ self.rev ]
         if self.rev or pulled:
@@ -1847,12 +1899,12 @@ class SvnRepository(Repository):
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will
         # trigger a potentially unnecessary prompt for remoteCachePath.
-        if not ':' in self.sync and context:
-            self.sync = context.remoteSrcPath(self.sync)
+        if not ':' in self.url and context:
+            self.url = context.remoteSrcPath(self.url)
         writetext('######## updating project ' + name + '...\n')
         local = context.srcDir(name)
         if not os.path.exists(os.path.join(local,'.svn')):
-            shellCommand(['svn', 'co', self.sync, local])
+            shellCommand(['svn', 'co', self.url, local])
         else:
             cwd = os.getcwd()
             os.chdir(local)
@@ -2839,35 +2891,46 @@ def findShare(names,excludes=[],variant=None):
     return findData('share',names,excludes,variant)
 
 
-def findRSync(remotePath, relative=False, admin=False):
-    '''Check if rsync is present and install it through the package
-    manager if it is not. rsync is a little special since it is used
-    directly by this script and the script is not always installed
-    through a project.'''
-    rsync = os.path.join(context.binBuildDir(),'rsync')
-    if not os.path.exists(rsync):
+def findBootBin(name, package = None):
+    '''This script needs a few tools to be installed to bootstrap itself,
+    most noticeably the initial source control tool used to checkout
+    the projects dependencies index file.'''
+    executable = os.path.join(context.binBuildDir(),name)
+    if not os.path.exists(executable):
         # We do not use validateControls() here because dws in not
         # a project in *srcTop* and does not exist on the remote machine.
         # We use findBin() and linkContext() directly also because it looks
         # weird when the script prompts for installing a non-existent dws
         # project before looking for the rsync prerequisite.
+        if not package:
+            package = name
         dbindex = IndexProjects(context,
                           '''<?xml version="1.0" ?>
 <projects>
   <project name="dws">
     <repository>
-      <dep name="rsync">
-        <bin>rsync</bin>
+      <dep name="%s">
+        <bin>%s</bin>
       </dep>
     </repository>
   </project>
 </projects>
-''')
-        rsyncs, version, complete = findBin([ [ 'rsync', None ] ])
-        if len(rsyncs) == 0 or not rsyncs[0][1]:
-            install(['rsync'],dbindex)
-        name, absolutePath = rsyncs.pop()
+''' % (package,name))
+        executables, version, complete = findBin([ [ name, None ] ])
+        if len(executables) == 0 or not executables[0][1]:
+            install([package],dbindex)
+        name, absolutePath = executables.pop()
         linkPatPath(name, absolutePath,'bin')
+        executable = os.path.join(context.binBuildDir(),name)
+    return executable
+
+
+def findRSync(remotePath, relative=False, admin=False):
+    '''Check if rsync is present and install it through the package
+    manager if it is not. rsync is a little special since it is used
+    directly by this script and the script is not always installed
+    through a project.'''
+    rsync = findBootBin('rsync')
 
     # Create the rsync command
     uri = urlparse.urlparse(remotePath)
@@ -3061,13 +3124,14 @@ def install(packages, dbindex):
 
         if len(managed) > 0:
             if context.host() in [ 'Debian', 'Ubuntu' ]:
-                AptInstallStep(name)
+                step = AptInstallStep('',managed)
             elif context.host() in [ 'Darwin' ]:
-                MacPortsInstallStep(name)
+                step = MacPortInstallStep('',managed)
             elif context.host() in [ 'Fedora' ]:
-                YumInstallStep(name)
+                step = YumInstallStep('',managed)
             else:
-                InstallStep(name)
+                step = InstallStep('',managed)
+        step.run(context)
 
     if len(localFiles) > 0:
         for name in localFiles:
@@ -3623,17 +3687,13 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
             if v.__class__ != first.__class__:
                 vertices.insert(0,v)
                 break
-            glob += [ v ]
+            if 'insert' in dir(first):
+                first.insert(v)
+            else:
+                glob += [ v ]
         # \todo "make recurse" should update only projects which are missing
         # from *srcTop* and leave other projects in whatever state they are in.
         # This is different from "build" which should update all projects.
-        if False:
-            print "!!! glob:"
-            for g in glob:
-                if 'insert' in v.__dict__:
-                    print "!!!\t" + g.name
-                else:
-                    print "!!!\t" + g.name + " (globbed)"
         if first.priority in priorities:
             for v in glob:
                 errexcept = None
@@ -4050,6 +4110,98 @@ def pubDeps(args):
     sys.stdout.write(' '.join(deps(roots,index)) + '\n')
 
 
+def pubExport(args):
+    '''export              rootpath
+                       Exports the project index file in a format compatible
+                       with Jenkins. [experimental]
+    '''
+    rootpath = args[0]
+    top = os.path.realpath(os.getcwd())
+    if (top == os.path.realpath(context.value('buildTop'))
+        or top ==  os.path.realpath(context.value('srcTop'))):
+        rgen = DerivedSetsGenerator()
+        index.parse(rgen)
+        roots = rgen.roots
+    else:
+        roots = [ context.cwdProject() ]
+    handler = Unserializer(roots)
+    if os.path.isfile(context.dbPathname()):
+        index.parse(handler)
+    for name in roots:
+        jobdir = os.path.join(rootpath,name)
+        if not os.path.exists(jobdir):
+            os.makedirs(os.path.join(jobdir,'builds'))
+            os.makedirs(os.path.join(jobdir,'workspace'))
+            nextBuildNumber = open(os.path.join(jobdir,'nextBuildNumber'),'w')
+            nextBuildNumber.write('0\n')
+            nextBuildNumber.close()
+        project = handler.projects[name]
+        rep = project.repository.update.rep
+        config = open(os.path.join(jobdir,'config.xml'),'w')
+        config.write('''<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>''' + project.descr + '''</description>
+  <keepDependencies>false</keepDependencies>
+  <properties/>
+  <scm class="hudson.plugins.git.GitSCM">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <name>origin</name>
+        <refspec>+refs/heads/*:refs/remotes/origin/*</refspec>
+        <url>''' + rep.url + '''</url>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>**</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <recursiveSubmodules>false</recursiveSubmodules>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <authorOrCommitter>false</authorOrCommitter>
+    <clean>false</clean>
+    <wipeOutWorkspace>false</wipeOutWorkspace>
+    <pruneBranches>false</pruneBranches>
+    <remotePoll>false</remotePoll>
+    <buildChooser class="hudson.plugins.git.util.DefaultBuildChooser"/>
+    <gitTool>Default</gitTool>
+    <submoduleCfg class="list"/>
+    <relativeTargetDir>''' + os.path.join('reps',name)+ '''</relativeTargetDir>
+    <excludedRegions></excludedRegions>
+    <excludedUsers></excludedUsers>
+    <gitConfigName></gitConfigName>
+    <gitConfigEmail></gitConfigEmail>
+    <skipTag>false</skipTag>
+    <scmName></scmName>
+  </scm>
+  <canRoam>true</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>true</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers class="vector">
+    <hudson.triggers.SCMTrigger>
+      <spec></spec>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+cd ''' + os.path.join('build',name) + '''
+dws configure
+dws make
+      </command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers />
+  <buildWrappers/>
+</project>
+''')
+        config.close()
+
+
 def pubFind(args):
     '''find               bin|lib filename ...
                        Search through a set of directories derived from PATH
@@ -4164,18 +4316,14 @@ def pubMake(args):
         # note that *excludePats* is global.
         validateControls(MakeGenerator(roots,[],[],excludePats))
     else:
+        handler = Unserializer(roots)
+        if os.path.isfile(context.dbPathname()):
+            index.parse(handler)
         for name in roots:
             make = None
             srcDir = context.srcDir(name)
             if os.path.exists(srcDir):
-                indexFile = context.srcDir(os.path.join(name,
-                                                        context.indexName))
-                if os.path.isfile(indexFile):
-                    # There is a local index file, let's use it to do
-                    # the make.
-                    index = IndexProjects(context,indexFile)
-                    handler = Unserializer([ name ])
-                    index.parse(handler)
+                if name in handler.projects:
                     make = handler.asProject(name).repository.make
                     if not make:
                         make = handler.asProject(name).patch.make

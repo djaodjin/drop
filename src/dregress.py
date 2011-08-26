@@ -178,6 +178,7 @@ if __name__ == '__main__':
     reffiles = args[1:]
 
     tests = {}
+    testFile = None
     regressions = {}
     for reffile in reffiles:
         logCmdLine = "grep -n '@@ test:' " + logfile
@@ -200,6 +201,7 @@ if __name__ == '__main__':
         if not prevLogTestName in tests:
             tests[prevLogTestName] = testFormater.associate(prevLogTestName,
                                                      tempfile.TemporaryFile())
+        testFile = tests[prevLogTestName]
         if not prevLogTestName in regressions:
             regressions[prevLogTestName] = {}
         diffLineNum = diffAdvance(diff)
@@ -212,7 +214,6 @@ if __name__ == '__main__':
         # end-of-file is detected by checking the uninitialized value
         # of logLineNum and diffLineNum as set by logAdvance()
         # and diffAdvance().
-        testFile = None
         while logLineNum != sys.maxint and diffLineNum != sys.maxint:
             #print "!!! " + str(prevLogTestName) \
             #    + ', log@' + str(logLineNum) \
