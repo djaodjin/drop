@@ -1724,9 +1724,11 @@ class SetupStep(TargetStep):
         self.excludes += setup.excludes
 
     def run(self, context):
-        self.files, complete = findPrerequisites(self.files,
-                                                 self.excludes,
+        self.files, complete = findPrerequisites(self.files,self.excludes,
                                                  self.target)
+        if complete:
+            self.files, complete = linkDependencies(self.files,self.excludes,
+                                                    self.target)
         return complete
 
 
@@ -1779,7 +1781,18 @@ class Repository:
         return result
 
     def applyPatches(self, name, context):
-        raise Error("unknown patch control system for " + self.url)
+        prev = os.getcwd()
+        if os.path.isdir(context.patchDir(name)):
+            patches = []
+            for p in os.listdir(context.patchDir(name)):
+                if p.endswith('.patch'):
+                    patches += [ p ]
+            if len(patches) > 0:
+                writetext('######## patching ' + name + '...\n')
+                os.chdir(context.srcDir(name))
+                shellCommand(['patch',
+                              '< ' + os.path.join(context.patchDir(name),
+                                           '*.patch')])
 
     @staticmethod
     def associate(pathname):
@@ -1794,6 +1807,8 @@ class Repository:
             if pathList[i].endswith('.git'):
                 return GitRepository(os.sep.join(pathList[:i + 1]),rev)
             elif pathList[i].endswith('.svn'):
+                if pathList[i] == '.svn':
+                    i = i - 1
                 return SvnRepository(os.sep.join(pathList[:i + 1]),rev)
         # We will guess, assuming the repository is on the local system
         if os.path.isdir(os.path.join(pathname,'.git')):
@@ -1910,6 +1925,8 @@ class SvnRepository(Repository):
             os.chdir(local)
             shellCommand(['svn', 'update'])
             os.chdir(cwd)
+        # \todo figure out how any updates is signaled by svn.
+        return True
 
 class InstallFlavor:
     '''All information necessary to install a project on the local system.'''
@@ -2298,7 +2315,7 @@ class xmlDbParser(xml.sax.ContentHandler):
 
     def trailer(self, dbNext):
         '''XML files need a finish tag. We make sure to remove it while
-           processing Upd and Prev then add it back before closing 
+           processing Upd and Prev then add it back before closing
            the final file.'''
         dbNext.write(self.trailerTxt)
 
@@ -2311,7 +2328,7 @@ def basenames(pathnames):
     return bases
 
 
-def mark(filename,suffix):    
+def mark(filename,suffix):
     base, ext = os.path.splitext(filename)
     return base + '-' + suffix + ext
 
@@ -2756,10 +2773,6 @@ def findLib(names,excludes=[],variant=None):
     results = []
     version = None
     complete = True
-    if staticLibFirst:
-        prioritySuffix = libStaticSuffix()
-    else:
-        prioritySuffix = libDynSuffix()
     suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() \
         + '|\\' + libDynSuffix() + ')'
     if len(names) > 0:
@@ -2780,6 +2793,13 @@ def findLib(names,excludes=[],variant=None):
         if variant:
             writetext(variant + '/')
         writetext(namePat + '... ')
+        if namePat.endswith('.so'):
+            namePat = namePat[:-3]
+            prioritySuffix = libDynSuffix()
+        elif staticLibFirst:
+            prioritySuffix = libStaticSuffix()
+        else:
+            prioritySuffix = libDynSuffix()
         found = False
         for libSysDir in droots:
             libs = []
@@ -3295,42 +3315,27 @@ def libDynSuffix():
     return '.so'
 
 
-def linkDependencies(projects, target=None):
+def linkDependencies(files, excludes=[],target=None):
     '''All projects which are dependencies but are not part of *srcTop*
     are not under development in the current workspace. Links to
     the required executables, headers, libraries, etc. will be added to
     the install directories such that projects in *srcTop* can build.'''
-    missings = []
-    tags = [ context.host() ]
-    for project in projects:
-        for prereq in projects[project].prerequisites(tags):
-            # First, we will check if findPrerequisites needs to be rerun.
-            # It is the case if the link in [bin|include|lib|...]Dir does
-            # not exist and the pathname for it in buildDeps is not
-            # an absolute path.
-            targetName = prereq.target
-            if not prereq.target:
-                targetName = target
-            complete = True
-            for dir in prereq.files:
-                for namePat, absolutePath in prereq.files[dir]:
-                    complete &= linkPatPath(namePat,absolutePath,
-                                            dir,targetName)
-            if not complete:
-                prereq.files, complete = findPrerequisites(prereq.files,
-                                                           prereq.excludes,
-                                                           targetName)
-            if not complete:
-                if not prereq in missings:
-                    missings += [ prereq.name ]
-            else:
-                complete = True
-                for dir in prereq.files:
-                    for namePat, absolutePath in prereq.files[dir]:
-                        complete &= linkPatPath(namePat,absolutePath,
-                                                dir,targetName)
-    if len(missings) > 0:
-        raise Error("incomplete prerequisites for " + ' '.join(missings),1)
+    # First, we will check if findPrerequisites needs to be rerun.
+    # It is the case if the link in [bin|include|lib|...]Dir does
+    # not exist and the pathname for it in buildDeps is not
+    # an absolute path.
+    complete = True
+    for dir in files:
+        for namePat, absolutePath in files[dir]:
+            complete &= linkPatPath(namePat,absolutePath,
+                                    dir,target)
+    if not complete:
+        files, complete = findPrerequisites(files,excludes,target)
+        if complete:
+            for dir in files:
+                for namePat, absolutePath in files[dir]:
+                    complete &= linkPatPath(namePat,absolutePath,dir,target)
+    return files, complete
 
 
 def linkContext(path,linkName):
@@ -3343,7 +3348,7 @@ def linkContext(path,linkName):
     if not os.path.exists(os.path.dirname(linkName)):
         os.makedirs(os.path.dirname(linkName))
     # In the following two 'if' statements, we are very careful
-    # to only remove/update symlinks and leave other files 
+    # to only remove/update symlinks and leave other files
     # present in [bin|lib|...]Dir 'as is'.
     if os.path.islink(linkName):
         os.remove(linkName)
@@ -3569,10 +3574,10 @@ def shellCommand(commandLine, admin=False, PATH=[]):
             if not commandLine.startswith('/'):
                 raise Error("admin command without a fully quaified path: " \
                                 + commandLine)
-        # ex: su username -c 'sudo port install icu'  
-        cmdline = [ '/usr/bin/sudo' ]      
+        # ex: su username -c 'sudo port install icu'
+        cmdline = [ '/usr/bin/sudo' ]
         if useDefaultAnswer:
-            # Error out if sudo prompts for a password because this should 
+            # Error out if sudo prompts for a password because this should
             # never happen in non-interactive mode.
             cmdline += [ '-n' ]
         cmdline += commandLine
@@ -3773,9 +3778,22 @@ def versionCompare(left,right):
 
 
 def versionIncr(v):
-    '''returns the version number with the smallest increment 
+    '''returns the version number with the smallest increment
     that is greater than *v*.'''
     return v + '.1'
+
+def helpEpilog(module):
+    '''Generate the epilog's help for a command script (i.e. __main__).'''
+    epilog= module.__doc__
+    epilog= '\nCommands:\n'
+    d = module.__dict__
+    keys = d.keys()
+    keys.sort()
+    for command in keys:
+        if command.startswith('pub'):
+            epilog += command[3:].lower() + module.__dict__[command].__doc__ \
+                + '\n'
+    return epilog
 
 
 def integrate(srcdir, pchdir, verbose=True):
@@ -3808,25 +3826,27 @@ def integrate(srcdir, pchdir, verbose=True):
                     os.chdir(prev)
 
 
-def waitUntilSSHUp(hostname,login=None,port=22,timeout=120):
+def waitUntilSSHUp(hostname,login=None,keyfile=None,port=None,timeout=120):
     '''wait until an ssh connection can be established to *hostname*
     or the attempt timed out after *timeout* seconds.'''
     import time
 
     up = False
     waited = 0
+    cmdline = ['ssh',
+               '-v',
+               '-o', 'ConnectTimeout 30',
+               '-o', 'BatchMode yes',
+               '-o', 'StrictHostKeyChecking no' ]
+    if port:
+        cmdline += [ '-p', str(port) ]
+    if keyfile:
+        cmdline += [ '-i', keyfile ]
     sshConnect = hostname
     if login:
         sshConnect = login + '@' + hostname
+    cmdline += [ sshConnect, 'echo' ]
     while (not up) and (waited <= timeout):
-        time.sleep(30)
-        waited = waited + 30
-        cmdline = ['ssh',
-                   '-o', 'BatchMode yes',
-                   '-o', 'StrictHostKeyChecking no',
-                   '-p', str(port),
-                   sshConnect,
-                   'echo']
         cmd = subprocess.Popen(cmdline,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
@@ -3834,6 +3854,7 @@ def waitUntilSSHUp(hostname,login=None,port=22,timeout=120):
         if cmd.returncode == 0:
             up = True
         else:
+            waited = waited + 30
             sys.stdout.write("waiting 30 more seconds (" \
                                  + str(waited) + " so far)...\n")
     if waited > timeout:
@@ -3857,7 +3878,7 @@ def prompt(message):
 
 
 def pubBuild(args):
-    '''build              remoteIndex [siteTop [buildTop]]
+    '''              remoteIndex [siteTop [buildTop]]
                        This command executes a complete build cycle:
                          - (optional) delete all files in *siteTop*, *buildTop*
                            and *installTop*.
@@ -3957,7 +3978,7 @@ def pubBuild(args):
 
 
 def pubCollect(args):
-    '''collect            [project ...]
+    '''            [project ...]
                        Consolidate local dependencies information
                        into a global dependency database. Copy all
                        distribution packages built into a platform
@@ -4042,7 +4063,7 @@ def pubCollect(args):
 
 
 def pubConfigure(args):
-    '''configure              Locate direct dependencies of a project on
+    '''              Locate direct dependencies of a project on
                        the local machine and create the appropriate symbolic
                        links such that the project can be made later on.
     '''
@@ -4070,11 +4091,18 @@ def pubConfigure(args):
     if len(prerequisites) > 0:
         raise MissingError(projectName,prerequisites)
     else:
-        linkDependencies({ projectName: dgen.projects[projectName]})
-
+        missings = []
+        for prereq in dgen.projects[projectName].repository.deps:
+            deps = prereq.prerequisites([context.host()])
+            setup = SetupStep(prereq.name,deps.files,deps.excludes)
+            complete = setup.run()
+            if (not complete) and (not prereq.name in missings):
+                missings += [ prereq.name ]
+        if len(missings) > 0:
+            raise Error("missing prerequisites for " + ' '.join(missings))
 
 def pubContext(args):
-    '''context            [file]
+    '''            [file]
                        Prints the absolute pathname to a *file*.
                        If the file cannot be found from the current
                        directory up to the workspace root, i.e where the .mk
@@ -4092,7 +4120,7 @@ def pubContext(args):
 
 
 def pubDeps(args):
-    '''deps               Prints the dependency graph for a project.
+    '''               Prints the dependency graph for a project.
     '''
     top = os.path.realpath(os.getcwd())
     if ((str(context.environ['buildTop'])
@@ -4111,7 +4139,7 @@ def pubDeps(args):
 
 
 def pubExport(args):
-    '''export              rootpath
+    '''              rootpath
                        Exports the project index file in a format compatible
                        with Jenkins. [experimental]
     '''
@@ -4203,7 +4231,7 @@ dws make
 
 
 def pubFind(args):
-    '''find               bin|lib filename ...
+    '''               bin|lib filename ...
                        Search through a set of directories derived from PATH
                        for *filename*.
     '''
@@ -4221,7 +4249,7 @@ def pubFind(args):
 
 
 def pubInit(args):
-    '''init                   Prompt for variables which have not been
+    '''                   Prompt for variables which have not been
                        initialized in the workspace make fragment. Fetch the project index.
     '''
     configVar(context.environ.values())
@@ -4229,11 +4257,11 @@ def pubInit(args):
 
 
 def pubInstall(args):
-    '''install            [binPackage|project ...]
+    '''            [binPackage|project ...]
                       Install a package *binPackage* on the local system
-                      or a binary package associated to *project* 
+                      or a binary package associated to *project*
                       through either a *package* or *patch* node in the
-                      index database or through the local package 
+                      index database or through the local package
                       manager.
     '''
     index.validate()
@@ -4241,7 +4269,7 @@ def pubInstall(args):
 
 
 def pubIntegrate(args):
-    '''integrate          [ srcPackage ... ]
+    '''          [ srcPackage ... ]
                        Integrate a patch into a source package
     '''
     while len(args) > 0:
@@ -4278,13 +4306,13 @@ class ListPdbHandler(PdbHandler):
 
 
 def pubList(args):
-    '''list                   List available projects
+    '''                   List available projects
     '''
     index.parse(ListPdbHandler())
 
 
 def pubMake(args):
-    '''make                   Make projects. "make recurse" will build
+    '''                   Make projects. "make recurse" will build
                        all dependencies required before a project
                        can be itself built.
     '''
@@ -4324,9 +4352,10 @@ def pubMake(args):
             srcDir = context.srcDir(name)
             if os.path.exists(srcDir):
                 if name in handler.projects:
-                    make = handler.asProject(name).repository.make
-                    if not make:
-                        make = handler.asProject(name).patch.make
+                    rep = handler.asProject(name).repository
+                    if not rep:
+                        rep = handler.asProject(name).patch
+                    make = rep.make
                 else:
                     # No luck we do not have any more information than
                     # the directory name. Let's do with that.
@@ -4338,7 +4367,7 @@ def pubMake(args):
 
 
 def pubPatch(args):
-    '''patch                Generate patches vs. the last pull from a remote
+    '''                Generate patches vs. the last pull from a remote
                        repository, optionally send it to a list of receipients.
     '''
     global log
@@ -4377,7 +4406,7 @@ def pubPatch(args):
 
 
 def pubPush(args):
-    '''push                   Push commits to projects checked out
+    '''                   Push commits to projects checked out
                        in the workspace.
     '''
     global log
@@ -4396,10 +4425,10 @@ def pubPush(args):
 
 
 def pubStatus(args):
-    '''status                 Show status of projects checked out 
+    '''                 Show status of projects checked out
                        in the workspace with regards to commits.
     '''
-    global log 
+    global log
     log = LogFile(context.logname(),nolog)
     reps = args
     recurse = False
@@ -4444,7 +4473,7 @@ def pubStatus(args):
 
 
 def pubUpdate(args):
-    '''update             [ project ... ]
+    '''             [ project ... ]
                        Update projects that have a *repository* or *patch*
                        node in the index database and are also present in 
                        the workspace by pulling changes from the remote
@@ -4512,7 +4541,7 @@ def pubUpdate(args):
 
 
 def pubUpstream(args):
-    '''upstream           [ srcPackage ... ]
+    '''           [ srcPackage ... ]
                        Generate a patch to submit to upstream
                        maintainer out of a source package and
                        a -patch subdirectory in a project srcDir.
@@ -4726,13 +4755,7 @@ if __name__ == '__main__':
         import optparse
 
         context = Context()
-        epilog= '\nCommands:\n'
-        d = __main__.__dict__
-        keys = d.keys()
-        keys.sort()
-        for command in keys:
-            if command.startswith('pub'):
-                epilog += __main__.__dict__[command].__doc__ + '\n'
+        epilog = helpEpilog(__main__)
         keys = context.environ.keys()
         keys.sort()
         epilog += 'Variables defined in the workspace make fragment (' \
