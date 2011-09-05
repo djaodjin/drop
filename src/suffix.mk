@@ -65,7 +65,7 @@ install:: $(etcs)
 # install the stamped result logs and builds the regression log in-place.
 install:: $(logs)
 	$(if $^,$(installDirs) $(logDir))
-	$(if $^,$(binBuildDir)/dstamp install $^ $(logDir))
+	$(if $^,dstamp install $^ $(logDir))
 	$(if $^,-dregress -o $(logDir)/regression.log \
 	    $(logDir)/results-*.log $(wildcard $(srcDir)/data/results-*.log))
 
