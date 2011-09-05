@@ -2432,6 +2432,8 @@ def findBin(names,excludes=[],variant=None):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
+            if len(absolutePath) == 0:
+                complete = False
             continue
         elif os.path.islink(linkName):
             # If we already have a symbolic link in the binBuildDir,
@@ -2606,6 +2608,8 @@ def findData(dir,names,excludes=[],variant=None):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
+            if len(absolutePath) == 0:
+                complete = False
             continue
         if variant:
             writetext(variant + '/')
@@ -2675,6 +2679,8 @@ def findInclude(names,excludes=[],variant=None):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
+            if len(absolutePath) == 0:
+                complete = False
             continue
         if variant:
             writetext(variant + '/')
@@ -2782,6 +2788,8 @@ def findLib(names,excludes=[],variant=None):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
+            if len(absolutePath) == 0:
+                complete = False
             continue
         # First time ever *findLib* is called, libDir will surely not defined
         # in the workspace make fragment and thus we will trigger interactive
