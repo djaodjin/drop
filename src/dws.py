@@ -60,6 +60,8 @@ errors = []
 log = None
 # Pattern used to search for logs to report through email.
 logPat = None
+# Write a .dot graph of the dependencies along the log file.
+logGraph = False
 # When True, the log object is not used and output is only
 # done on sys.stdout.
 nolog = False
@@ -554,10 +556,12 @@ class LogFile:
     '''Logging into an XML formatted file of sys.stdout and sys.stderr
     output while the script runs.'''
 
-    def __init__(self,logfilename,nolog):
+    def __init__(self, logfilename, nolog, graph=False):
         self.nolog = nolog
+        self.graph = graph
         if not self.nolog:
-            self.logfile = open(logfilename,'w')
+            self.logfilename = logfilename
+            self.logfile = open(self.logfilename,'w')
             self.logfile.write('<?xml version="1.0" ?>\n')
             self.logfile.write('<book>\n')
 
@@ -1489,10 +1493,9 @@ class Step:
                  '' ]
 
     def __init__(self, priority, name):
+        self.name = name.replace(os.sep,'_').replace('-','_')
         if self.prefixes[priority]:
-            self.name = self.prefixes[priority] + '_' + name
-        else:
-            self.name = name
+            self.name = self.prefixes[priority] + '_' + self.name
         self.prerequisites = []
         self.priority = priority
 
@@ -3692,6 +3695,15 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
     updated = False
     # Add deep dependencies
     vertices = dbindex.closure(dgen)
+    if log and log.graph:
+        gphFilename = os.path.splitext(log.logfilename)[0] + '.dot'
+        gphFile = open(gphFilename,'w')
+        gphFile.write("digraph structural {\n")
+        for v in vertices:
+            for p in v.prerequisites:
+                gphFile.write(v.name + " -> " + p.name + "\n")
+        gphFile.write("}\n")
+        gphFile.close()
     while len(vertices) > 0:
         first = vertices.pop(0)
         glob = [ first ]
@@ -3709,23 +3721,29 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         # This is different from "build" which should update all projects.
         if first.priority in priorities:
             for v in glob:
-                errexcept = None
                 errcode = 0
                 log.header(v.name)
                 start = datetime.datetime.now()
-                updated |= v.run(context)
-                finish = datetime.datetime.now()
-                td = finish - start
-                # \todo until most system move to python 2.7, we compute
-                # the number of seconds ourselves. +1 insures we run for
-                # at least a second.
-                # elapsed = datetime.timedelta(seconds=td.total_seconds())
-                elapsed = datetime.timedelta(seconds=((td.microseconds \
-                      + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6)+1)
-                if errcode > 0:
+                try:
+                    updated |= v.run(context)
+                    finish = datetime.datetime.now()
+                    td = finish - start
+                    # \todo until most system move to python 2.7, we compute
+                    # the number of seconds ourselves. +1 insures we run for
+                    # at least a second.
+                    # elapsed = datetime.timedelta(seconds=td.total_seconds())
+                    elapsed = datetime.timedelta(seconds=((td.microseconds \
+                       + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6)+1)
+                except Error, e:
+                    errcode = e.code
                     if stopMakeAfterError:
+                        finish = datetime.datetime.now()
+                        td = finish - start
+                        elapsed = datetime.timedelta(seconds=((td.microseconds \
+                           + (td.seconds + td.days * 24 * 3600) * 10**6) \
+                                                                  / 10**6)+1)
                         log.footer(str(elapsed),errcode)
-                        raise errexcept
+                        raise e
                     else:
                         log.error(str(e))
                 log.footer(str(elapsed),errcode)
@@ -3954,7 +3972,7 @@ def pubBuild(args):
                 # shutil.rmtree(d)
 
     global log
-    log = LogFile(context.logname(),nolog)
+    log = LogFile(context.logname(),nolog,logGraph)
     rgen = DerivedSetsGenerator()
     # If we do not force the update of the index file, the dependency
     # graph might not reflect the latest changes in the repository server.
@@ -4328,7 +4346,7 @@ def pubMake(args):
     # context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
     #    os.path.realpath(os.getcwd())))
     global log
-    log = LogFile(context.logname(),nolog)
+    log = LogFile(context.logname(),nolog,logGraph)
     recurse = False
     top = os.path.realpath(os.getcwd())
     if (top == os.path.realpath(context.value('buildTop'))
@@ -4655,15 +4673,15 @@ def selectOne(description, choices, sort=True):
                 return choices[choice - 1][0]
         except TypeError:
             choice = None
-        except ValueError:  
+        except ValueError:
             choice = None
     return choice
 
 
 def selectMultiple(description,selects):
     '''Prompt an interactive list of choices and returns elements selected
-    by the user. *description* is a text that explains the reason for the 
-    prompt. *choices* is a list of elements to choose from. Each element is 
+    by the user. *description* is a text that explains the reason for the
+    prompt. *choices* is a list of elements to choose from. Each element is
     in itself a list. Only the first value of each element is of significance
     and returned by this function. The other values are only use as textual
     context to help the user make an informed choice.'''
@@ -4687,14 +4705,14 @@ def selectMultiple(description,selects):
                 choice = int(s)
             except TypeError:
                 choice = 0
-            except ValueError:  
+            except ValueError:
                 choice = 0
             if choice > 1 and choice <= len(choices):
                 result += [ choices[choice - 1][0] ]
             elif choice == 1:
                 result = []
                 for c in choices[1:]:
-                    result += [ c[0] ] 
+                    result += [ c[0] ]
                 done = True
             elif choice == len(choices) + 1:
                 done = True
@@ -4788,6 +4806,8 @@ if __name__ == '__main__':
             help='The specified command will not be applied to projects matching the name pattern.')
         parser.add_option('--help-book', dest='helpBook', action='store_true',
             help='Print help in docbook format')
+        parser.add_option('--graph', dest='graph', action='store_true',
+            help='Generate a .dot graph of the dependencies')
         parser.add_option('--nolog', dest='nolog', action='store_true',
             help='Do not generate output in the log file')
         parser.add_option('-o', dest='output', action='store', type='string',
@@ -4830,6 +4850,8 @@ if __name__ == '__main__':
             excludePats = options.excludePats
         if options.output:
             collectedIndex = os.path.abspath(options.output)
+        if options.graph:
+            logGraph = True
 
         if not arg in [ 'build' ]:
             # The *build* command is special in that it does not rely
