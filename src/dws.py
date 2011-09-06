@@ -871,18 +871,23 @@ class DependencyGenerator(Unserializer):
         while len(remains) > 0:
             for step in remains:
                 ready = True
+                insertPoint = 0
                 for prereq in step.prerequisites:
+                    index = 0
                     found = False
                     for o in ordered:
+                        index = index + 1
                         if prereq.name == o.name:
                             found = True
                             break
                     if not found:
                         ready = False
                         break
+                    else:
+                        if index > insertPoint:
+                            insertPoint = index
                 if ready:
-                    insertPoint = 0
-                    for o in ordered:
+                    for o in ordered[insertPoint:]:
                         if o.priority > step.priority:
                             break
                         insertPoint = insertPoint + 1
@@ -928,9 +933,10 @@ class BuildGenerator(DependencyGenerator):
             if not setupName in self.setups:
                 self.setups[setupName] = setup
             else:
-                self.setups[setupName].insert(setup)
-            if self.setups[setupName].run(context):
+                setup = self.setups[setupName].insert(setup)
+            if setup.run(context):
                 self.activeCuts |= set([ p.name ])
+            self.setups[setupName].insert(setup)
             targets += [ self.setups[setupName] ]
         return targets
 
@@ -1712,19 +1718,25 @@ class SetupStep(TargetStep):
         '''We only add prerequisites from *dep* which are not already present
         in *self*. This is important because *findPrerequisites* will initialize
         tuples (namePat,absolutePath).'''
+        files = {}
         for dir in setup.files:
             if not dir in self.files:
                 self.files[dir] = setup.files[dir]
+                files[dir] = setup.files[dir]
             else:
-                found = False
                 for t1 in setup.files[dir]:
+                    found = False
                     for t2 in self.files[dir]:
                         if t2[0] == t1[0]:
                             found = True
                             break
                     if not found:
                         self.files[dir] += [ t1 ]
+                        if not dir in files:
+                            files[dir] = []
+                        files[dir] += [ t1 ]
         self.excludes += setup.excludes
+        return SetupStep(self.project,files,self.excludes,self.target)
 
     def run(self, context):
         self.files, complete = findPrerequisites(self.files,self.excludes,
@@ -2431,12 +2443,10 @@ def findBin(names,excludes=[],variant=None):
             droots = context.searchPath()
     for namePat, absolutePath in names:
         linkName = os.path.join(context.binBuildDir(),namePat)
-        if absolutePath != None:
+        if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
-            if len(absolutePath) == 0:
-                complete = False
             continue
         elif os.path.islink(linkName):
             # If we already have a symbolic link in the binBuildDir,
@@ -2509,7 +2519,7 @@ def findBin(names,excludes=[],variant=None):
                     break
         if not found:
             writetext('no\n')
-            results.append((namePat,''))
+            results.append((namePat, None))
             complete = False
     return results, version, complete
 
@@ -2562,9 +2572,9 @@ def findFiles(base,namePat):
 
 def findFirstFiles(base,namePat,subdir=''):
     '''Search the directory tree rooted at *base* for files matching pattern
-    *namePat* and returns a list of relative pathnames to those files 
+    *namePat* and returns a list of relative pathnames to those files
     from *base*.
-    If .*/ is part of pattern, base is searched recursively in breadth search 
+    If .*/ is part of pattern, base is searched recursively in breadth search
     order until at least one result is found.'''
     try:
         subdirs = []
@@ -2578,11 +2588,11 @@ def findFirstFiles(base,namePat,subdir=''):
                 look = re.match(namePat + '$',relative)
                 if look != None:
                     results += [ relative ]
-                elif (((('.*' + os.sep) in namePat) 
+                elif (((('.*' + os.sep) in namePat)
                        or (subNumSubDirs < patNumSubDirs))
                       and os.path.isdir(path)):
-                    # When we see .*/, it means we are looking for a pattern 
-                    # that can be matched by files in subdirectories 
+                    # When we see .*/, it means we are looking for a pattern
+                    # that can be matched by files in subdirectories
                     # of the base.
                     subdirs += [ relative ]
         if len(results) == 0:
@@ -2607,12 +2617,10 @@ def findData(dir,names,excludes=[],variant=None):
     else:
         buildDir = os.path.join(context.value('buildTop'),dir)
     for namePat, absolutePath in names:
-        if absolutePath != None:
+        if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
-            if len(absolutePath) == 0:
-                complete = False
             continue
         if variant:
             writetext(variant + '/')
@@ -2647,7 +2655,7 @@ def findData(dir,names,excludes=[],variant=None):
                     break
         if not found:
             writetext('no\n')
-            results.append((namePat,''))
+            results.append((namePat, None))
             complete = False
     return results, None, complete
 
@@ -2678,12 +2686,10 @@ def findInclude(names,excludes=[],variant=None):
     complete = True
     includeSysDirs = derivedRoots('include',variant)
     for namePat, absolutePath in names:
-        if absolutePath != None:
+        if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
-            if len(absolutePath) == 0:
-                complete = False
             continue
         if variant:
             writetext(variant + '/')
@@ -2756,7 +2762,7 @@ def findInclude(names,excludes=[],variant=None):
                 break
         if not found:
             writetext('no\n')
-            results.append((namePat,''))
+            results.append((namePat, None))
             complete = False
     return results, version, complete
 
@@ -2787,12 +2793,10 @@ def findLib(names,excludes=[],variant=None):
     if len(names) > 0:
         droots = derivedRoots('lib',variant)
     for namePat, absolutePath in names:
-        if absolutePath != None:
+        if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
-            if len(absolutePath) == 0:
-                complete = False
             continue
         # First time ever *findLib* is called, libDir will surely not defined
         # in the workspace make fragment and thus we will trigger interactive
@@ -2875,7 +2879,7 @@ def findLib(names,excludes=[],variant=None):
                 break
         if not found:
             writetext('no\n')
-            results.append((namePat,''))
+            results.append((namePat, None))
             complete = False
     return results, version, complete
 
@@ -3701,7 +3705,7 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         gphFile.write("digraph structural {\n")
         for v in vertices:
             for p in v.prerequisites:
-                gphFile.write(v.name + " -> " + p.name + "\n")
+                gphFile.write("\t" + v.name + " -> " + p.name + ";\n")
         gphFile.write("}\n")
         gphFile.close()
     while len(vertices) > 0:

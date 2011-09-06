@@ -57,7 +57,7 @@ def keepDates(dates,keepCount):
     if len(dates) <= keepCount:
         return dates
     else:
-        keep = []        
+        keep = []
         step = 0
         dates.sort()
         cutoff = int(len(dates) / keepCount)
@@ -107,7 +107,7 @@ def cleanUpAgedStamps(dates,keepPerYear,keepPerMonth,keepPerWeek):
     for w in weeks.values():
         keep += keepDates(w,keepPerWeek)
     return keep
-        
+
 # Removes files through an aging process such as to only keep
 # a maximum amount of temporaries.
 def cleanUpAgedFiles(dirname,keepPerYear=1,keepPerMonth=1,keepPerWeek=1):
@@ -178,11 +178,12 @@ if __name__ == '__main__':
             help = cStringIO.StringIO()
             parser.print_help(help)
             dws.helpBook(help)
-            sys.exit(0)        
+            sys.exit(0)
 
         arg = args.pop(0)
         command = 'pub' + arg.capitalize()
         if command in __main__.__dict__:
+            dws.context = dws.Context()
             __main__.__dict__[command](args)
         else:
             raise dws.Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
@@ -190,7 +191,3 @@ if __name__ == '__main__':
     except dws.Error, err:
         sys.stderr.write(str(err))
         sys.exit(err.code)
-
- 
-
-        
