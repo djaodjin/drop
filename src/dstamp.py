@@ -37,7 +37,7 @@ __version__ = None
 import datetime, optparse, os, shutil, sys
 
 # We donot want to install dws.py alongside dws in *binDir* and rely
-# on the search path to find it. Thus dws is imported directly through 
+# on the search path to find it. Thus dws is imported directly through
 # a load_source() command here.
 dwsDerivePath = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),
                              'dws')
@@ -184,6 +184,7 @@ if __name__ == '__main__':
         command = 'pub' + arg.capitalize()
         if command in __main__.__dict__:
             dws.context = dws.Context()
+            dws.context.locate()
             __main__.__dict__[command](args)
         else:
             raise dws.Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
