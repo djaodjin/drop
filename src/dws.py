@@ -81,9 +81,6 @@ mailto = []
 # When True, *findLib* will prefer static libraries over dynamic ones if both
 # exist for a specific libname. This should match .LIBPATTERNS in prefix.mk.
 staticLibFirst = True
-# When True, makeProject() raises an error when the underlying make exit
-# with an error code, otherwise it moves on to the next project.
-stopMakeAfterError = False
 # When True, the script runs in batch mode and assumes the default answer
 # for every question where it would have prompted the user for an answer.
 useDefaultAnswer = False
@@ -675,6 +672,10 @@ class DependencyGenerator(Unserializer):
         the final topological order.'''
         Unserializer.__init__(self, packages + patches + repositories,
                               excludePats)
+        # When True, an exception will stop the recursive make
+        # and exit with an error code, otherwise it moves on to
+        # the next project.
+        self.stopMakeAfterError = False
         self.packages = set(packages)
         self.patches = set(patches)
         self.repositories = set(repositories)
@@ -694,6 +695,7 @@ class DependencyGenerator(Unserializer):
         self.configures = {}
         self.makes = {}
         self.setups = {}
+        self.activeCuts = set([])
 
     def __str__(self):
         s = "installs:\n"
@@ -759,7 +761,29 @@ class DependencyGenerator(Unserializer):
         self.installs[name] = installStep
         self.connectToSetup(name,installStep)
 
-    def addUpdate(self, name, update):
+
+    def addSetup(self, target, deps):
+        targets = []
+        for p in deps:
+            setupName = p.name
+            targetName = p.target
+            if not p.target:
+                targetName = target
+            if targetName:
+                setupName = p.name + targetName
+            setup = SetupStep(p.name,p.files,p.excludes,targetName)
+            if not setupName in self.setups:
+                self.setups[setupName] = setup
+            else:
+                setup = self.setups[setupName].insert(setup)
+            if setup.run(context):
+                self.activeCuts |= set([ p.name ])
+            self.setups[setupName].insert(setup)
+            targets += [ self.setups[setupName] ]
+        return targets
+
+
+    def addUpdate(self, name, update, updateRep=True):
         fetches = {}
         if len(update.fetches) > 0:
             # We could unconditionally add all source tarball since
@@ -768,8 +792,11 @@ class DependencyGenerator(Unserializer):
             # interfere with *pubConfigure* which checks there are
             # no missing prerequisites whithout fetching anything.
             fetches = findCache(update.fetches)
+        rep = None
+        if updateRep or not os.path.isdir(context.srcDir(name)):
+            rep = update.rep
         if update.rep or len(fetches) > 0:
-            self.updates[name] = UpdateStep(name,update.rep,fetches)
+            self.updates[name] = UpdateStep(name,rep,fetches)
 
     def contextualTargets(self,variant):
         raise Error("DependencyGenerator should not be instantiated directly")
@@ -907,11 +934,6 @@ class BuildGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''
 
-    def __init__(self, repositories, patches, packages, excludePats = []):
-        DependencyGenerator.__init__(self, repositories, patches, packages,
-                                     excludePats)
-        self.activeCuts = set([])
-
     def activeCut(self, name):
         if name in self.activeCuts:
             for level in range(len(self.levels),0,-1):
@@ -919,26 +941,6 @@ class BuildGenerator(DependencyGenerator):
                     self.levels[level - 1].remove(name)
             return True
         return False
-
-    def addSetup(self, target, deps):
-        targets = []
-        for p in deps:
-            setupName = p.name
-            targetName = p.target
-            if not p.target:
-                targetName = target
-            if targetName:
-                setupName = p.name + targetName
-            setup = SetupStep(p.name,p.files,p.excludes,targetName)
-            if not setupName in self.setups:
-                self.setups[setupName] = setup
-            else:
-                setup = self.setups[setupName].insert(setup)
-            if setup.run(context):
-                self.activeCuts |= set([ p.name ])
-            self.setups[setupName].insert(setup)
-            targets += [ self.setups[setupName] ]
-        return targets
 
     def contextualTargets(self,variant):
         '''At this point we want to add all prerequisites which are either
@@ -988,31 +990,16 @@ class MakeGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''
 
-    def addSetup(self, target, deps, fetches=None):
-        targets = []
-        for p in deps:
-            setupName = p.name
-            targetName = p.target
-            if not p.target:
-                targetName = target
-            if targetName:
-                setupName = p.name + targetName
-            if os.path.isdir(context.srcDir(p.name)):
-                targets += [ self.setups[setupName] ]
-            else:
-                setup = SetupStep(p.name,p.files,p.excludes,targetName)
-                if not setupName in self.setups:
-                    self.setups[setupName] = setup
-                else:
-                    self.setups[setupName].insert(setup)
-                if not self.setups[setupName].run(context):
-                    targets += [ self.setups[setupName] ]
-        return targets
+    def __init__(self, repositories, patches, packages, excludePats = []):
+        DependencyGenerator.__init__(self,repositories,patches,
+                                     packages,excludePats)
+        self.stopMakeAfterError = True
 
     def contextualTargets(self, variant):
         name = variant.project
         if not name in self.projects:
             self.packages |= set([ name ])
+            # self.addInstall(name,None)
             return (False, [])
 
         needPrompt = True
@@ -1042,14 +1029,22 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(variant.project,project.repository.update)
+                self.addUpdate(variant.project,project.repository.update,False)
+                self.addConfigMake(variant,
+                                   project.repository.configure,
+                                   project.repository.make,
+                                   targets)
                 if not name in chosen:
                     self.repositories |= set([name])
             elif project.patch:
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.patch.prerequisites(tags))
-                self.addUpdate(variant.project,project.patch.update)
+                self.addUpdate(variant.project,project.patch.update,False)
+                self.addConfigMake(variant,
+                                   project.patch.configure,
+                                   project.patch.make,
+                                   targets)
                 if not name in chosen:
                     self.patches |= set([name])
             elif len(project.packages) > 0:
@@ -1058,6 +1053,7 @@ class MakeGenerator(DependencyGenerator):
                                project.packages[tags[0]].prerequisites(tags))
                 self.addUpdate(variant.project,
                                project.packages[tags[0]].update)
+                self.addInstall(name,self.updates[name])
                 if not name in chosen:
                     self.packages |= set([name])
 
@@ -1070,7 +1066,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(variant.project,project.repository.update)
+                self.addUpdate(variant.project,project.repository.update,False)
                 self.addConfigMake(variant,
                                    project.repository.configure,
                                    project.repository.make,
@@ -1079,7 +1075,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.patch.prerequisites(tags))
-                self.addUpdate(variant.project,project.patch.update)
+                self.addUpdate(variant.project,project.patch.update,False)
                 self.addConfigMake(variant,
                                    project.patch.configure,
                                    project.patch.make,
@@ -1090,6 +1086,7 @@ class MakeGenerator(DependencyGenerator):
                                project.packages[tags[0]].prerequisites(tags))
                 self.addUpdate(variant.project,
                                project.packages[tags[0]].update)
+                self.addInstall(name,self.updates[name])
         if not needPrompt:
             # \todo find out if we need to do something like this
             # now that generating links is part of SetupSteps.
@@ -1106,10 +1103,18 @@ class MakeDepGenerator(MakeGenerator):
     def addSetup(self, target, deps):
         targets = []
         for p in deps:
+            setupName = p.name
             targetName = p.target
             if not p.target:
                 targetName = target
-            targets += [ TargetStep(0,p.name,targetName) ]
+            if targetName:
+                setupName = p.name + targetName
+            setup = SetupStep(p.name,p.files,p.excludes,targetName)
+            if not setupName in self.setups:
+                self.setups[setupName] = setup
+            else:
+                setup = self.setups[setupName].insert(setup)
+            targets += [ self.setups[setupName] ]
         return targets
 
 
@@ -3696,6 +3701,7 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         dbindex = index
     dbindex.validate()
 
+    global errors
     updated = False
     # Add deep dependencies
     vertices = dbindex.closure(dgen)
@@ -3740,7 +3746,8 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
                        + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6)+1)
                 except Error, e:
                     errcode = e.code
-                    if stopMakeAfterError:
+                    errors += [ str(v) ]
+                    if dgen.stopMakeAfterError:
                         finish = datetime.datetime.now()
                         td = finish - start
                         elapsed = datetime.timedelta(seconds=((td.microseconds \
@@ -3756,7 +3763,6 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         writetext(str(UpdateStep.nbUpdatedProjects) + ' updated project(s).\n')
     else:
         writetext('all project(s) are up-to-date.\n')
-
     return updated
 
 
@@ -4106,30 +4112,19 @@ def pubConfigure(args):
     dbindex = IndexProjects(context,context.value('indexFile'))
     dbindex.parse(dgen)
     prerequisites = set([])
-    if len(dgen.activePrerequisites) > 0:
-        # This is an opportunity to prompt for missing dependencies.
-        # After installing both, source controlled and packaged
-        # projects, the checked-out projects will be added to
-        # the dependency graph while the packaged projects will
-        # be added to the *cut* list.
-        for miss in dgen.activePrerequisites:
-            prerequisites |= set([ miss ])
+    for u in dgen.setups:
+        setup = dgen.setups[u]
+        for f in setup.files:
+            if not setup.files[f] or len(setup.files[f]) == 0:
+                prerequisites |= set([ str(setup) ])
+                break
     for u in dgen.updates:
         if len(dgen.updates[u].fetches) > 0:
             for miss in dgen.updates[u].fetches:
                 prerequisites |= set([ miss ])
     if len(prerequisites) > 0:
         raise MissingError(projectName,prerequisites)
-    else:
-        missings = []
-        for prereq in dgen.projects[projectName].repository.deps:
-            deps = prereq.prerequisites([context.host()])
-            setup = SetupStep(prereq.name,deps.files,deps.excludes)
-            complete = setup.run()
-            if (not complete) and (not prereq.name in missings):
-                missings += [ prereq.name ]
-        if len(missings) > 0:
-            raise Error("missing prerequisites for " + ' '.join(missings))
+
 
 def pubContext(args):
     '''            [file]
