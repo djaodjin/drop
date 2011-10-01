@@ -32,7 +32,7 @@
 # The OSX code has been derived from code released under the FreeBSD license
 # and originally written by
 #
-# Dinu C. Gherman, 
+# Dinu C. Gherman,
 # gherman@europemail.com
 # September 2002
 
@@ -509,7 +509,8 @@ make install
         for i in range(0,len(project.descr),77):
             descr += ' ' + project.descr[i:i+77] + '\n'
         #descr += ' ' + project.descr[i:] + '\n'
-        control.write('Description: ' + project.title + '\n' + descr + '\n')
+        control.write('Description: ' + str(project.title) \
+                          + '\n' + str(descr) + '\n')
         control.write('\n')
         control.close()
         distribCodename = None
@@ -582,20 +583,22 @@ install:
 \tif [ -f $(CURDIR)/debian/postinst ] ; then \
         mv $(CURDIR)/debian/postinst $(CURDIR)/debian/postinst~ ; \
      fi
-\tif [ `cd $(SYSCONFDIR) && find . -type f | wc -l` -gt 0 ] ; then \
-        echo "#!/bin/sh" > $(CURDIR)/debian/postinst ; \
-        echo >> $(CURDIR)/debian/postinst ; \
-        echo "set -e" >> $(CURDIR)/debian/postinst ; \
-        echo >> $(CURDIR)/debian/postinst ; \
-    fi
-\tfor conf in `cd $(SYSCONFDIR) && find . -type f` ; do \
-        echo "install -d `dirname /etc/$$conf`" >> $(CURDIR)/debian/postinst ; \
-        echo "cat > /etc/$$conf <<EOF" >> $(CURDIR)/debian/postinst ; \
-        sed -e 's,\\$$,\\\\$$,g' $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
-        echo >> $(CURDIR)/debian/postinst ; \
-        echo "EOF" >> $(CURDIR)/debian/postinst ; \
-        echo >> $(CURDIR)/debian/postinst ; \
-    done
+\tif [ -d $(SYSCONFDIR) ] ; then \
+\t\tif [ `cd $(SYSCONFDIR) && find . -type f | wc -l` -gt 0 ] ; then \
+\t\t\techo "#!/bin/sh" > $(CURDIR)/debian/postinst ; \
+\t\t\techo >> $(CURDIR)/debian/postinst ; \
+\t\t\techo "set -e" >> $(CURDIR)/debian/postinst ; \
+\t\t\techo >> $(CURDIR)/debian/postinst ; \
+\t\tfi ; \
+\t\tfor conf in `cd $(SYSCONFDIR) && find . -type f` ; do \
+\t\t\techo "install -d `dirname /etc/$$conf`" >> $(CURDIR)/debian/postinst ; \
+\t\t\techo "cat > /etc/$$conf <<EOF" >> $(CURDIR)/debian/postinst ; \
+\t\t\tsed -e 's,\\$$,\\\\$$,g' $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
+\t\t\techo >> $(CURDIR)/debian/postinst ; \
+\t\t\techo "EOF" >> $(CURDIR)/debian/postinst ; \
+\t\t\techo >> $(CURDIR)/debian/postinst ; \
+\t\tdone ; \
+\tfi
 \tif [ -f $(CURDIR)/debian/postinst~ ] ; then \
         cat $(CURDIR)/debian/postinst~ | sed 1,3d >> $(CURDIR)/debian/postinst ; \
      fi
@@ -718,14 +721,14 @@ if __name__ == "__main__":
 ''',formatter=dws.CommandsFormatter())
     parser.add_option('-v', '--version', dest='version', action='store',
                       help='Set version of the package')
-    parser.add_option('-s', '--spec', dest='spec', 
+    parser.add_option('-s', '--spec', dest='spec',
                       action='store', help='Set specification of the package')
     parser.add_option('--help-book', dest='helpBook', action='store_true',
                       help='Print help in docbook format')
-    parser.add_option('--no-install-doc', dest='noInstallDoc', 
+    parser.add_option('--no-install-doc', dest='noInstallDoc',
                       action='store_true',
                       help='Do not execute "make install-doc"')
-    parser.add_option('--no-path-update', dest='noPathUpdate', 
+    parser.add_option('--no-path-update', dest='noPathUpdate',
                       action='store_true',
                       help='Assumes all tools required by configure (dws, etc.) are already in PATH.')
 
@@ -735,8 +738,8 @@ if __name__ == "__main__":
         help = cStringIO.StringIO()
         parser.print_help(help)
         dws.helpBook(help)
-        sys.exit(0)        
-    
+        sys.exit(0)
+
     if options.noInstallDoc:
         noInstallDoc = True
 
@@ -749,7 +752,7 @@ if __name__ == "__main__":
     handler = dws.Unserializer([ '.*' ])
 
     index.parse(handler)
-    project = handler.projects[handler.projects.keys()[0]]
+    project = handler.firstProject
     # Removes any leading directory name from the project name
     # else debuild is not very happy.
     project.name = os.path.basename(project.name)

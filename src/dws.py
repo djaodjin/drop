@@ -53,6 +53,9 @@ import cStringIO
 
 modself = sys.modules[__name__]
 
+# \todo executable used to return a password compatible with sudo. This is used
+# temporarly while sudo implementation is broken with no tty.
+askPass = ''
 # \todo should we get rid of this global variable?
 errors = []
 # Object that implements logging into an XML formatted file
@@ -248,18 +251,6 @@ class Context:
         directory hierarchy.'''
         return os.path.join(self.value('logDir'),name)
 
-    def remoteCachePath(self,name=None):
-        '''Absolute path to access a file on the remote machine.'''
-        if name:
-            if name.startswith('http') or ':' in name:
-                return name
-            elif name.startswith('/'):
-                return '/.' + name
-            else:
-                return os.path.join(self.value('remoteSiteTop'),
-                                    'resources','./' + name)
-        return os.path.join(self.value('remoteSiteTop'),'resources')
-
     def remoteSrcPath(self,name):
         '''Absolute path to access a repository on the remote machine.'''
         return os.path.join(self.value('remoteSrcTop'),name)
@@ -298,13 +289,13 @@ class Context:
 
     def localDir(self, name, cacheDir=None):
         if not cacheDir:
-            cacheDir = os.path.join(context.value('siteTop'),'resources')
+            cacheDir = os.path.join(self.value('siteTop'),'resources')
         pos = name.rfind('./')
         if pos >= 0:
             localname = os.path.join(cacheDir,name[pos + 2:])
         else:
-            localname = name.replace(context.value('remoteSiteTop'),
-                                     context.value('siteTop'))
+            localname = name.replace(self.value('remoteSiteTop'),
+                                     self.value('siteTop'))
         pathList = localname.split(os.sep)
         localname = '/'
         for part in pathList:
@@ -316,9 +307,9 @@ class Context:
         return localname
 
     def remoteDir(self, name):
-        if name.startswith(context.value('siteTop')):
-            return name.replace(context.value('siteTop'),
-                                context.value('remoteSiteTop'))
+        if name.startswith(self.value('siteTop')):
+            return name.replace(self.value('siteTop'),
+                                self.value('remoteSiteTop'))
         return None
 
     def loadContext(self,filename):
@@ -626,6 +617,7 @@ class Unserializer(PdbHandler):
         # to *excludePats*.
         self.excludePats = set(excludePats)
         self.projects = {}
+        self.firstProject = None
 
     def asProject(self, name):
         if not name in self.projects:
@@ -646,6 +638,8 @@ class Unserializer(PdbHandler):
     def project(self, p):
         '''Callback for the parser.'''
         if (not p.name in self.projects) and self.filters(p.name):
+            if not self.firstProject:
+                self.firstProject = p
             self.projects[p.name] = p
 
 
@@ -690,16 +684,12 @@ class DependencyGenerator(Unserializer):
         #   - setups: set of SetupStep
         #   - updates: set of UpdateStep
         #   - makes: set of MakeStep/ShellStep
-        self.installs = {}
         self.updates = {}
         self.configures = {}
         self.makes = {}
         self.setups = {}
-        self.activeCuts = set([])
 
     def __str__(self):
-        s = "installs:\n"
-        s += str(self.installs)
         s = "setups:\n"
         s += str(self.setups)
         s += "updates:\n"
@@ -733,35 +723,6 @@ class DependencyGenerator(Unserializer):
             self.connectToSetup(name,make)
         return self.makes[name]
 
-    def addInstall(self, name, updateStep = None):
-        installStep = None
-        if updateStep:
-            packagename = updateStep.fetches[0]
-            if context.host() in [ 'Debian', 'Ubuntu' ]:
-                installStep = [ DpkgInstallStep(packagename) ]
-                installStep.prerequisites += [ updateStep ]
-            elif context.host() in [ 'Darwin' ]:
-                installStep = [ DarwinInstallStep(packagename) ]
-                installStep.prerequisites += [ updateStep ]
-            elif context.host() in [ 'Fedora' ]:
-                installStep = [ RpmInstallStep(packagename) ]
-                installStep.prerequisites += [ updateStep ]
-            else:
-                installStep = InstallStep(packagename)
-                installStep.prerequisites += [ updateStep ]
-        else:
-            if context.host() in [ 'Debian', 'Ubuntu' ]:
-                installStep = AptInstallStep(name)
-            elif context.host() in [ 'Darwin' ]:
-                installStep = MacPortInstallStep(name)
-            elif context.host() in [ 'Fedora' ]:
-                installStep = YumInstallStep(name)
-            else:
-                installStep = InstallStep(name)
-        self.installs[name] = installStep
-        self.connectToSetup(name,installStep)
-
-
     def addSetup(self, target, deps):
         targets = []
         for p in deps:
@@ -775,10 +736,7 @@ class DependencyGenerator(Unserializer):
             if not setupName in self.setups:
                 self.setups[setupName] = setup
             else:
-                setup = self.setups[setupName].insert(setup)
-            if setup.run(context):
-                self.activeCuts |= set([ p.name ])
-            self.setups[setupName].insert(setup)
+                self.setups[setupName].insert(setup)
             targets += [ self.setups[setupName] ]
         return targets
 
@@ -791,7 +749,7 @@ class DependencyGenerator(Unserializer):
             # downloading missing files. Unfortunately this would
             # interfere with *pubConfigure* which checks there are
             # no missing prerequisites whithout fetching anything.
-            fetches = findCache(update.fetches)
+            fetches = findCache(context,update.fetches)
         rep = None
         if updateRep or not os.path.isdir(context.srcDir(name)):
             rep = update.rep
@@ -884,8 +842,39 @@ class DependencyGenerator(Unserializer):
         '''Returns a topological ordering of projects selected.'''
         ordered = []
         remains = []
-        for s in self.installs:
-            remains += [ self.installs[s] ]
+        for name in self.packages:
+            # We have to wait until here to create the install steps. Before
+            # then, we do not know if they will be required nor if prerequisites
+            # are repository projects in the index file or not.
+            if name in self.setups and not self.setups[name].run(context):
+                if name in self.projects:
+                    filenames = []
+                    project = self.projects[name]
+                    for f in project.packages[context.host()].update.fetches:
+                        filenames += [ context.localDir(f) ]
+                    if context.host() in [ 'Debian', 'Ubuntu' ]:
+                        installStep = DpkgInstallStep(filenames[0],
+                                                      filenames[1:])
+                    elif context.host() in [ 'Darwin' ]:
+                        installStep = DarwinInstallStep(filenames[0],
+                                                        filenames[1:])
+                    elif context.host() in [ 'Fedora' ]:
+                        installStep = RpmInstallStep(filenames[0],filenames[1:])
+                    else:
+                        installStep = InstallStep(filenames[0],filenames[1:])
+                    if name in self.updates:
+                            installStep.prerequisites += [ self.updates[name] ]
+                else:
+                    if context.host() in [ 'Debian', 'Ubuntu' ]:
+                        installStep = AptInstallStep(name)
+                    elif context.host() in [ 'Darwin' ]:
+                        installStep = MacPortInstallStep(name)
+                    elif context.host() in [ 'Fedora' ]:
+                        installStep = YumInstallStep(name)
+                    else:
+                        installStep = InstallStep(name)
+                remains += [ installStep ]
+                self.connectToSetup(name,installStep)
         for s in self.setups:
             remains += [ self.setups[s] ]
         for s in self.updates:
@@ -934,14 +923,6 @@ class BuildGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''
 
-    def activeCut(self, name):
-        if name in self.activeCuts:
-            for level in range(len(self.levels),0,-1):
-                if name in self.levels[level - 1]:
-                    self.levels[level - 1].remove(name)
-            return True
-        return False
-
     def contextualTargets(self,variant):
         '''At this point we want to add all prerequisites which are either
         a repository or a patch/package for which the dependencies are not
@@ -961,7 +942,7 @@ class BuildGenerator(DependencyGenerator):
                                    project.repository.configure,
                                    project.repository.make,
                                    targets)
-            elif not self.activeCut(name):
+            else:
                 # We will prefer installing from a binary package over
                 # a patched version of the source tree when possible.
                 if project.packages and tags[0] in project.packages:
@@ -969,7 +950,6 @@ class BuildGenerator(DependencyGenerator):
                     targets = self.addSetup(variant.target,
                                   project.packages[tags[0]].prerequisites(tags))
                     self.addUpdate(name,project.packages[tags[0]].update)
-                    self.addInstall(name,self.updates[name])
                 elif project.patch:
                     self.patches |= set([name])
                     targets = self.addSetup(variant.target,
@@ -979,10 +959,9 @@ class BuildGenerator(DependencyGenerator):
                                        project.patch.configure,
                                        project.patch.make,
                                        targets)
-        elif not self.activeCut(name):
+        else:
             # We leave the native host package manager to deal with this one...
             self.packages |= set([ name ])
-            self.addInstall(name)
         return (False, targets)
 
 
@@ -999,7 +978,6 @@ class MakeGenerator(DependencyGenerator):
         name = variant.project
         if not name in self.projects:
             self.packages |= set([ name ])
-            # self.addInstall(name,None)
             return (False, [])
 
         needPrompt = True
@@ -1029,7 +1007,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(variant.project,project.repository.update,False)
+                self.addUpdate(name,project.repository.update,False)
                 self.addConfigMake(variant,
                                    project.repository.configure,
                                    project.repository.make,
@@ -1040,7 +1018,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.patch.prerequisites(tags))
-                self.addUpdate(variant.project,project.patch.update,False)
+                self.addUpdate(name,project.patch.update,False)
                 self.addConfigMake(variant,
                                    project.patch.configure,
                                    project.patch.make,
@@ -1051,9 +1029,8 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                project.packages[tags[0]].prerequisites(tags))
-                self.addUpdate(variant.project,
+                self.addUpdate(name,
                                project.packages[tags[0]].update)
-                self.addInstall(name,self.updates[name])
                 if not name in chosen:
                     self.packages |= set([name])
 
@@ -1066,7 +1043,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(variant.project,project.repository.update,False)
+                self.addUpdate(name,project.repository.update,False)
                 self.addConfigMake(variant,
                                    project.repository.configure,
                                    project.repository.make,
@@ -1075,7 +1052,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.patch.prerequisites(tags))
-                self.addUpdate(variant.project,project.patch.update,False)
+                self.addUpdate(name,project.patch.update,False)
                 self.addConfigMake(variant,
                                    project.patch.configure,
                                    project.patch.make,
@@ -1084,9 +1061,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                project.packages[tags[0]].prerequisites(tags))
-                self.addUpdate(variant.project,
-                               project.packages[tags[0]].update)
-                self.addInstall(name,self.updates[name])
+                self.addUpdate(name,project.packages[tags[0]].update)
         if not needPrompt:
             # \todo find out if we need to do something like this
             # now that generating links is part of SetupSteps.
@@ -1544,23 +1519,20 @@ class InstallStep(Step):
     '''The *install* step in the development cycle installs prerequisites
     to a project.'''
 
-    def __init__(self, name):
+    def __init__(self, name, managed = []):
         Step.__init__(self,Step.install,name)
+        self.managed = [ name ] + managed
 
     def insert(self, install):
         self.managed += install.managed
 
     def run(self, context):
         raise Error("Does not know how to install '" \
-                        + self.name + "' on " + context.host())
+                        + str(self.managed) + "' on " + context.host())
 
 
 class AptInstallStep(InstallStep):
     ''' Install a prerequisite to a project through apt (Debian, Ubuntu).'''
-
-    def __init__(self, name, managed = []):
-        InstallStep.__init__(self,name)
-        self.managed = [ name ] + managed
 
     def run(self, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
@@ -1569,38 +1541,49 @@ class AptInstallStep(InstallStep):
         # in /etc afterwards anyway.
         shellCommand(['/usr/bin/apt-get', 'update'], admin=True)
         shellCommand(['DEBIAN_FRONTEND=noninteractive',
-                      '/usr/bin/apt-get', '-y ', 'install'] + managed,
+                      '/usr/bin/apt-get', '-y ', 'install'] + self.managed,
                      admin=True)
         return True
 
 class DarwinInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pkg (Darwin, OSX).'''
 
-    def __init__(self, filename):
-        InstallStep.__init__(self, filename)
-
     def run(self, context):
-        installDarwinPkg(self.name,context.value('darwinTargetVolume'))
+        '''Mount *image*, a pathnme to a .dmg file and use the Apple installer
+        to install the *pkg*, a .pkg package onto the platform through the Apple
+        installer.'''
+        pkg = None
+        for filename in self.managed:
+            base, ext = os.path.splitext(image)
+            volume = os.path.join('/Volumes',os.path.basename(base))
+            shellCommand(['hdiutil', 'attach', image])
+            if target != 'CurrentUserHomeDirectory':
+                message = 'ATTENTION: You need administrator privileges on ' \
+                        + 'the local machine to execute the following cmmand\n'
+                writetext(message)
+                admin = True
+            else:
+                admin = False
+            if not pkg:
+                pkgs = findFiles(volume,'\.pkg')
+                if len(pkgs) != 1:
+                    raise RuntimeError('ambiguous: not exactly one .pkg to install')
+                pkg = pkgs[0]
+            shellCommand(['installer', '-pkg', os.path.join(volume,pkg),
+                          '-target "' + target + '"'], admin)
+            shellCommand(['hdiutil', 'detach', volume])
         return True
 
 class DpkgInstallStep(InstallStep):
     ''' Install a prerequisite to a project through dpkg (Debian, Ubuntu).'''
 
-    def __init__(self, filename):
-        InstallStep.__init__(self)
-        self.filename = filename
-
     def run(self, context):
-        shellCommand(['dpkg', '-i', self.filename], admin=True)
+        shellCommand(['dpkg', '-i', ' '.join(self.managed)], admin=True)
         return True
 
 
 class MacPortInstallStep(InstallStep):
     ''' Install a prerequisite to a project through Macports.'''
-
-    def __init__(self, name, managed = []):
-        InstallStep.__init__(self,name)
-        self.managed = [ name ] + managed
 
     def run(self, context):
         darwinNames = {
@@ -1621,20 +1604,13 @@ class MacPortInstallStep(InstallStep):
 class RpmInstallStep(InstallStep):
     ''' Install a prerequisite to a project through rpm (Fedora).'''
 
-    def __init__(self, filename):
-        InstallStep.__init__(self, filename)
-
     def run(self, context):
-        shellCommand(['rpm', '-i', self.name], admin=True)
+        shellCommand(['rpm', '-i', ' '.join(self.managed)], admin=True)
         return True
 
 
 class YumInstallStep(InstallStep):
     ''' Install a prerequisite to a project through yum (Fedora).'''
-
-    def __init__(self, name, managed = []):
-        InstallStep.__init__(self,name)
-        self.managed = [ name ] + managed
 
     def run(self, context):
         fedoraNames = {
@@ -1767,7 +1743,7 @@ class UpdateStep(Step):
     def run(self, context):
         updated = True
         try:
-            fetch(self.fetches)
+            fetch(context,self.fetches)
         except:
             raise Error("unable to fetch " + str(self.fetches))
         if self.rep:
@@ -1873,7 +1849,7 @@ class GitRepository(Repository):
         os.chdir(prev)
 
     def update(self, name, context, force=False):
-        git = findBootBin('git','git-core')
+        git = findBootBin(context,'git','git-core')
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will
         # trigger a potentially unnecessary prompt for remoteCachePath.
@@ -2383,12 +2359,14 @@ def createIndexPathname(dbIndexPathname,dbPathnames):
 
 
 def derivedRoots(name,variant=None):
-    '''Derives a list of directory names based on the PATH 
+    '''Derives a list of directory names based on the PATH
     environment variable, *name* and a *variant* triplet.'''
     # We want the actual value of *name*Dir and not one derived
     # from binDir so we do not use context.searchPath() here.
     dirs = []
     subpath = name
+    # \todo should not use global variable context, else findBin, etc.
+    # cannot work without it.
     dir = context.value(name + 'Dir')
     if variant:
         subpath = os.path.join(variant,name)
@@ -2402,7 +2380,7 @@ def derivedRoots(name,variant=None):
     return dirs
 
 
-def findBin(names,excludes=[],variant=None):
+def findBin(names,searchPath,buildTop,excludes=[],variant=None):
     '''Search for a list of binaries that can be executed from $PATH.
 
        *names* is a list of (pattern,absolutePath) pairs where the absolutePat
@@ -2445,9 +2423,9 @@ def findBin(names,excludes=[],variant=None):
             # otherwise, we use the actual $PATH variable.
             droots = derivedRoots('bin',variant)
         else:
-            droots = context.searchPath()
+            droots = searchPath
     for namePat, absolutePath in names:
-        linkName = os.path.join(context.binBuildDir(),namePat)
+        linkName = os.path.join(os.path.join(buildTop,'bin'),namePat)
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
@@ -2529,7 +2507,7 @@ def findBin(names,excludes=[],variant=None):
     return results, version, complete
 
 
-def findCache(names):
+def findCache(context,names):
     '''Search for the presence of files in the cache directory. *names*
     is a dictionnary of file names used as key and the associated checksum.'''
     results = {}
@@ -2609,7 +2587,7 @@ def findFirstFiles(base,namePat,subdir=''):
     return results
 
 
-def findData(dir,names,excludes=[],variant=None):
+def findData(dir,names,searchPath,buildTop,excludes=[],variant=None):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by *dir*.'''
     results = []
@@ -2618,9 +2596,9 @@ def findData(dir,names,excludes=[],variant=None):
     if len(names) > 0:
         droots = derivedRoots(dir,variant)
     if variant:
-        buildDir = os.path.join(context.value('buildTop'),variant,dir)
+        buildDir = os.path.join(buildTop,variant,dir)
     else:
-        buildDir = os.path.join(context.value('buildTop'),dir)
+        buildDir = os.path.join(buildTop,dir)
     for namePat, absolutePath in names:
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
@@ -2665,10 +2643,10 @@ def findData(dir,names,excludes=[],variant=None):
     return results, None, complete
 
 
-def findEtc(names,excludes=[],variant=None):
-    return findData('etc',names,excludes)
+def findEtc(names,searchPath,buildTop,excludes=[],variant=None):
+    return findData('etc',names,searchPath,buildTop,excludes)
 
-def findInclude(names,excludes=[],variant=None):
+def findInclude(names,searchPath,buildTop,excludes=[],variant=None):
     '''Search for a list of headers that can be found from $PATH
        where bin was replaced by include.
 
@@ -2772,7 +2750,7 @@ def findInclude(names,excludes=[],variant=None):
     return results, version, complete
 
 
-def findLib(names,excludes=[],variant=None):
+def findLib(names,searchPath,buildTop,excludes=[],variant=None):
     '''Search for a list of libraries that can be found from $PATH
        where bin was replaced by lib.
 
@@ -2803,13 +2781,6 @@ def findLib(names,excludes=[],variant=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        # First time ever *findLib* is called, libDir will surely not defined
-        # in the workspace make fragment and thus we will trigger interactive
-        # input from the user.
-        # We want to make sure the output of the interactive session does not
-        # mangle the search for a library so we preemptively trigger
-        # an interactive session.
-        context.value('libDir')
         if variant:
             writetext(variant + '/')
         writetext(namePat + '... ')
@@ -2914,8 +2885,17 @@ def findPrerequisites(deps, excludes=[],variant=None):
         # how excluded versions apply.
         if dir in deps:
             command = 'find' + dir.capitalize()
+            # First time ever *find* is called, libDir will surely not defined
+            # in the workspace make fragment and thus we will trigger
+            # interactive input from the user.
+            # We want to make sure the output of the interactive session does
+            # not mangle the search for a library so we preemptively trigger
+            # an interactive session.
+            context.value(dir + 'Dir')
             installed[dir], installedVersion, installedComplete = \
-                modself.__dict__[command](deps[dir],excludes,variant)
+                modself.__dict__[command](deps[dir],context.searchPath(),
+                                          context.value('buildTop'),
+                                          excludes,variant)
             # Once we have selected a version out of the installed
             # local system, we lock it down and only search for
             # that specific version.
@@ -2927,11 +2907,11 @@ def findPrerequisites(deps, excludes=[],variant=None):
     return installed, complete
 
 
-def findShare(names,excludes=[],variant=None):
-    return findData('share',names,excludes,variant)
+def findShare(names,searchPath,buildTop,excludes=[],variant=None):
+    return findData('share',names,searchPath,buildTop,excludes,variant)
 
 
-def findBootBin(name, package = None):
+def findBootBin(context, name, package = None):
     '''This script needs a few tools to be installed to bootstrap itself,
     most noticeably the initial source control tool used to checkout
     the projects dependencies index file.'''
@@ -2956,7 +2936,9 @@ def findBootBin(name, package = None):
   </project>
 </projects>
 ''' % (package,name))
-        executables, version, complete = findBin([ [ name, None ] ])
+        executables, version, complete = findBin([ [ name, None ] ],
+                                                 context.searchPath(),
+                                                 context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
             install([package],dbindex)
         name, absolutePath = executables.pop()
@@ -2965,12 +2947,12 @@ def findBootBin(name, package = None):
     return executable
 
 
-def findRSync(remotePath, relative=False, admin=False):
+def findRSync(context, remotePath, relative=False, admin=False):
     '''Check if rsync is present and install it through the package
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
     through a project.'''
-    rsync = findBootBin('rsync')
+    rsync = findBootBin(context,'rsync')
 
     # Create the rsync command
     uri = urlparse.urlparse(remotePath)
@@ -3058,7 +3040,8 @@ def deps(roots, index):
                 flat += [ name ]
     return flat
 
-def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
+def fetch(context, filenames, cacheDir = None,
+          force=False, admin=False, relative=False):
     '''download *filenames*, typically a list of distribution packages,
     from the remote server into *cacheDir*. See the upload function
     for uploading files to the remote server.
@@ -3068,12 +3051,13 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
     if not cacheDir:
         relative = True
         cacheDir = os.path.join(context.value('siteTop'),'resources')
+    remoteCachePath = os.path.join(context.value('remoteSiteTop'),'resources')
     if len(filenames) > 0:
         # Check the local cache
         if force:
             pathnames = filenames
         else:
-            pathnames = findCache(filenames)
+            pathnames = findCache(context,filenames)
             for filename in pathnames:
                 localFilename = context.localDir(filename)
                 dir = os.path.dirname(localFilename)
@@ -3082,8 +3066,17 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
 
         # Convert all filenames to absolute urls
         downloads = {}
-        for f in pathnames:
-            downloads[ context.remoteCachePath(f) ] = f
+        for name in pathnames:
+            # Absolute path to access a file on the remote machine.
+            remotePath = ''
+            if name:
+                if name.startswith('http') or ':' in name:
+                    remotePath = name
+                elif name.startswith('/'):
+                    remotePath = '/.' + name
+                else:
+                    remotePath = os.path.join(remoteCachePath,'./' + name)
+            downloads[ remotePath ] = name
 
         # Split fetches by protocol
         https = []
@@ -3108,7 +3101,6 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
         # fetch sshs
         if len(sshs) > 0:
             sources = []
-            remoteCachePath = context.remoteCachePath()
             uri = urlparse.urlparse(remoteCachePath)
             hostname = uri.netloc
             if not uri.netloc:
@@ -3121,7 +3113,8 @@ def fetch(filenames, cacheDir=None, force=False, admin=False, relative=False):
                 if admin:
                     shellCommand(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-                cmdline, prefix = findRSync(remoteCachePath,relative,admin)
+                cmdline, prefix = findRSync(context,
+                                            remoteCachePath,relative,admin)
                 shellCommand(cmdline + ["'" + prefix + ' '.join(sources) + "'",
                                     cacheDir ])
 
@@ -3176,30 +3169,6 @@ def install(packages, dbindex):
     if len(localFiles) > 0:
         for name in localFiles:
             installLocalPackage(name)
-
-
-def installDarwinPkg(image,target,pkg=None):
-    '''Mount *image*, a pathnme to a .dmg file and use the Apple installer
-    to install the *pkg*, a .pkg package onto the platform through the Apple
-    installer.'''
-    base, ext = os.path.splitext(image)
-    volume = os.path.join('/Volumes',os.path.basename(base))
-    shellCommand(['hdiutil', 'attach', image])
-    if target != 'CurrentUserHomeDirectory':
-        message = 'ATTENTION: You need administrator privileges on ' \
-                + 'the local machine to execute the following cmmand\n'
-        writetext(message)
-        admin = True
-    else:
-        admin = False
-    if not pkg:
-        pkgs = findFiles(volume,'\.pkg')
-        if len(pkgs) != 1:
-            raise RuntimeError('ambiguous: not exactly one .pkg to install')
-        pkg = pkgs[0]
-    shellCommand(['installer', '-pkg', os.path.join(volume,pkg),
-                  '-target "' + target + '"'], admin)
-    shellCommand(['hdiutil', 'detach', volume])
 
 
 def helpBook(help):
@@ -3600,6 +3569,9 @@ def shellCommand(commandLine, admin=False, PATH=[]):
             # Error out if sudo prompts for a password because this should
             # never happen in non-interactive mode.
             cmdline += [ '-n' ]
+            # \todo Workaround while sudo is broken
+            # http://groups.google.com/group/comp.lang.python/browse_thread/thread/4c2bb14c12d31c29
+            cmdline = [ 'SUDO_ASKPASS="' + askPass + '"' , '/usr/bin/sudo' , '-A' ]
         cmdline += commandLine
     else:
         cmdline = commandLine
@@ -3827,8 +3799,8 @@ def helpEpilog(module):
     keys.sort()
     for command in keys:
         if command.startswith('pub'):
-            epilog += command[3:].lower() + module.__dict__[command].__doc__ \
-                + '\n'
+            epilog += command[3:].lower() \
+                + '\t' + module.__dict__[command].__doc__ + '\n'
     return epilog
 
 
@@ -4302,6 +4274,21 @@ def pubIntegrate(args):
         pchdir = context.srcDir(os.path.join(context.cwdProject(),
                                              srcdir + '-patch'))
         integrate(srcdir,pchdir)
+
+
+class FilteredList(PdbHandler):
+    '''Print a list binary package files specified in an index file.'''
+
+    def __init__(self):
+        self.firstTime = True
+        self.fetches = []
+
+    def project(self, p):
+        host = context.host()
+        if host in p.packages and p.packages[host]:
+            if len(p.packages[host].update.fetches) > 0:
+                for f in p.packages[host].update.fetches:
+                    self.fetches += [ f ]
 
 
 class ListPdbHandler(PdbHandler):
