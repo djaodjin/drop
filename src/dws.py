@@ -3583,7 +3583,8 @@ def shellCommand(commandLine, admin=False, PATH=[]):
             cmdline += [ '-n' ]
             # \todo Workaround while sudo is broken
             # http://groups.google.com/group/comp.lang.python/browse_thread/thread/4c2bb14c12d31c29
-            cmdline = [ 'SUDO_ASKPASS="' + askPass + '"' , '/usr/bin/sudo' , '-A' ]
+            if askPass:
+                cmdline = [ 'SUDO_ASKPASS="' + askPass + '"'  ] + cmdline + [ '-A' ]
         cmdline += commandLine
     else:
         cmdline = commandLine
