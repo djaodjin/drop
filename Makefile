@@ -61,9 +61,4 @@ install:: dws.py dstamp.py
 	$(installDirs)  $(libDir)/python
 	$(installFiles) $(filter %.py,$^) $(libDir)/python
 
-# There is already a package called dmake in Ubuntu :(.
-dmake:
-	echo '#!/bin/sh' > $@
-	echo 'dws make $$*' >> $@
-
 

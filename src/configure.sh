@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # This shell scricpt provides the illusion of an autoconf-like configuration
 # while using the workspace manangement tool (dws) instead. 
@@ -47,10 +47,10 @@ echo shareDir=${prefix}/share >> ${projmk}
 #  will be searched for when drop is specified as a prerequisite 
 # for the project.
 mkdir -p ${binBuildDir}
-mkdir -p ${buildTop}/share/dws
 cp ${srcDir}/dws ${binBuildDir}
-helpers=`ls -l ${srcDir}/share/dws/*.{mk,sh} > /dev/null 2>&1 | wc -l`
+helpers=`ls -l ${srcDir}/share/dws/*.{mk,sh} 2>/dev/null | wc -l`
 if [ ${helpers} -gt 0 ] ; then
+	mkdir -p ${buildTop}/share/dws
     cp -r ${srcDir}/share/dws/*.{mk,sh} ${buildTop}/share/dws
 fi
 ${binBuildDir}/dws --default configure
