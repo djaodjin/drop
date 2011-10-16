@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<section xmlns="http://docbook.org/ns/docbook" 
+	 xmlns:xlink="http://www.w3.org/1999/xlink"
+	 xml:id="defsoftw">
+  <!-- Navigate -->
+  <info>
+    <title>Drop tutorial</title>    
+    <date>15 Oct 2011</date>
+    <author>
+    <personname>Sebastien Mirolo &lt;smirolo@fortylines.com&gt;</personname>
+    </author>
+  </info>
+  <section>
+  <title>Introduction</title>
+  <para>
+  Starting development on a software project usually requires installing a whole bunch of prerequisites, fetching source repositories, configuring variables. List of step-by-step instructions, compatible prerequisite versions, etc. are often described in free form text and many times incomplete and/or out of date.
+  </para>
+  <para>
+  Package managers, such as ubuntu apt-get or redhat yum, solve the problem of installing binaries pre-built in a specific way at a specific place on the local system. They do not adequately help developers bring-up the required flexible environment to code and debug a project from source. These package managers are only part of the solution.
+  </para>
+  <para>
+  Autoconf and configure scripts can help find installed and missing prerequisites necessary. They still have shortcomings with regards to the problem of multiple library versions on a system. They also fall short of something to do when prerequisites have been identified as missing. Configure scripts are only part of the solution.
+  </para>
+  <para>
+  Make remains a tool of choice to describe file dependencies and rebuild a project from source. Lacking a formal composition mechanism, make usually breaks down beyond a certain complexity. You can tell that point when &quot;make clean &amp;&amp; make&quot; becomes common place &quot;to be safe&quot; and get things built properly. Make is only part of the solution.
+  </para>
+  <para>
+  Each part is fine for its intended use. Unfortunately developers require all those to work in concert and in a very flexible way. Many projects rely on aggregating hints from html pages, blog posts, etc. of successful setups. The burden on the new developers is huge, shying away potential contributors before they even have started touching the source code. We believed there should be an easier way to integrate make, prerequisites discovery and installation.
+  </para>
+  <para>
+  Drop has been built on the idea that one single command should be able to setup the local system, fetch the source repository, build specified projects multiple different ways alongside each other.
+  </para>
+  <programlisting>
+dws build <emphasis>repository_url</emphasis>
+  </programlisting>
+  </section>
+  <section>
+  <title>The index file</title>
+  <para>
+  Near the first thing dws (a one file python script) will do is to fetch an index file from within the <emphasis>repository_url</emphasis>. The index file, much like package manager databases, contains project descriptions, declaration of prerequisites, etc.
+  </para>
+  <para>
+  TODO
+  </para>
+  </section>
+  <section>
+  <title>Make helper fragments</title>
+  <para>
+  TODO
+  </para>
+  </section>
+</section>
