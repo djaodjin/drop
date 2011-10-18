@@ -683,51 +683,45 @@ class DependencyGenerator(Unserializer):
         #   - setups: set of SetupStep
         #   - updates: set of UpdateStep
         #   - makes: set of MakeStep/ShellStep
-        self.updates = {}
-        self.configures = {}
-        self.makes = {}
-        self.setups = {}
+        self.vertices = {}
 
     def __str__(self):
-        s = "setups:\n"
-        s += str(self.setups)
-        s += "updates:\n"
-        s += str(self.updates)
-        s += "configures:\n"
-        s += str(self.configures)
-        s += "makes:\n"
-        s += str(self.makes)
+        s = "vertices:\n"
+        s += str(self.vertices)
         return s
 
     def connectToSetup(self, name, step):
-        for setupName in self.setups:
-            if re.match(name,setupName):
-                self.setups[setupName].prerequisites += [ step ]
+        if name in self.vertices:
+            self.vertices[name].prerequisites += [ step ]
 
     def addConfigMake(self, variant, configure, make, prerequisites):
-        name = str(variant)
         config = None
-        if not name in self.configures:
+        configName = Step.genid(ConfigureStep,variant.project,variant.target)
+        if not configName in self.vertices:
             config = configure.associate(variant.target)
-            self.configures[name] = config
+            self.vertices[configName] = config
         else:
-            config = self.configures[name]
-        if not name in self.makes:
+            config = self.vertices[configName]
+        makeName = Step.genid(BuildStep,variant.project,variant.target)
+        if not makeName in self.vertices:
             make = make.associate(variant.target)
-            self.makes[name] = make
+            self.vertices[makeName] = make
             for p in prerequisites:
                 make.prerequisites += [ p ]
             if config:
                 make.prerequisites += [ config ]
-            self.connectToSetup(name,make)
-        return self.makes[name]
+            setupName = Step.genid(SetupStep,variant.project,variant.target)
+            self.connectToSetup(setupName,make)
+        return self.vertices[makeName]
 
-    def addInstall(self,name):
+    def addInstall(self,projectName):
         installStep = None
-        if name in self.setups and not self.setups[name].run(context):
-            if name in self.projects:
+        setupName = Step.genid(SetupStep,projectName)
+        if (setupName in self.vertices
+            and not self.vertices[setupName].run(context)):
+            if projectName in self.projects:
                 filenames = []
-                project = self.projects[name]
+                project = self.projects[projectName]
                 for f in project.packages[context.host()].update.fetches:
                     filenames += [ context.localDir(f) ]
                 if context.host() in [ 'Debian', 'Ubuntu' ]:
@@ -740,41 +734,36 @@ class DependencyGenerator(Unserializer):
                     installStep = RpmInstallStep(filenames[0],filenames[1:])
                 else:
                     installStep = InstallStep(filenames[0],filenames[1:])
-                if name in self.updates:
-                        installStep.prerequisites += [ self.updates[name] ]
+                updateName = Step.genid(UpdateStep,projectName)
+                if updateName in self.vertices:
+                    installStep.prerequisites += [ self.updates[updateName] ]
             else:
                 if context.host() in [ 'Debian', 'Ubuntu' ]:
-                    installStep = AptInstallStep(name)
+                    installStep = AptInstallStep(projectName)
                 elif context.host() in [ 'Darwin' ]:
-                    installStep = MacPortInstallStep(name)
+                    installStep = MacPortInstallStep(projectName)
                 elif context.host() in [ 'Fedora' ]:
-                    installStep = YumInstallStep(name)
+                    installStep = YumInstallStep(projectName)
                 else:
-                    installStep = InstallStep(name)
-            self.connectToSetup(name,installStep)
+                    installStep = InstallStep(projectName)
+            self.connectToSetup(setupName,installStep)
         return installStep
-
-
 
     def addSetup(self, target, deps):
         targets = []
         for p in deps:
-            setupName = p.name
             targetName = p.target
             if not p.target:
                 targetName = target
-            if targetName:
-                setupName = p.name + targetName
             setup = SetupStep(p.name,p.files,p.excludes,targetName)
-            if not setupName in self.setups:
-                self.setups[setupName] = setup
+            if not setup.name in self.vertices:
+                self.vertices[setup.name] = setup
             else:
-                self.setups[setupName].insert(setup)
-            targets += [ self.setups[setupName] ]
+                self.vertices[setup.name].insert(setup)
+            targets += [ self.vertices[setup.name] ]
         return targets
 
-
-    def addUpdate(self, name, update, updateRep=True):
+    def addUpdate(self, projectName, update, updateRep=True):
         fetches = {}
         if len(update.fetches) > 0:
             # We could unconditionally add all source tarball since
@@ -784,10 +773,11 @@ class DependencyGenerator(Unserializer):
             # no missing prerequisites whithout fetching anything.
             fetches = findCache(context,update.fetches)
         rep = None
-        if updateRep or not os.path.isdir(context.srcDir(name)):
+        if updateRep or not os.path.isdir(context.srcDir(projectName)):
             rep = update.rep
         if update.rep or len(fetches) > 0:
-            self.updates[name] = UpdateStep(name,rep,fetches)
+            updateS = UpdateStep(projectName,rep,fetches)
+            self.vertices[updateS.name] = updateS
 
     def contextualTargets(self,variant):
         raise Error("DependencyGenerator should not be instantiated directly")
@@ -804,14 +794,14 @@ class DependencyGenerator(Unserializer):
             nextDepth = depth + 1
             # The algorithm to select targets depends on the command semantic.
             # The build, make and install commands differ in behavior there
-            # in the presence of repostory, patch and package tags.
+            # in the presence of repository, patch and package tags.
             needPrompt, targets = self.contextualTargets(variant)
             if needPrompt:
                 nextActivePrerequisites[p] = (color, depth, variant)
             else:
                 for target in targets:
                     further = True
-                    targetName = str(target)
+                    targetName = str(target.project)
                     if targetName in nextActivePrerequisites:
                         if nextActivePrerequisites[targetName][0] > color:
                             # We propagate a color attribute through
@@ -882,14 +872,8 @@ class DependencyGenerator(Unserializer):
             installStep = self.addInstall(name)
             if installStep:
                 remains += [ installStep ]
-        for s in self.setups:
-            remains += [ self.setups[s] ]
-        for s in self.updates:
-            remains += [ self.updates[s] ]
-        for s in self.configures:
-            remains += [ self.configures[s] ]
-        for s in self.makes:
-            remains += [ self.makes[s] ]
+        for s in self.vertices:
+            remains += [ self.vertices[s] ]
         nextRemains = []
         while len(remains) > 0:
             for step in remains:
@@ -1088,18 +1072,15 @@ class MakeDepGenerator(MakeGenerator):
     def addSetup(self, target, deps):
         targets = []
         for p in deps:
-            setupName = p.name
             targetName = p.target
             if not p.target:
                 targetName = target
-            if targetName:
-                setupName = p.name + targetName
             setup = SetupStep(p.name,p.files,p.excludes,targetName)
-            if not setupName in self.setups:
-                self.setups[setupName] = setup
+            if not setup.name in self.vertices:
+                self.vertices[setup.name] = setup
             else:
-                setup = self.setups[setupName].insert(setup)
-            targets += [ self.setups[setupName] ]
+                setup = self.vertices[setup.name].insert(setup)
+            targets += [ self.vertices[setup.name] ]
         return targets
 
 
@@ -1488,26 +1469,39 @@ class Step:
                  'setup',
                  '' ]
 
-    def __init__(self, priority, name):
-        self.name = name.replace(os.sep,'_').replace('-','_')
-        if self.prefixes[priority]:
-            self.name = self.prefixes[priority] + '_' + self.name
+    def __init__(self, priority, projectName):
+        self.project = projectName
         self.prerequisites = []
         self.priority = priority
+        self.name = Step.genid(self.__class__,projectName)
 
     def __str__(self):
         return self.name
 
+    @staticmethod
+    def genid(cls, projectName, targetName = None):
+        name = projectName.replace(os.sep,'_').replace('-','_')
+        if issubclass(cls,ConfigureStep):
+            name = 'configure_' + name
+        elif issubclass(cls,InstallStep):
+            name = 'install_' + name
+        elif issubclass(cls,UpdateStep):
+            name = 'update_' + name
+        elif issubclass(cls,SetupStep):
+            name = 'setup_' + name
+        elif issubclass(cls,BuildStep):
+            name = name
+        if targetName:
+            name = name + '_' + targetName
+        return name
+
 
 class TargetStep(Step):
 
-    def __init__(self, prefix, project, target = None ):
-        self.project = project
+    def __init__(self, prefix, projectName, target = None ):
         self.target = target
-        name = self.project
-        if target:
-            name = self.project + '_' + self.target
-        Step.__init__(self, prefix, name)
+        Step.__init__(self, prefix, projectName)
+        self.name = Step.genid(self.__class__, projectName, target)
 
 
 class ConfigureStep(TargetStep):
@@ -1515,8 +1509,8 @@ class ConfigureStep(TargetStep):
     that drive the make step such as compiler flags, where files are installed,
     etc.'''
 
-    def __init__(self, project, envvars, target = None):
-        TargetStep.__init__(self,Step.configure,project,target)
+    def __init__(self, projectName, envvars, target = None):
+        TargetStep.__init__(self,Step.configure,projectName,target)
         self.envvars = envvars
 
     def associate(self, target):
@@ -1530,9 +1524,9 @@ class InstallStep(Step):
     '''The *install* step in the development cycle installs prerequisites
     to a project.'''
 
-    def __init__(self, name, managed = []):
-        Step.__init__(self,Step.install,name)
-        self.managed = [ name ] + managed
+    def __init__(self, projectName, managed = []):
+        Step.__init__(self,Step.install,projectName)
+        self.managed = [ projectName ] + managed
 
     def insert(self, install):
         self.managed += install.managed
@@ -1639,13 +1633,16 @@ class YumInstallStep(InstallStep):
         shellCommand(['yum', '-y', 'install' ] + fedoraPkgs, admin=True)
         return True
 
+class BuildStep(TargetStep):
+    '''Build a project running make, executing a script, etc.'''
 
-class MakeStep(TargetStep):
+    def __init__(self, projectName, target = None):
+        TargetStep.__init__(self,Step.make,projectName,target)
+
+
+class MakeStep(BuildStep):
     '''The *make* step in the development cycle builds executable binaries,
     libraries and other files necessary to install the project.'''
-
-    def __init__(self, project, target = None):
-        TargetStep.__init__(self,Step.make,project,target)
 
     def associate(self, target):
         return MakeStep(self.project,target)
@@ -1674,11 +1671,11 @@ class MakeStep(TargetStep):
         return True
 
 
-class ShellStep(TargetStep):
+class ShellStep(BuildStep):
     '''Run a shell script to *make* a step in the development cycle.'''
 
-    def __init__(self, project, script, target = None):
-        TargetStep.__init__(self,Step.make,project,target)
+    def __init__(self, projectName, script, target = None):
+        BuildStep.__init__(self,projectName,target)
         self.script = script
 
     def associate(self, target):
@@ -1701,8 +1698,8 @@ class SetupStep(TargetStep):
     prerequisites. This steps gathers all the <dep> statements referring
     to a specific prerequisite.'''
 
-    def __init__(self, project, files, excludes=[], target=None):
-        TargetStep.__init__(self,Step.setup,project,target)
+    def __init__(self, projectName, files, excludes=[], target=None):
+        TargetStep.__init__(self,Step.setup,projectName,target)
         self.files = files
         self.excludes = excludes
 
@@ -1745,11 +1742,10 @@ class UpdateStep(Step):
 
     nbUpdatedProjects = 0
 
-    def __init__(self, project, rep, fetches):
-        Step.__init__(self,Step.update,project)
+    def __init__(self, projectName, rep, fetches):
+        Step.__init__(self,Step.update,projectName)
         self.rep = rep
         self.fetches = fetches
-        self.project = project
 
     def run(self, context):
         updated = True
@@ -1833,8 +1829,6 @@ class GitRepository(Repository):
     from a git source control repository.'''
 
     def __init__(self, sync, rev):
-        if sync.endswith(os.sep + '.git'):
-            sync = sync[:-4]
         Repository.__init__(self,sync,rev)
 
     def applyPatches(self, name, context):
@@ -3047,7 +3041,7 @@ def deps(roots, index):
     results = []
     for s in steps:
         # \todo this is an ugly hack!
-        if isinstance(s,InstallStep) or isinstance(s,MakeStep):
+        if isinstance(s,InstallStep) or isinstance(s,BuildStep):
             results += [ str(s).replace('install_','') ]
     return results
 
@@ -3065,20 +3059,9 @@ def fetch(context, filenames, cacheDir = None,
         cacheDir = os.path.join(context.value('siteTop'),'resources')
     remoteCachePath = os.path.join(context.value('remoteSiteTop'),'resources')
     if len(filenames) > 0:
-        # Check the local cache
-        if force:
-            pathnames = filenames
-        else:
-            pathnames = findCache(context,filenames)
-            for filename in pathnames:
-                localFilename = context.localDir(filename)
-                dir = os.path.dirname(localFilename)
-                if not os.path.exists(dir):
-                    os.makedirs(dir)
-
-        # Convert all filenames to absolute urls
-        downloads = {}
-        for name in pathnames:
+        # Expand filenames to absolute urls
+        pathnames = {}
+        for name in filenames:
             # Absolute path to access a file on the remote machine.
             remotePath = ''
             if name:
@@ -3088,7 +3071,18 @@ def fetch(context, filenames, cacheDir = None,
                     remotePath = '/.' + name
                 else:
                     remotePath = os.path.join(remoteCachePath,'./' + name)
-            downloads[ remotePath ] = name
+            pathnames[ remotePath ] = name
+
+        # Check the local cache
+        if force:
+            downloads = pathnames
+        else:
+            downloads = findCache(context,pathnames)
+            for filename in downloads:
+                localFilename = context.localDir(filename)
+                dir = os.path.dirname(localFilename)
+                if not os.path.exists(dir):
+                    os.makedirs(dir)
 
         # Split fetches by protocol
         https = []
@@ -3161,7 +3155,12 @@ def install(packages, dbindex):
                     for filename in package.fetches():
                         # The package is not part of the local system package
                         # manager so it has to have been pre-built.
-                        localFiles += [ context.localDir(filename) ]
+                        if context.host() in [ 'Debian', 'Ubuntu' ]:
+                            localFiles += [ DpkgInstallStep(name) ]
+                        elif context.host() in [ 'Darwin' ]:
+                            localFiles += [ DarwinInstallStep(name) ]
+                        elif context.host() in [ 'Fedora' ]:
+                            localFiles += [ RpmInstallStep(name) ]
                 else:
                     managed += [ name ]
             else:
@@ -3179,8 +3178,8 @@ def install(packages, dbindex):
         step.run(context)
 
     if len(localFiles) > 0:
-        for name in localFiles:
-            installLocalPackage(name)
+        for step in localFiles:
+            step.run(context)
 
 
 def helpBook(help):
@@ -3717,6 +3716,7 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         if first.priority in priorities:
             for v in glob:
                 errcode = 0
+                elapsed = 0
                 log.header(v.name)
                 start = datetime.datetime.now()
                 try:
@@ -4097,16 +4097,20 @@ def pubConfigure(args):
     dbindex = IndexProjects(context,context.value('indexFile'))
     dbindex.parse(dgen)
     prerequisites = set([])
-    for u in dgen.setups:
-        setup = dgen.setups[u]
-        for f in setup.files:
-            if not setup.files[f] or len(setup.files[f]) == 0:
-                prerequisites |= set([ str(setup) ])
-                break
-    for u in dgen.updates:
-        if len(dgen.updates[u].fetches) > 0:
-            for miss in dgen.updates[u].fetches:
-                prerequisites |= set([ miss ])
+    for u in dgen.vertices:
+        if u.startswith('setup_'):
+            setup = dgen.vertices[u]
+            setup.run(context)
+            for dirname in setup.files:
+                for f in setup.files[dirname]:
+                    if not f[1] or len(f[1]) == 0:
+                        prerequisites |= set([ str(setup.project) ])
+                        break
+        elif u.startswith('update_'):
+            update = dgen.vertices[u]
+            if len(update.fetches) > 0:
+                for miss in update.fetches:
+                    prerequisites |= set([ miss ])
     if len(prerequisites) > 0:
         raise MissingError(projectName,prerequisites)
 
