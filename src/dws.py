@@ -3263,10 +3263,10 @@ def helpBook(help):
                 sys.stdout.write("<varlistentry>\n<term>" + line + "</term>\n")
             else:
                 if not s[0].startswith('-'):
-                    sys.stdout.write("<varlistentry xml:id=\"dws." + s[0] + "\">\n<term>")
+                    sys.stdout.write("<varlistentry xml:id=\"dws." + s[0] + "\">\n")
                 else:
-                    sys.stdout.write("<term>")
-                sys.stdout.write(s[0] + "</term>\n")
+                    sys.stdout.write("<varlistentry>\n")
+                sys.stdout.write("<term>" + s[0] + "</term>\n")
             sys.stdout.write("<listitem>\n")
             sys.stdout.write("<para>\n")
             if not re.search("[A-Z]",w[0]):
