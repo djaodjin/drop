@@ -736,7 +736,7 @@ class DependencyGenerator(Unserializer):
                     installStep = InstallStep(filenames[0],filenames[1:])
                 updateName = Step.genid(UpdateStep,projectName)
                 if updateName in self.vertices:
-                    installStep.prerequisites += [ self.updates[updateName] ]
+                    installStep.prerequisites += [ self.vertices[updateName] ]
             else:
                 if context.host() in [ 'Debian', 'Ubuntu' ]:
                     installStep = AptInstallStep(projectName)
@@ -3579,11 +3579,12 @@ def shellCommand(commandLine, admin=False, PATH=[]):
         if useDefaultAnswer:
             # Error out if sudo prompts for a password because this should
             # never happen in non-interactive mode.
-            cmdline += [ '-n' ]
-            # \todo Workaround while sudo is broken
-            # http://groups.google.com/group/comp.lang.python/browse_thread/thread/4c2bb14c12d31c29
             if askPass:
+                # \todo Workaround while sudo is broken
+                # http://groups.google.com/group/comp.lang.python/browse_thread/thread/4c2bb14c12d31c29
                 cmdline = [ 'SUDO_ASKPASS="' + askPass + '"'  ] + cmdline + [ '-A' ]
+            else:
+                cmdline += [ '-n' ]
         cmdline += commandLine
     else:
         cmdline = commandLine
