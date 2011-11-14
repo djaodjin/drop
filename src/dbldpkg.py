@@ -460,8 +460,7 @@ def buildPackage(project, version, installTop):
         specfile.write('Summary: None\n')
         specfile.write('License: Unknown\n')
         specfile.write('\n%description\n' + p.descr + '\n')
-        specfile.write('Packager: ' + p.maintainer.fullname \
-                                + ' <' + p.maintainer.email + '>\n')
+        specfile.write('Packager: ' + str(p.maintainer) + '\n')
         specfile.write('''\n%build
 ./configure --prefix=/usr/local
 make
@@ -479,8 +478,7 @@ make install
             os.makedirs('debian')
         control = open(os.path.join('debian','control'),'w')
         control.write('Source: ' + project.name + '\n')
-        control.write('Maintainer: ' + project.maintainer.fullname \
-                                + ' <' + project.maintainer.email + '>\n')
+        control.write('Maintainer: ' + str(project.maintainer) + '\n')
         # \todo Temporarly disable the Build-Depends because of "boost"
         #       prerequisites and how debuild makes packages.
         if None:
@@ -495,13 +493,16 @@ make install
 
         control.write('\nPackage: ' + project.name + '\n')
         control.write('Priority: extra\n')
-        control.write('Architecture: any\n')
 
-        for metainfo  in project.metainfos:
-            control.write(metainfo.name.capitalize() + ': ' \
-                              + metainfo.value + '\n')
+        if (not context.host() in project.packages
+            or not 'architecture' in project.packages[context.host()].configure.envvars):
+            control.write('Architecture: any\n')
 
         if context.host() in project.packages:
+            envvars = project.packages[context.host()].configure.envvars
+            for key, val in envvars.iteritems():
+                if isinstance(val,dws.Metainfo):
+                    control.write(key.capitalize() + ': ' + val.value + '\n')
             control.write('Depends: ' \
                               + ', '.join(dws.basenames(
             project.packages[context.host()].prerequisiteNames([context.host()]))) + '\n')        
@@ -528,8 +529,7 @@ make install
         changelog.write(project.name + ' (' + packageVersion + ') ' \
                             + str(distribCodename) + '; urgency=low\n\n')
         changelog.write('  * debian/rules: generate ubuntu package\n\n')
-        changelog.write(' -- ' + project.maintainer.fullname \
-                            + ' <' + project.maintainer.email + '>  ' \
+        changelog.write(' -- ' + str(project.maintainer) + ' ' \
                             + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
         changelog.close()
         if None:
@@ -581,7 +581,7 @@ install:
 \tdh_installchangelogs
 \tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
 \tif [ -f $(CURDIR)/debian/postinst ] ; then \
-        mv $(CURDIR)/debian/postinst $(CURDIR)/debian/postinst~ ; \
+        cp $(CURDIR)/debian/postinst $(CURDIR)/debian/postinst~ ; \
      fi
 \tif [ -d $(SYSCONFDIR) ] ; then \
 \t\tif [ `cd $(SYSCONFDIR) && find . -type f | wc -l` -gt 0 ] ; then \
@@ -589,20 +589,20 @@ install:
 \t\t\techo >> $(CURDIR)/debian/postinst ; \
 \t\t\techo "set -e" >> $(CURDIR)/debian/postinst ; \
 \t\t\techo >> $(CURDIR)/debian/postinst ; \
+\t\t\tfor conf in `cd $(SYSCONFDIR) && find . -type f` ; do \
+\t\t\t\techo "install -d `dirname /etc/$$conf`" >> $(CURDIR)/debian/postinst ; \
+\t\t\t\techo "cat > /etc/$$conf <<EOF" >> $(CURDIR)/debian/postinst ; \
+\t\t\t\tsed -e 's,\\$$,\\\\$$,g' $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
+\t\t\t\techo >> $(CURDIR)/debian/postinst ; \
+\t\t\t\techo "EOF" >> $(CURDIR)/debian/postinst ; \
+\t\t\t\techo >> $(CURDIR)/debian/postinst ; \
+\t\t\tdone ; \
 \t\tfi ; \
-\t\tfor conf in `cd $(SYSCONFDIR) && find . -type f` ; do \
-\t\t\techo "install -d `dirname /etc/$$conf`" >> $(CURDIR)/debian/postinst ; \
-\t\t\techo "cat > /etc/$$conf <<EOF" >> $(CURDIR)/debian/postinst ; \
-\t\t\tsed -e 's,\\$$,\\\\$$,g' $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
-\t\t\techo >> $(CURDIR)/debian/postinst ; \
-\t\t\techo "EOF" >> $(CURDIR)/debian/postinst ; \
-\t\t\techo >> $(CURDIR)/debian/postinst ; \
-\t\tdone ; \
+\t\tif [ -f $(CURDIR)/debian/postinst~ ] ; then \
+\t\t\tcat $(CURDIR)/debian/postinst~ | sed 1,3d >> $(CURDIR)/debian/postinst ; \
+\t\tfi ; \
+\t\trm -rf $(SYSCONFDIR) ; \
 \tfi
-\tif [ -f $(CURDIR)/debian/postinst~ ] ; then \
-        cat $(CURDIR)/debian/postinst~ | sed 1,3d >> $(CURDIR)/debian/postinst ; \
-     fi
-\trm -rf $(SYSCONFDIR)
 \tdh_compress
 
 binary: install
@@ -628,7 +628,7 @@ binary: install
                                 + str(project.maintainer))
             copyright.close()
 
-        # We have generated all files debuild requires to create a binary 
+        # We have generated all files debuild requires to create a binary
         # package so now let's invoke it.
         #
         # alternative:
@@ -640,7 +640,7 @@ binary: install
         # permission access to the directory.
         # Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
         #
-        # Can only find example in man pages of debuild but cannot 
+        # Can only find example in man pages of debuild but cannot
         # find description of options: "-i -us -uc -b".
         dws.shellCommand(['debuild', '-i', '-us', '-uc', '-b'])
         cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
@@ -650,9 +650,9 @@ binary: install
         cmd.wait()
         if cmd.returncode != 0:
             raise dws.Error("problem reading `getconf LONG_BIT`")
-        distExtUbuntu =	'_amd64.deb'
+        distExtUbuntu = '_amd64.deb'
         if longBit == '32':
-            distExtUbuntu = '_i386.deb'            
+            distExtUbuntu = '_i386.deb'
         return '../' + project.name + '_' + packageVersion + distExtUbuntu
 
     else:

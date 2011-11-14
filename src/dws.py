@@ -137,83 +137,86 @@ class Context:
         self.targets = []
         self.overrides = []
         siteTop = Pathname('siteTop',
-                          'Root of the tree where the website is generated and thus where *remoteSiteTop* is cached on the local system',
-                          default=os.getcwd())
+                          { 'description':'Root of the tree where the website is generated and thus where *remoteSiteTop* is cached on the local system',
+                          'default':os.getcwd()})
         remoteSiteTop = Pathname('remoteSiteTop',
-             'Root of the remote tree that holds the published website (ex: url:/var/cache).',
-                  default='')
+             { 'description':'Root of the remote tree that holds the published website (ex: url:/var/cache).',
+                  'default':''})
         installTop = Pathname('installTop',
-                    'Root of the tree for installed bin/, include/, lib/, ...',
-                          base='siteTop',default='install')
+                    { 'description':'Root of the tree for installed bin/, include/, lib/, ...',
+                          'base':'siteTop','default':'install'})
         # We use installTop (previously siteTop), such that a command like
         # "dws build *remoteIndex* *siteTop*" run from a local build
         # directory creates intermediate and installed files there while
         # checking out the sources under siteTop.
         # It might just be my preference...
         buildTop = Pathname('buildTop',
-                    'Root of the tree where intermediate files are created.',
-                            base='siteTop',default='build')
+                    { 'description':'Root of the tree where intermediate files are created.',
+                            'base':'siteTop','default':'build'})
         srcTop = Pathname('srcTop',
-             'Root of the tree where the source code under revision control lives on the local machine.',
-                          base='siteTop',default='reps')
+             { 'description': 'Root of the tree where the source code under revision control lives on the local machine.',
+               'base': 'siteTop',
+               'default':'reps'})
         self.environ = { 'buildTop': buildTop,
                          'srcTop' : srcTop,
                          'patchTop': Pathname('patchTop',
-             'Root of the tree where patches are stored',
-                                            base='siteTop',default='patch'),
+             {'description':'Root of the tree where patches are stored',
+              'base':'siteTop',
+              'default':'patch'}),
                          'binDir': Pathname('binDir',
-             'Root of the tree where executables are installed',
-                                            base='installTop'),
+             {'description':'Root of the tree where executables are installed',
+              'base':'installTop'}),
                          'installTop': installTop,
                          'includeDir': Pathname('includeDir',
-             'Root of the tree where include files are installed',
-                                                base='installTop'),
+            {'description':'Root of the tree where include files are installed',
+             'base':'installTop'}),
                          'libDir': Pathname('libDir',
-             'Root of the tree where libraries are installed',
-                                            base='installTop'),
+             {'description':'Root of the tree where libraries are installed',
+              'base':'installTop'}),
                          'etcDir': Pathname('etcDir',
-             'Root of the tree where configuration files for the local system are installed',
-                                            base='installTop'),
+             {'description':'Root of the tree where configuration files for the local system are installed',
+              'base':'installTop'}),
                          'shareDir': Pathname('shareDir',
-             'Directory where the shared files are installed.',
-                                            base='installTop'),
+             {'description':'Directory where the shared files are installed.',
+              'base':'installTop'}),
                          'siteTop': siteTop,
                          'logDir': Pathname('logDir',
-             'Directory where the generated log files are created',
-                                          base='siteTop',default='log'),
+             {'description':'Directory where the generated log files are created',
+              'base':'siteTop',
+              'default':'log'}),
                          'indexFile': Pathname('indexFile',
-             'Index file with projects dependencies information',
-                                          base='siteTop',
-              default=os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')),
+             {'description':'Index file with projects dependencies information',
+              'base':'siteTop',
+              'default':os.path.join('resources',os.path.basename(sys.argv[0]) + '.xml')}),
                          'remoteSiteTop': remoteSiteTop,
                          'remoteSrcTop': Pathname('remoteSrcTop',
-             'Root of the tree on the remote machine where repositories are located.',
-                                          base='remoteSiteTop',default='reps'),
+             {'description':'Root of the tree on the remote machine where repositories are located.',
+              'base':'remoteSiteTop',
+              'default':'reps'}),
                          'remoteIndex': Pathname('remoteIndex',
-             'Url to the remote index file with projects dependencies information',
-                                               base='remoteSiteTop',
-                                               default='reps/dws.git/dws.xml'),
-                        'darwinTargetVolume': SingleChoice('darwinTargetVolume',
-                                                           None,
-              descr='Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
-              choices=[ ['LocalSystem',
-                         'install packages on the system root for all users'],
-                        ['CurrentUserHomeDirectory',
-                         'install packages for the current user only'] ]),
+             {'description':'Url to the remote index file with projects dependencies information',
+              'base':'remoteSiteTop',
+              'default':'reps/dws.git/dws.xml'}),
+                        'darwinTargetVolume': Single('darwinTargetVolume',
+              { 'description': 'Destination of installed packages on a Darwin local machine. Installing on the "LocalSystem" requires administrator privileges.',
+              'choices': {'LocalSystem':
+                         'install packages on the system root for all users',
+                        'CurrentUserHomeDirectory':
+                         'install packages for the current user only'} }),
                          'distHost': HostPlatform('distHost'),
                          'smtpHost': Variable('smtpHost',
-             descr='Hostname for the SMTP server through which logs are sent.',
-                                              default='localhost'),
+             { 'description':'Hostname for the SMTP server through which logs are sent.',
+               'default':'localhost'}),
                          'smtpPort': Variable('smtpPort',
-             descr='Port for the SMTP server through which logs are sent.',
-                                              default='5870'),
+             { 'description':'Port for the SMTP server through which logs are sent.',
+               'default':'5870'}),
                          'dwsSmtpLogin': Variable('dwsSmtpLogin',
-             descr='Login on the SMTP server for the user through which logs are sent.'),
+             { 'description':'Login on the SMTP server for the user through which logs are sent.'}),
                          'dwsSmtpPasswd': Variable('dwsSmtpPasswd',
-             descr='Password on the SMTP server for the user through which logs are sent.'),
+             { 'description':'Password on the SMTP server for the user through which logs are sent.'}),
                          'dwsEmail': Variable('dwsEmail',
-             descr='dws occasionally emails build reports (see --mailto command line option). This is the address that will be shown in the *From* field.',
-                              default=os.environ['LOGNAME'] + '@localhost') }
+             { 'description':'dws occasionally emails build reports (see --mailto command line option). This is the address that will be shown in the *From* field.',
+               'default':os.environ['LOGNAME'] + '@localhost'}) }
         self.buildTopRelativeCwd = None
         self.configFilename = None
 
@@ -608,7 +611,7 @@ class Unserializer(PdbHandler):
     '''Builds *Project* instances for every project that matches *includePats*
     and not *excludePats*. See *filters*() for implementation.'''
 
-    def __init__(self, includePats=[], excludePats=[]):
+    def __init__(self, includePats=[], excludePats=[], customSteps={}):
         PdbHandler.__init__(self)
         self.includePats = set(includePats)
         # Project which either fullfil all prerequisites or that have been
@@ -617,6 +620,7 @@ class Unserializer(PdbHandler):
         self.excludePats = set(excludePats)
         self.projects = {}
         self.firstProject = None
+        self.customSteps = customSteps
 
     def asProject(self, name):
         if not name in self.projects:
@@ -657,14 +661,15 @@ class DependencyGenerator(Unserializer):
     bootstrapping and other "recurse" features.
     '''
 
-    def __init__(self, repositories, patches, packages, excludePats = []):
+    def __init__(self, repositories, patches, packages, excludePats = [],
+                 customSteps = {}):
         '''*repositories* and *patches* will be installed from compiling
         a source controlled repository while *packages* will be installed
         from a binary distribution package.
         *excludePats* is a list of projects which should be removed from
         the final topological order.'''
         Unserializer.__init__(self, packages + patches + repositories,
-                              excludePats)
+                              excludePats,customSteps)
         # When True, an exception will stop the recursive make
         # and exit with an error code, otherwise it moves on to
         # the next project.
@@ -680,9 +685,6 @@ class DependencyGenerator(Unserializer):
         for r in repositories + patches + packages:
             self.levels[0] |= set([ TargetStep(0,r) ])
         # Vertices in the dependency tree
-        #   - setups: set of SetupStep
-        #   - updates: set of UpdateStep
-        #   - makes: set of MakeStep/ShellStep
         self.vertices = {}
 
     def __str__(self):
@@ -755,7 +757,11 @@ class DependencyGenerator(Unserializer):
             targetName = p.target
             if not p.target:
                 targetName = target
-            setup = SetupStep(p.name,p.files,p.excludes,targetName)
+            cap = p.name + 'Setup'
+            if cap in self.customSteps:
+                setup = self.customSteps[cap](p.name,p.files)
+            else:
+                setup = SetupStep(p.name,p.files,p.excludes,targetName)
             if not setup.name in self.vertices:
                 self.vertices[setup.name] = setup
             else:
@@ -960,9 +966,10 @@ class MakeGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''
 
-    def __init__(self, repositories, patches, packages, excludePats = []):
+    def __init__(self, repositories, patches, packages, excludePats = [],
+                 customSteps = {}):
         DependencyGenerator.__init__(self,repositories,patches,
-                                     packages,excludePats)
+                                     packages,excludePats,customSteps)
         self.stopMakeAfterError = True
 
     def contextualTargets(self, variant):
@@ -1123,13 +1130,22 @@ class NativeWriter(PdbHandler):
 class Variable:
     '''Variable that ends up being defined in the workspace make fragment and thus in Makefile.'''
 
-    def __init__(self, name, value=None, descr=None, default=None):
+    def __init__(self, name, pairs):
         self.name = name
-        self.value = value
-        self.descr = descr
-        self.default = default
-        if descr:
-            self.descr = descr.strip()
+        self.value = None
+        self.descr = None
+        self.default = None
+        if isinstance(pairs,dict):
+            for key, val in pairs.iteritems():
+                if key == 'description':
+                    self.descr = val
+                elif key == 'value':
+                    self.value = val
+                elif key == 'default':
+                    self.default = val
+        else:
+            self.value = pairs
+            self.default = self.value
         self.constrains = {}
 
     def __str__(self):
@@ -1170,8 +1186,8 @@ class Variable:
 
 class HostPlatform(Variable):
 
-    def __init__(self,name,descr=None):
-        Variable.__init__(self,name,None,descr)
+    def __init__(self,name,pairs={}):
+        Variable.__init__(self,name,pairs)
         self.distCodename = None
 
     def configure(self,context):
@@ -1226,10 +1242,11 @@ class HostPlatform(Variable):
 
 class Pathname(Variable):
 
-    def __init__(self,name,descr=None,base=None,default=None):
-        Variable.__init__(self,name,None,descr)
-        self.base = base
-        self.default = default
+    def __init__(self, name, pairs):
+        Variable.__init__(self,name,pairs)
+        self.base = None
+        if 'base' in pairs:
+            self.base = pairs['base']
 
     def configure(self,context):
         '''Generate an interactive prompt to enter a workspace variable
@@ -1307,30 +1324,32 @@ class Pathname(Variable):
 
 class Metainfo(Variable):
 
-    def __init__(self,name,value,descr=None):
-        Variable.__init__(self,name,value,descr)
+    def __init__(self,name,pairs):
+        Variable.__init__(self,name,pairs)
 
 
-class MultipleChoice(Variable):
+class Multiple(Variable):
 
-    def __init__(self,name,value,descr=None,choices=[]):
-        if value and isinstance(value,str):
-            value = value.split(' ')
-        Variable.__init__(self,name,value,descr)
-        self.choices = choices
+    def __init__(self, name, pairs):
+        if pairs and isinstance(pairs,str):
+            pairs = pairs.split(' ')
+        Variable.__init__(self,name,pairs)
+        self.choices = None
+        if 'choices' in pairs:
+            self.choices = pairs['choices']
 
     def __str__(self):
         return ' '.join(self.value)
 
     def configure(self,context):
-        '''Generate an interactive prompt to enter a workspace variable 
+        '''Generate an interactive prompt to enter a workspace variable
         *var* value and returns True if the variable value as been set.'''
         # There is no point to propose a choice already constraint by other
         # variables values.
         choices = []
-        for choice in self.choices:
-            if not choice[0] in self.value:
-                choices += [ choice ]
+        for key, descr in self.choices.iteritems():
+            if not key in self.value:
+                choices += [ [key, descr] ]
         if len(choices) == 0:
             return False
         descr = self.descr
@@ -1357,11 +1376,15 @@ class MultipleChoice(Variable):
                         and self.name in vars[var].constrains[val]):
                         self.value += vars[var].constrains[val][self.name]
 
-class SingleChoice(Variable):
+class Single(Variable):
 
-    def __init__(self,name,value,descr=None,choices=[]):
-        Variable.__init__(self,name,value,descr)
-        self.choices = choices
+    def __init__(self, name, pairs):
+        Variable.__init__(self,name,pairs)
+        self.choices = None
+        if 'choices' in pairs:
+            self.choices = []
+            for key, descr in pairs['choices'].iteritems():
+                self.choices += [ [key, descr] ]
 
     def configure(self,context):
         '''Generate an interactive prompt to enter a workspace variable
@@ -1389,11 +1412,23 @@ class SingleChoice(Variable):
 
 class Dependency:
 
-    def __init__(self, name, files, excludes=[], variant=None):
+    def __init__(self, name, pairs):
+        self.excludes = []
+        self.target = None
+        self.files = {}
         self.name = name
-        self.files = files
-        self.excludes = excludes
-        self.target = variant
+        for key, val in pairs.iteritems():
+            if key == 'excludes':
+                self.excludes = val
+            elif key == 'target':
+                self.target = val
+            else:
+                if isinstance(val,list):
+                    self.files[key] = []
+                    for f in val:
+                        self.files[key] += [ (f,None) ]
+                else:
+                    self.files[key] = [ (val,None) ]
 
     def populate(self, buildDeps = {}):
         if self.name in buildDeps:
@@ -1450,7 +1485,7 @@ class Maintainer:
         self.email = email
 
     def __str__(self):
-        return self.fullname + '<' + self.email + '>'
+        return self.fullname + ' <' + self.email + '>'
 
 
 class Step:
@@ -1489,7 +1524,7 @@ class Step:
             name = 'update_' + name
         elif issubclass(cls,SetupStep):
             name = 'setup_' + name
-        elif issubclass(cls,BuildStep):
+        else:
             name = name
         if targetName:
             name = name + '_' + targetName
@@ -1655,19 +1690,20 @@ class MakeStep(BuildStep):
         # Otherwise it just duplicates setting some variables.
         context = localizeContext(context,self.project,self.target)
         makefile = context.srcDir(os.path.join(self.project,'Makefile'))
-        cmdline = ['make',
-                   '-f', context.configFilename,
-                   '-f', makefile]
-        # If we do not set PATH to *binBuildDir*:*binDir*:${PATH}
-        # and the install directory is not in PATH, then we cannot
-        # build a package for drop because 'make dist' depends
-        # on executables installed in *binDir* (dws, dbldpkg, ...)
-        # that are not linked into *binBuildDir* at the time
-        # 'cd drop ; make dist' is run. Note that it is not an issue
-        # for other projects since those can be explicitely depending
-        # on drop as a prerequisite.
-        shellCommand(cmdline + context.targets + context.overrides,
-                     PATH=context.searchPath())
+        if os.path.isfile(makefile):
+            cmdline = ['make',
+                       '-f', context.configFilename,
+                       '-f', makefile]
+            # If we do not set PATH to *binBuildDir*:*binDir*:${PATH}
+            # and the install directory is not in PATH, then we cannot
+            # build a package for drop because 'make dist' depends
+            # on executables installed in *binDir* (dws, dbldpkg, ...)
+            # that are not linked into *binBuildDir* at the time
+            # 'cd drop ; make dist' is run. Note that it is not an issue
+            # for other projects since those can be explicitely depending
+            # on drop as a prerequisite.
+            shellCommand(cmdline + context.targets + context.overrides,
+                         PATH=context.searchPath())
         return True
 
 
@@ -1799,29 +1835,35 @@ class Repository:
 
     @staticmethod
     def associate(pathname):
+        '''This methods returns a boiler plate *Repository* that does
+        nothing in case an empty sync url is specified. This is different
+        from an absent sync field which would assume a default git repository.
+        '''
         rev = None
-        sync = pathname
-        look = re.match('(.*)@(\S+)$',pathname)
-        if look:
-            sync = look.group(1)
-            rev = look.group(2)
-        pathList = sync.split(os.sep)
-        for i in range(0,len(pathList)):
-            if pathList[i].endswith('.git'):
-                return GitRepository(os.sep.join(pathList[:i + 1]),rev)
-            elif pathList[i].endswith('.svn'):
-                if pathList[i] == '.svn':
-                    i = i - 1
-                return SvnRepository(os.sep.join(pathList[:i + 1]),rev)
-        # We will guess, assuming the repository is on the local system
-        if os.path.isdir(os.path.join(pathname,'.git')):
-            return GitRepository(pathname,rev)
-        elif os.path.isdir(os.path.join(pathname,'.svn')):
-            return SvnRepository(pathname,rev)
-        return None
+        if pathname and len(pathname) > 0:
+            sync = pathname
+            look = re.match('(.*)@(\S+)$',pathname)
+            if look:
+                sync = look.group(1)
+                rev = look.group(2)
+            pathList = sync.split(os.sep)
+            for i in range(0,len(pathList)):
+                if pathList[i].endswith('.git'):
+                    return GitRepository(os.sep.join(pathList[:i + 1]),rev)
+                elif pathList[i].endswith('.svn'):
+                    if pathList[i] == '.svn':
+                        i = i - 1
+                    return SvnRepository(os.sep.join(pathList[:i + 1]),rev)
+            # We will guess, assuming the repository is on the local system
+            if os.path.isdir(os.path.join(pathname,'.git')):
+                return GitRepository(pathname,rev)
+            elif os.path.isdir(os.path.join(pathname,'.svn')):
+                return SvnRepository(pathname,rev)
+            return None
+        return Repository("",rev)
 
     def update(self,name,context,force=False):
-        raise Error("unknown source control system for " + self.url)
+        return False
 
 
 class GitRepository(Repository):
@@ -1932,11 +1974,27 @@ class SvnRepository(Repository):
 class InstallFlavor:
     '''All information necessary to install a project on the local system.'''
 
-    def __init__(self, name, prerequisites, rep, fetches, envvars, make):
-        self.deps = prerequisites
-        self.update = UpdateStep(name, rep,fetches)
-        self.configure = ConfigureStep(name, envvars, None)
-        self.make = make
+    def __init__(self, name, pairs):
+        rep = None
+        fetches = {}
+        variables = {}
+        self.deps = {}
+        self.make = None
+        for key, val in pairs.iteritems():
+            if key == 'sync':
+                rep = Repository.associate(val)
+            elif 'shell' in pairs:
+                self.make = ShellStep(name,pairs['shell'])
+            elif isinstance(val,Variable):
+                variables[key] = val
+            elif len(os.path.splitext(key)[1]) > 0:
+                fetches[key] = val
+            else:
+                self.deps[key] = Dependency(key,val)
+        self.update = UpdateStep(name, rep, fetches)
+        self.configure = ConfigureStep(name, variables, None)
+        if not self.make:
+            self.make = MakeStep(name)
 
     def __str__(self):
         result = ''
@@ -1959,16 +2017,16 @@ class InstallFlavor:
 
     def prerequisites(self, tags):
         prereqs = []
-        for local in self.deps:
-            prereqs += local.prerequisites(tags)
+        for name, dep in self.deps.iteritems():
+            prereqs += dep.prerequisites(tags)
         return prereqs
 
     def prerequisiteNames(self, tags):
         '''same as *prerequisites* except only returns the names
         of the prerequisite projects.'''
         names = []
-        for local in self.deps:
-            for prereq in local.prerequisites(tags):
+        for name, dep in self.deps.iteritems():
+            for prereq in dep.prerequisites(tags):
                 names += [ prereq.name ]
         return names
 
@@ -1979,18 +2037,42 @@ class InstallFlavor:
 class Project:
     '''Definition of a project with its prerequisites.'''
 
-    def __init__(self, name):
+    def __init__(self, name, pairs):
         self.name = name
         self.title = None
         self.descr = None
-        self.maintainer = None
         # *packages* maps a set of tags to *Package* instances. A *Package*
         # contains dependencies to install a project from a binary distribution.
+        # Default update.rep is relative to *remoteSrcTop*. We initialize
+        # to a relative path instead of an absolute path here such that it
+        # does not trigger a prompt for *remoteSrcTop* until we actually
+        # do the repository pull.
         self.packages = {}
         self.patch = None
         self.repository = None
         self.installedVersion = None
         self.metainfos = []
+        for key, val in pairs.iteritems():
+            if key == 'title':
+                self.title = val
+            elif key == 'version':
+                self.version = val
+            elif key == 'description':
+                self.descr = val
+            elif key == 'maintainer':
+                self.maintainer = Maintainer(val['personname'],val['email'])
+            elif key == 'patch':
+                self.patch = InstallFlavor(name,val)
+                if not self.patch.update.rep:
+                    self.patch.update.rep = Repository.associate( \
+                        os.path.join(name,'.git'))
+            elif key == 'repository':
+                self.repository = InstallFlavor(name,val)
+                if not self.repository.update.rep:
+                    self.repository.update.rep = Repository.associate( \
+                        os.path.join(name,'.git'))
+            else:
+                self.packages[key] = InstallFlavor(name,val)
 
     def __str__(self):
         result = 'project ' + self.name + '\n' \
@@ -2038,226 +2120,85 @@ class xmlDbParser(xml.sax.ContentHandler):
     its state based on the callback sequence.'''
 
     # Global Constants for the database parser
-    tagAlternate = 'alternate'
-    tagAlternates = 'alternates'
-    tagTag = 'tag'
-    tagBase = 'base'
     tagDb = 'projects'
-    tagDefault = 'default'
-    tagConstrain = 'constrain'
-    tagDepend = 'dep'
-    tagDescription = 'description'
+    tagProject = 'project'
+    tagPattern = '.*<' + tagProject + '\s+name="(.*)"'
+    trailerTxt = '</' + tagDb + '>'
+    # For dbldpkg
+    tagPackage = 'package'
+    tagTag = 'tag'
     tagFetch = 'fetch'
     tagHash = 'sha1'
-    tagMaintainer = 'maintainer'
-    tagMetainfo = 'metainfo'
-    tagMultiple = 'multiple'
-    tagPackage = 'package'
-    tagPatch = 'patch'
-    tagPathname = 'pathname'
-    tagProject = 'project'
-    tagRepository = 'repository'
-    tagSingle = 'single'
-    tagShell = 'shell'
-    tagSync = 'sync'
-    tagTitle = 'title'
-    tagValue = 'value'
-    tagVariable = 'variable'
-    tagPattern = '.*<' + tagProject + '\s+name="(.*)"'
-    trailerTxt = '</projects>'
 
-    def __init__(self, context, build=True):
-        self.build = build
+    def __init__(self, context):
         self.context = context
         self.handler = None
-        self.choice = None
-        self.constrain = None
-        self.name = None
-        self.script = None
         # stack used to reconstruct the tree.
         self.nodes = []
 
     def startElement(self, name, attrs):
         '''Start populating an element.'''
         self.text = ''
-        if name == self.tagAlternate:
-            self.tagIndices += [ len(self.tags) ]
-            self.locIndices += [ len(self.locals) ]
-        elif name == self.tagAlternates:
-            self.locals += [ Alternates() ]
-            self.tagIndices += [ len(self.tags) ]
-            self.locIndices += [ len(self.locals) ]
-        elif name == self.tagConstrain:
-            self.constrain = attrs['name']
-            self.constrainValues = []
-        elif name == self.tagFetch:
-            self.filename = attrs['name']
-        elif name == self.tagProject:
-            self.var = None
-            self.project = Project(attrs['name'])
-        elif name == self.tagMaintainer:
-            self.project.maintainer = Maintainer(attrs['name'],attrs['email'])
-        elif name in [ self.tagPackage, self.tagPatch, self.tagRepository ]:
-            # We manage an explicit stack of local dependencies
-            # in order to build alternates.
-            self.tagIndices = []
-            self.locIndices = []
-            self.tags = []
-            self.fetches = {}
-            self.locals = []
-            self.vars = []
-            self.sync = None
-            if name == self.tagPackage:
-                self.script = None
-            else:
-                self.script = MakeStep(self.project.name)
-        elif name == self.tagDepend:
-            self.depName = attrs['name']
-            self.deps = {}
-            self.excludes = []
-            self.target = None
-            if 'target' in attrs:
-                self.target = attrs['target']
-        elif name == self.tagMetainfo:
-            self.name = attrs['name']
-        elif name == self.tagMultiple:
-            self.constrain = None
-            choiceValue = None
-            if attrs['name'] in self.context.environ:
-                choiceValue = str(self.context.environ[attrs['name']])
-            self.var = MultipleChoice(attrs['name'],choiceValue,None,[])
-        elif name == self.tagPathname:
-            self.constrain = None
-            if attrs['name'] in self.context.environ:
-                if isinstance(self.context.environ[attrs['name']],Pathname):
-                    self.var = self.context.environ[attrs['name']]
+        key = name
+        elems = {}
+        for a in attrs.keys():
+            if a == 'name':
+                # \todo have to conserve name if just for fetches.
+                # key = Step.genid(Step,attrs['name'],target)
+                if 'target' in attrs:
+                    target = attrs['target']
+                    key = os.path.join(target,attrs['name'])
                 else:
-                    self.var = Pathname(attrs['name'])
-                    self.var.value = str(self.context.environ[attrs['name']])
+                    key = attrs['name']
             else:
-                self.var = Pathname(attrs['name'])
-        elif name == self.tagSingle:
-            self.constrain = None
-            # We have to specify [] explicitely here else self.var.choices
-            # is aliased to the default parameter and self.var.choices 
-            # are duplicated when the xml is parsed multiple times.
-            choiceValue = None
-            if attrs['name'] in self.context.environ:
-                choiceValue = str(self.context.environ[attrs['name']])
-            self.var = SingleChoice(attrs['name'],choiceValue,None,[])
-        elif name == self.tagVariable:
-            self.constrain = None
-            choiceValue = None
-            if attrs['name'] in self.context.environ:
-                choiceValue = str(self.context.environ[attrs['name']])
-            self.var = Variable(attrs['name'])
-            self.var.value = choiceValue
-        elif name == self.tagValue:
-            if not self.constrain:
-                self.choice = [ attrs['name'] ]
-        elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
-            if 'excludes' in attrs:
-                self.excludes += attrs['excludes'].split(',')
+                elems[a] = attrs[a]
+        self.nodes += [ (name,{key:elems}) ]
 
     def characters(self, ch):
         self.text += ch
 
-    def createRepositoryObject(self):
-        return InstallFlavor(self.project.name,self.locals,
-                             Repository.associate(self.sync),
-                             self.fetches,self.vars,self.script)
-
-
     def endElement(self, name):
         '''Once the element is fully populated, call back the simplified
            interface on the handler.'''
-        if name == self.tagDb:
+        nodeName, pairs = self.nodes.pop()
+        self.text = self.text.strip()
+        if self.text:
+            aggregate = self.text
+            self.text = ""
+        else:
+            aggregate = {}
+        while nodeName != name:
+            # We are keeping the structure as simple as possible,
+            # only introducing lists when there are more than one element.
+            for k in pairs.keys():
+                if not k in aggregate:
+                    aggregate[k] = pairs[k]
+                elif isinstance(aggregate[k],list):
+                    if isinstance(pairs[k],list):
+                        aggregate[k] += pairs[k]
+                    else:
+                        aggregate[k] += [ pairs[k] ]
+                else:
+                    if isinstance(pairs[k],list):
+                        aggregate[k] = [ aggregate[k] ] + pairs[k]
+                    else:
+                        aggregate[k] = [ aggregate[k], pairs[k] ]
+            nodeName, pairs = self.nodes.pop()
+        key = pairs.keys()[0]
+        cap = name.capitalize()
+        if cap in [ 'Metainfo', 'Multiple',
+                     'Pathname', 'Single', 'Variable' ]:
+            aggregate = modself.__dict__[cap](key,aggregate)
+        if isinstance(aggregate,dict):
+            pairs[key].update(aggregate)
+        else:
+            pairs[key] = aggregate
+        if name == 'project':
+            self.handler.project(Project(key,pairs[key]))
+        elif name == 'projects':
             self.handler.endParse()
-        elif name == self.tagAlternate:
-            depFirst = self.locIndices.pop()
-            tagFirst = self.tagIndices.pop()
-            alternateSet = self.locals[depFirst:]
-            alternates = self.locals[depFirst - 1]
-            if len(self.tags[tagFirst:]) == 0:
-                alternates.byTags['any'] = alternateSet
-            for tag in self.tags[tagFirst:]:
-                alternates.byTags[tag] = alternateSet
-            self.tags = self.tags[:tagFirst]
-            self.locals = self.locals[:depFirst]
-        elif name == self.tagAlternates:
-            depFirst = self.locIndices.pop()
-            tagFirst = self.tagIndices.pop()
-            self.tags = self.tags[:tagFirst]
-        elif name == self.tagBase:
-            if isinstance(self.var,Pathname):
-                self.var.base = self.text.strip()
-        elif name == self.tagConstrain:
-            if not self.choice[0] in self.var.constrains:
-                self.var.constrains[self.choice[0]] = {}
-            self.var.constrains[self.choice[0]][self.constrain] \
-                = self.constrainValues
-            self.constrain = None
-        elif name == self.tagDefault:
-            if isinstance(self.var,Variable):
-                self.var.default = self.text.strip()
-        elif name == self.tagTag:
-            self.tags += [ self.text ]
-        elif name == self.tagMetainfo:
-            self.project.metainfos += [ Metainfo(self.name,self.text) ]
-        elif name == self.tagPackage:
-            package = InstallFlavor(self.project.name,
-                                    self.locals,None,self.fetches,
-                                    self.vars,self.script)
-            if len(self.tags) == 0:
-                self.tags += [ 'any' ]
-            for tag in self.tags:
-                self.project.packages[tag] = package
-        elif name == self.tagPatch:
-            if not self.sync:
-                self.sync = os.path.join(self.project.name,'.git')
-            self.project.patch = self.createRepositoryObject()
-        elif name == self.tagRepository:
-            if not self.sync:
-                self.sync = os.path.join(self.project.name,'.git')
-            self.project.repository = self.createRepositoryObject()
-        elif name == self.tagDepend:
-            self.locals += [ Dependency(self.depName,self.deps,
-                                        self.excludes,self.target) ]
-        elif name == self.tagDescription:
-            if self.choice:
-                self.choice += [ self.text.strip() ]
-            elif self.var:
-                self.var.descr = self.text.strip()
-            else:
-                # The project description is used to make the dist variant.
-                self.project.descr = self.text.strip()
-        elif name == self.tagTitle:
-            self.project.title = self.text.strip()
-        elif name == self.tagProject:
-            self.handler.project(self.project)
-        elif name == self.tagHash:
-            self.fetches[ self.filename ] = self.text.strip()
-        elif name in [ self.tagMultiple, self.tagPathname, self.tagSingle,
-                       self.tagVariable ]:
-            self.vars += [ self.var ]
-            self.var = None
-        elif name == self.tagFetch:
-            self.filename = None
-        elif name == self.tagShell:
-            node = name.capitalize() + 'Step'
-            self.script = modself.__dict__[node](self.project.name,self.text)
-        elif name == self.tagSync:
-            self.sync = self.text
-        elif name == self.tagValue:
-            if self.constrain:
-                self.constrainValues += [ self.text.strip() ]
-            else:
-                self.var.choices += [ self.choice ]
-                self.choice = None
-        elif name in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
-            if not name in self.deps:
-                self.deps[name] = []
-            self.deps[name] += [ (self.text,None) ]
+        self.nodes += [ (name,pairs) ]
+
 
     def parse(self, source, handler):
         '''This is the public interface for one pass through the database
@@ -2986,19 +2927,19 @@ def findRSync(context, remotePath, relative=False, admin=False):
 
 
 def configVar(vars):
-    '''Look up the workspace configuration file the workspace make fragment for definition
-    of variables *vars*, instances of classes derived from Variable
-    (ex. Pathname, SingleChoice).
+    '''Look up the workspace configuration file the workspace make fragment
+    for definition of variables *vars*, instances of classes derived from
+    Variable (ex. Pathname, Single).
     If those do not exist, prompt the user for input.'''
     found = False
-    for v in vars:
+    for key, val in vars.iteritems():
         # apply constrains where necessary
-        v.constrain(context.environ)
-        if not v.name in context.environ:
+        val.constrain(context.environ)
+        if not key in context.environ:
             # If we do not add variable to the context, they won't
             # be saved in the workspace make fragment
-            context.environ[v.name] = v
-            found |= v.configure(context)
+            context.environ[key] = val
+            found |= val.configure(context)
     if found:
         context.save()
     return found
@@ -4268,7 +4209,7 @@ def pubInit(args):
     '''                   Prompt for variables which have not been
                        initialized in the workspace make fragment. Fetch the project index.
     '''
-    configVar(context.environ.values())
+    configVar(context.environ)
     index.validate()
 
 
@@ -4607,12 +4548,12 @@ def selectCheckout(repCandidates, patchCandidates, packageCandidates=[]):
     '''Interactive prompt for a selection of projects to checkout.
     *repCandidates* contains a list of rows describing projects available
     for selection. This function will return a list of projects to checkout
-    from a source repository and a list of projects to install through 
+    from a source repository and a list of projects to install through
     a package manager.'''
     reps = []
     if len(repCandidates) > 0:
         reps = selectMultiple(
-'''The following dependencies need to be present on your system. 
+'''The following dependencies need to be present on your system.
 You have now the choice to install them from a source repository. You will later
 have  the choice to install them from either a patch, a binary package or not at all.''',
         repCandidates)
@@ -4624,7 +4565,7 @@ have  the choice to install them from either a patch, a binary package or not at
             patches += [ row ]
     if len(patches) > 0:
         patches = selectMultiple(
-'''The following dependencies need to be present on your system. 
+'''The following dependencies need to be present on your system.
 You have now the choice to install them from a patch from a known source distribution. You will later have the choice to install them from binary package or not at all.''',
         patches)
     # Filters out the dependencies which the user has decided to install
@@ -4638,14 +4579,14 @@ You have now the choice to install them from a patch from a known source distrib
 
 
 def selectInstall(packageCandidates):
-    '''Interactive prompt for a selection of projects to install 
-    as binary packages. *packageCandidates* contains a list of rows 
-    describing projects available for selection. This function will 
+    '''Interactive prompt for a selection of projects to install
+    as binary packages. *packageCandidates* contains a list of rows
+    describing projects available for selection. This function will
     return a list of projects to install through a package manager. '''
     packages = []
     if len(packageCandidates) > 0:
         packages = selectMultiple(
-    '''The following dependencies need to be present on your system. 
+    '''The following dependencies need to be present on your system.
 You have now the choice to install them from a binary package. You can skip
 this step if you know those dependencies will be resolved correctly later on.
 ''',packageCandidates)

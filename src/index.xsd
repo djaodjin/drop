@@ -10,12 +10,10 @@
 	<!-- The *maintainer* of a project is responsible to review commits
 		 and insures the stability of the project source base. -->	
 	<xs:complexType>
-	  <xs:simpleContent>      
-		<xs:extension base="xs:string">
-		  <xs:attribute name="name" type="xs:string"/>
-		  <xs:attribute name="email" type="xs:string"/>
-		</xs:extension>
-	  </xs:simpleContent>
+      <xs:sequence>
+		<xs:element name="personname" type="xs:string" minOccurs="0" />
+		<xs:element name="email" type="xs:string" minOccurs="0" />
+      </xs:sequence>
 	</xs:complexType>
   </xs:element>
   
@@ -157,8 +155,6 @@
   
   <xs:complexType name="packageType">
     <xs:sequence>
-	  <xs:element name="tag" type="xs:string"
-				  minOccurs="0" maxOccurs="unbounded"/>
 	  <xs:element ref="fetch"
 				  minOccurs="0" maxOccurs="unbounded"/>
 	  <xs:element ref="pathname" 
@@ -166,6 +162,7 @@
 	  <xs:element ref="dep"
 				  minOccurs="0" maxOccurs="unbounded"/>
     </xs:sequence>
+	<xs:attribute name="name" type="xs:string" use="required"/>
   </xs:complexType>
   
   <xs:complexType name="repositoryType">
