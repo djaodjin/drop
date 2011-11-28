@@ -142,6 +142,10 @@ def logAdvance(log):
 
 # Main Entry point
 if __name__ == '__main__':
+    import imp
+    dws = imp.load_source('dws',
+      os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
+
     usage= 'usage: %prog [options] -o regression result [reference ...]'
     parser = optparse.OptionParser(usage=usage,
                                    version='%prog ' + str(__version__))
@@ -158,9 +162,6 @@ if __name__ == '__main__':
     options, args = parser.parse_args()
 
     if options.helpBook:
-        import imp
-        dws = imp.load_source('dws',
-            os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
         help = cStringIO.StringIO()
         parser.print_help(help)
         dws.helpBook(help)

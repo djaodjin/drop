@@ -36,6 +36,13 @@ etcBuildDir		:=	$(buildTop)/etc
 libBuildDir		:=	$(buildTop)/lib
 shareBuildDir	:=	$(buildTop)/share
 
+# Paths to installed file, ready to be packaged
+# These are defined here (and not in suffix.mk) because we do not always 
+# want to include suffix.mk to avoid overriding contrib/ specifics rules.
+buildInstallDir	:= 	$(CURDIR)/install
+buildUsrLocalDir:=	$(buildInstallDir)/usr/local
+
+
 # We cannot initialize dbldpkg to $(binBuildDir)/dbldpkg, 
 # else the drop package cannot be built. See comments associated
 # to searchPath() in dws.py

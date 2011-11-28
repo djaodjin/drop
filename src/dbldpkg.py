@@ -113,7 +113,7 @@ class ImageMaker:
         self.name = os.path.basename(project.name) + '-' + version
         self.sourceDir = sourceDir
         self.image = self.name + '.dmg'
- 
+
     def build(self):
         print 'sourceDir: ' + self.sourceDir
         cmd = ['du', '-sk', self.sourceDir]
@@ -123,11 +123,11 @@ class ImageMaker:
         estimatedSize = look.group(1)
         p.poll()
         estimatedSectors = str(2.1 * float(estimatedSize))
- 
+
         print 'estimatedSize: ' + estimatedSize \
             + ', estimatedSectors: ' + estimatedSectors
 
-        # Format the disk image before using it 
+        # Format the disk image before using it
         os.system('hdiutil create -ov ' + self.image \
                       + ' -srcfolder ' + self.sourceDir)
         return self.image
@@ -137,34 +137,34 @@ class PackageMaker:
     """A class to generate packages for Mac OS X.
 
     This is intended to create OS X packages (with extension .pkg)
-    containing archives of arbitrary files that the Installer.app 
+    containing archives of arbitrary files that the Installer.app
     (Apple's OS X installer) will be able to handle.
 
-    As of now, PackageMaker instances need to be created with the 
-    title, version and description of the package to be built. 
-    
-    The package is built after calling the instance method 
-    build(root, resources, **options). The generated package is 
-    a folder hierarchy with the top-level folder name equal to the 
+    As of now, PackageMaker instances need to be created with the
+    title, version and description of the package to be built.
+
+    The package is built after calling the instance method
+    build(root, resources, **options). The generated package is
+    a folder hierarchy with the top-level folder name equal to the
     constructor's title argument plus a '.pkg' extension. This final
     package is stored in the current folder.
-    
+
     The sources from the root folder will be stored in the package
     as a compressed archive, while all files and folders from the
     resources folder will be added to the package as they are.
 
     Example:
-    
+
     With /my/space being the current directory, the following will
     create /my/space/distutils-1.0.2.pkg/:
 
       PM = PackageMaker
       pm = PM("distutils-1.0.2", "1.0.2", "Python distutils.")
       pm.build("/my/space/sources/distutils-1.0.2")
-      
+
     After a package is built you can still add further individual
     resource files or folders to its Contents/Resources subfolder
-    by using the addResource(path) method: 
+    by using the addResource(path) method:
 
       pm.addResource("/my/space/metainfo/distutils/")
     """
@@ -190,8 +190,8 @@ class PackageMaker:
     def __init__(self, project, version, installTop):
         "Init. with mandatory title/version/description arguments."
 
-        info = {"Title": os.path.basename(project.name) + "-" + version, 
-                "Version": version, 
+        info = {"Title": os.path.basename(project.name) + "-" + version,
+                "Version": version,
                 "Description": project.descr }
         self.packageInfo = copy.deepcopy(self.packageInfoDefaults)
         self.packageInfo.update(info)
@@ -206,15 +206,13 @@ class PackageMaker:
 
     def _escapeBlanks(self, s):
         "Return a string with escaped blanks."
-        
         return s.replace(' ', '\ ')
-                
 
     def build(self, resources=None, options = {}):
         """Create a package for some given root folder.
 
-        With no 'resources' argument set it is assumed to be the same 
-        as the root directory. Option items replace the default ones 
+        With no 'resources' argument set it is assumed to be the same
+        as the root directory. Option items replace the default ones
         in the package info.
         """
 
@@ -231,11 +229,11 @@ class PackageMaker:
                 self.packageInfo[k] = v
             elif not k in ["OutputDir"]:
                 raise dws.Error("Unknown package option: %s" % k)
-        
+
         # Check where we should leave the output. Default is current directory
         outputdir = options.get("OutputDir", os.getcwd())
         self.packageRootFolder = os.path.join(outputdir, self.packageName + ".pkg")
- 
+
         # do what needs to be done
         self._makeFolders()
         self._addInfo()
@@ -248,10 +246,10 @@ class PackageMaker:
 
     def addResource(self, path):
         "Add arbitrary file or folder to the package resource folder."
-        
+
         # Folder basenames become subfolders of Contents/Resources.
         # This method is made public for those who wknow what they do!
-   
+
         prf = self.packageResourceFolder
         if isfile(path) and not isdir(path):
             shutil.copy(path, prf)
@@ -259,17 +257,16 @@ class PackageMaker:
             path = self._escapeBlanks(path)
             prf = self._escapeBlanks(prf)
             os.system("cp -r %s %s" % (path, prf))
-        
 
     def _makeFolders(self):
         "Create package folder structure."
 
         # Not sure if the package name should contain the version or not...
-        # packageName = "%s-%s" % (self.packageInfo["Title"], 
+        # packageName = "%s-%s" % (self.packageInfo["Title"],
         #                          self.packageInfo["Version"]) # ??
 
         self.packageContentFolder = join(self.packageRootFolder, "Contents")
-        self.packageResourceFolder = join(self.packageContentFolder, 
+        self.packageResourceFolder = join(self.packageContentFolder,
                                           "Resources")
         if os.path.exists(self.packageRootFolder):
             shutil.rmtree(self.packageRootFolder, ignore_errors=True)
@@ -381,7 +378,6 @@ class PackageMaker:
         self.archPath = self._escapeBlanks(self.archPath)
         cmd = "pax -w -f %s %s" % (self.archPath, ".")
         res = os.system(cmd)
-        
         # compress archive
         cmd = "gzip %s" % self.archPath
         res = os.system(cmd)
@@ -397,7 +393,7 @@ class PackageMaker:
     def _addResources(self):
         "Add all files and folders inside a resources folder to the package."
 
-        # This folder normally contains Welcome/ReadMe/License files, 
+        # This folder normally contains Welcome/ReadMe/License files,
         # .lproj folders and scripts.
 
         if not self.resourceFolder:
@@ -406,7 +402,6 @@ class PackageMaker:
         files = glob.glob("%s/*" % self.resourceFolder)
         for f in files:
             self.addResource(f)
-        
 
     def _addSizes(self):
         "Write .sizes file with info about number and size of files."
@@ -474,6 +469,7 @@ make install
 
     elif dist == 'Ubuntu':
         packageVersion = version
+        distExtUbuntu = '_all.deb'
         if not os.path.exists('debian'):
             os.makedirs('debian')
         control = open(os.path.join('debian','control'),'w')
@@ -497,7 +493,9 @@ make install
         if (not context.host() in project.packages
             or not 'architecture' in project.packages[context.host()].configure.envvars):
             control.write('Architecture: any\n')
-
+            distExtUbuntu = '_amd64.deb'
+            if longBit == '32':
+                distExtUbuntu = '_i386.deb'
         if context.host() in project.packages:
             envvars = project.packages[context.host()].configure.envvars
             for key, val in envvars.iteritems():
@@ -650,9 +648,6 @@ binary: install
         cmd.wait()
         if cmd.returncode != 0:
             raise dws.Error("problem reading `getconf LONG_BIT`")
-        distExtUbuntu = '_amd64.deb'
-        if longBit == '32':
-            distExtUbuntu = '_i386.deb'
         return '../' + project.name + '_' + packageVersion + distExtUbuntu
 
     else:

@@ -105,8 +105,6 @@ install:: $(resources)
 # 	git checkout -b branchname tag
 #	make dist
 
-buildInstallDir	:= 	$(CURDIR)/install
-buildUsrLocalDir:=	$(buildInstallDir)/usr/local
 dists		?=	$(binDist) $(project)-$(version).tar.bz2
 
 # The *dist* and *dist-release* targets create a distribution binanry package.

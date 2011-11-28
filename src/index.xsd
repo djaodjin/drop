@@ -136,12 +136,11 @@
   <xs:element name="alternate">  
     <xs:complexType>
       <xs:sequence>
-		<xs:element name="tag" type="xs:string"
-					minOccurs="0" maxOccurs="unbounded"/>
 		<xs:element ref="fetch"
 					minOccurs="0" maxOccurs="unbounded"/>
 		<xs:element ref="dep"/>
       </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
   </xs:element>
   

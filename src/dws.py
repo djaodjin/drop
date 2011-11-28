@@ -1457,8 +1457,12 @@ class Alternates(Dependency):
     to fullfil the prerequisite condition. This is used to allow
     differences in packaging between distributions.'''
 
-    def __init__(self):
+    def __init__(self, name, pairs):
         self.byTags = {}
+        for key, val in pairs.iteritems():
+            self.byTags[key] = []
+            for depKey, depVal in val.iteritems():
+                self.byTags[key] += [ Dependency(depKey,depVal) ]
 
     def __str__(self):
         return 'alternates: ' + str(self.byTags)
@@ -1592,11 +1596,13 @@ class DarwinInstallStep(InstallStep):
         '''Mount *image*, a pathnme to a .dmg file and use the Apple installer
         to install the *pkg*, a .pkg package onto the platform through the Apple
         installer.'''
-        pkg = None
         for filename in self.managed:
-            base, ext = os.path.splitext(image)
-            volume = os.path.join('/Volumes',os.path.basename(base))
-            shellCommand(['hdiutil', 'attach', image])
+            volume = None
+            if filename.endswith('.dmg'):
+                base, ext = os.path.splitext(filename)
+                volume = os.path.join('/Volumes',os.path.basename(base))
+                shellCommand(['hdiutil', 'attach', filename])
+            target = context.value('darwinTargetVolume')
             if target != 'CurrentUserHomeDirectory':
                 message = 'ATTENTION: You need administrator privileges on ' \
                         + 'the local machine to execute the following cmmand\n'
@@ -1604,14 +1610,16 @@ class DarwinInstallStep(InstallStep):
                 admin = True
             else:
                 admin = False
-            if not pkg:
+            pkg = filename
+            if not filename.endswith('.pkg'):
                 pkgs = findFiles(volume,'\.pkg')
                 if len(pkgs) != 1:
                     raise RuntimeError('ambiguous: not exactly one .pkg to install')
                 pkg = pkgs[0]
             shellCommand(['installer', '-pkg', os.path.join(volume,pkg),
                           '-target "' + target + '"'], admin)
-            shellCommand(['hdiutil', 'detach', volume])
+            if filename.endswith('.dmg'):
+                shellCommand(['hdiutil', 'detach', volume])
         return True
 
 class DpkgInstallStep(InstallStep):
@@ -1983,12 +1991,14 @@ class InstallFlavor:
         for key, val in pairs.iteritems():
             if key == 'sync':
                 rep = Repository.associate(val)
-            elif 'shell' in pairs:
-                self.make = ShellStep(name,pairs['shell'])
+            elif key == 'shell':
+                self.make = ShellStep(name,val)
             elif isinstance(val,Variable):
                 variables[key] = val
             elif len(os.path.splitext(key)[1]) > 0:
                 fetches[key] = val
+            elif key == 'alternates':
+                self.deps[key] = Alternates(key,val)
             else:
                 self.deps[key] = Dependency(key,val)
         self.update = UpdateStep(name, rep, fetches)
