@@ -468,6 +468,13 @@ make install
         return projet.name + '-' + version + '.rpm'
 
     elif dist == 'Ubuntu':
+        cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
+        longBit = cmd.stdout.readline().strip()
+        cmd.wait()
+        if cmd.returncode != 0:
+            raise dws.Error("problem reading `getconf LONG_BIT`")
         packageVersion = version
         distExtUbuntu = '_all.deb'
         if not os.path.exists('debian'):
@@ -641,13 +648,6 @@ binary: install
         # Can only find example in man pages of debuild but cannot
         # find description of options: "-i -us -uc -b".
         dws.shellCommand(['debuild', '-i', '-us', '-uc', '-b'])
-        cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT)
-        longBit = cmd.stdout.readline().strip()
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise dws.Error("problem reading `getconf LONG_BIT`")
         return '../' + project.name + '_' + packageVersion + distExtUbuntu
 
     else:

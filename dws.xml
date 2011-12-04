@@ -19,7 +19,7 @@
       </dep>      
       <!-- To build documentation as PDF -->
       <dep name="xsltproc">
-	<bin>xsltproc</bin>
+		<bin>xsltproc</bin>
       </dep>
       <dep name="docbook-xsl">
 		<!-- We have to link at the docbook-xsl directory level
@@ -34,8 +34,7 @@
       <!-- How to express >=4 when the python XML parser 
 		   throws malformed exceptions? -->
       <alternates>
-		<alternate>
-		  <tag>Ubuntu</tag>
+		<alternate name="Ubuntu">
 		  <dep name="debhelper">
 			<bin>dh_builddeb</bin>
 		  </dep>
@@ -46,8 +45,7 @@
 			<bin>fakeroot</bin>
 		  </dep>
 		</alternate>
-		<alternate>
-		  <tag>Fedora</tag>
+		<alternate name="Fedora">
 		  <dep name="rpmdevtools">
 			<bin>rpmdev-setuptree</bin> 
 		  </dep>  

@@ -757,7 +757,7 @@ class DependencyGenerator(Unserializer):
             targetName = p.target
             if not p.target:
                 targetName = target
-            cap = p.name + 'Setup'
+            cap = Step.genid(SetupStep,p.name)
             if cap in self.customSteps:
                 setup = self.customSteps[cap](p.name,p.files)
             else:
@@ -1527,7 +1527,7 @@ class Step:
         elif issubclass(cls,UpdateStep):
             name = 'update_' + name
         elif issubclass(cls,SetupStep):
-            name = 'setup_' + name
+            name = name + 'Setup'
         else:
             name = name
         if targetName:
@@ -4050,14 +4050,10 @@ def pubConfigure(args):
     dbindex.parse(dgen)
     prerequisites = set([])
     for u in dgen.vertices:
-        if u.startswith('setup_'):
+        if u.endswith('Setup'):
             setup = dgen.vertices[u]
-            setup.run(context)
-            for dirname in setup.files:
-                for f in setup.files[dirname]:
-                    if not f[1] or len(f[1]) == 0:
-                        prerequisites |= set([ str(setup.project) ])
-                        break
+            if not setup.run(context):
+                prerequisites |= set([ str(setup.project) ])
         elif u.startswith('update_'):
             update = dgen.vertices[u]
             if len(update.fetches) > 0:

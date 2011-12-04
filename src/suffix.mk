@@ -177,7 +177,7 @@ $(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
 		 --version=$(subst $(project)-,,$(basename $(basename $<))) \
 	         --spec=$(srcDir)/$(projindex) $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
-	echo $< > .packagename
+	echo $@ > .packagename
 
 # Rules to build unit test logs
 # -----------------------------
