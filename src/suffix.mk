@@ -29,6 +29,11 @@
 
 .PHONY:	all check dist doc install site
 
+# *dropShareDir* will be defined in drop/Makefile because this is a bottom
+# turtle. We need drop to build packages but it is not a dependency of drop
+# itself to avoid an infinite dependency loop.
+dropShareDir 	?=		$(shareBuildDir)/dws
+
 all::	$(bins) $(scripts) $(libs) $(includes) $(etcs)
 
 all::	$(logs)
@@ -129,10 +134,12 @@ $(project)-$(version).tar.bz2: $(project)-$(version)
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' -f $@ $<
 
 
+# The order of the statements are very important, especially to build the drop
+# package itself.
 $(project)-$(version)::
-	$(if $(patchedSources),$(installDirs) $@ \
-	    && rsync -aR $(patchedSources) $@)
 	rsync -r --exclude=.git $(srcDir)/* $@
+	$(if $(patchedSources),$(installDirs) $@ && rsync -aR $(patchedSources) $@)
+	$(installScripts) $(shell which dws) $@
 	$(foreach script,$(wildcard $(srcDir)/src/*.py),$(call distVersion,$(script)))
 	if [ -f $(srcDir)/$(projindex) ] ; then \
 		$(SED) -e "s,<project  *name=\".*$(project),<project name=\"$@,g" \
@@ -144,9 +151,8 @@ $(project)-$(version)::
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm -f $@/Makefile
 	$(installDirs) $@/share/dws
-	$(installScripts) $(shareBuildDir)/dws/configure.sh $@/configure
-	$(installScripts) $(shell which dws) $@
-	$(installFiles) $(shareBuildDir)/dws/prefix.mk $(shareBuildDir)/dws/suffix.mk $(shareBuildDir)/dws/configure.sh $@/share/dws
+	$(installScripts) $(dropShareDir)/configure.sh $@/configure
+	$(installFiles) $(dropShareDir)/prefix.mk $(dropShareDir)/suffix.mk $(dropShareDir)/configure.sh $@/share/dws
 
 
 # 'make install' might just do nothing and we still want to build an empty
