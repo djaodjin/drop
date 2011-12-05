@@ -47,7 +47,7 @@ manpages:=	$(addsuffix .1,$(scripts))
 %.book: %
 	python $< --help-book > $@ || rm -f $@
 
-dropShareDir	:=	$(shareBuildDir)/dws
+dropShareDir	:=	$(srcDir)/src
 
 include $(srcDir)/src/suffix.mk
 

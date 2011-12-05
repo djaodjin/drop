@@ -87,6 +87,8 @@ staticLibFirst = True
 # for every question where it would have prompted the user for an answer.
 useDefaultAnswer = False
 
+# Directories where things get installed
+installDirs = [ 'bin', 'include', 'lib', 'etc', 'share' ]
 
 class Error(Exception):
     '''This type of exception is used to identify "expected"
@@ -1517,6 +1519,12 @@ class Step:
     def __str__(self):
         return self.name
 
+    def qualifiedProjectName(self, targetName = None):
+        name = self.project
+        if targetName:
+            name = os.path.join(targetName,self.project)
+        return name
+
     @staticmethod
     def genid(cls, projectName, targetName = None):
         name = projectName.replace(os.sep,'_').replace('-','_')
@@ -2061,7 +2069,6 @@ class Project:
         self.patch = None
         self.repository = None
         self.installedVersion = None
-        self.metainfos = []
         for key, val in pairs.iteritems():
             if key == 'title':
                 self.title = val
@@ -2836,7 +2843,11 @@ def findPrerequisites(deps, excludes=[],variant=None):
     version = None
     installed = {}
     complete = True
-    for dir in [ 'bin', 'include', 'lib', 'etc', 'share' ]:
+    for d in deps:
+        # Make sure the extras do not get filtered out.
+        if not d in installDirs:
+            installed[d] = deps[d]
+    for dir in installDirs:
         # The search order "bin, include, lib, etc" will determine
         # how excluded versions apply.
         if dir in deps:
@@ -2991,9 +3002,9 @@ def deps(roots, index):
     steps = index.closure(dgen)
     results = []
     for s in steps:
-        # \todo this is an ugly hack!
+        # \todo this is an ugly little hack!
         if isinstance(s,InstallStep) or isinstance(s,BuildStep):
-            results += [ str(s).replace('install_','') ]
+            results += [ s.qualifiedProjectName() ]
     return results
 
 
@@ -3276,16 +3287,18 @@ def linkDependencies(files, excludes=[],target=None):
     # not exist and the pathname for it in buildDeps is not
     # an absolute path.
     complete = True
-    for dir in files:
-        for namePat, absolutePath in files[dir]:
-            complete &= linkPatPath(namePat,absolutePath,
-                                    dir,target)
+    for dir in installDirs:
+        if dir in files:
+            for namePat, absolutePath in files[dir]:
+                complete &= linkPatPath(namePat,absolutePath,
+                                        dir,target)
     if not complete:
         files, complete = findPrerequisites(files,excludes,target)
         if complete:
-            for dir in files:
-                for namePat, absolutePath in files[dir]:
-                    complete &= linkPatPath(namePat,absolutePath,dir,target)
+            for dir in installDirs:
+                if dir in files:
+                    for namePat, absolutePath in files[dir]:
+                        complete &= linkPatPath(namePat,absolutePath,dir,target)
     return files, complete
 
 

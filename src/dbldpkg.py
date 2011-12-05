@@ -44,6 +44,8 @@ import re, os, subprocess, sys, glob, fnmatch, shutil, string, copy, getopt
 from os.path import basename, dirname, join, islink, isdir, isfile
 import datetime, hashlib, shutil
 import cStringIO
+import datetime, time
+from email import utils
 
 noInstallDoc = False
 noPathUpdate = False
@@ -534,14 +536,15 @@ make install
         changelog.write(project.name + ' (' + packageVersion + ') ' \
                             + str(distribCodename) + '; urgency=low\n\n')
         changelog.write('  * debian/rules: generate ubuntu package\n\n')
-        changelog.write(' -- ' + str(project.maintainer) + ' ' \
-                            + 'Sun, 21 Jun 2009 11:14:35 +0000' + '\n\n')
+        changelog.write(' -- ' + str(project.maintainer) + '  ' \
+           + utils.formatdate(time.mktime(datetime.datetime.now().timetuple()))\
+           + '\n\n')
         changelog.close()
         if None:
             # \todo getting rid of the warning actually produces a completely
             # different output. For some reasons /usr/bin, etc. do not make
             # it into the package...
-            # write debian/compat to fix 'Compatibility level before ...' 
+            # write debian/compat to fix 'Compatibility level before ...'
             # messages, see 'man debhelper'.
             compat = open(os.path.join('debian','compat'),'w')
             compat.write('5\n')
