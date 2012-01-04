@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2009-2011, Fortylines LLC
+# Copyright (c) 2009-2012, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -76,8 +76,8 @@ class JUnitFormater(TestCaseFormater):
 
     def header(self,tag,reffile,testStatus):
         name = os.path.basename(os.path.splitext(reffile)[0])
-        self.out.write('<testcase name="%s" classname="%s" time="0">\n' \
-                           % (name, self.testName))
+        self.out.write('<testcase name="%s_%s" classname="%s" time="0">\n' \
+                           % (tag, name, self.testName))
         if testStatus == 'absent':
             self.tag = None
         elif testStatus == 'compile':
@@ -103,6 +103,18 @@ class JUnitFormater(TestCaseFormater):
         if self.tag:
             self.out.write(text)
 
+
+def addTest(testName,reffile,testStatus,tests,regressions):
+    if not testName in tests:
+        tests[testName] \
+            = testFormater.associate(testName,tempfile.TemporaryFile())
+    testFile = tests[testName]
+    if not testName in regressions:
+        regressions[testName] = {}
+    if not reffile in regressions[testName]:
+        testFile.header('compare',reffile,testStatus)
+        regressions[testName][reffile] = testStatus
+    return testFile
 
 def diffAdvance(diff,testFile = None):
     diffLineNum = sys.maxint
@@ -180,6 +192,56 @@ if __name__ == '__main__':
 
     tests = {}
     testFile = None
+
+    # 1. Merge result files together in a single file such that information
+    #    associated with a test ends up under the same tag.'''
+    testFile = None
+    nbErrors = 0
+    failureNames = set([])
+    (confno, confname) = tempfile.mkstemp()
+    os.close(confno)
+    conf = open(confname,'w')
+    firstIteration = True
+    for filename in [ logfile ]:
+        hasOuput = {}
+        f = open(filename,'r')
+        line = f.readline()
+        while line != '':
+            look = re.match('@@ test: (\S+) (\S+)?\s*@@',line)
+            if look:
+                # found information associated with a test
+                testName = look.group(1)
+                if look.group(2):
+                    testStatus = look.group(2)
+                else:
+                    testStatus = 'unknown'
+                if firstIteration and testStatus != 'pass':
+                    failureNames |= set([testName])
+                    nbErrors = nbErrors + 1
+                if not testName in tests:
+                    tests[testName] = testFormater.associate(testName,
+                                                    tempfile.TemporaryFile())
+                tests[testName].header('result',filename,testStatus)
+                testFile = tests[testName]
+                hasOuput[testName] = True
+            elif testFile:
+                testFile.write(line)
+            else:
+                conf.write(line)
+            line = f.readline()
+        f.close()
+        for testName in hasOuput:
+            tests[testName].footer()
+        firstIteration = False
+    if False:
+        # \todo do we need to set those anymore?
+        #       Yes in order to easily generate columns headers
+        # 2. Write the reference files against which comparaison is done.
+        for reffile in reffiles:
+            id = os.path.splitext(os.path.basename(reffile))[0]
+            conf.write('<reference id="' + id \
+                           + '" name="' + reffile + '"/>\n')
+
     regressions = {}
     for reffile in reffiles:
         logCmdLine = "grep -n '@@ test:' " + logfile
@@ -199,18 +261,10 @@ if __name__ == '__main__':
         # starts marks the end of a difference range associated
         # with *prevLogTestName*.
         logLineNum, prevLogTestName = logAdvance(log)
-        if not prevLogTestName in tests:
-            tests[prevLogTestName] = testFormater.associate(prevLogTestName,
-                                                     tempfile.TemporaryFile())
-        testFile = tests[prevLogTestName]
-        if not prevLogTestName in regressions:
-            regressions[prevLogTestName] = {}
         diffLineNum = diffAdvance(diff)
         while diffLineNum < logLineNum:
             diffLineNum = diffAdvance(diff)
         logLineNum, logTestName = logAdvance(log)
-        if not logTestName in regressions:
-            regressions[logTestName] = {}
 
         # end-of-file is detected by checking the uninitialized value
         # of logLineNum and diffLineNum as set by logAdvance()
@@ -222,48 +276,21 @@ if __name__ == '__main__':
             if diffLineNum < logLineNum:
                 # last log failed
                 if prevLogTestName != None:
-                    if not prevLogTestName in tests:
-                        tests[prevLogTestName] \
-                            = testFormater.associate(prevLogTestName,
-                                                      tempfile.TemporaryFile())
-                    testFile = tests[prevLogTestName]
-                    if not prevLogTestName in regressions:
-                        regressions[prevLogTestName] = {}
-                    if not reffile in regressions[prevLogTestName]:
-                        testStatus = "different"
-                        testFile.header('compare',reffile,testStatus)
-                        regressions[prevLogTestName][reffile] = testStatus
+                    testFile = addTest(prevLogTestName,reffile,"different",
+                                       tests,regressions)
                     prevLogTestName = None
                 diffLineNum = diffAdvance(diff,testFile)
             elif diffLineNum > logLineNum:
                 # last log passed
                 if prevLogTestName != None:
-                    if not prevLogTestName in tests:
-                        tests[prevLogTestName] \
-                            = testFormater.associate(prevLogTestName,
-                                                      tempfile.TemporaryFile())
-                    testFile = tests[prevLogTestName]
-                    if not prevLogTestName in regressions:
-                        regressions[prevLogTestName] = {}
-                    if not reffile in regressions[prevLogTestName]:
-                        testStatus = "identical"
-                        testFile.header('compare',reffile,testStatus)
-                        regressions[prevLogTestName][reffile] = testStatus
+                    testFile = addTest(prevLogTestName,reffile,"identical",
+                                       tests,regressions)
                 prevLogTestName = logTestName
                 logLineNum, logTestName = logAdvance(log)
             else:
                 if prevLogTestName != None:
-                    if not prevLogTestName in tests:
-                        tests[prevLogTestName] \
-                            = testFormater.associate(prevLogTestName,
-                                                      tempfile.TemporaryFile())
-                    testFile = tests[prevLogTestName]
-                    if not prevLogTestName in regressions:
-                        regressions[prevLogTestName] = {}
-                    if not reffile in regressions[prevLogTestName]:
-                        testStatus = "identical"
-                        testFile.header('compare',reffile,testStatus)
-                        regressions[prevLogTestName][reffile] = testStatus
+                    testFile = addTest(prevLogTestName,reffile,"identical",
+                                       tests,regressions)
                 prevLogTestName = logTestName
                 logLineNum, logTestName = logAdvance(log)
                 diffLineNum = diffAdvance(diff,testFile)
@@ -283,30 +310,22 @@ if __name__ == '__main__':
                 reflogLineNum, reflogTestName = logAdvance(reflog)
             reflog.close()
             while logLineNum != sys.maxint:
-                if logTestName in refs:
-                    if not logTestName in regressions:
-                        regressions[logTestName] = {}
-                    if not reffile in regressions[logTestName]:
-                        testStatus = "identical"
-                        testFile.header('compare',reffile,testStatus)
-                        regressions[logTestName][reffile] = testStatus
+                if prevLogTestName in refs:
+                    testFile = addTest(prevLogTestName,reffile,"identical",
+                                       tests,regressions)
+                prevLogTestName = logTestName
                 logLineNum, logTestName = logAdvance(log)
+            if prevLogTestName in refs:
+                testFile = addTest(prevLogTestName,reffile,"identical",
+                                   tests,regressions)
+
         elif logLineNum == diffLineNum:
             # Both finish at the same time, let's flush the last testName
             # and be done with it. It seems the test is new and wasn't run
             # in the reference.
             if prevLogTestName != None:
-                if not prevLogTestName in tests:
-                    tests[prevLogTestName] \
-                        = testFormater.associate(prevLogTestName,
-                                                  tempfile.TemporaryFile())
-                testFile = tests[prevLogTestName]
-                if not prevLogTestName in regressions:
-                    regressions[prevLogTestName] = {}
-                if not reffile in regressions[prevLogTestName]:
-                    testStatus = "absent"
-                    testFile.header('compare',reffile,testStatus)
-                    regressions[prevLogTestName][reffile] = testStatus
+                testFile = addTest(prevLogTestName,reffile,"absent",
+                                   tests,regressions)
                 prevLogTestName = None
         diff.close()
         log.close()
@@ -316,47 +335,6 @@ if __name__ == '__main__':
     # All diffs have been computed, let's print out the regressions.
     # We are going to output an XML file which is suitable to display
     # as a table with a row per test and a column per reference log.
-
-    # 1. Merge result files together in a single file such that information
-    #    associated with a test ends up under the same tag.'''
-    testFile = None
-    nbFailures = 0
-    failureNames = set([])
-    (confno, confname) = tempfile.mkstemp()
-    os.close(confno)
-    conf = open(confname,'w')
-    firstIteration = True
-    for filename in args:
-        hasOuput = {}
-        f = open(filename,'r')
-        line = f.readline()
-        while line != '':
-            look = re.match('@@ test: (\S+) (\S+)?\s*@@',line)
-            if look:
-                # found information associated with a test
-                testName = look.group(1)
-                if look.group(2):
-                    testStatus = look.group(2)
-                else:
-                    testStatus = 'unknown'
-                if firstIteration and testStatus != 'pass':
-                    failureNames |= set([testName])
-                    nbFailures = nbFailures + 1
-                if not testName in tests:
-                    tests[testName] = testFormater.associate(testName,
-                                                    tempfile.TemporaryFile())
-                tests[testName].header('result',filename,testStatus)
-                testFile = tests[testName]
-                hasOuput[testName] = True
-            elif testFile:
-                testFile.write(line)
-            else:
-                conf.write(line)
-            line = f.readline()
-        f.close()
-        for testName in hasOuput:
-            tests[testName].footer()
-        firstIteration = False
 
     # Complete the missing cases for tests which were removed,
     # did not compile, etc.
@@ -373,10 +351,8 @@ if __name__ == '__main__':
                     if regressions[testName][reffile] == 'different':
                         if not reffile in regressionNames:
                             regressionNames[reffile] = set([])
-                        regressionNames[reffile] \
-                            |= set([testName])
+                        regressionNames[reffile] |= set([testName])
                         nbRegressions = nbRegressions + 1
-                    testStatus = regressions[testName][reffile]
                 else:
                     tests[testName].header('compare',reffile,'absent')
                     tests[testName].footer()
@@ -390,15 +366,6 @@ if __name__ == '__main__':
                                                     tempfile.TemporaryFile())
                 tests[testName].header('compare',reffile,'compile')
                 tests[testName].footer()
-
-    if False:
-        # \todo do we need to set those anymore?
-        #       Yes in order to easily generate columns headers
-        # 2. Write the reference files against which comparaison is done.
-        for reffile in reffiles:
-            id = os.path.splitext(os.path.basename(reffile))[0]
-            conf.write('<reference id="' + id \
-                           + '" name="' + reffile + '"/>\n')
 
     # Results for a single testcase have been aggregated in a temporary file.
     # Let's build the final file.
@@ -414,7 +381,7 @@ if __name__ == '__main__':
     out = open(outname,'w')
     out.write('<testsuite name="%s" timestamp="%s" time="%s" hostname="%s" tests="%d" failures="%s" errors="%s">\n' \
        % (testsuitename, timestamp, time, hostname,
-          len(tests), expectedFail, nbFailures))
+          len(tests), expectedFail, (nbErrors + nbRegressions)))
     out.write('<properties></properties>\n')
 
     if False:
@@ -426,8 +393,6 @@ if __name__ == '__main__':
             out.write(line)
             line = conf.readline()
         conf.close()
-
-    # print "!!! regressions=" + str(regressions)
 
     # 3. All temporary files have been created, it is time to merge
     #    them back together.
@@ -459,7 +424,7 @@ if __name__ == '__main__':
     os.chmod(outname,stat.S_IRUSR | stat.S_IWUSR
              | stat.S_IRGRP | stat.S_IROTH)
     shutil.move(outname,options.output)
-    sys.stdout.write(str(nbFailures) + ' failures\n')
+    sys.stdout.write(str(nbErrors) + ' failures\n')
     if len(failureNames) > 0:
         sys.stdout.write('\t' + '\n\t'.join(failureNames) + '\n')
     sys.stdout.write(str(nbRegressions) + ' regressions\n')
@@ -468,7 +433,7 @@ if __name__ == '__main__':
             sys.stdout.write('\t(' + os.path.basename(reffile) + ')\n')
             sys.stdout.write('\t' \
                 + '\n\t'.join(regressionNames[reffile]) + '\n')
-    sys.exit(max(nbFailures,nbRegressions))
+    sys.exit(max(nbErrors,nbRegressions))
 
 
 
