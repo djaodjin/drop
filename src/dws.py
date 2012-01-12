@@ -88,7 +88,7 @@ staticLibFirst = True
 useDefaultAnswer = False
 
 # Directories where things get installed
-installDirs = [ 'bin', 'include', 'lib', 'etc', 'share' ]
+installDirs = [ 'bin', 'include', 'lib', 'libexec', 'etc', 'share' ]
 
 class Error(Exception):
     '''This type of exception is used to identify "expected"
@@ -175,6 +175,9 @@ class Context:
                          'libDir': Pathname('libDir',
              {'description':'Root of the tree where libraries are installed',
               'base':'installTop'}),
+                         'libexecDir': Pathname('libexecDir',
+             {'description':'Root of the tree where executable helpers are installed',
+              'base':'installTop'}),
                          'etcDir': Pathname('etcDir',
              {'description':'Root of the tree where configuration files for the local system are installed',
               'base':'installTop'}),
@@ -225,15 +228,6 @@ class Context:
     def binBuildDir(self):
         return os.path.join(self.value('buildTop'),'bin')
 
-    def includeBuildDir(self):
-        return os.path.join(self.value('buildTop'),'include')
-
-    def libBuildDir(self):
-        return os.path.join(self.value('buildTop'),'lib')
-
-    def shareBuildDir(self):
-        return os.path.join(self.value('buildTop'),'share')
-
     def derivedHelper(self,name):
         '''Absolute path to a file which is part of drop helper files
         located in the share/dws subdirectory. The absolute directory
@@ -243,7 +237,7 @@ class Context:
           os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))),
           'share','dws',name)
 #       That code does not work when we are doing dws make (no recurse).
-#        return os.path.join(self.shareBuildDir(),'dws',name)
+#       return os.path.join(self.value('buildTop'),'share','dws',name)
 
     def hostCachePath(self,name):
         '''Absolute path to a file in the local system cache for host
@@ -1889,6 +1883,15 @@ class GitRepository(Repository):
     def __init__(self, sync, rev):
         Repository.__init__(self,sync,rev)
 
+    def gitexe(self):
+        if not os.path.lexists(\
+            os.path.join(context.value('buildTop'),'bin','git')):
+            setup = SetupStep('git-core', files = { 'bin': [('git', None)],
+                                                'libexec':[('git-core',None)] })
+            setup.run(context)
+        return 'git'
+
+
     def applyPatches(self, name, context):
         '''Apply patches that can be found in the *objDir* for the project.'''
         prev = os.getcwd()
@@ -1900,7 +1903,7 @@ class GitRepository(Repository):
             if len(patches) > 0:
                 writetext('######## patching ' + name + '...\n')
                 os.chdir(context.srcDir(name))
-                shellCommand(['git', 'am', '-3', '-k',
+                shellCommand([ self.gitexe(), 'am', '-3', '-k',
                               os.path.join(context.patchDir(name),
                                            '*.patch')])
         os.chdir(prev)
@@ -1908,11 +1911,10 @@ class GitRepository(Repository):
     def push(self, pathname):
         prev = os.getcwd()
         os.chdir(pathname)
-        shellCommand(['git', 'push' ])
+        shellCommand([ self.gitexe(), 'push' ])
         os.chdir(prev)
 
     def update(self, name, context, force=False):
-        git = findBootBin(context,'git','git-core')
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will
         # trigger a potentially unnecessary prompt for remoteCachePath.
@@ -1929,12 +1931,12 @@ class GitRepository(Repository):
         updated = False
         cwd = os.getcwd()
         if not os.path.exists(os.path.join(local,'.git')):
-            shellCommand([git, 'clone', self.url, local])
+            shellCommand([ self.gitexe(), 'clone', self.url, local])
             updated = True
         else:
             pulled = True
             os.chdir(local)
-            cmd = subprocess.Popen(' '.join([git, 'pull']),shell=True,
+            cmd = subprocess.Popen(' '.join([self.gitexe(), 'pull']),shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
             line = cmd.stdout.readline()
@@ -1952,7 +1954,7 @@ class GitRepository(Repository):
         cof = '-m'
         if force:
             cof = '-f'
-        cmd = [ git, 'checkout', cof ]
+        cmd = [ self.gitexe(), 'checkout', cof ]
         if self.rev:
             cmd += [ self.rev ]
         if self.rev or pulled:
@@ -2873,6 +2875,8 @@ def findPrerequisites(deps, excludes=[],variant=None):
                 complete = False
     return installed, complete
 
+def findLibexec(names,searchPath,buildTop,excludes=[],variant=None):
+    return findData('libexec',names,searchPath,buildTop,excludes,variant)
 
 def findShare(names,searchPath,buildTop,excludes=[],variant=None):
     return findData('share',names,searchPath,buildTop,excludes,variant)
@@ -4257,6 +4261,7 @@ def pubIntegrate(args):
 
 class FilteredList(PdbHandler):
     '''Print a list binary package files specified in an index file.'''
+    # Note: This code is used by dservices.
 
     def __init__(self):
         self.firstTime = True
@@ -4361,8 +4366,6 @@ def pubPatch(args):
     '''                Generate patches vs. the last pull from a remote
                        repository, optionally send it to a list of receipients.
     '''
-    global log
-    log = LogFile(context.logname(),nolog)
     reps = args
     recurse = False
     if 'recurse' in args:
@@ -4374,7 +4377,10 @@ def pubPatch(args):
         patches = []
         writetext('######## generating patch for project ' + r + '\n')
         os.chdir(context.srcDir(r))
-        cmdline = ' '.join(['git', 'format-patch', '-o', context.patchDir(r),
+        patchDir = context.patchDir(r)
+        if not os.path.exists(patchDir):
+            os.makedirs(patchDir)
+        cmdline = ' '.join(['git', 'format-patch', '-o', patchDir,
                             'origin'])
         cmd = subprocess.Popen(cmdline,shell=True,
                                stdout=subprocess.PIPE,
@@ -4382,6 +4388,7 @@ def pubPatch(args):
         line = cmd.stdout.readline()
         while line != '':
             patches += [ line.strip() ]
+            sys.stdout.write(line)
             line = cmd.stdout.readline()
         cmd.wait()
         if cmd.returncode != 0:
@@ -4419,8 +4426,6 @@ def pubStatus(args):
     '''                 Show status of projects checked out
                        in the workspace with regards to commits.
     '''
-    global log
-    log = LogFile(context.logname(),nolog)
     reps = args
     recurse = False
     if 'recurse' in args:

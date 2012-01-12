@@ -123,6 +123,8 @@
 					minOccurs="0" maxOccurs="unbounded"/>
 		<xs:element name="lib" type="depType"
 					minOccurs="0" maxOccurs="unbounded"/>
+		<xs:element name="libexec" type="depType"
+					minOccurs="0" maxOccurs="unbounded"/>
 		<xs:element name="share" type="depType"
 					minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>

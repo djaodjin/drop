@@ -261,14 +261,33 @@ if __name__ == '__main__':
         # starts marks the end of a difference range associated
         # with *prevLogTestName*.
         logLineNum, prevLogTestName = logAdvance(log)
-        diffLineNum = diffAdvance(diff)
-        while diffLineNum < logLineNum:
-            diffLineNum = diffAdvance(diff)
-        logLineNum, logTestName = logAdvance(log)
+        diffLineNum = sys.maxint
+        look = None
+        while look == None:
+            diffLine = diff.readline()
+            if diffLine == '':
+                break
+            look = re.match('@@ -(\d+),',diffLine)
+            if look != None:
+                break
+            look = re.match('\+@@ test: (\S+) (\S+)? @@',diffLine)
+            if look != None:
+                # If we arrive here, it means the first N tests in reference
+                # are missing from result. We passed '@@ -(\d+)' on the way
+                # (Note the absence of ending coma in the pattern).
+                testFile = addTest(look.group(1),reffile,"different",
+                                   tests,regressions)
+            look = None
+        if look != None:
+            # The "diff -U 1" is invoked. This seems to all offset all starting
+            # chunks by 1. In case the test result is only one line long,
+            # it might indicate the wrong test as "different" in a regression.
+            diffLineNum = int(look.group(1)) + 1
 
         # end-of-file is detected by checking the uninitialized value
         # of logLineNum and diffLineNum as set by logAdvance()
         # and diffAdvance().
+        logLineNum, logTestName = logAdvance(log)
         while logLineNum != sys.maxint and diffLineNum != sys.maxint:
             #print "!!! " + str(prevLogTestName) \
             #    + ', log@' + str(logLineNum) \
