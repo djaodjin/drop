@@ -46,9 +46,9 @@ buildUsrLocalDir:=	$(buildInstallDir)/usr/local
 # We cannot initialize dbldpkg to $(binBuildDir)/dbldpkg, 
 # else the drop package cannot be built. See comments associated
 # to searchPath() in dws.py
-dbldpkg		:=	dbldpkg
-ibtool          :=      /Developer/usr/bin/ibtool
-installBins	:=	/usr/bin/install -s -p -m 755
+dbldpkg			:=	dbldpkg
+ibtool          :=  /Developer/usr/bin/ibtool
+installBins		:=	/usr/bin/install -s -p -m 755
 installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -p -m 644
 installScripts	:=	/usr/bin/install -p -m 755

@@ -533,7 +533,10 @@ class IndexProjects:
                         os.makedirs(os.path.dirname(self.source))
                     remoteIndex = self.context.value('remoteIndex')
                     vcs = Repository.associate(remoteIndex)
-                    vcs.update(None,self.context)
+                    if vcs:
+                        vcs.update(None,self.context)
+                    else:
+                        fetch(self.context,{remoteIndex:''})
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
 
@@ -2390,7 +2393,7 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
         else:
             droots = searchPath
     for namePat, absolutePath in names:
-        linkName = os.path.join(os.path.join(buildTop,'bin'),namePat)
+        linkName, regex = linkBuildName(namePat,'bin',variant)
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
@@ -2414,56 +2417,59 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
                 results.append((namePat, bin))
         else:
             for p in droots:
-                bin = os.path.realpath(os.path.join(p,namePat))
-                if (os.path.isfile(bin)
-                    and os.access(bin, os.X_OK)):
-                    # We found an executable with the appropriate name,
-                    # let's find out if we can retrieve a version number.
-                    numbers = []
-                    if not (variant and len(variant) > 0):
-                        # When looking for a specific *variant*, we do not
-                        # try to execute executables as they are surely
-                        # not meant to be run on the native system.
-                        for flag in [ '--version', '-V' ]:
-                            numbers = []
-                            cmdline = [ bin, flag ]
-                            cmd = subprocess.Popen(cmdline,
-                                                   stdout=subprocess.PIPE,
-                                                   stderr=subprocess.STDOUT)
-                            line = cmd.stdout.readline()
-                            while line != '':
-                                numbers += versionCandidates(line)
-                                line = cmd.stdout.readline()
-                            cmd.wait()
-                            if cmd.returncode != 0:
-                                # When the command returns with an error code,
-                                # we assume we passed an incorrect flag
-                                # to retrieve the version number.
+                for b in findFirstFiles(p,namePat):
+                    bin = os.path.join(p,b)
+                    if (os.path.isfile(bin)
+                        and os.access(bin, os.X_OK)):
+                        # We found an executable with the appropriate name,
+                        # let's find out if we can retrieve a version number.
+                        numbers = []
+                        if not (variant and len(variant) > 0):
+                            # When looking for a specific *variant*, we do not
+                            # try to execute executables as they are surely
+                            # not meant to be run on the native system.
+                            for flag in [ '--version', '-V' ]:
                                 numbers = []
-                            if len(numbers) > 0:
-                                break
-                    # At this point *numbers* contains a list that can
-                    # interpreted as versions. Hopefully, there is only
-                    # one candidate.
-                    if len(numbers) == 1:
-                        excluded = False
-                        for exclude in excludes:
-                            if ((not exclude[0]
+                                cmdline = [ bin, flag ]
+                                cmd = subprocess.Popen(cmdline,
+                                                       stdout=subprocess.PIPE,
+                                                       stderr=subprocess.STDOUT)
+                                line = cmd.stdout.readline()
+                                while line != '':
+                                    numbers += versionCandidates(line)
+                                    line = cmd.stdout.readline()
+                                cmd.wait()
+                                if cmd.returncode != 0:
+                                    # When the command returns with an error code,
+                                    # we assume we passed an incorrect flag
+                                    # to retrieve the version number.
+                                    numbers = []
+                                if len(numbers) > 0:
+                                    break
+                        # At this point *numbers* contains a list that can
+                        # interpreted as versions. Hopefully, there is only
+                        # one candidate.
+                        if len(numbers) == 1:
+                            excluded = False
+                            for exclude in excludes:
+                                if ((not exclude[0]
                                  or versionCompare(exclude[0],numbers[0]) <= 0)
-                                and (not exclude[1]
+                                 and (not exclude[1]
                                  or versionCompare(numbers[0],exclude[1]) < 0)):
-                                excluded = True
-                                break
-                        if not excluded:
-                            version = numbers[0]
-                            writetext(str(version) + '\n')
-                            results.append((namePat, bin))
+                                    excluded = True
+                                    break
+                            if not excluded:
+                                version = numbers[0]
+                                writetext(str(version) + '\n')
+                                results.append((namePat, bin))
+                            else:
+                                writetext('excluded (' + str(numbers[0]) + ')\n')
                         else:
-                            writetext('excluded (' + str(numbers[0]) + ')\n')
-                    else:
-                        writetext('yes\n')
-                        results.append((namePat, bin))
-                    found = True
+                            writetext('yes\n')
+                            results.append((namePat, bin))
+                        found = True
+                        break
+                if found:
                     break
         if not found:
             writetext('no\n')
@@ -3323,39 +3329,48 @@ def linkContext(path,linkName):
     if not os.path.exists(linkName) and os.path.exists(path):
         os.symlink(path,linkName)
 
-
-def linkPatPath(namePat, absolutePath, dir, target=None):
-    linkPath = absolutePath
-    ext = ''
-    if absolutePath != None:
-        pathname, ext = os.path.splitext(absolutePath)
+def linkBuildName(namePat, subdir, target=None):
     # We normalize the library link name such as to make use of the default
     # definitions of .LIBPATTERNS and search paths in make. It also avoids
     # having to prefix and suffix library names in Makefile with complex
     # variable substitution logic.
-    if ext == libStaticSuffix():
-        linkName = 'lib' + namePat + '.a'
-    elif ext == libDynSuffix():
-        linkName = 'lib' + namePat + '.so'
+    regexRet = None
+    # Yeah, looking for g++ might be a little bit of trouble.
+    regex = re.compile(namePat.replace('+','\+') + '$')
+    if regex.groups == 0:
+        name = namePat
+        parts = namePat.split(os.sep)
+        if len(parts) > 0:
+            name = parts[len(parts) - 1]
     else:
-        # Yeah, looking for g++ might be a little bit of trouble.
-        regex = re.compile(namePat.replace('+','\+') + '$')
-        if regex.groups == 0:
-            linkName = namePat
-            parts = namePat.split(os.sep)
-            if len(parts) > 0:
-                linkName = parts[len(parts) - 1]
-        else:
-            linkName = re.search('\((.+)\)',namePat).group(1)
-            if absolutePath != None:
-                look = regex.search(absolutePath)
-                parts = absolutePath[look.end(1):].split(os.sep)
-                linkPath = absolutePath[:look.end(1)] + parts[0]
-    # linkName, linkPath
-    subpath = dir
+        name = re.search('\((.+)\)',namePat).group(1)
+        regexRet = regex
+    subpath = subdir
     if target:
-        subpath = os.path.join(target,dir)
-    linkName = os.path.join(context.value('buildTop'),subpath,linkName)
+        subpath = os.path.join(target,subdir)
+    linkBuild = os.path.join(context.value('buildTop'),subpath,name)
+    return linkBuild, regexRet
+
+def linkPatPath(namePat, absolutePath, subdir, target=None):
+    linkPath = absolutePath
+    ext = ''
+    if absolutePath != None:
+        pathname, ext = os.path.splitext(absolutePath)
+    subpath = subdir
+    if target:
+        subpath = os.path.join(target,subdir)
+    if ext == libStaticSuffix():
+        name = 'lib' + namePat + '.a'
+        linkName = os.path.join(context.value('buildTop'),subpath,name)
+    elif ext == libDynSuffix():
+        name = 'lib' + namePat + '.so'
+        linkName = os.path.join(context.value('buildTop'),subpath,name)
+    else:
+        linkName, regex = linkBuildName(namePat,subdir,target)
+        if absolutePath != None and regex != None:
+            look = regex.search(absolutePath)
+            parts = absolutePath[look.end(1):].split(os.sep)
+            linkPath = absolutePath[:look.end(1)] + parts[0]
     # create links
     complete = True
     if linkPath:
