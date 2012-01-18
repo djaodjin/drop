@@ -290,6 +290,8 @@ class Context:
         pos = name.rfind('./')
         if pos >= 0:
             localname = os.path.join(siteTop,name[pos + 2:])
+        elif ':' in name:
+            localname = name.replace(self.value('remoteSiteTop'),siteTop)
         elif not name.startswith(os.sep):
             localname = os.path.join(siteTop,name)
         else:
@@ -393,25 +395,21 @@ class Context:
         if remotePath.endswith('.git'):
             remotePath = os.path.join(remotePath,self.indexName)
         remotePathList = remotePath.split(os.sep)
-        repIndex = len(remotePathList)
+        base = os.path.dirname(remotePath)
+        self.environ['remoteIndex'].default = remotePath
         for i in range(0,len(remotePathList)):
             if remotePathList[i].endswith('.git'):
-                repIndex = i + 1
+                base = os.path.dirname(os.sep.join(remotePathList[0:i + 1]))
                 if remotePathList[i] == '.git':
-                    repIndex = repIndex - 1
+                    base = os.path.dirname(os.sep.join(remotePathList[0:i]))
+                self.environ['remoteIndex'].default \
+                    = os.sep.join(remotePathList[i:])
                 break
-        base = os.sep.join(remotePathList[0:repIndex])
         if not ':' in base:
             base = os.path.realpath(base)
-        self.environ['remoteSrcTop'].default  = os.path.dirname(base)
+        self.environ['remoteSrcTop'].default  = base
         self.environ['remoteSiteTop'].default \
             = os.path.dirname(self.environ['remoteSrcTop'].default)
-        prefix = os.sep.join(remotePathList[0:repIndex - 2])
-        if len(prefix) > 0:
-            self.environ['remoteIndex'].default = remotePath.replace(\
-                prefix + os.sep,'')
-        else:
-            self.environ['remoteIndex'].default = remotePath
         look = re.match('(\S+@)?(\S+):.*',remotePath)
         if look:
             self.tunnelPoint = look.group(2)
@@ -3028,8 +3026,8 @@ def fetch(context, filenames,
     When the files to fetch require sudo permissions on the remote
     machine, set *admin* to true.
     '''
-    remotePath = context.value('remoteSiteTop')
-    uri = urlparse.urlparse(remotePath)
+    remoteSiteTop = context.value('remoteSiteTop')
+    uri = urlparse.urlparse(remoteSiteTop)
     if len(filenames) > 0:
         # Expand filenames to absolute urls
         pathnames = {}
@@ -3039,25 +3037,22 @@ def fetch(context, filenames,
             if name:
                 if name.startswith('http') or ':' in name:
                     remotePath = name
-                elif name.startswith(uri.path):
-                    remotePath = os.path.join(uri.path,
+                elif len(uri.path) > 0 and name.startswith(uri.path):
+                    remotePath = os.path.join(remoteSiteTop,
                                     '.' + name.replace(uri.path,''))
                 elif name.startswith('/'):
                     remotePath = '/.' + name
                 else:
-                    remotePath = os.path.join(uri.path,'./' + name)
+                    remotePath = os.path.join(remoteSiteTop,'./' + name)
             pathnames[ remotePath ] = filenames[name]
 
         # Check the local cache
         if force:
             downloads = pathnames
         else:
-            print "!!! pathnames=" + str(pathnames)
             downloads = findCache(context,pathnames)
-            print "!!! downloads=" + str(downloads)
             for filename in downloads:
                 localFilename = context.localDir(filename)
-                print "!!! filename=" + str(filename) + ", localFilename=" + str(localFilename)
                 dir = os.path.dirname(localFilename)
                 if not os.path.exists(dir):
                     os.makedirs(dir)
