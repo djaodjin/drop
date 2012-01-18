@@ -285,15 +285,15 @@ class Context:
         '''Returns the distribution on which the script is running.'''
         return self.value('distHost')
 
-    def localDir(self, name, cacheDir=None):
-        if not cacheDir:
-            cacheDir = os.path.join(self.value('siteTop'),'resources')
+    def localDir(self, name):
+        siteTop = self.value('siteTop')
         pos = name.rfind('./')
         if pos >= 0:
-            localname = os.path.join(cacheDir,name[pos + 2:])
+            localname = os.path.join(siteTop,name[pos + 2:])
+        elif not name.startswith(os.sep):
+            localname = os.path.join(siteTop,name)
         else:
-            localname = name.replace(self.value('remoteSiteTop'),
-                                     self.value('siteTop'))
+            localname = name.replace(self.value('remoteSiteTop'),siteTop)
         pathList = localname.split(os.sep)
         localname = '/'
         for part in pathList:
@@ -2539,7 +2539,8 @@ def findFirstFiles(base,namePat,subdir=''):
             for p in os.listdir(os.path.join(base,subdir)):
                 relative = os.path.join(subdir,p)
                 path = os.path.join(base,relative)
-                look = re.match(namePat + '$',relative)
+                # Yeah, looking for g++ might be a little bit of trouble.
+                look = re.match(namePat.replace('+','\+') + '$',relative)
                 if look != None:
                     results += [ relative ]
                 elif (((('.*' + os.sep) in namePat)
@@ -2924,12 +2925,13 @@ def findBootBin(context, name, package = None):
     return executable
 
 
-def findRSync(context, remotePath, relative=False, admin=False):
+def findRSync(context, relative=True, admin=False):
     '''Check if rsync is present and install it through the package
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
     through a project.'''
     rsync = findBootBin(context,'rsync')
+    remotePath = context.value('remoteSiteTop')
 
     # Create the rsync command
     uri = urlparse.urlparse(remotePath)
@@ -2944,9 +2946,9 @@ def findRSync(context, remotePath, relative=False, admin=False):
     prefix = ""
     if username:
         prefix = prefix + username + '@'
-    cmdline = [ rsync, '-avuzb' ]
+    cmdline = [ rsync, '-avuzbL' ]
     if relative:
-        cmdline = [ rsync, '-avuzbR' ]
+        cmdline = [ rsync, '-avuzbLR' ]
     if hostname:
         # We are accessing the remote machine through ssh
         prefix = prefix + hostname + ':'
@@ -3018,18 +3020,16 @@ def deps(roots, index):
     return results
 
 
-def fetch(context, filenames, cacheDir = None,
-          force=False, admin=False, relative=False):
+def fetch(context, filenames,
+          force=False, admin=False, relative=True):
     '''download *filenames*, typically a list of distribution packages,
     from the remote server into *cacheDir*. See the upload function
     for uploading files to the remote server.
     When the files to fetch require sudo permissions on the remote
     machine, set *admin* to true.
     '''
-    if not cacheDir:
-        relative = True
-        cacheDir = os.path.join(context.value('siteTop'),'resources')
-    remoteCachePath = os.path.join(context.value('remoteSiteTop'),'resources')
+    remotePath = context.value('remoteSiteTop')
+    uri = urlparse.urlparse(remotePath)
     if len(filenames) > 0:
         # Expand filenames to absolute urls
         pathnames = {}
@@ -3039,19 +3039,25 @@ def fetch(context, filenames, cacheDir = None,
             if name:
                 if name.startswith('http') or ':' in name:
                     remotePath = name
+                elif name.startswith(uri.path):
+                    remotePath = os.path.join(uri.path,
+                                    '.' + name.replace(uri.path,''))
                 elif name.startswith('/'):
                     remotePath = '/.' + name
                 else:
-                    remotePath = os.path.join(remoteCachePath,'./' + name)
-            pathnames[ remotePath ] = name
+                    remotePath = os.path.join(uri.path,'./' + name)
+            pathnames[ remotePath ] = filenames[name]
 
         # Check the local cache
         if force:
             downloads = pathnames
         else:
+            print "!!! pathnames=" + str(pathnames)
             downloads = findCache(context,pathnames)
+            print "!!! downloads=" + str(downloads)
             for filename in downloads:
                 localFilename = context.localDir(filename)
+                print "!!! filename=" + str(filename) + ", localFilename=" + str(localFilename)
                 dir = os.path.dirname(localFilename)
                 if not os.path.exists(dir):
                     os.makedirs(dir)
@@ -3079,7 +3085,6 @@ def fetch(context, filenames, cacheDir = None,
         # fetch sshs
         if len(sshs) > 0:
             sources = []
-            uri = urlparse.urlparse(remoteCachePath)
             hostname = uri.netloc
             if not uri.netloc:
                 # If there is no protocol specified, the hostname
@@ -3091,10 +3096,9 @@ def fetch(context, filenames, cacheDir = None,
                 if admin:
                     shellCommand(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-                cmdline, prefix = findRSync(context,
-                                            remoteCachePath,relative,admin)
+                cmdline, prefix = findRSync(context,relative,admin)
                 shellCommand(cmdline + ["'" + prefix + ' '.join(sources) + "'",
-                                    cacheDir ])
+                                    context.value('siteTop') ])
 
 
 def install(packages, dbindex):
@@ -3478,7 +3482,7 @@ def upload(filenames, cacheDir=None):
     files from the remote server.
     '''
     remoteCachePath = context.remoteDir(context.logPath(''))
-    cmdline, prefix = findRSync(remoteCachePath,not cacheDir)
+    cmdline, prefix = findRSync(context,not cacheDir)
     upCmdline = cmdline + [ ' '.join(filenames), remoteCachePath ]
     shellCommand(upCmdline)
 
@@ -3909,14 +3913,18 @@ def pubBuild(args):
     if len(args) > 1:
         siteTop = args[1]
     else:
-        siteTop = os.path.join(os.getcwd(),
-                               os.path.basename(context.value('remoteSiteTop')))
+        base = os.path.basename(str(context.environ['remoteSiteTop']))
+        siteTop = os.getcwd()
+        if base:
+            siteTop = os.path.join(os.getcwd(),base)
     context.environ['siteTop'].value = siteTop
     if len(args) > 2:
         context.environ['buildTop'].value = args[2]
     else:
         context.environ['buildTop'].configure(context)
     buildTop = str(context.environ['buildTop'])
+    if not os.path.exists(buildTop):
+        os.makedirs(buildTop)
     os.chdir(buildTop)
     context.locate()
     if not str(context.environ['installTop']):
@@ -4003,10 +4011,10 @@ def pubCollect(args):
         collectedIndex = context.dbPathname()
 
     # Create the distribution directory, i.e. where packages are stored.
-    packageDir = context.localDir('./' + context.host())
+    packageDir = context.localDir('./resources/' + context.host())
     if not os.path.exists(packageDir):
         os.makedirs(packageDir)
-    srcPackageDir = context.localDir('./' + 'srcs')
+    srcPackageDir = context.localDir('./resources/srcs')
     if not os.path.exists(srcPackageDir):
         os.makedirs(srcPackageDir)
 
@@ -4022,13 +4030,16 @@ def pubCollect(args):
     for r in roots:
         preExcludeIndices = findFiles(r,context.indexName)
         for index in preExcludeIndices:
-            # We exclude any project index files that has been determined 
+            # We exclude any project index files that has been determined
             # to be irrelevent to the collection being built.
             found = False
-            for excludePat in excludePats:
-                if re.match('.*' + excludePat + '.*',index):
-                    found = True
-                    break
+            if index == collectedIndex:
+                found = True
+            else:
+                for excludePat in excludePats:
+                    if re.match('.*' + excludePat + '.*',index):
+                        found = True
+                        break
             if not found:
                 indices += [ index ]
 
@@ -4044,7 +4055,7 @@ def pubCollect(args):
                                                    context.value('srcTop')))
             srcPackages = findFiles(buildr,'.tar.bz2')
             if len(srcPackages) > 0:
-                cmdline, prefix = findRSync(srcPackageDir)
+                cmdline, prefix = findRSync(context)
                 copySrcPackages = cmdline + [ ' '.join(srcPackages),
                                               srcPackageDir]
             if context.host() in extensions:
@@ -4052,7 +4063,7 @@ def pubCollect(args):
                 pkgIndices += findFiles(buildr,ext[0])
                 binPackages = findFiles(buildr,ext[1])
                 if len(binPackages) > 0:
-                    cmdline, prefix = findRSync(packageDir)
+                    cmdline, prefix = findRSync(context)
                     copyBinPackages = cmdline + [ ' '.join(binPackages),
                                                   packageDir ]
 
