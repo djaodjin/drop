@@ -34,6 +34,8 @@
 # itself to avoid an infinite dependency loop.
 dropShareDir 	?=		$(shareBuildDir)/dws
 
+apps	:=	apps$(distHost)
+
 all::	$(bins) $(scripts) $(libs) $(includes) $(etcs)
 
 all::	$(logs)

@@ -399,11 +399,14 @@ class Context:
         self.environ['remoteIndex'].default = remotePath
         for i in range(0,len(remotePathList)):
             if remotePathList[i].endswith('.git'):
+                project = os.sep.join([remotePathList[i-1],
+                                       remotePathList[i][:-4]])
                 base = os.path.dirname(os.sep.join(remotePathList[0:i + 1]))
                 if remotePathList[i] == '.git':
                     base = os.path.dirname(os.sep.join(remotePathList[0:i]))
+                    project = os.sep.join(remotePathList[i-2:i])
                 self.environ['remoteIndex'].default \
-                    = os.sep.join(remotePathList[i:])
+                    = os.sep.join([project] + remotePathList[i + 1:])
                 break
         if not ':' in base:
             base = os.path.realpath(base)
