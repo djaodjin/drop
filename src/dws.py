@@ -290,8 +290,10 @@ class Context:
         pos = name.rfind('./')
         if pos >= 0:
             localname = os.path.join(siteTop,name[pos + 2:])
-        elif ':' in name:
+        elif name.startswith(self.value('remoteSiteTop')):
             localname = name.replace(self.value('remoteSiteTop'),siteTop)
+        elif ':' in name:
+            localname = os.path.join(siteTop,'resources',os.path.basename(name))
         elif not name.startswith(os.sep):
             localname = os.path.join(siteTop,name)
         else:
