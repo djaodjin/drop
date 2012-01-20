@@ -164,25 +164,25 @@ $(project)-$(version)::
 	tar jxf $<
 	cd $(basename $(basename $<)) \
 		&& ./configure --prefix=${buildUsrLocalDir}
-	cd $(basename $(basename $<)) && ${MAKE} install
+	cd $(basename $(basename $(notdir $<))) && ${MAKE} install
 	$(installDirs) ${buildInstallDir}
-	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
+	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<)))) \
 	         --spec=$(srcDir)/$(projindex) ${buildInstallDir}
 
 %$(distExtFedora): %.tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
 	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
-	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $<))) \
+	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<)))) \
 	         --spec=$(srcDir)/$(projindex) $(basename $@)
 
 # Ubuntu can sometimes be annoying using '_' instead of '-' here and there.
 $(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
-	cd $(basename $(basename $<)) \
+	cd $(basename $(basename $(notdir $<))) \
 		&& $(dbldpkg) \
-		 --version=$(subst $(project)-,,$(basename $(basename $<))) \
+		 --version=$(subst $(project)-,,$(basename $(basename $(notdir $<)))) \
 	         --spec=$(srcDir)/$(projindex) $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
 	echo $@ > .packagename
