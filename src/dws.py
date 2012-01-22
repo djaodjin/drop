@@ -290,22 +290,36 @@ class Context:
         pos = name.rfind('./')
         if pos >= 0:
             localname = os.path.join(siteTop,name[pos + 2:])
-        elif name.startswith(self.value('remoteSiteTop')):
-            localname = name.replace(self.value('remoteSiteTop'),siteTop)
+        elif (str(self.environ['remoteSiteTop'])
+              and name.startswith(self.value('remoteSiteTop'))):
+            localname = name
+            remotePathList = name.split(os.sep)
+            for i in range(0,len(remotePathList)):
+                if remotePathList[i].endswith('.git'):
+                    if remotePathList[i] == '.git':
+                        localname = os.sep.join(remotePathList[:i] + \
+                                                remotePathList[i+1:])
+                    else:
+                        localname = os.sep.join(remotePathList[:i] + \
+                                                [ remotePathList[i][:-4] ] + \
+                                                remotePathList[i+1:])
+                    break
+            localname = localname.replace(self.value('remoteSiteTop'),siteTop)
         elif ':' in name:
             localname = os.path.join(siteTop,'resources',os.path.basename(name))
         elif not name.startswith(os.sep):
             localname = os.path.join(siteTop,name)
         else:
             localname = name.replace(self.value('remoteSiteTop'),siteTop)
-        pathList = localname.split(os.sep)
-        localname = '/'
-        for part in pathList:
-            if part.endswith('.git'):
-                if part != '.git':
-                    localname = os.path.join(localname,part[:-4])
-            else:
-                localname = os.path.join(localname,part)
+        if None:
+            pathList = localname.split(os.sep)
+            localname = '/'
+            for part in pathList:
+                if part.endswith('.git'):
+                    if part != '.git':
+                        localname = os.path.join(localname,part[:-4])
+                else:
+                    localname = os.path.join(localname,part)
         return localname
 
     def remoteDir(self, name):
@@ -396,19 +410,17 @@ class Context:
         than *remoteSiteTop* for *remoteIndex*/*indexName*.'''
         if remotePath.endswith('.git'):
             remotePath = os.path.join(remotePath,self.indexName)
-        remotePathList = remotePath.split(os.sep)
-        base = os.path.dirname(remotePath)
         self.environ['remoteIndex'].default = remotePath
+        # We compute *base* here through the same algorithm as done
+        # in *localDir*. We do not call *localDir* because remoteSiteTop
+        # is not yet defined at this point.
+        base = os.path.dirname(remotePath)
+        remotePathList = remotePath.split(os.sep)
         for i in range(0,len(remotePathList)):
             if remotePathList[i].endswith('.git'):
-                project = os.sep.join([remotePathList[i-1],
-                                       remotePathList[i][:-4]])
                 base = os.path.dirname(os.sep.join(remotePathList[0:i + 1]))
                 if remotePathList[i] == '.git':
                     base = os.path.dirname(os.sep.join(remotePathList[0:i]))
-                    project = os.sep.join(remotePathList[i-2:i])
-                self.environ['remoteIndex'].default \
-                    = os.sep.join([project] + remotePathList[i + 1:])
                 break
         if not ':' in base:
             base = os.path.realpath(base)
@@ -4084,11 +4096,11 @@ def pubConfigure(args):
                        links such that the project can be made later on.
     '''
     global log
+    context.environ['indexFile'].value \
+        = context.srcDir(os.path.join(context.cwdProject(),context.indexName))
     log = LogFile(context.logname(),nolog)
     projectName = context.cwdProject()
     dgen = MakeGenerator([ projectName ],[],[])
-    context.environ['indexFile'].value \
-        = context.srcDir(os.path.join(context.cwdProject(),context.indexName))
     dbindex = IndexProjects(context,context.value('indexFile'))
     dbindex.parse(dgen)
     prerequisites = set([])
