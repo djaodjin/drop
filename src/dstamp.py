@@ -34,7 +34,7 @@
 
 __version__ = None
 
-import datetime, optparse, os, shutil, sys
+import datetime, optparse, os, re, shutil, sys
 
 # We donot want to install dws.py alongside dws in *binDir* and rely
 # on the search path to find it. Thus dws is imported directly through
@@ -48,6 +48,7 @@ else:
     import dws
 
 doNotExecute = True
+verbose = False
 
 # \brief return a list of keepCount dates that have been preserved.
 #
@@ -112,23 +113,40 @@ def cleanUpAgedStamps(dates,keepPerYear,keepPerMonth,keepPerWeek):
 # a maximum amount of temporaries.
 def cleanUpAgedFiles(dirname,keepPerYear=1,keepPerMonth=1,keepPerWeek=1):
     files = {}
+    if not os.path.isdir(dirname):
+        raise dws.Error(dirname + ' is not a directory.')
     for p in os.listdir(dirname):
-        look = re.match("(.*)-(\d\d\d\d)_(\d\d)_(\d\d)_(\d\d)(\..*)",p)
+        look = re.match("(.*)-(\d\d\d\d)_(\d\d)_(\d\d)(-\d\d)?(\..*)",p)
         if look != None:
             filename = look.group(1) + look.group(6)
-            if files[filename] == None:
+            if not filename in files:
                 files[filename] = []
+            hour = 0
+            if look.group(5) and look.group(5).startswith('-'):
+                hour = int(look.group(5)[1:])
             files[filename] += [ datetime.datetime(int(look.group(2)),
                                                    int(look.group(3)),
                                                    int(look.group(4)),
-                                                   int(look.group(5))) ]
+                                                   hour) ]
     for filename in files.keys():
         keep = cleanUpAgedStamps(files[filename],keepPerYear,keepPerMonth,keepPerWeek)
         for d in files[filename]:
+            pathname = os.path.join(dirname,dws.mark(filename,dws.stamp(d)))
             if not d in keep:
-                pathname = os.path.join(dirname,dws.mark(filename,dws.stamp(d)))
                 if not doNotExecute:
-                    os.remove(pathname)
+                    sys.stdout.write('clean ' + pathname)
+                    tmpDir = os.sep + 'tmp'
+                    if 'TMPDIR' in os.environ:
+                        tmpDir = os.environ['TMPDIR']
+                    shutil.move(pathname,
+                                os.path.join(tmpDir,os.path.basename(pathname)))
+                else:
+                    if verbose:
+                        sys.stdout.write('clean* ' + pathname)
+            else:
+                if verbose:
+                    sys.stdout.write('keep  ' + pathname)
+
 
 def pubClean(args):
     '''clean         targetDir
@@ -136,7 +154,9 @@ def pubClean(args):
                   The policy is defined by the number of stamped files
                   that are kept per year, month and week. All stamps
                   less than a week old are always kept.'''
-    cleanUpAgedFiles('.',keepPerYear=1,keepPerMonth=1,keepPerWeek=1)
+    if len(args) < 1:
+        raise dws.Error('missing *targetDir*')
+    cleanUpAgedFiles(args[0],keepPerYear=1,keepPerMonth=1,keepPerWeek=1)
 
 def pubInstall(args):
     '''install      sourceFile [sourceFile ...] targetDir
@@ -162,10 +182,14 @@ if __name__ == '__main__':
                 + str(__version__),
             formatter=dws.CommandsFormatter(),
             epilog=epilog)
-        parser.add_option('--version', dest='version', action='store_true',
-                          help='Print version information')
         parser.add_option('--help-book', dest='helpBook', action='store_true',
                           help='Print help in docbook format')
+        parser.add_option('--version', dest='version', action='store_true',
+                          help='Print version information')
+        parser.add_option('-n', dest='noexecute', action='store_true',
+                          help='Do not execute, run informative only.')
+        parser.add_option('-v', dest='verbose', action='store_true',
+                          help='Verbose mode')
 
         options, args = parser.parse_args()
         if options.version:
@@ -179,6 +203,10 @@ if __name__ == '__main__':
             parser.print_help(help)
             dws.helpBook(help)
             sys.exit(0)
+        if options.noexecute:
+            doNotExecute = True
+        if options.verbose:
+            verbose = True
 
         arg = args.pop(0)
         command = 'pub' + arg.capitalize()
