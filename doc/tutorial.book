@@ -5,7 +5,8 @@
   <!-- Navigate -->
   <info>
     <title>Drop tutorial</title>    
-    <date>15 Oct 2011</date>
+    <date>23 Jan 2012</date>
+	<!-- started 15 Oct 2011 -->
     <author>
     <personname>Sebastien Mirolo &lt;smirolo@fortylines.com&gt;</personname>
     </author>
@@ -13,40 +14,182 @@
   <section>
   <title>Introduction</title>
   <para>
-  Starting development on a software project usually requires installing a whole bunch of prerequisites, fetching source repositories, configuring variables. List of step-by-step instructions, compatible prerequisite versions, etc. are often described in free form text and many times incomplete and/or out of date.
+  Starting development on a software project usually requires installing a whole bunch of prerequisites, fetching source repositories, configuring variables, etc. List of step-by-step instructions and compatible prerequisite versions are often described in free form text and many times incomplete and/or out of date.
   </para>
   <para>
   Package managers, such as ubuntu apt-get or redhat yum, solve the problem of installing binaries pre-built in a specific way at a specific place on the local system. They do not adequately help developers bring-up the required flexible environment to code and debug a project from source. These package managers are only part of the solution.
   </para>
   <para>
-  Autoconf and configure scripts can help find installed and missing prerequisites necessary. They still have shortcomings with regards to the problem of multiple library versions on a system. They also fall short of something to do when prerequisites have been identified as missing. Configure scripts are only part of the solution.
+  Autoconf and configure scripts can help find installed and missing necessary prerequisites. They still have shortcomings with regards to the problem of multiple library versions on a system. They also fall short of something to do when prerequisites have been identified as missing. Configure scripts are only part of the solution.
   </para>
   <para>
-  Make remains a tool of choice to describe file dependencies and rebuild a project from source. Lacking a formal composition mechanism, make usually breaks down beyond a certain complexity. You can tell that point when &quot;make clean &amp;&amp; make&quot; becomes common place &quot;to be safe&quot; and get things built properly. Make is only part of the solution.
+  Make remains a tool of choice to describe file dependencies and rebuild a project from source. Lacking a formal composition mechanism, make usually breaks down beyond a certain complexity. You can tell that point when &quot;make clean &amp;&amp; make&quot; becomes common place &quot;to safely get things built properly&quot;. Make is only part of the solution.
   </para>
   <para>
-  Each part is fine for its intended use. Unfortunately developers require all those to work in concert and in a very flexible way. Many projects rely on aggregating hints from html pages, blog posts, etc. of successful setups. The burden on the new developers is huge, shying away potential contributors before they even have started touching the source code. We believed there should be an easier way to integrate make, prerequisites discovery and installation.
+  Each part is fine for its intended use. Unfortunately developers require all those to work in concert and in very flexible ways. Many projects rely on aggregating hints of successful setups in blog posts and other html pages. The burden on new developers to a project is huge, shying away potential contributors before they even have started touching the source code. We believed there should be an easier way to integrate prerequisites discovery and make.
   </para>
   <para>
-  Drop has been built on the idea that one single command should be able to setup the local system, fetch the source repository, build specified projects multiple different ways alongside each other.
+  <link xlink:href="../dws.xml">Drop</link> has been built on the idea that one single command should be able to setup the local system, fetch the source repository, build specified projects multiple different ways alongside each other.
   </para>
-  <programlisting>
-dws build <emphasis>repository_url</emphasis>
-  </programlisting>
   </section>
+
+  <section>
+	<title>Building a set of repositories</title>
+	<para>
+	  Once you start development on a new project, you have to setup third-party prerequisites on your local machine, fetch a clone of the git repository, configure the source/build/install directories, then make the binaries. Finally when you get clean build, you are ready to start editing the source files and start an iterative edit/build/debug development process.
+	</para>
+	<para>
+	  With drop, you only download the one file python script <link xlink:href="../src/dws.py">dws</link>, then run in a terminal:
+	</para>
+	<programlisting>
+$ dws build *remoteIndexFile*
+	</programlisting>
+	<para>
+	  The <emphasis>remoteIndexFile</emphasis> is a predefined file that specifies inter-project dependencies and how to resolve them. The format of that file borrows a lot of ideas from system package manager databases and configure scripts. It was though specially designed to support software development on a set of projects under source control (more later).
+	</para>
+	<para>
+	  The <emphasis>build</emphasis> command is particularly useful to build from scratch. If you are only interested in incremental builds, pulling latest changes from remote repositories and re-making projects as necessary, use the <emphasis>--noclean</emphasis> option.
+	</para>
+	<programlisting>
+# cron example for a bot doing an incremental build
+0 0 * * * cron dws --noclean build *remoteIndexFile*
+	</programlisting>
+	<para>
+	  The dws script generates a log file in <emphasis>logDir</emphasis> as it runs. This file can later be used to publish build results as an email, to a website, etc.
+	</para>
+  </section>
+
+  <section>
+	<title>Edit/Make/Debug</title>
+	<para>
+	  A &quot;dws build&quot; is surely the first command you will run. It will clone repositories locally, install prerequisites when possible and remake the executables. Once you pass that initial stage, you will want to edit source files, re-make projects and debug your changes. That is when you use &quot;dws make&quot;.
+	</para>
+	<programlisting>
+$ cd *buildTop/projectName*
+$ dws make
+	</programlisting>
+	<para>
+	  &quot;dws make&quot; is a thin wrapper around make whose main purpose is to keep writing natural makefile rules while having a separate <emphasis>buildTop</emphasis> and <emphasis>srcTop</emphasis>. It will also generate a log file that can be browsed through when error occur.
+	</para>
+	<para>
+	  So far &quot;dws make&quot; is nice, yet its power comes from the <emphasis>recurse</emphasis> target. In that mode, dws will go through the inter-project dependencies as specified by the index file and remake all projects as necessary. This is a very powerful feature when you are write code in a project that exports an API and writing code in another project that depends on the API.
+	</para>
+	<programlisting>
+$ cd *buildTop/projectName*
+$ dws make recurse
+	</programlisting>
+  </section>
+  <section>
+	<title>Repositories management</title>
+  <para>
+	Drop is intended to bind different tools together. As a result it is always possible (and recommended) to run git commands directly. When you work with multiple inter-dependent projects at the same time, it is often useful to run &quot;git status&quot; on all of them in one command. That is the kind of multi-repo shortcut that dws provides.
+  </para>
+	<programlisting>
+$ cd *buildTop*
+# List all projects in an index file:
+$ dws list
+# Status of all local repositories:
+$ dws status
+# Pull changes and update all local repositories:
+$ dws update
+# Generate patch between local repositories and last pull:
+$ dws patch
+	</programlisting>
+  </section>
+
   <section>
   <title>The index file</title>
   <para>
-  Near the first thing dws (a one file python script) will do is to fetch an index file from within the <emphasis>repository_url</emphasis>. The index file, much like package manager databases, contains project descriptions, declaration of prerequisites, etc.
+  Near the first thing <link xlink:href="../src/dws.py">dws</link> (a one file python script) will do is to fetch an index file from within the <emphasis>remoteSiteTop</emphasis>. The index file, much like package manager databases, contains project descriptions, declaration of prerequisites, etc. The index file is currently specified as an XML file whose schema can be found in drop/src/index.xsd.
+  </para>
+  <section>
+	<title>Projects</title>
+  <para>
+	An index file is an XML file that looks like the following.
+  </para>
+  <programlisting>
+&lt;?xml version=&quot;1.0&quot; ?&gt;
+&lt;projects&gt;
+  &lt;project name=&quot;*projectName*&quot;&gt;
+  ... Some information nodes that describe 
+      the project (title, maintainer, etc.) ...
+    &lt;repository&gt;
+      &lt;dep name=&quot;*prerequisiteName*&quot;&gt;
+	  ... prerequisites executables, libraries, includes, etc. ...
+      &lt;/dep&gt;
+    &lt;/repository&gt;
+  &lt;/project&gt;
+&lt;/projects&gt;
+  </programlisting>
+  <para>
+ The <emphasis>projectName</emphasis> is the subdirectory under <emphasis>srcTop</emphasis> where the repository will be cloned on the local system. By default the repository url is set to <emphasis>remoteSrcTop</emphasis>/<emphasis>projectName</emphasis>/.git. It can be overridden by adding a <emphasis>sync</emphasis> tag into the <emphasis>repository</emphasis> node.
   </para>
   <para>
-  TODO
+	After a while browsing through index files, you will notice that projects can contain any of <emphasis>repository</emphasis>, <emphasis>patch</emphasis> and <emphasis>package</emphasis> nodes. As previously seen, <emphasis>repository</emphasis> indicates a project under source control that will be cloned on the local system for active editing. Ideally all of a project prerequisites would available through the local package manager. Unfortunately that is not the case, either because a binary package is not available in the official system package tree or if it is, the version is incompatible with our project. In both cases, helper projects, with a <emphasis>package</emphasis> node to download and install a binary package or a <emphasis>patch</emphasis> node to build a package locally and install it to /usr/local, are introduced in the index file.
   </para>
   </section>
   <section>
-  <title>Make helper fragments</title>
+	<title>Dependencies</title>
   <para>
-  TODO
+	Describing inter-projects dependencies is the main reason for the index file. The second feature of index files is prerequisite name normalization.
+  </para>
+  <para>
+	Local system conventions also often differ. When you have a makefile rule relying on libboost_filesystem.so for example, it could be provided under the name of /usr/lib/libboost_filesystem-1.46.so. Worse, despite extreme efforts, an autoconf configure script might not find the same library as the one that will ultimately be linked through make when multiple versions exist on a system. These are annoying problems that repeatedly break builds and are often difficult to debug or fix cleanly.
+	</para>
+	<para>
+	  The dws script uses a very straightforward approach. It will look for files using a derivation of the PATH environment variable. Once an appropriate file is found, dws creates a symbolic link with a normalized name in a canonical subdirectory of <emphasis>buildTop</emphasis>. Makefiles are written in terms of the normalized name. If something either goes wrong configuring prerequisites or very peculiar settings are necessary, modifying the symbolic link is all that is required.
+	</para>
+	<para>
+	  In the following example, we add a dependency on project &quot;test1&quot;. The dependency is fulfiled if all of an executable file matching pattern &quot;(test1Hello)-.*&quot;, a test1Api.hh header file and a refcode library can be found. The dws script will create a normalized test1Hello symbolic link into <emphasis>buildTop</emphasis>/bin, a test1Api.hh symbolic link into <emphasis>buildTop</emphasis>/include and a librefcode.a (or librefcode.so) symbolic link into <emphasis>buildTop</emphasis>/lib.
+  </para>
+  <programlisting>
+&lt;dep name=&quot;test1&quot;&gt;
+  &lt;bin&gt;(test1Hello)-.*&lt;/bin&gt;
+  &lt;include&gt;test1Api.hh&lt;/include&gt;
+  &lt;lib&gt;refcode&lt;/lib&gt;
+&lt;/dep&gt;
+  </programlisting>
+  <para>
+	Many times a project can be built with different sets of prerequisites. While a list of <emphasis>dep</emphasis> nodes specifies all prerequisites that have to be present to fulfil the dependency, an <emphasis>alternates</emphasis> node specifies that either lists of sub nodes can fulfil the dependency.
+  </para>
+  <programlisting>
+&lt;alternates&gt;
+  &lt;alternate name=&quot;Ubuntu&quot;&gt;
+    &lt;dep name=&quot;devscripts&quot;&gt;
+      &lt;bin&gt;debuild&lt;/bin&gt;
+    &lt;/dep&gt;
+  &lt;/alternate&gt;
+  &lt;alternate name=&quot;Fedora&quot;&gt;
+    &lt;dep name=&quot;rpmdevtools&quot;&gt;
+      &lt;bin&gt;rpm&lt;/bin&gt;
+    &lt;/dep&gt;
+  &lt;/alternate&gt;
+&lt;/alternates&gt;
+  </programlisting>
+  </section>
+  </section>
+
+  <section>
+  <title>The configuration file</title>
+  <para>
+	The <link xlink:href="../src/dws.py">dws</link> script relies heavily on a configuration file present in the <emphasis>buildTop</emphasis> called dws.mk. This file is made of variable=value pairs, one per line. As such it is suitable to be included in makefiles and shell scripts alike.
+  </para>
+  <para>
+	The variables defined in the configuration file are used to locate the root of the source tree (<emphasis>srcTop</emphasis>), the root of the build tree (<emphasis>buildTop</emphasis>), the root of the install tree (<emphasis>installTop</emphasis>), etc. as well as different configuration specific to the make process (ex. <emphasis>target</emphasis>).
+  </para>
+  <para>
+	The dws script determines its context from the current directory, looking up the directory tree for a suitable configuration file. The scheme is very flexible to accommodate many scenarios. For example, by creating multiple hierarchies, each with a specific configuration file, it is possible to build any kind of flavors from a shared source tree in parallel.
   </para>
   </section>
+
+<!--
+  <section>
+  <title>Make helper fragments</title>
+  <para>
+	TODO
+  - standard targets (install, dist, )
+  - prefix.mk / suffix.mk
+  </para>
+  </section>
+-->
 </section>

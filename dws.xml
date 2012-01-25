@@ -2,7 +2,7 @@
 <projects>
   <project name="drop">
     <title>inter-project dependencies tool</title>
-    <description>Drop is an inter-project dependencies tool that binds functionality of source control systems, autoconf scripts, make and package managers. Its efficiency is measured by the time it takes to setup a random machine for code development first and subsequently the time spent in rebuilding the source base after any change.
+    <description>Drop is an inter-project dependencies tool that binds functionality of source control systems, autoconf scripts, make and package managers. Its efficiency is measured by the time it takes to setup a random machine for code development first and subsequently the time spent in rebuilding the source base after any change (see doc/tutorial.book).
     </description>
     <maintainer>
 	  <personname>Sebastien Mirolo</personname>
