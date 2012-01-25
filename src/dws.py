@@ -2320,6 +2320,12 @@ def stamp(date=datetime.datetime.now()):
 
 
 def stampfile(filename):
+    if not context:
+        # This code here is very special. dstamp.py relies on some dws
+        # functions all of them do not rely on a context except
+        # this special case here.
+        dws.context = dws.Context()
+        dws.context.locate()
     if not 'buildstamp' in context.environ:
         context.environ['buildstamp'] = stamp(datetime.datetime.now())
         context.save()
@@ -3899,7 +3905,7 @@ def prompt(message):
 
 
 def pubBuild(args):
-    '''              remoteIndex [siteTop [buildTop]]
+    '''            remoteIndex [ siteTop [ buildTop ] ]
                        This command executes a complete build cycle:
                          - (optional) delete all files in *siteTop*, *buildTop*
                            and *installTop*.
@@ -4003,7 +4009,7 @@ def pubBuild(args):
 
 
 def pubCollect(args):
-    '''            [project ...]
+    '''            [ project ... ]
                        Consolidate local dependencies information
                        into a global dependency database. Copy all
                        distribution packages built into a platform
@@ -4091,7 +4097,7 @@ def pubCollect(args):
 
 
 def pubConfigure(args):
-    '''              Locate direct dependencies of a project on
+    '''       Locate direct dependencies of a project on
                        the local machine and create the appropriate symbolic
                        links such that the project can be made later on.
     '''
@@ -4119,7 +4125,7 @@ def pubConfigure(args):
 
 
 def pubContext(args):
-    '''            [file]
+    '''            [ file ]
                        Prints the absolute pathname to a *file*.
                        If the file cannot be found from the current
                        directory up to the workspace root, i.e where the .mk
@@ -4156,7 +4162,7 @@ def pubDeps(args):
 
 
 def pubExport(args):
-    '''              rootpath
+    '''            rootpath
                        Exports the project index file in a format compatible
                        with Jenkins. [experimental]
     '''
@@ -4248,7 +4254,7 @@ dws make
 
 
 def pubFind(args):
-    '''               bin|lib filename ...
+    '''            bin|lib filename ...
                        Search through a set of directories derived from PATH
                        for *filename*.
     '''
@@ -4267,7 +4273,7 @@ def pubFind(args):
 
 
 def pubInit(args):
-    '''                   Prompt for variables which have not been
+    '''               Prompt for variables which have not been
                        initialized in the workspace make fragment. Fetch the project index.
     '''
     configVar(context.environ)
@@ -4275,19 +4281,19 @@ def pubInit(args):
 
 
 def pubInstall(args):
-    '''            [binPackage|project ...]
-                      Install a package *binPackage* on the local system
-                      or a binary package associated to *project*
-                      through either a *package* or *patch* node in the
-                      index database or through the local package
-                      manager.
+    '''            [ binPackage | project ... ]
+                       Install a package *binPackage* on the local system
+                       or a binary package associated to *project*
+                       through either a *package* or *patch* node in the
+                       index database or through the local package
+                       manager.
     '''
     index.validate()
     install(args,index)
 
 
 def pubIntegrate(args):
-    '''          [ srcPackage ... ]
+    '''    [ srcPackage ... ]
                        Integrate a patch into a source package
     '''
     while len(args) > 0:
@@ -4340,13 +4346,13 @@ class ListPdbHandler(PdbHandler):
 
 
 def pubList(args):
-    '''                   List available projects
+    '''               List available projects
     '''
     index.parse(ListPdbHandler())
 
 
 def pubMake(args):
-    '''                   Make projects. "make recurse" will build
+    '''               Make projects. "make recurse" will build
                        all dependencies required before a project
                        can be itself built.
     '''
@@ -4401,7 +4407,7 @@ def pubMake(args):
 
 
 def pubPatch(args):
-    '''                Generate patches vs. the last pull from a remote
+    '''               Generate patches vs. the last pull from a remote
                        repository, optionally send it to a list of receipients.
     '''
     reps = args
@@ -4442,7 +4448,7 @@ def pubPatch(args):
 
 
 def pubPush(args):
-    '''                   Push commits to projects checked out
+    '''               Push commits to projects checked out
                        in the workspace.
     '''
     global log
@@ -4461,7 +4467,7 @@ def pubPush(args):
 
 
 def pubStatus(args):
-    '''                 Show status of projects checked out
+    '''               Show status of projects checked out
                        in the workspace with regards to commits.
     '''
     reps = args
@@ -4507,7 +4513,7 @@ def pubStatus(args):
 
 
 def pubUpdate(args):
-    '''             [ project ... ]
+    '''            [ project ... ]
                        Update projects that have a *repository* or *patch*
                        node in the index database and are also present in 
                        the workspace by pulling changes from the remote
@@ -4575,7 +4581,7 @@ def pubUpdate(args):
 
 
 def pubUpstream(args):
-    '''           [ srcPackage ... ]
+    '''    [ srcPackage ... ]
                        Generate a patch to submit to upstream
                        maintainer out of a source package and
                        a -patch subdirectory in a project srcDir.

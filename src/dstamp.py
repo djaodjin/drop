@@ -211,8 +211,6 @@ if __name__ == '__main__':
         arg = args.pop(0)
         command = 'pub' + arg.capitalize()
         if command in __main__.__dict__:
-            dws.context = dws.Context()
-            dws.context.locate()
             __main__.__dict__[command](args)
         else:
             raise dws.Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
