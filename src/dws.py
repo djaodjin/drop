@@ -90,6 +90,8 @@ useDefaultAnswer = False
 # Directories where things get installed
 installDirs = [ 'bin', 'include', 'lib', 'libexec', 'etc', 'share' ]
 
+context = None
+
 class Error(Exception):
     '''This type of exception is used to identify "expected"
     error condition and will lead to a useful message.
@@ -425,7 +427,12 @@ class Context:
         if not ':' in base:
             base = os.path.realpath(base)
         self.environ['remoteSrcTop'].default  = base
-        self.environ['remoteSiteTop'].default \
+        # Note: We used to set the context[].default field which had for side
+        # effect to print the value the first time the variable was used.
+        # The problem is that we need to make sure remoteSiteTop is defined
+        # before calling *localDir*, otherwise the resulting indexFile value
+        # will be different from the place the remoteIndex is fetched to.
+        self.environ['remoteSiteTop'].value \
             = os.path.dirname(self.environ['remoteSrcTop'].default)
         look = re.match('(\S+@)?(\S+):.*',remotePath)
         if look:
