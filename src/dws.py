@@ -1950,7 +1950,6 @@ class GitRepository(Repository):
                                      context.value('srcTop'))
         if name.endswith('.git'):
             name = name[:-4]
-        writetext('######## updating project ' + name + '...\n')
         local = context.srcDir(name)
         pulled = False
         updated = False
@@ -1985,6 +1984,11 @@ class GitRepository(Repository):
         if self.rev or pulled:
             os.chdir(local)
             shellCommand(cmd)
+        # Print HEAD
+        if updated:
+            cmd = [self.gitexe(), 'log', '--pretty=oneline' ]
+            os.chdir(local)
+            shellCommand(cmd)
         os.chdir(cwd)
         return updated
 
@@ -2002,7 +2006,6 @@ class SvnRepository(Repository):
         # trigger a potentially unnecessary prompt for remoteCachePath.
         if not ':' in self.url and context:
             self.url = context.remoteSrcPath(self.url)
-        writetext('######## updating project ' + name + '...\n')
         local = context.srcDir(name)
         if not os.path.exists(os.path.join(local,'.svn')):
             shellCommand(['svn', 'co', self.url, local])
@@ -4522,7 +4525,7 @@ def pubStatus(args):
 def pubUpdate(args):
     '''            [ project ... ]
                        Update projects that have a *repository* or *patch*
-                       node in the index database and are also present in 
+                       node in the index database and are also present in
                        the workspace by pulling changes from the remote
                        server. "update recurse" will recursively update all
                        dependencies for *project*.

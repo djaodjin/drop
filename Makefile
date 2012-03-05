@@ -41,7 +41,7 @@ include $(srcDir)/src/prefix.mk
 
 docbook2man	:=	docbook-to-man
 
-scripts	:=	dbldpkg dregress dstamp dws dtimeout
+scripts	:=	dbldpkg dlogfilt dregress dstamp dws dtimeout
 manpages:=	$(addsuffix .1,$(scripts))
 
 %.book: %
