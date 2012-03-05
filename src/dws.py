@@ -1825,15 +1825,15 @@ class UpdateStep(Step):
         except:
             raise Error("unable to fetch " + str(self.fetches))
         if self.rep:
-#            try:
+            try:
                 updated = self.rep.update(self.project,context)
                 if updated:
                     UpdateStep.nbUpdatedProjects \
                         = UpdateStep.nbUpdatedProjects + 1
                 self.rep.applyPatches(self.project,context)
-#            except:
-#                raise Error('cannot update repository or apply patch for ' \
-#                                + str(self.project) + '\n')
+            except:
+                raise Error('cannot update repository or apply patch for ' \
+                                + str(self.project) + '\n')
         return updated
 
 
@@ -2330,12 +2330,13 @@ def stamp(date=datetime.datetime.now()):
 
 
 def stampfile(filename):
+    global context
     if not context:
         # This code here is very special. dstamp.py relies on some dws
         # functions all of them do not rely on a context except
         # this special case here.
-        dws.context = dws.Context()
-        dws.context.locate()
+        context = Context()
+        context.locate()
     if not 'buildstamp' in context.environ:
         context.environ['buildstamp'] = stamp(datetime.datetime.now())
         context.save()
@@ -3059,10 +3060,10 @@ def fetch(context, filenames,
     When the files to fetch require sudo permissions on the remote
     machine, set *admin* to true.
     '''
-    remoteSiteTop = context.value('remoteSiteTop')
-    uri = urlparse.urlparse(remoteSiteTop)
-    if len(filenames) > 0:
+    if filenames and len(filenames) > 0:
         # Expand filenames to absolute urls
+        remoteSiteTop = context.value('remoteSiteTop')
+        uri = urlparse.urlparse(remoteSiteTop)
         pathnames = {}
         for name in filenames:
             # Absolute path to access a file on the remote machine.
@@ -4574,10 +4575,13 @@ def pubUpdate(args):
                 # \todo We do not propagate force= here to avoid messing up
                 #       the local checkouts on pubUpdate()
                 try:
+                    log.header(update.name)
                     update.run(context)
-                except:
+                    log.footer("")
+                except Exception, e:
                     writetext('warning: cannot update repository from ' \
-                                  + str(rep.sync) + '\n')
+                                  + str(update.rep.url) + '\n')
+                    log.footer("",e.code)
             else:
                 errors += [ name ]
         if len(errors) > 0:
