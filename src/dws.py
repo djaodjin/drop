@@ -1986,7 +1986,7 @@ class GitRepository(Repository):
             shellCommand(cmd)
         # Print HEAD
         if updated:
-            cmd = [self.gitexe(), 'log', '--pretty=oneline' ]
+            cmd = [self.gitexe(), 'log', '-1', '--pretty=oneline' ]
             os.chdir(local)
             shellCommand(cmd)
         os.chdir(cwd)
@@ -2571,8 +2571,9 @@ def findFirstFiles(base,namePat,subdir=''):
         results = []
         patNumSubDirs = len(namePat.split(os.sep))
         subNumSubDirs = len(subdir.split(os.sep))
-        if os.path.exists(os.path.join(base,subdir)):
-            for p in os.listdir(os.path.join(base,subdir)):
+        candidateDir = os.path.join(base,subdir)
+        if os.path.exists(candidateDir):
+            for p in os.listdir(candidateDir):
                 relative = os.path.join(subdir,p)
                 path = os.path.join(base,relative)
                 # Yeah, looking for g++ might be a little bit of trouble.
@@ -2675,6 +2676,7 @@ def findInclude(names,searchPath,buildTop,excludes=[],variant=None):
     results = []
     version = None
     complete = True
+    prefix = ''
     includeSysDirs = derivedRoots('include',variant)
     for namePat, absolutePath in names:
         if absolutePath != None and os.path.exists(absolutePath):
@@ -2688,7 +2690,8 @@ def findInclude(names,searchPath,buildTop,excludes=[],variant=None):
         found = False
         for includeSysDir in includeSysDirs:
             includes = []
-            for header in findFirstFiles(includeSysDir,namePat):
+            for header in findFirstFiles(includeSysDir,
+                                         namePat.replace(prefix,'')):
                 # Open the header file and search for all defines
                 # that end in VERSION.
                 numbers = []
@@ -2748,7 +2751,19 @@ def findInclude(names,searchPath,buildTop,excludes=[],variant=None):
                 else:
                     writetext('yes\n')
                 results.append((namePat, includes[0][0]))
-                includeSysDirs = [ os.path.dirname(includes[0][0]) ]
+                namePatParts = namePat.split(os.sep)
+                includeFileParts = includes[0][0].split(os.sep)
+                while (len(namePatParts) > 0
+                       and namePatParts[len(namePatParts)-1]
+                       == includeFileParts[len(includeFileParts)-1]):
+                    namePatPart = namePatParts.pop()
+                    includeFilePart = includeFileParts.pop()
+                prefix = os.sep.join(namePatParts)
+                if prefix and len(prefix) > 0:
+                    prefix = prefix + os.sep
+                    includeSysDirs = [ os.sep.join(includeFileParts) ]
+                else:
+                    includeSysDirs = [ os.path.dirname(includes[0][0]) ]
                 found = True
                 break
         if not found:
