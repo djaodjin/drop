@@ -2520,15 +2520,19 @@ def findCache(context,names):
         writetext(name + "... ")
         localName = context.localDir(pathname)
         if os.path.exists(localName):
-            if names[pathname]:
-                f = open(localName,'rb')
-                sum = hashlib.sha1(f.read()).hexdigest()
-                f.close()
-                if sum == names[pathname]:
-                    # checksum are matching
-                    writetext("cached\n")
+            if isinstance(names[pathname],dict):
+                if 'sha1' in names[pathname]:
+                    expected = names[pathname]['sha1']
+                    f = open(localName,'rb')
+                    sha1sum = hashlib.sha1(f.read()).hexdigest()
+                    f.close()
+                    if sha1sum == expected:
+                        # checksum are matching
+                        writetext("matched (sha1)\n")
+                    else:
+                        writetext("corrupted? (sha1)\n")
                 else:
-                    writetext("corrupted?\n")
+                    writetext("yes\n")
             else:
                 writetext("yes\n")
         else:
