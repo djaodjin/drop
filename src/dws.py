@@ -90,6 +90,11 @@ useDefaultAnswer = False
 # Directories where things get installed
 installDirs = [ 'bin', 'include', 'lib', 'libexec', 'etc', 'share' ]
 
+# distributions per native package managers
+aptDistribs = [ 'Debian', 'Ubuntu' ]
+yumDistribs = [ 'Fedora' ]
+portDistribs = [ 'Darwin' ]
+
 context = None
 
 class Error(Exception):
@@ -682,28 +687,27 @@ class DependencyGenerator(Unserializer):
     bootstrapping and other "recurse" features.
     '''
 
-    def __init__(self, repositories, patches, packages, excludePats = [],
+    def __init__(self, repositories, packages, excludePats = [],
                  customSteps = {}):
-        '''*repositories* and *patches* will be installed from compiling
+        '''*repositories* will be installed from compiling
         a source controlled repository while *packages* will be installed
         from a binary distribution package.
         *excludePats* is a list of projects which should be removed from
         the final topological order.'''
-        Unserializer.__init__(self, packages + patches + repositories,
+        Unserializer.__init__(self, packages + repositories,
                               excludePats,customSteps)
         # When True, an exception will stop the recursive make
         # and exit with an error code, otherwise it moves on to
         # the next project.
         self.stopMakeAfterError = False
         self.packages = set(packages)
-        self.patches = set(patches)
         self.repositories = set(repositories)
         self.activePrerequisites = {}
-        for p in repositories + patches + packages:
+        for p in repositories + packages:
             self.activePrerequisites[p] = (p, 0, TargetStep(0,p) )
         self.levels = {}
         self.levels[0] = set([])
-        for r in repositories + patches + packages:
+        for r in repositories + packages:
             self.levels[0] |= set([ TargetStep(0,r) ])
         # Vertices in the dependency tree
         self.vertices = {}
@@ -738,39 +742,59 @@ class DependencyGenerator(Unserializer):
         return self.vertices[makeName]
 
     def addInstall(self,projectName):
+        flavor = None
         installStep = None
+        managedName = projectName.split(os.sep)[-1]
+        installName = Step.genid(InstallStep,managedName)
+        if installName in self.vertices:
+            # We already decided to install this project, nothing more to add.
+            return self.vertices[installName], flavor
+
+        # We do not know the target at this point so we can't build a fully
+        # qualified setupName and index into *vertices* directly. Since we
+        # are trying to install projects through the local package manager,
+        # it is doubtful we should either know or care about the target.
+        # That's a primary reason why target got somewhat slightly overloaded.
+        # We used runtime="python" instead of target="python" in an earlier
+        # design.
+        setup = None
         setupName = Step.genid(SetupStep,projectName)
-        if (setupName in self.vertices
-            and not self.vertices[setupName].run(context)):
-            if projectName in self.projects:
-                filenames = []
+        for name, s in self.vertices.iteritems():
+            if name.endswith(setupName):
+                setup = s
+        if (setup and not setup.run(context)):
+            installStep = createManaged(managedName,setup.target)
+            if not installStep and projectName in self.projects:
                 project = self.projects[projectName]
-                for f in project.packages[context.host()].update.fetches:
-                    filenames += [ context.localDir(f) ]
-                if context.host() in [ 'Debian', 'Ubuntu' ]:
-                    installStep = DpkgInstallStep(filenames[0],
-                                                  filenames[1:])
-                elif context.host() in [ 'Darwin' ]:
-                    installStep = DarwinInstallStep(filenames[0],
-                                                    filenames[1:])
-                elif context.host() in [ 'Fedora' ]:
-                    installStep = RpmInstallStep(filenames[0],filenames[1:])
-                else:
-                    installStep = InstallStep(filenames[0],filenames[1:])
-                updateName = Step.genid(UpdateStep,projectName)
-                if updateName in self.vertices:
-                    installStep.prerequisites += [ self.vertices[updateName] ]
-            else:
-                if context.host() in [ 'Debian', 'Ubuntu' ]:
-                    installStep = AptInstallStep(projectName)
-                elif context.host() in [ 'Darwin' ]:
-                    installStep = MacPortInstallStep(projectName)
-                elif context.host() in [ 'Fedora' ]:
-                    installStep = YumInstallStep(projectName)
-                else:
-                    installStep = InstallStep(projectName)
+                if context.host() in project.packages:
+                    filenames = []
+                    flavor = project.packages[context.host()]
+                    for f in flavor.update.fetches:
+                        filenames += [ context.localDir(f) ]
+                    installStep = createPackageFile(projectName,filenames)
+                    updateS = self.addUpdate(projectName,flavor.update)
+                    if updateS:
+                        installStep.prerequisites += [ updateS ]
+                elif project.patch:
+                    # build and install from source
+                    flavor = project.patch
+                    prereqs = self.addSetup(setup.target,
+                                         flavor.prerequisites([context.host()]))
+                    updateS = self.addUpdate(projectName,project.patch.update)
+                    if updateS:
+                        prereqs += [ updateS ]
+                    installStep = self.addConfigMake(TargetStep(0,projectName,
+                                                                setup.target),
+                                                     flavor.configure,
+                                                     flavor.make,
+                                                     prereqs)
+            if not installStep:
+                # Remove special case installStep is None; replace it with
+                # a placeholder instance that will throw an exception
+                # when the *run* method is called.
+                installStep = InstallStep(projectName,target=setup.target)
             self.connectToSetup(setupName,installStep)
-        return installStep
+        return installStep, flavor
 
     def addSetup(self, target, deps):
         targets = []
@@ -791,6 +815,10 @@ class DependencyGenerator(Unserializer):
         return targets
 
     def addUpdate(self, projectName, update, updateRep=True):
+        updateName = Step.genid(UpdateStep,projectName)
+        if updateName in self.vertices:
+            return self.vertices[updateName]
+        updateS = None
         fetches = {}
         if len(update.fetches) > 0:
             # We could unconditionally add all source tarball since
@@ -805,6 +833,7 @@ class DependencyGenerator(Unserializer):
         if update.rep or len(fetches) > 0:
             updateS = UpdateStep(projectName,rep,fetches)
             self.vertices[updateS.name] = updateS
+        return updateS
 
     def contextualTargets(self,variant):
         raise Error("DependencyGenerator should not be instantiated directly")
@@ -851,7 +880,6 @@ class DependencyGenerator(Unserializer):
             # should be installed from a repository, a patch, a binary package
             # or just purely skipped.
             reps = []
-            patches = []
             packages = []
             for name in self.activePrerequisites:
                 if (not os.path.isdir(context.srcDir(name))
@@ -866,17 +894,14 @@ class DependencyGenerator(Unserializer):
                             row += [ project.installedVersion ]
                         if project.repository:
                             reps += [ row ]
-                        if project.patch:
-                            patches += [ row ]
-                        if not (project.repository or project.patch):
+                        if not project.repository:
                             packages += [ row ]
                     else:
                         packages += [ row ]
             # Prompt to choose amongst installing from repository
             # patch or package when those tags are available.'''
-            reps, patches, packages = selectCheckout(reps,patches,packages)
+            reps, packages = selectCheckout(reps,packages)
             self.repositories |= set(reps)
-            self.patches |= set(patches)
             self.packages |= set(packages)
         # Add all these in the includePats such that we load project
         # information the next time around.
@@ -896,8 +921,8 @@ class DependencyGenerator(Unserializer):
             # We have to wait until here to create the install steps. Before
             # then, we do not know if they will be required nor if prerequisites
             # are repository projects in the index file or not.
-            installStep = self.addInstall(name)
-            if installStep:
+            installStep, flavor = self.addInstall(name)
+            if installStep and not installStep.name in self.vertices:
                 remains += [ installStep ]
         for s in self.vertices:
             remains += [ self.vertices[s] ]
@@ -955,31 +980,24 @@ class BuildGenerator(DependencyGenerator):
                 self.repositories |= set([name])
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(name,project.repository.update)
+                updateS = self.addUpdate(name,project.repository.update)
+                prereqs = targets
+                if updateS:
+                    prereqs = [ updateS ] + targets
                 self.addConfigMake(variant,
                                    project.repository.configure,
                                    project.repository.make,
-                                   targets)
+                                   prereqs)
             else:
-                # We will prefer installing from a binary package over
-                # a patched version of the source tree when possible.
-                if project.packages and tags[0] in project.packages:
-                    self.packages |= set([name])
+                self.packages |= set([name])
+                installStep, flavor = self.addInstall(name)
+                if flavor:
                     targets = self.addSetup(variant.target,
-                                  project.packages[tags[0]].prerequisites(tags))
-                    self.addUpdate(name,project.packages[tags[0]].update)
-                elif project.patch:
-                    self.patches |= set([name])
-                    targets = self.addSetup(variant.target,
-                                   project.patch.prerequisites(tags))
-                    self.addUpdate(name,project.patch.update)
-                    self.addConfigMake(variant,
-                                       project.patch.configure,
-                                       project.patch.make,
-                                       targets)
+                                            flavor.prerequisites(tags))
         else:
             # We leave the native host package manager to deal with this one...
             self.packages |= set([ name ])
+            self.addInstall(name)
         return (False, targets)
 
 
@@ -987,10 +1005,10 @@ class MakeGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''
 
-    def __init__(self, repositories, patches, packages, excludePats = [],
+    def __init__(self, repositories, packages, excludePats = [],
                  customSteps = {}):
-        DependencyGenerator.__init__(self,repositories,patches,
-                                     packages,excludePats,customSteps)
+        DependencyGenerator.__init__(self,repositories,packages,
+                                     excludePats,customSteps)
         self.stopMakeAfterError = True
 
     def contextualTargets(self, variant):
@@ -1021,35 +1039,27 @@ class MakeGenerator(DependencyGenerator):
         if nbChoices == 1:
             # Only one choice is easy. We just have to make sure we won't
             # put the project in two different sets.
-            chosen = self.repositories | self.patches | self.packages
+            chosen = self.repositories | self.packages
             if project.repository:
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(name,project.repository.update,False)
+                updateS = self.addUpdate(name,project.repository.update,False)
+                prereqs = targets
+                if updateS:
+                    prereqs = [ updateS ] + targets
                 self.addConfigMake(variant,
                                    project.repository.configure,
                                    project.repository.make,
-                                   targets)
+                                   prereqs)
                 if not name in chosen:
                     self.repositories |= set([name])
-            elif project.patch:
+            elif len(project.packages) > 0 or project.patch:
                 needPrompt = False
-                targets = self.addSetup(variant.target,
-                                       project.patch.prerequisites(tags))
-                self.addUpdate(name,project.patch.update,False)
-                self.addConfigMake(variant,
-                                   project.patch.configure,
-                                   project.patch.make,
-                                   targets)
-                if not name in chosen:
-                    self.patches |= set([name])
-            elif len(project.packages) > 0:
-                needPrompt = False
-                targets = self.addSetup(variant.target,
-                               project.packages[tags[0]].prerequisites(tags))
-                self.addUpdate(name,
-                               project.packages[tags[0]].update)
+                installStep, flavor = self.addInstall(name)
+                if flavor:
+                    targets = self.addSetup(variant.target,
+                                            flavor.prerequisites(tags))
                 if not name in chosen:
                     self.packages |= set([name])
 
@@ -1062,30 +1072,20 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 targets = self.addSetup(variant.target,
                                        project.repository.prerequisites(tags))
-                self.addUpdate(name,project.repository.update,False)
+                updateS = self.addUpdate(name,project.repository.update,False)
+                prereqs = targets
+                if updateS:
+                    prereqs = [ updateS ] + targets
                 self.addConfigMake(variant,
                                    project.repository.configure,
                                    project.repository.make,
-                                   targets)
-            elif name in self.patches:
+                                   prereqs)
+            elif len(project.packages) > 0 or project.patch:
                 needPrompt = False
-                targets = self.addSetup(variant.target,
-                                       project.patch.prerequisites(tags))
-                self.addUpdate(name,project.patch.update,False)
-                self.addConfigMake(variant,
-                                   project.patch.configure,
-                                   project.patch.make,
-                                   targets)
-            elif len(project.packages) > 0:
-                needPrompt = False
-                targets = self.addSetup(variant.target,
-                               project.packages[tags[0]].prerequisites(tags))
-                self.addUpdate(name,project.packages[tags[0]].update)
-        if not needPrompt:
-            # \todo find out if we need to do something like this
-            # now that generating links is part of SetupSteps.
-            # project.populate(self.setups)
-            None
+                installStep, flavor = self.addInstall(name)
+                if flavor:
+                    targets = self.addSetup(variant.target,
+                                            flavor.prerequisites(tags))
 
         return (needPrompt, targets)
 
@@ -1095,7 +1095,10 @@ class MakeDepGenerator(MakeGenerator):
     libraries, etc. which are already installed.'''
 
     def addInstall(self,name):
-        return InstallStep(name)
+        # We use a special "no-op" addInstall in the MakeDepGenerator because
+        # we are not interested in prerequisites past the repository projects
+        # and their direct dependencies.
+        return InstallStep(name), None
 
     def addSetup(self, target, deps):
         targets = []
@@ -1247,7 +1250,7 @@ class HostPlatform(Variable):
                         break
             if self.value:
                 self.value = self.value.capitalize()
-            if self.value in [ 'Debian', 'Ubuntu' ]:
+            if self.value in aptDistribs:
                 if os.path.isfile('/etc/lsb-release'):
                     release = open('/etc/lsb-release')
                     line = release.readline()
@@ -1442,7 +1445,12 @@ class Dependency:
             if key == 'excludes':
                 self.excludes = val
             elif key == 'target':
+                # The index file loader will have generated fully-qualified
+                # names to avoid key collisions when a project depends on both
+                # proj and target/proj. We need to revert the name back to
+                # the actual project name here.
                 self.target = val
+                self.name = os.sep.join(self.name.split(os.sep)[1:])
             else:
                 if isinstance(val,list):
                     self.files[key] = []
@@ -1547,6 +1555,8 @@ class Step:
     @staticmethod
     def genid(cls, projectName, targetName = None):
         name = projectName.replace(os.sep,'_').replace('-','_')
+        if targetName:
+            name = targetName + '_' + name
         if issubclass(cls,ConfigureStep):
             name = 'configure_' + name
         elif issubclass(cls,InstallStep):
@@ -1557,8 +1567,6 @@ class Step:
             name = name + 'Setup'
         else:
             name = name
-        if targetName:
-            name = name + '_' + targetName
         return name
 
 
@@ -1590,9 +1598,13 @@ class InstallStep(Step):
     '''The *install* step in the development cycle installs prerequisites
     to a project.'''
 
-    def __init__(self, projectName, managed = []):
+    def __init__(self, projectName, managed = [], target = None):
         Step.__init__(self,Step.install,projectName)
-        self.managed = [ projectName ] + managed
+        if len(managed) == 0:
+            self.managed = [ projectName ] + managed
+        else:
+            self.managed = managed
+        self.target = target
 
     def insert(self, install):
         self.managed += install.managed
@@ -1601,20 +1613,45 @@ class InstallStep(Step):
         raise Error("Does not know how to install '" \
                         + str(self.managed) + "' on " + context.host())
 
+    def info(self):
+        raise Error("Does not know how to search package manager for '" \
+                        + str(self.managed) + "' on " + context.host())
+
+
 
 class AptInstallStep(InstallStep):
     ''' Install a prerequisite to a project through apt (Debian, Ubuntu).'''
+
+    def __init__(self, projectName, target = None):
+        managed = [ projectName ]
+        packages = managed
+        if target:
+            if target == 'python':
+                packages = []
+                for m in managed:
+                    packages += [ target + '-' + m ]
+        InstallStep.__init__(self,projectName,packages)
 
     def run(self, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
         # configuration of packages do not pop up in the middle
         # of installation. We are going to update the configuration
         # in /etc afterwards anyway.
-        shellCommand(['/usr/bin/apt-get', 'update'], admin=True)
-        shellCommand(['DEBIAN_FRONTEND=noninteractive',
+        # Emit only one shell command so that we can find out what the script
+        # tried to do when we did not get priviledge access.
+        shellCommand(['/usr/bin/apt-get', 'update',
+                      '&&','DEBIAN_FRONTEND=noninteractive',
                       '/usr/bin/apt-get', '-y ', 'install'] + self.managed,
                      admin=True)
         return True
+
+    def info(self):
+        try:
+            shellCommand(['apt-cache', 'showpkg' ] + self.managed)
+        except:
+            return False
+        return True
+
 
 class DarwinInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pkg (Darwin, OSX).'''
@@ -1624,30 +1661,34 @@ class DarwinInstallStep(InstallStep):
         to install the *pkg*, a .pkg package onto the platform through the Apple
         installer.'''
         for filename in self.managed:
-            volume = None
-            if filename.endswith('.dmg'):
-                base, ext = os.path.splitext(filename)
-                volume = os.path.join('/Volumes',os.path.basename(base))
-                shellCommand(['hdiutil', 'attach', filename])
-            target = context.value('darwinTargetVolume')
-            if target != 'CurrentUserHomeDirectory':
-                message = 'ATTENTION: You need administrator privileges on ' \
-                        + 'the local machine to execute the following cmmand\n'
-                writetext(message)
-                admin = True
-            else:
-                admin = False
-            pkg = filename
-            if not filename.endswith('.pkg'):
-                pkgs = findFiles(volume,'\.pkg')
-                if len(pkgs) != 1:
-                    raise RuntimeError('ambiguous: not exactly one .pkg to install')
-                pkg = pkgs[0]
-            shellCommand(['installer', '-pkg', os.path.join(volume,pkg),
-                          '-target "' + target + '"'], admin)
-            if filename.endswith('.dmg'):
-                shellCommand(['hdiutil', 'detach', volume])
+            try:
+                volume = None
+                if filename.endswith('.dmg'):
+                    base, ext = os.path.splitext(filename)
+                    volume = os.path.join('/Volumes',os.path.basename(base))
+                    shellCommand(['hdiutil', 'attach', filename])
+                target = context.value('darwinTargetVolume')
+                if target != 'CurrentUserHomeDirectory':
+                    message = 'ATTENTION: You need administrator privileges '\
+                      + 'on the local machine to execute the following cmmand\n'
+                    writetext(message)
+                    admin = True
+                else:
+                    admin = False
+                pkg = filename
+                if not filename.endswith('.pkg'):
+                    pkgs = findFiles(volume,'\.pkg')
+                    if len(pkgs) != 1:
+                        raise RuntimeError('ambiguous: not exactly one .pkg to install')
+                    pkg = pkgs[0]
+                shellCommand(['installer', '-pkg', os.path.join(volume,pkg),
+                              '-target "' + target + '"'], admin)
+                if filename.endswith('.dmg'):
+                    shellCommand(['hdiutil', 'detach', volume])
+            except:
+                raise Error('failure to install darwin package ' + filename)
         return True
+
 
 class DpkgInstallStep(InstallStep):
     ''' Install a prerequisite to a project through dpkg (Debian, Ubuntu).'''
@@ -1660,20 +1701,69 @@ class DpkgInstallStep(InstallStep):
 class MacPortInstallStep(InstallStep):
     ''' Install a prerequisite to a project through Macports.'''
 
-    def run(self, context):
+    def __init__(self, projectName, target = None):
+        managed = [ projectName ]
+        packages = managed
+        if target:
+            if target == 'python':
+                packages = []
+                for m in managed:
+                    packages += [ 'py27-' + m ]
         darwinNames = {
             # translation of package names. It is simpler than
             # creating an <alternates> node even if it look more hacky.
             'libicu-dev': 'icu' }
-        darwinPkgs = []
-        for p in self.managed:
+        prePackages = packages
+        packages = []
+        for p in prePackages:
             if p in darwinNames:
-                darwinPkgs += [ darwinNames[p] ]
+                packages += [ darwinNames[p] ]
             else:
-                darwinPkgs += [ p ]
-        shellCommand(['/opt/local/bin/port', 'install' ] + darwinPkgs,
+                packages += [ p ]
+        InstallStep.__init__(self,projectName,packages)
+
+
+    def run(self, context):
+        shellCommand(['/opt/local/bin/port', 'install' ] + self.managed,
                      admin=True)
         return True
+
+    def info(self):
+        info = []
+        unmanaged = []
+        try:
+            shellCommand(['port', 'info' ] + self.managed)
+            info = self.managed
+        except:
+            unmanaged = self.managed
+        return info, unmanaged
+
+
+class PipInstallStep(InstallStep):
+    ''' Install a prerequisite to a project through pip (Python eggs).'''
+
+    def __init__(self, projectName, target = None):
+        InstallStep.__init__(self,projectName,[projectName ])
+
+    def _pipexe(self):
+        if context.host() in portDistribs:
+            return 'pip-2.7'
+        return 'pip'
+
+    def run(self, context):
+        shellCommand([self._pipexe(), 'install' ] + self.managed, admin=True)
+        return True
+
+    def info(self):
+        info = []
+        unmanaged = []
+        try:
+            # \todo There are no pip info command ...
+            shellCommand([self._pipexe(), 'info' ] + self.managed)
+            info = self.managed
+        except:
+            unmanaged = self.managed
+        return info, unmanaged
 
 
 class RpmInstallStep(InstallStep):
@@ -1687,21 +1777,43 @@ class RpmInstallStep(InstallStep):
 class YumInstallStep(InstallStep):
     ''' Install a prerequisite to a project through yum (Fedora).'''
 
-    def run(self, context):
+    def __init__(self, projectName, target = None):
+        managed = [projectName ]
+        packages = managed
+        if target:
+            if target == 'python':
+                packages = []
+                for m in managed:
+                    packages += [ target + '-' + m ]
         fedoraNames = {
             'libbz2-dev': 'bzip2-devel',
             'python-all-dev': 'python-devel',
             'zlib1g-dev': 'zlib-devel' }
-        fedoraPkgs = []
-        for p in self.managed:
+        prePackages = packages
+        packages = []
+        for p in prePackages:
             if p in fedoraNames:
-                fedoraPkgs += [ fedoraNames[p] ]
+                packages += [ fedoraNames[p] ]
             elif p.endswith('-dev'):
-                fedoraPkgs += [ p + 'el' ]
+                packages += [ p + 'el' ]
             else:
-                fedoraPkgs += [ p ]
-        shellCommand(['yum', '-y', 'install' ] + fedoraPkgs, admin=True)
+                packages += [ p ]
+        InstallStep.__init__(self,projectName,packages)
+
+    def run(self, context):
+        shellCommand(['yum', '-y', 'install' ] + self.managed, admin=True)
         return True
+
+    def info(self):
+        info = []
+        unmanaged = []
+        try:
+            shellCommand(['yum', 'info' ] + self.managed)
+            info = self.managed
+        except:
+            unmanaged = self.managed
+        return info, unmanaged
+
 
 class BuildStep(TargetStep):
     '''Build a project running make, executing a script, etc.'''
@@ -1770,6 +1882,8 @@ class SetupStep(TargetStep):
     to a specific prerequisite.'''
 
     def __init__(self, projectName, files, excludes=[], target=None):
+        '''We keep a reference to the project because we want to decide
+        to add native installer/made package/patch right after run'''
         TargetStep.__init__(self,Step.setup,projectName,target)
         self.files = files
         self.excludes = excludes
@@ -2997,9 +3111,9 @@ def findRSync(context, relative=True, admin=False):
     prefix = ""
     if username:
         prefix = prefix + username + '@'
-    cmdline = [ rsync, '-avuzbL' ]
+    cmdline = [ rsync, '-auzbL' ]
     if relative:
-        cmdline = [ rsync, '-avuzbLR' ]
+        cmdline = [ rsync, '-auzbLR' ]
     if hostname:
         # We are accessing the remote machine through ssh
         prefix = prefix + hostname + ':'
@@ -3149,21 +3263,54 @@ def fetch(context, filenames,
                                     context.value('siteTop') ])
 
 
+def createManaged(projectName,target):
+    '''Create a step that will install *projectName* through the local
+    package manager.'''
+    installStep = None
+    if context.host() in aptDistribs:
+        installStep = AptInstallStep(projectName,target)
+    elif context.host() in portDistribs:
+        installStep = MacPortInstallStep(projectName,target)
+    elif context.host() in yumDistribs:
+        installStep = YumInstallStep(projectName,target)
+    if installStep:
+        info, unmanaged = installStep.info()
+    else:
+        unmanaged = [ projectName ]
+    if len(unmanaged) > 0:
+        if target == 'python':
+            installStep = PipInstallStep(projectName,target)
+            info, unmanaged = installStep.info()
+    if len(unmanaged) > 0:
+        installStep = None
+    return installStep
+
+
+def createPackageFile(projectName,filenames):
+    if context.host() in aptDistribs:
+        installStep = DpkgInstallStep(projectName,filenames)
+    elif context.host() in portDistribs:
+        installStep = DarwinInstallStep(projectName,filenames)
+    elif context.host() in yumDistribs:
+        installStep = RpmInstallStep(projectName,filenames)
+    else:
+        installStep = None
+    return installStep
+
+
 def install(packages, dbindex):
     '''install a pre-built (also pre-fetched) package.
     '''
     projects = []
     localFiles = []
+    packageFiles = None
     for name in packages:
         if os.path.isfile(name):
-            if context.host() in [ 'Debian', 'Ubuntu' ]:
-                localFiles += [ DpkgInstallStep(name) ]
-            elif context.host() in [ 'Darwin' ]:
-                localFiles += [ DarwinInstallStep(name) ]
-            elif context.host() in [ 'Fedora' ]:
-                localFiles += [ RpmInstallStep(name) ]
+            localFiles += [ name ]
         else:
             projects += [ name ]
+    if len(localFiles) > 0:
+        packageFiles = createPackageFile(localFiles[0],localFiles)
 
     if len(projects) > 0:
         handler = Unserializer(projects)
@@ -3176,34 +3323,18 @@ def install(packages, dbindex):
             if name in handler.projects:
                 package = handler.asProject(name).packages[context.host()]
                 if package:
-                    for filename in package.fetches():
-                        # The package is not part of the local system package
-                        # manager so it has to have been pre-built.
-                        if context.host() in [ 'Debian', 'Ubuntu' ]:
-                            localFiles += [ DpkgInstallStep(name) ]
-                        elif context.host() in [ 'Darwin' ]:
-                            localFiles += [ DarwinInstallStep(name) ]
-                        elif context.host() in [ 'Fedora' ]:
-                            localFiles += [ RpmInstallStep(name) ]
+                    packageFiles.insert(createPackageFile(package.fetches()))
                 else:
                     managed += [ name ]
             else:
                 managed += [ name ]
 
         if len(managed) > 0:
-            if context.host() in [ 'Debian', 'Ubuntu' ]:
-                step = AptInstallStep('',managed)
-            elif context.host() in [ 'Darwin' ]:
-                step = MacPortInstallStep('',managed)
-            elif context.host() in [ 'Fedora' ]:
-                step = YumInstallStep('',managed)
-            else:
-                step = InstallStep('',managed)
+            step = createManaged('',managed)
         step.run(context)
 
-    if len(localFiles) > 0:
-        for step in localFiles:
-            step.run(context)
+    if packageFiles:
+        packageFiles.run(context)
 
 
 def helpBook(help):
@@ -3804,7 +3935,7 @@ def versionCandidates(line):
                 part = look.group(2)
             else:
                 while (len(part) > 0
-                       and part[0] in ['0', '1', '2', '3', '4', '5', 
+                       and part[0] in ['0', '1', '2', '3', '4', '5',
                                        '6', '7', '8', '9' ]):
                     part = part[1:]
         else:
@@ -4014,11 +4145,12 @@ def pubBuild(args):
     index.validate(True)
     index.parse(rgen)
     # note that *excludePats* is global.
-    dgen = BuildGenerator(rgen.roots,[],[],excludePats)
+    dgen = BuildGenerator(rgen.roots,[],excludePats)
     context.targets = [ 'install' ]
     # Set the buildstamp that will be use by all "install" commands.
-    context.environ['buildstamp'] = '-'.join([socket.gethostname(),
-                                             stamp(datetime.datetime.now())])
+    if not 'buildstamp' in context.environ:
+        context.environ['buildstamp'] = '-'.join([socket.gethostname(),
+                                            stamp(datetime.datetime.now())])
     context.save()
     if validateControls(dgen):
         log.close()
@@ -4136,7 +4268,7 @@ def pubConfigure(args):
         = context.srcDir(os.path.join(context.cwdProject(),context.indexName))
     log = LogFile(context.logname(),nolog)
     projectName = context.cwdProject()
-    dgen = MakeGenerator([ projectName ],[],[])
+    dgen = MakeGenerator([ projectName ],[])
     dbindex = IndexProjects(context,context.value('indexFile'))
     dbindex.parse(dgen)
     prerequisites = set([])
@@ -4412,7 +4544,7 @@ def pubMake(args):
             context.targets += [ opt ]
     if recurse:
         # note that *excludePats* is global.
-        validateControls(MakeGenerator(roots,[],[],excludePats))
+        validateControls(MakeGenerator(roots,[],excludePats))
     else:
         handler = Unserializer(roots)
         if os.path.isfile(context.dbPathname()):
@@ -4564,7 +4696,7 @@ def pubUpdate(args):
     reps = cwdProjects(reps)
     if recurse:
         # note that *excludePats* is global.
-        dgen = MakeGenerator(reps,[],[],excludePats)
+        dgen = MakeGenerator(reps,[],excludePats)
         validateControls(dgen)
     else:
         global errors
@@ -4639,13 +4771,13 @@ def pubUpstream(args):
                              stdout=subprocess.PIPE, close_fds=True)
         line = p.stdout.readline()
         while line != '':
-            # log might not defined at this point. 
+            # log might not defined at this point.
             sys.stdout.write(line)
             line = p.stdout.readline()
         p.poll()
 
 
-def selectCheckout(repCandidates, patchCandidates, packageCandidates=[]):
+def selectCheckout(repCandidates, packageCandidates=[]):
     '''Interactive prompt for a selection of projects to checkout.
     *repCandidates* contains a list of rows describing projects available
     for selection. This function will return a list of projects to checkout
@@ -4660,23 +4792,12 @@ have  the choice to install them from either a patch, a binary package or not at
         repCandidates)
     # Filters out the dependencies which the user has decided to install
     # from a repository.
-    patches = []
-    for row in patchCandidates:
-        if not row[0] in reps:
-            patches += [ row ]
-    if len(patches) > 0:
-        patches = selectMultiple(
-'''The following dependencies need to be present on your system.
-You have now the choice to install them from a patch from a known source distribution. You will later have the choice to install them from binary package or not at all.''',
-        patches)
-    # Filters out the dependencies which the user has decided to install
-    # from a repository.
     packages = []
     for row in packageCandidates:
-        if not row[0] in reps + patches:
+        if not row[0] in reps:
             packages += [ row ]
     packages = selectInstall(packages)
-    return reps, patches, packages
+    return reps, packages
 
 
 def selectInstall(packageCandidates):
@@ -4696,8 +4817,8 @@ this step if you know those dependencies will be resolved correctly later on.
 
 def selectOne(description, choices, sort=True):
     '''Prompt an interactive list of choices and returns the element selected
-    by the user. *description* is a text that explains the reason for the 
-    prompt. *choices* is a list of elements to choose from. Each element is 
+    by the user. *description* is a text that explains the reason for the
+    prompt. *choices* is a list of elements to choose from. Each element is
     in itself a list. Only the first value of each element is of significance
     and returned by this function. The other values are only use as textual
     context to help the user make an informed choice.'''
@@ -4909,7 +5030,6 @@ if __name__ == '__main__':
                 None
             except:
                 raise
-
         if options.installTop:
             context.environ['installTop'] = os.path.abspath(options.installTop)
         if options.patchTop:

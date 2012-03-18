@@ -30,15 +30,16 @@ import subprocess, datetime, os, time, signal, sys
 __version__ = None
 
 
-def timeoutCommand(cmdline, timeout):
+def timeoutCommand(cmdline, timeout, showPID=True):
     '''Executes a shell command and kill it if it did not complete
     in *timeout* seconds. returns the error code returned by the process.'''
     start = datetime.datetime.now()
     cmd = subprocess.Popen(' '.join(cmdline),shell=True,
                            stdout=None,
                            stderr=None)
-    sys.stdout.write("started a " + str(timeout) + " seconds timeout on PID "\
-                         + str(cmd.pid) + "...\n") 
+    sys.stdout.write("started a " + str(timeout) + " seconds timeout")
+    if showPID:
+        sys.stdout.write(" on PID " + str(cmd.pid) + "...\n")
     while cmd.poll() is None:
        time.sleep(0.1)
        now = datetime.datetime.now()
@@ -64,12 +65,15 @@ if __name__ == '__main__':
         usage='%prog [options] command\n\nVersion\n  %prog version ' \
             + str(__version__))
     parser.add_option('--timeout', dest='timeout', action='store',
-        default=10,
-        help='sets the time out in seconds')
+                      default=10,
+                      help='sets the time out in seconds')
+    parser.add_option('--nopid', dest='showPID', action='store_false',
+                      default=True,
+                      help='do not show PID timeout is on')
     parser.add_option('--help-book', dest='helpBook', action='store_true',
-	    help='Print help in docbook format')
+                      help='Print help in docbook format')
     parser.add_option('--version', dest='version', action='store_true',
-        help='Print version information')
+                      help='Print version information')
 
     options, args = parser.parse_args()
     if options.version:
@@ -80,7 +84,7 @@ if __name__ == '__main__':
     if options.helpBook:
         import cStringIO
         # We donot want to install dws.py alongside dws in *binDir* and rely
-        # on the search path to find it. Thus dws is imported directly through 
+        # on the search path to find it. Thus dws is imported directly through
         # a load_source() command here.
         dwsDerivePath \
             = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),
@@ -103,4 +107,4 @@ if __name__ == '__main__':
     if options.timeout:
         timeout = int(options.timeout)
 
-    sys.exit(timeoutCommand(args, timeout))
+    sys.exit(timeoutCommand(args, timeout, options.showPID))
