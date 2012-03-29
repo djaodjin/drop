@@ -556,13 +556,13 @@ class IndexProjects:
                 if selection == 'indexing':
                     pubCollect([])
                 elif selection == 'fetching' or force:
-                    if not os.path.exists(os.path.dirname(self.source)):
-                        os.makedirs(os.path.dirname(self.source))
                     remoteIndex = self.context.value('remoteIndex')
                     vcs = Repository.associate(remoteIndex)
                     if vcs:
                         vcs.update(None,self.context)
                     else:
+                        if not os.path.exists(os.path.dirname(self.source)):
+                            os.makedirs(os.path.dirname(self.source))
                         fetch(self.context,{remoteIndex:''})
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
@@ -4102,6 +4102,7 @@ def pubBuild(args):
     else:
         context.environ['buildTop'].configure(context)
     buildTop = str(context.environ['buildTop'])
+    prevcwd = os.getcwd()
     if not os.path.exists(buildTop):
         os.makedirs(buildTop)
     os.chdir(buildTop)
@@ -4118,24 +4119,31 @@ def pubBuild(args):
                 tardirs += [ d ]
         if len(tardirs) > 0:
             prefix = os.path.commonprefix(tardirs)
-            if prefix == siteTop:
+            tarname = os.path.basename(siteTop) + '-' + stamp() + '.tar.bz2'
+            if os.path.samefile(prefix,siteTop):
                 # optimize common case: *buildTop* and *installTop* are within
                 # *siteTop*. We cd into the parent directory to create the tar
                 # in order to avoid 'Removing leading /' messages. Those do
                 # not display the same on Darwin and Ubuntu, creating false
                 # positive regressions between both systems.
                 shellCommand(['cd', os.path.dirname(siteTop),
-                              '&&', 'tar', 'jcf', '/tmp/pre-dws-build.tar.bz2',
+                              '&&', 'tar', 'jcf', tarname,
                               os.path.basename(siteTop) ])
             else:
-                shellCommand(['tar', 'jcf', '/tmp/pre-dws-build.tar.bz2' ] \
-                                 + tardirs)
-        for d in tardirs:
+                shellCommand(['cd', os.path.dirname(siteTop),
+                              '&&', 'tar', 'jcf', tarname ] + tardirs)
+        os.chdir(prevcwd)
+        for d in [ buildTop, installTop]:
+            # we only remove buildTop and installTop. Can neither be too
+            # prudent.
             if os.path.isdir(d):
                 # Test directory exists, in case it is a subdirectory
                 # of another one we already removed.
                 sys.stdout.write('removing ' + d + '...\n')
-                # shutil.rmtree(d)
+                shutil.rmtree(d)
+        if not os.path.exists(buildTop):
+            os.makedirs(buildTop)
+        os.chdir(buildTop)
 
     global log
     log = LogFile(context.logname(),nolog,logGraph)
