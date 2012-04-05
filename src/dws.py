@@ -1639,18 +1639,37 @@ class AptInstallStep(InstallStep):
         # in /etc afterwards anyway.
         # Emit only one shell command so that we can find out what the script
         # tried to do when we did not get priviledge access.
-        shellCommand(['/usr/bin/apt-get', 'update',
-                      '&&','DEBIAN_FRONTEND=noninteractive',
-                      '/usr/bin/apt-get', '-y ', 'install'] + self.managed,
+        shellCommand(['sh', '-c',
+                      '"/usr/bin/apt-get update && DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install ' + ' '.join(self.managed) + '"'],
                      admin=True)
         return True
 
     def info(self):
+        info = []
+        unmanaged = []
         try:
-            shellCommand(['apt-cache', 'showpkg' ] + self.managed)
+            # apt-cache showpkg will return 0 even when the package cannot
+            # be found.
+            cmdline = ['apt-cache', 'showpkg' ] + self.managed
+            cmd = subprocess.Popen(' '.join(cmdline),shell=True,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+            found = False
+            line = cmd.stdout.readline()
+            while line != '':
+                if re.match('^Package:', line):
+                    # Apparently we are not able to get error messages
+                    # from stderr here ...
+                    found = True
+                line = cmd.stdout.readline()
+            cmd.wait()
+            if not found or cmd.returncode != 0:
+                raise Error("unable to complete: " + ' '.join(cmdline),
+                            cmd.returncode)
+            info = self.managed
         except:
-            return False
-        return True
+            unmanaged = self.managed
+        return info, unmanaged
 
 
 class DarwinInstallStep(InstallStep):
