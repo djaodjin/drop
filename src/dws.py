@@ -4938,14 +4938,21 @@ def showMultiple(description,choices):
     displayed = []
     for row in choices:
         c = 0
-        row = [ str(item) + ')' ] + row
-        displayed += [ row ]
-        item = item + 1
-        for col in row:
+        line = []
+        for column in [ str(item) + ')' ] + row:
+            col = column
+            if isinstance(col,dict):
+                if 'description' in column:
+                    col = column['description'] # { description: ... }
+                else:
+                    col = ""
+            line += [ col ]
             if len(widths) <= c:
                 widths += [ 2 ]
             widths[c] = max(widths[c],len(col) + 2)
             c = c + 1
+        displayed += [ line ]
+        item = item + 1
     # Ask user to review selection
     writetext(description + '\n')
     for project in displayed:
