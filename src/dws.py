@@ -302,13 +302,15 @@ class Context:
             localname = name
             remotePathList = name.split(os.sep)
             for i in range(0,len(remotePathList)):
-                if remotePathList[i].endswith('.git'):
-                    if remotePathList[i] == '.git':
+                look = re.search(Repository.dirPats + '$', remotePathList[i])
+                if look:
+                    repExt = look.group(1)
+                    if remotePathList[i] == repExt:
                         localname = os.sep.join(remotePathList[:i] + \
                                                 remotePathList[i+1:])
                     else:
                         localname = os.sep.join(remotePathList[:i] + \
-                                                [ remotePathList[i][:-4] ] + \
+                                       [ remotePathList[i][:-len(repExt)] ] + \
                                                 remotePathList[i+1:])
                     break
             localname = localname.replace(self.value('remoteSiteTop'),siteTop)
@@ -318,15 +320,6 @@ class Context:
             localname = os.path.join(siteTop,name)
         else:
             localname = name.replace(self.value('remoteSiteTop'),siteTop)
-        if None:
-            pathList = localname.split(os.sep)
-            localname = '/'
-            for part in pathList:
-                if part.endswith('.git'):
-                    if part != '.git':
-                        localname = os.path.join(localname,part[:-4])
-                else:
-                    localname = os.path.join(localname,part)
         return localname
 
     def remoteDir(self, name):
@@ -415,8 +408,8 @@ class Context:
         '''We need to set the *remoteIndex* to a realpath when we are dealing
         with a local file else links could end-up generating a different prefix
         than *remoteSiteTop* for *remoteIndex*/*indexName*.'''
-        if remotePath.endswith('.git'):
-            remotePath = os.path.join(remotePath,self.indexName)
+        if re.search(Repository.dirPats + '$', remotePath):
+            remotePath = os.path.join(remotePath, self.indexName)
         self.environ['remoteIndex'].default = remotePath
         # We compute *base* here through the same algorithm as done
         # in *localDir*. We do not call *localDir* because remoteSiteTop
@@ -424,9 +417,11 @@ class Context:
         base = os.path.dirname(remotePath)
         remotePathList = remotePath.split(os.sep)
         for i in range(0,len(remotePathList)):
-            if remotePathList[i].endswith('.git'):
+            look = re.search(Repository.dirPats + '$', remotePathList[i])
+            if look:
+                repExt = look.group(1)
                 base = os.path.dirname(os.sep.join(remotePathList[0:i + 1]))
-                if remotePathList[i] == '.git':
+                if remotePathList[i] == repExt:
                     base = os.path.dirname(os.sep.join(remotePathList[0:i]))
                 break
         if not ':' in base:
@@ -1974,6 +1969,8 @@ class Repository:
     '''All prerequisites information to install a project
     from a source control system.'''
 
+    dirPats = '(\.git|\.svn|CVS)'
+
     def __init__(self, sync, rev):
         self.type = None
         self.url = sync
@@ -2038,9 +2035,6 @@ class GitRepository(Repository):
     '''All prerequisites information to install a project
     from a git source control repository.'''
 
-    def __init__(self, sync, rev):
-        Repository.__init__(self,sync,rev)
-
     def gitexe(self):
         if not os.path.lexists(\
             os.path.join(context.value('buildTop'),'bin','git')):
@@ -2071,6 +2065,18 @@ class GitRepository(Repository):
         os.chdir(pathname)
         shellCommand([ self.gitexe(), 'push' ])
         os.chdir(prev)
+
+    def tarball(self, name, version='HEAD'):
+        local = context.srcDir(name)
+        cwd = os.getcwd()
+        os.chdir(local)
+        if version == 'HEAD':
+            shellCommand([ self.gitexe(), 'rev-parse', version ])
+        prefix = name + '-' + version
+        outputName = os.path.join(cwd, prefix + '.tar.bz2')
+        shellCommand([ self.gitexe(), 'archive', '--prefix', prefix + os.sep,
+                       '-o', outputName, 'HEAD'])
+        os.chdir(cwd)
 
     def update(self, name, context, force=False):
         # If the path to the remote repository is not absolute,
@@ -3184,7 +3190,7 @@ def cwdProjects(reps, recurse=False):
         if projectName:
             reps = [ projectName ]
         else:
-            for repdir in findFiles(srcDir,'\.git'):
+            for repdir in findFiles(srcDir, Repository.dirPats):
                 reps += [ os.path.dirname(repdir.replace(srcTop + os.sep,'')) ]
     if recurse:
         raise NotYetImplemented()
@@ -4005,11 +4011,11 @@ def helpEpilog(module):
 
 def integrate(srcdir, pchdir, verbose=True):
     for name in os.listdir(pchdir):
-        srcname = os.path.join(srcdir,name)
-        pchname = os.path.join(pchdir,name)
-        if os.path.isdir(pchname):
-            if not os.path.basename(name) in [ 'CVS', '.git']:
-                integrate(srcname,pchname,verbose)
+        srcname = os.path.join(srcdir, name)
+        pchname = os.path.join(pchdir, name)
+        if (os.path.isdir(pchname)
+            and not re.match(Repository.dirPats, os.path.basename(name))):
+            integrate(srcname, pchname, verbose)
         else:
             if not name.endswith('~'):
                 if not os.path.islink(srcname):
