@@ -94,8 +94,10 @@ install:: $(resources)
 %.swf: %.mxml
 	$(MXMLC) $(MXMLFLAGS) -output $@ $<
 
+# We set the actual version in the script here (through "make").
+# "make install" will copy the script in the bin directory.
 %: %.py
-	sed -e "s,\$${libDir},$(libDir),g" $< > $@ || (rm -f $@ ; false)
+	$(SED) -e "s,\$${libDir},$(libDir),g" -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
 	chmod 755 $@
 
 %: %.sh
@@ -125,11 +127,6 @@ dist-release:
 dist-src: $(project)-$(version).tar.bz2
 
 
-define distVersion
-	sed -e 's,__version__ = None,__version__ = "$(version)",' $(1) > $@/src/$(notdir $(1))
-
-endef
-
 $(project)-$(version).tar.bz2: $(project)-$(version)
 	tar -cj --exclude 'build' --exclude '.*' --exclude '*~' -f $@ $<
 
@@ -139,8 +136,6 @@ $(project)-$(version).tar.bz2: $(project)-$(version)
 $(project)-$(version)::
 	rsync -r --exclude=.git $(srcDir)/* $@
 	$(if $(patchedSources),$(installDirs) $@ && rsync -aR $(patchedSources) $@)
-	$(installScripts) $(shell which dws) $@
-	$(foreach script,$(wildcard $(srcDir)/src/*.py),$(call distVersion,$(script)))
 	if [ -f $(srcDir)/$(projindex) ] ; then \
 		$(SED) -e "s,<project  *name=\".*$(project),<project name=\"$@,g" \
 		$(srcDir)/$(projindex) > $@/$(projindex) ; \
@@ -150,6 +145,7 @@ $(project)-$(version)::
 	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm -f $@/Makefile
+	$(installScripts) $(binBuildDir)/dws $@
 	$(installDirs) $@/share/dws
 	$(installScripts) $(dropShareDir)/configure.sh $@/configure
 	$(installFiles) $(dropShareDir)/prefix.mk $(dropShareDir)/suffix.mk $(dropShareDir)/configure.sh $@/share/dws
@@ -183,7 +179,6 @@ $(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
 		 --version=$(subst $(project)-,,$(basename $(basename $(notdir $<)))) \
 	         --spec=$(srcDir)/$(projindex) $(shell echo $@ | \
 			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
-	echo $@ > .packagename
 
 # Rules to build unit test logs
 # -----------------------------
@@ -302,12 +297,12 @@ validate: $(projindex)
 
 # docbook validation
 # schema taken from http://www.docbook.org/xml/5.0/xsd/docbook.xsd
-validbook: $(shell find $(srcDir) -name '*.book') \
-	   $(shell find $(srcDir) -name '*.corp')
+validbook: $(wildcard $(srcDir)/doc/*.book) \
+			$(wildcard $(srcDir)/doc/*.corp)
 	xmllint --noout --schema $(shareBuildDir)/schemas/docbook.xsd $^
 
 validxhtml: $(subst .book,.html,\
-		$(notdir $(shell find $(srcDir) -name '*.book')))
+		$(notdir $(wildcard $(srcDir)/doc/*.book)))
 	xmllint --noout --valid $^
 
 .PHONY: lint

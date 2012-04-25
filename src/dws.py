@@ -454,9 +454,24 @@ class Context:
                 configFile.write(key + '=' + str(val) + '\n')
         configFile.close()
 
-    def searchPath(self):
-        return [ self.binBuildDir(), self.value('binDir') ] \
-            + os.environ['PATH'].split(':')
+    def searchPath(self, name, variant=None):
+        '''Derives a list of directory names based on the PATH
+        environment variable, *name* and a *variant* triplet.'''
+        dirs = []
+        subpath = name
+        # We want the actual value of *name*Dir and not one derived from binDir
+        dirname = context.value(name + 'Dir')
+        if variant:
+            subpath = os.path.join(variant,name)
+            dirname = os.path.join(os.path.dirname(dirname),variant,
+                                   os.path.basename(dirname))
+        if os.path.isdir(dirname):
+            dirs += [ dirname ]
+        for path in os.environ['PATH'].split(':'):
+            dirname = os.path.join(os.path.dirname(path),subpath)
+            if os.path.isdir(dirname):
+                dirs += [ dirname ]
+        return dirs
 
     def srcDir(self,name):
         return os.path.join(self.value('srcTop'),name)
@@ -1256,6 +1271,17 @@ class HostPlatform(Variable):
                             break
                         line = release.readline()
                     release.close()
+            elif self.value in yumDistribs:
+                if os.path.isfile('/etc/system-release'):
+                    release = open('/etc/system-release')
+                    line = release.readline()
+                    while line:
+                        look = re.match('.*release (\d+)',line)
+                        if look:
+                            self.distCodename = self.value + look.group(1)
+                            break
+                        line = release.readline()
+                    release.close()
         return True
 
 
@@ -1815,7 +1841,14 @@ class YumInstallStep(InstallStep):
         InstallStep.__init__(self,projectName,packages)
 
     def run(self, context):
-        shellCommand(['yum', '-y', 'install' ] + self.managed, admin=True)
+        filtered = shellCommand(['yum', '-y', 'install' ] + self.managed,
+                                admin=True, pat='No package (.*) available')
+        if len(filtered) > 0:
+            look = re.match('No package (.*) available', filtered[0])
+            if look:
+                unmanaged = look.group(1).split(' ')
+                if len(unmanaged) > 0:
+                    raise Error("yum cannot install " + ' '.join(unmanaged))
         return True
 
     def info(self):
@@ -1863,8 +1896,11 @@ class MakeStep(BuildStep):
             # 'cd drop ; make dist' is run. Note that it is not an issue
             # for other projects since those can be explicitely depending
             # on drop as a prerequisite.
+            # \TODO We should only have to include binBuildDir is PATH
+            # but that fails because of "/usr/bin/env python" statements
+            # and other little tools like hostname, date, etc.
             shellCommand(cmdline + context.targets + context.overrides,
-                         PATH=context.searchPath())
+                    PATH=[context.binBuildDir()] + context.searchPath('bin'))
         return True
 
 
@@ -2497,28 +2533,6 @@ def createIndexPathname(dbIndexPathname,dbPathnames):
     dbIndex.close()
 
 
-def derivedRoots(name,variant=None):
-    '''Derives a list of directory names based on the PATH
-    environment variable, *name* and a *variant* triplet.'''
-    # We want the actual value of *name*Dir and not one derived
-    # from binDir so we do not use context.searchPath() here.
-    dirs = []
-    subpath = name
-    # \todo should not use global variable context, else findBin, etc.
-    # cannot work without it.
-    dir = context.value(name + 'Dir')
-    if variant:
-        subpath = os.path.join(variant,name)
-        dir = os.path.join(os.path.dirname(dir),variant,os.path.basename(dir))
-    if os.path.isdir(dir):
-        dirs += [ dir ]
-    for p in os.environ['PATH'].split(':'):
-        dir = os.path.join(os.path.dirname(p),subpath)
-        if os.path.isdir(dir):
-            dirs += [ dir ]
-    return dirs
-
-
 def findBin(names,searchPath,buildTop,excludes=[],variant=None):
     '''Search for a list of binaries that can be executed from $PATH.
 
@@ -2557,12 +2571,14 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
     droots = []
     complete = True
     if len(names) > 0:
-        if variant:
-            # We have to derive the search path to include the *variant* part
-            # otherwise, we use the actual $PATH variable.
-            droots = derivedRoots('bin',variant)
-        else:
-            droots = searchPath
+        # Especially on Fedora, /sbin, /usr/sbin, etc. are many times
+        # not in the PATH.
+        droots = []
+        for path in searchPath:
+            droots += [ path ]
+            sbin = os.path.join(os.path.dirname(path),'sbin')
+            if not sbin in searchPath:
+                droots += [ sbin ]
     for namePat, absolutePath in names:
         linkName, regex = linkBuildName(namePat,'bin',variant)
         if absolutePath != None and os.path.exists(absolutePath):
@@ -2739,10 +2755,8 @@ def findData(dir,names,searchPath,buildTop,excludes=[],variant=None):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by *dir*.'''
     results = []
-    droots = []
+    droots = searchPath
     complete = True
-    if len(names) > 0:
-        droots = derivedRoots(dir,variant)
     if variant:
         buildDir = os.path.join(buildTop,variant,dir)
     else:
@@ -2816,12 +2830,19 @@ def findInclude(names,searchPath,buildTop,excludes=[],variant=None):
     version = None
     complete = True
     prefix = ''
-    includeSysDirs = derivedRoots('include',variant)
+    includeSysDirs = searchPath
     for namePat, absolutePath in names:
+        linkName, regex = linkBuildName(namePat,'include',variant)
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
+            continue
+        elif os.path.islink(linkName):
+            # If we already have a symbolic link in the binBuildDir,
+            # we will assume it is the one to use in order to cut off
+            # recomputing of things that hardly change.
+            results.append((namePat,os.path.realpath(linkName)))
             continue
         if variant:
             writetext(variant + '/')
@@ -2935,13 +2956,19 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
     complete = True
     suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() \
         + '|\\' + libDynSuffix() + ')'
-    if len(names) > 0:
-        droots = derivedRoots('lib',variant)
+    droots = searchPath
     for namePat, absolutePath in names:
+        linkName, regex = linkBuildName(namePat,'lib',variant)
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
+            continue
+        elif os.path.islink(linkName):
+            # If we already have a symbolic link in the binBuildDir,
+            # we will assume it is the one to use in order to cut off
+            # recomputing of things that hardly change.
+            results.append((namePat,os.path.realpath(linkName)))
             continue
         if variant:
             writetext(variant + '/')
@@ -3057,9 +3084,10 @@ def findPrerequisites(deps, excludes=[],variant=None):
             # We want to make sure the output of the interactive session does
             # not mangle the search for a library so we preemptively trigger
             # an interactive session.
-            context.value(dir + 'Dir')
+            # deprecated: done in searchPath. context.value(dir + 'Dir')
             installed[dir], installedVersion, installedComplete = \
-                modself.__dict__[command](deps[dir],context.searchPath(),
+                modself.__dict__[command](deps[dir],
+                                          context.searchPath(dir,variant),
                                           context.value('buildTop'),
                                           excludes,variant)
             # Once we have selected a version out of the installed
@@ -3105,7 +3133,7 @@ def findBootBin(context, name, package = None):
 </projects>
 ''' % (package,name))
         executables, version, complete = findBin([ [ name, None ] ],
-                                                 context.searchPath(),
+                                                 context.searchPath('bin'),
                                                  context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
             install([package],dbindex)
@@ -3756,8 +3784,12 @@ def searchBackToRoot(filename,root=os.sep):
     return dirname, os.path.join(d,filename)
 
 
-def shellCommand(commandLine, admin=False, PATH=[]):
-    '''Execute a shell command and throws an exception when the command fails'''
+def shellCommand(commandLine, admin=False, PATH=[], pat=None):
+    '''Execute a shell command and throws an exception when the command fails.
+    sudo is used when *admin* is True.
+    the text output is filtered and returned when pat exists.
+    '''
+    filteredOutput = []
     if admin:
         if False:
             # \todo cannot do this simple check because of a shell variable
@@ -3793,14 +3825,18 @@ def shellCommand(commandLine, admin=False, PATH=[]):
                                stderr=subprocess.STDOUT)
         line = cmd.stdout.readline()
         while line != '':
+            if pat and re.match(pat, line):
+                filteredOutput += [ line ]
             writetext(line)
             line = cmd.stdout.readline()
         cmd.wait()
         if log:
             log.logfile.write(']]></output>\n')
         if cmd.returncode != 0:
-            raise Error("unable to complete: " + ' '.join(cmdline),
+            raise Error("unable to complete: " + ' '.join(cmdline) \
+                            + '\n' + '\n'.join(filteredOutput),
                         cmd.returncode)
+    return filteredOutput
 
 
 def sortBuildConfList(dbPathnames,parser):
@@ -4461,7 +4497,7 @@ def pubFind(args):
     for arg in args[1:]:
         searches += [ (arg,None) ]
     installed, installedVersion, complete = \
-        modself.__dict__[command](searches,context.searchPath(),
+        modself.__dict__[command](searches,context.searchPath(dir),
                                   context.value('buildTop'))
     if len(installed) != len(searches):
         sys.exit(1)

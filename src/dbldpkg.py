@@ -424,7 +424,7 @@ class PackageMaker:
 
         try:
             zippedSize = os.stat(self.archPath+ ".gz")[6]
-        except OSError: # ignore error 
+        except OSError: # ignore error
             pass
         base = self.packageInfo["Title"] + ".sizes"
         f = open(join(self.packageResourceFolder, base), "w")
@@ -441,7 +441,7 @@ def buildPackage(project, version, installTop):
     This routine with returns the name of the package that was built.
     '''
 
-    dist = context.host()
+    dist = dws.context.host()
     if dist == 'Darwin':
         pm = PackageMaker(project, version, installTop)
         pm.build()
@@ -449,25 +449,42 @@ def buildPackage(project, version, installTop):
         return im.build()
 
     elif dist == 'Fedora':
+        tarball = project.name.replace(os.sep,'_') + '-' + version + '.tar.bz2'
         specname = project.name + '.spec'
         specfile = open(specname,'w')
-        specfile.write('Name: ' + p.name.replace(os.sep,'_') + '\n')
+        specfile.write('Name: ' + project.name.replace(os.sep,'_') + '\n')
         specfile.write('Distribution: Fedora\n')
         specfile.write('Release: 0\n')
+        specfile.write('Version: %s\n' % version)
         specfile.write('Summary: None\n')
         specfile.write('License: Unknown\n')
-        specfile.write('\n%description\n' + p.descr + '\n')
-        specfile.write('Packager: ' + str(p.maintainer) + '\n')
-        specfile.write('''\n%build
-./configure --prefix=/usr/local
+        specfile.write('Source: http://www.example.com/%s\n' % tarball)
+        specfile.write('\n%description\n' + project.descr + '\n')
+        specfile.write('Packager: ' + str(project.maintainer) + '\n')
+        specfile.write('''
+%prep
+%setup -q
+
+%build
+%configure
 make
 
 %install
-make install
+rm -rf %{buildroot}
+make install DESTDIR=%{buildroot}
+
+%files
+%{_sysconfdir}/*
 ''')
         specfile.close()
-        dws.shellCommand(['rpmbuild', '-bb', '--clean', specname])
-        return projet.name + '-' + version + '.rpm'
+        rpmlog = dws.shellCommand(['rpmbuild', '-bb', '--clean', specname],
+                                  pat='Wrote: (.*)')
+        genFiles = []
+        for line in rpmlog:
+            look = re.match('Wrote: (.*)', line)
+            if look:
+                genFiles += [ look.group(1) ]
+        return genFiles[0]
 
     elif dist == 'Ubuntu':
         cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
@@ -490,29 +507,29 @@ make install
             if project.repository:
                 control.write('Build-Depends: ' \
                                   + ', '.join(dws.basenames(
-                project.repository.prerequisiteNames([context.host()]))) + '\n')
+                project.repository.prerequisiteNames([dws.context.host()]))) + '\n')
             elif project.patch:
                 control.write('Build-Depends: ' \
                                   + ', '.join(dws.basenames(
-                project.patch.prerequisiteNames([context.host()]))) + '\n')
+                project.patch.prerequisiteNames([dws.context.host()]))) + '\n')
 
         control.write('\nPackage: ' + project.name + '\n')
         control.write('Priority: extra\n')
 
-        if (not context.host() in project.packages
-            or not 'architecture' in project.packages[context.host()].configure.envvars):
+        if (not dws.context.host() in project.packages
+            or not 'architecture' in project.packages[dws.context.host()].configure.envvars):
             control.write('Architecture: any\n')
             distExtUbuntu = '_amd64.deb'
             if longBit == '32':
                 distExtUbuntu = '_i386.deb'
-        if context.host() in project.packages:
-            envvars = project.packages[context.host()].configure.envvars
+        if dws.context.host() in project.packages:
+            envvars = project.packages[dws.context.host()].configure.envvars
             for key, val in envvars.iteritems():
                 if isinstance(val,dws.Metainfo):
                     control.write(key.capitalize() + ': ' + val.value + '\n')
             control.write('Depends: ' \
                               + ', '.join(dws.basenames(
-            project.packages[context.host()].prerequisiteNames([context.host()]))) + '\n')        
+            project.packages[dws.context.host()].prerequisiteNames([dws.context.host()]))) + '\n')        
         descr = ''
         for i in range(0,len(project.descr),77):
             descr += ' ' + project.descr[i:i+77] + '\n'
@@ -664,10 +681,12 @@ def tabStop(n):
     return result
 
 def buildPackageSpecification(project,packageName):
-    '''Buils a package specification file named *packageSpec* 
+    '''Buils a package specification file named *packageSpec*
     that describes how to find and install the binary package.
-    The package specification is made out of *sourceSpec*. 
+    The package specification is made out of *sourceSpec*.
     '''
+    with open('.packagename','w') as packagename:
+        packagename.write(packageName)
     packageSpec = os.path.splitext(packageName)[0] + '.dsx'
     package = open(packageSpec,'w')
     package.write('<?xml version="1.0" ?>\n')
@@ -676,12 +695,12 @@ def buildPackageSpecification(project,packageName):
                       + ' name="' + project.name + '">\n')
     package.write(tabStop(2) + '<' + dws.xmlDbParser.tagPackage + '>\n')
     package.write(tabStop(3) + '<' + dws.xmlDbParser.tagTag + '>' \
-                      + context.host() \
+                      + dws.context.host() \
                       + '</' + dws.xmlDbParser.tagTag + '>\n')
     package.write(tabStop(3) + '<' + dws.xmlDbParser.tagFetch \
                       + ' name="' + packageName + '">\n')
     package.write(tabStop(4) + '<size>' + str(os.path.getsize(packageName)) \
-                      + '</size>\n')        
+                      + '</size>\n')
     f = open(packageName,'rb')
     package.write(tabStop(4) + '<md5>' + hashlib.md5(f.read()).hexdigest() \
                       + '</md5>\n')
@@ -744,9 +763,9 @@ if __name__ == "__main__":
     if options.noPathUpdate:
         noPathUpdate = True
 
-    context = dws.Context()
-    context.locate()
-    index = dws.IndexProjects(context,options.spec)
+    dws.context = dws.Context()
+    dws.context.locate()
+    index = dws.IndexProjects(dws.context,options.spec)
     handler = dws.Unserializer([ '.*' ])
 
     index.parse(handler)

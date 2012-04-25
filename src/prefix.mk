@@ -53,14 +53,14 @@ installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -p -m 644
 installScripts	:=	/usr/bin/install -p -m 755
 
-FOP		:=	fop
-JAR		:=	jar
-JAVAC		:=	javac
-LN_S		:=	/bin/ln -fs
-MXMLC		:=	mxmlc
-SED		:=	sed
-SEMILLA		:=	semilla
-XSLTPROC	:=	xsltproc -xinclude 		\
+FOP         :=	fop
+JAR         :=	jar
+JAVAC       :=	javac
+LN_S        :=	/bin/ln -fs
+MXMLC       :=	mxmlc
+SED         :=	sed
+SEMILLA     :=	semilla
+XSLTPROC    :=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
 
@@ -72,7 +72,8 @@ projindex	:=	dws.xml
 #       to keep a maximum of 80 characters per line, the sed command:
 #           sed -e 's,$$(srcDir),$(srcDir),g'
 #       complains about an extra '\n' character.
-srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
+#srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
+srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(CURDIR)))
 objDir		:=	$(subst $(srcTop),$(buildTop),$(srcDir))
 logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 
@@ -105,7 +106,7 @@ LDFLAGS		+=	$(patsubst %,-L%,$(libSearchPath))
 # Configuration for distribution packages
 
 distExtDarwin	:=	.dmg
-distExtFedora	:=	$(shell uname -r | sed -e 's/.*\(\.fc.*\)/\1/').rpm
+distExtFedora	:=	$(shell uname -r | $(SED) -e 's/.*\(\.fc.*\)/\1/').rpm
 distExtUbuntu	:=	_i386.deb
 project		:=	$(notdir $(srcDir))
 
