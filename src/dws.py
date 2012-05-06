@@ -698,7 +698,7 @@ class DependencyGenerator(Unserializer):
     '''
 
     def __init__(self, repositories, packages, excludePats = [],
-                 customSteps = {}):
+                 customSteps = {}, forceUpdate = False):
         '''*repositories* will be installed from compiling
         a source controlled repository while *packages* will be installed
         from a binary distribution package.
@@ -721,6 +721,7 @@ class DependencyGenerator(Unserializer):
             self.levels[0] |= set([ TargetStep(0,r) ])
         # Vertices in the dependency tree
         self.vertices = {}
+        self.forceUpdate = forceUpdate
 
     def __str__(self):
         s = "vertices:\n"
@@ -742,6 +743,7 @@ class DependencyGenerator(Unserializer):
         makeName = Step.genid(BuildStep,variant.project,variant.target)
         if not makeName in self.vertices:
             make = make.associate(variant.target)
+            make.forceUpdate = self.forceUpdate
             self.vertices[makeName] = make
             for p in prerequisites:
                 make.prerequisites += [ p ]
@@ -1018,7 +1020,7 @@ class MakeGenerator(DependencyGenerator):
     def __init__(self, repositories, packages, excludePats = [],
                  customSteps = {}):
         DependencyGenerator.__init__(self,repositories,packages,
-                                     excludePats,customSteps)
+                                     excludePats,customSteps,forceUpdate=True)
         self.stopMakeAfterError = True
 
     def contextualTargets(self, variant):
@@ -1612,7 +1614,7 @@ class ConfigureStep(TargetStep):
         return ConfigureStep(self.project,self.envvars,target)
 
     def run(self, context):
-        return configVar(self.envvars)
+        self.updated = configVar(self.envvars)
 
 
 class InstallStep(Step):
@@ -1663,7 +1665,7 @@ class AptInstallStep(InstallStep):
         shellCommand(['sh', '-c',
                       '"/usr/bin/apt-get update && DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install ' + ' '.join(self.managed) + '"'],
                      admin=True)
-        return True
+        self.updated = True
 
     def info(self):
         info = []
@@ -1727,7 +1729,7 @@ class DarwinInstallStep(InstallStep):
                     shellCommand(['hdiutil', 'detach', volume])
             except:
                 raise Error('failure to install darwin package ' + filename)
-        return True
+        self.updated = True
 
 
 class DpkgInstallStep(InstallStep):
@@ -1735,7 +1737,7 @@ class DpkgInstallStep(InstallStep):
 
     def run(self, context):
         shellCommand(['dpkg', '-i', ' '.join(self.managed)], admin=True)
-        return True
+        self.updated = True
 
 
 class MacPortInstallStep(InstallStep):
@@ -1766,7 +1768,7 @@ class MacPortInstallStep(InstallStep):
     def run(self, context):
         shellCommand(['/opt/local/bin/port', 'install' ] + self.managed,
                      admin=True)
-        return True
+        self.updated = True
 
     def info(self):
         info = []
@@ -1792,7 +1794,7 @@ class PipInstallStep(InstallStep):
 
     def run(self, context):
         shellCommand([self._pipexe(), 'install' ] + self.managed, admin=True)
-        return True
+        self.updated = True
 
     def info(self):
         info = []
@@ -1811,7 +1813,7 @@ class RpmInstallStep(InstallStep):
 
     def run(self, context):
         shellCommand(['rpm', '-i', ' '.join(self.managed)], admin=True)
-        return True
+        self.updated = True
 
 
 class YumInstallStep(InstallStep):
@@ -1849,7 +1851,7 @@ class YumInstallStep(InstallStep):
                 unmanaged = look.group(1).split(' ')
                 if len(unmanaged) > 0:
                     raise Error("yum cannot install " + ' '.join(unmanaged))
-        return True
+        self.updated = True
 
     def info(self):
         info = []
@@ -1865,8 +1867,15 @@ class YumInstallStep(InstallStep):
 class BuildStep(TargetStep):
     '''Build a project running make, executing a script, etc.'''
 
-    def __init__(self, projectName, target = None):
+    def __init__(self, projectName, target = None, forceUpdate = True):
         TargetStep.__init__(self,Step.make,projectName,target)
+        self.forceUpdate = forceUpdate
+
+    def _should_run(self):
+        updatedPrerequisites = False
+        for p in self.prerequisites:
+            updatedPrerequisites |= p.updated
+        return self.forceUpdate or updatedPrerequisites
 
 
 class MakeStep(BuildStep):
@@ -1877,31 +1886,32 @@ class MakeStep(BuildStep):
         return MakeStep(self.project,target)
 
     def run(self, context):
-        # We include the configfile (i.e. variable=value) before
-        # the project Makefile for convenience. Adding a statement
-        # include $(shell dws context) at the top of the Makefile
-        # is still a good idea to permit "make" from the command line.
-        # Otherwise it just duplicates setting some variables.
-        context = localizeContext(context,self.project,self.target)
-        makefile = context.srcDir(os.path.join(self.project,'Makefile'))
-        if os.path.isfile(makefile):
-            cmdline = ['make',
-                       '-f', context.configFilename,
-                       '-f', makefile]
-            # If we do not set PATH to *binBuildDir*:*binDir*:${PATH}
-            # and the install directory is not in PATH, then we cannot
-            # build a package for drop because 'make dist' depends
-            # on executables installed in *binDir* (dws, dbldpkg, ...)
-            # that are not linked into *binBuildDir* at the time
-            # 'cd drop ; make dist' is run. Note that it is not an issue
-            # for other projects since those can be explicitely depending
-            # on drop as a prerequisite.
-            # \TODO We should only have to include binBuildDir is PATH
-            # but that fails because of "/usr/bin/env python" statements
-            # and other little tools like hostname, date, etc.
-            shellCommand(cmdline + context.targets + context.overrides,
-                    PATH=[context.binBuildDir()] + context.searchPath('bin'))
-        return True
+        if self._should_run():
+            # We include the configfile (i.e. variable=value) before
+            # the project Makefile for convenience. Adding a statement
+            # include $(shell dws context) at the top of the Makefile
+            # is still a good idea to permit "make" from the command line.
+            # Otherwise it just duplicates setting some variables.
+            context = localizeContext(context,self.project,self.target)
+            makefile = context.srcDir(os.path.join(self.project,'Makefile'))
+            if os.path.isfile(makefile):
+                cmdline = ['make',
+                           '-f', context.configFilename,
+                           '-f', makefile]
+                # If we do not set PATH to *binBuildDir*:*binDir*:${PATH}
+                # and the install directory is not in PATH, then we cannot
+                # build a package for drop because 'make dist' depends
+                # on executables installed in *binDir* (dws, dbldpkg, ...)
+                # that are not linked into *binBuildDir* at the time
+                # 'cd drop ; make dist' is run. Note that it is not an issue
+                # for other projects since those can be explicitely depending
+                # on drop as a prerequisite.
+                # \TODO We should only have to include binBuildDir is PATH
+                # but that fails because of "/usr/bin/env python" statements
+                # and other little tools like hostname, date, etc.
+                shellCommand(cmdline + context.targets + context.overrides,
+                       PATH=[context.binBuildDir()] + context.searchPath('bin'))
+            self.updated = True
 
 
 class ShellStep(BuildStep):
@@ -1915,15 +1925,16 @@ class ShellStep(BuildStep):
         return ShellStep(self.project,self.script,target)
 
     def run(self, context):
-        context = localizeContext(context,self.name,self.target)
-        script = tempfile.NamedTemporaryFile(mode='w+t',delete=False)
-        script.write('#!/bin/sh\n\n')
-        script.write('. ' + context.configFilename + '\n\n')
-        script.write(self.script)
-        script.close()
-        shellCommand([ 'sh', '-x', '-e', script.name ])
-        os.remove(script.name)
-        return True
+        if self._should_run():
+            context = localizeContext(context,self.name,self.target)
+            script = tempfile.NamedTemporaryFile(mode='w+t',delete=False)
+            script.write('#!/bin/sh\n\n')
+            script.write('. ' + context.configFilename + '\n\n')
+            script.write(self.script)
+            script.close()
+            shellCommand([ 'sh', '-x', '-e', script.name ])
+            os.remove(script.name)
+            self.updated = True
 
 
 class SetupStep(TargetStep):
@@ -1968,6 +1979,7 @@ class SetupStep(TargetStep):
         if complete:
             self.files, complete = linkDependencies(self.files,self.excludes,
                                                     self.target)
+        self.updated = True
         return complete
 
 
@@ -1981,24 +1993,23 @@ class UpdateStep(Step):
         Step.__init__(self,Step.update,projectName)
         self.rep = rep
         self.fetches = fetches
+        self.updated = False
 
     def run(self, context):
-        updated = True
         try:
             fetch(context,self.fetches)
         except:
             raise Error("unable to fetch " + str(self.fetches))
         if self.rep:
             try:
-                updated = self.rep.update(self.project,context)
-                if updated:
+                self.updated = self.rep.update(self.project,context)
+                if self.updated:
                     UpdateStep.nbUpdatedProjects \
                         = UpdateStep.nbUpdatedProjects + 1
                 self.rep.applyPatches(self.project,context)
             except:
                 raise Error('cannot update repository or apply patch for ' \
                                 + str(self.project) + '\n')
-        return updated
 
 
 class Repository:
@@ -2580,17 +2591,18 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
             if not sbin in searchPath:
                 droots += [ sbin ]
     for namePat, absolutePath in names:
-        linkName, regex = linkBuildName(namePat,'bin',variant)
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        elif os.path.islink(linkName):
+        linkName, suffix = linkBuildName(namePat,'bin',variant)
+        if os.path.islink(linkName):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
             # recomputing of things that hardly change.
-            results.append((namePat,os.path.realpath(linkName)))
+            results.append((namePat,
+                            os.path.realpath(os.path.join(linkName,suffix))))
             continue
         if variant:
             writetext(variant + '/')
@@ -2603,6 +2615,8 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
                 writetext('yes\n')
                 results.append((namePat, bin))
         else:
+            # Yeah, looking for g++ might be a little bit of trouble.
+            namePat = namePat.replace('+','\+')
             for p in droots:
                 for b in findFirstFiles(p,namePat):
                     bin = os.path.join(p,b)
@@ -2731,8 +2745,7 @@ def findFirstFiles(base,namePat,subdir=''):
             for p in os.listdir(candidateDir):
                 relative = os.path.join(subdir,p)
                 path = os.path.join(base,relative)
-                # Yeah, looking for g++ might be a little bit of trouble.
-                look = re.match(namePat.replace('+','\+') + '$',relative)
+                look = re.match(namePat,relative)
                 if look != None:
                     results += [ relative ]
                 elif (((('.*' + os.sep) in namePat)
@@ -2767,6 +2780,16 @@ def findData(dir,names,searchPath,buildTop,excludes=[],variant=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
+        linkName, suffix = linkBuildName(namePat,dir,variant)
+        if os.path.islink(linkName):
+            # If we already have a symbolic link in the dataBuildDir,
+            # we will assume it is the one to use in order to cut off
+            # recomputing of things that hardly change.
+            # XXX Be careful if suffix starts with '/'
+            results.append((namePat,
+                            os.path.realpath(os.path.join(linkName,suffix))))
+            continue
+
         if variant:
             writetext(variant + '/')
         writetext(namePat + '... ')
@@ -2832,17 +2855,19 @@ def findInclude(names,searchPath,buildTop,excludes=[],variant=None):
     prefix = ''
     includeSysDirs = searchPath
     for namePat, absolutePath in names:
-        linkName, regex = linkBuildName(namePat,'include',variant)
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        elif os.path.islink(linkName):
+        linkName, suffix = linkBuildName(namePat,'include',variant)
+        if os.path.islink(linkName):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
             # recomputing of things that hardly change.
-            results.append((namePat,os.path.realpath(linkName)))
+            # XXX Be careful if suffix starts with '/'
+            results.append((namePat,
+                            os.path.realpath(os.path.join(linkName,suffix))))
             continue
         if variant:
             writetext(variant + '/')
@@ -2958,40 +2983,55 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
         + '|\\' + libDynSuffix() + ')'
     droots = searchPath
     for namePat, absolutePath in names:
-        linkName, regex = linkBuildName(namePat,'lib',variant)
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        elif os.path.islink(linkName):
+        libBasePat = libPrefix() + namePat.replace('+','\+')
+        if libBasePat.endswith('.so'):
+            libBasePat = libBasePat[:-3]
+            libSuffixByPriority = [ libDynSuffix(), libStaticSuffix() ]
+            norSuffixByPriority = [ '.so', libStaticSuffix() ]
+        elif staticLibFirst:
+            libSuffixByPriority = [ libStaticSuffix(), libDynSuffix() ]
+            norSuffixByPriority = [ libStaticSuffix(), '.so' ]
+        else:
+            libSuffixByPriority = [ libDynSuffix(), libStaticSuffix() ]
+            norSuffixByPriority = [ '.so', libStaticSuffix() ]
+        linkName, linkSuffix = linkBuildName(libBasePat+norSuffixByPriority[0],
+                                             'lib',variant)
+        if os.path.islink(linkName):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
             # recomputing of things that hardly change.
-            results.append((namePat,os.path.realpath(linkName)))
+            results.append((namePat,
+                          os.path.realpath(os.path.join(linkName,linkSuffix))))
+            continue
+        linkName, linkSuffix = linkBuildName(libBasePat+norSuffixByPriority[1],
+                                             'lib',variant)
+        if os.path.islink(linkName):
+            # If we already have a symbolic link in the binBuildDir,
+            # we will assume it is the one to use in order to cut off
+            # recomputing of things that hardly change.
+            results.append((namePat,
+                          os.path.realpath(os.path.join(linkName,linkSuffix))))
             continue
         if variant:
             writetext(variant + '/')
         writetext(namePat + '... ')
-        if namePat.endswith('.so'):
-            namePat = namePat[:-3]
-            prioritySuffix = libDynSuffix()
-        elif staticLibFirst:
-            prioritySuffix = libStaticSuffix()
-        else:
-            prioritySuffix = libDynSuffix()
         found = False
         for libSysDir in droots:
             libs = []
-            libPat = libPrefix() + namePat.replace('+','\+') + suffix
+            libPat = libBasePat + suffix
             base, ext = os.path.splitext(namePat)
             if len(ext) > 0 and not ext.startswith('.*'):
                 libPat = namePat.replace('+','\+')
             for libname in findFirstFiles(libSysDir,libPat):
                 numbers = versionCandidates(libname)
                 absolutePath = os.path.join(libSysDir,libname)
-                absolutePathBase, absolutePathExt \
-                    = os.path.splitext(absolutePath)
+                absolutePathBase = os.path.dirname(absolutePath)
+                absolutePathExt = '.'+os.path.basename(absolutePath).split('.')[1]
                 if len(numbers) == 1:
                     excluded = False
                     for exclude in excludes:
@@ -3006,12 +3046,13 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
                         # higher version number, dynamic libraries.
                         index = 0
                         for lib in libs:
-                            libPathBase, libPathExt = os.path.splitext(lib[0])
+                            lib[0]
+                            libPathBase = os.path.dirname(lib[0])
                             if ((not lib[1])
                                 or versionCompare(lib[1],numbers[0]) < 0):
                                 break
                             elif (absolutePathBase == libPathBase
-                                  and absolutePathExt == prioritySuffix):
+                                 and absolutePathExt == libSuffixByPriority[0]):
                                 break
                             index = index + 1
                         libs.insert(index,(absolutePath,numbers[0]))
@@ -3020,11 +3061,11 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
                     # higher version number, shortest name, dynamic libraries.
                     index = 0
                     for lib in libs:
-                        libPathBase, libPathExt = os.path.splitext(lib[0])
+                        libPathBase = os.path.dirname(lib[0])
                         if lib[1]:
                             None
                         elif absolutePathBase == libPathBase:
-                            if absolutePathExt == prioritySuffix:
+                            if absolutePathExt == libSuffixByPriority[0]:
                                 break
                         elif libPathBase.startswith(absolutePathBase):
                             break
@@ -3570,7 +3611,7 @@ def linkBuildName(namePat, subdir, target=None):
     # definitions of .LIBPATTERNS and search paths in make. It also avoids
     # having to prefix and suffix library names in Makefile with complex
     # variable substitution logic.
-    regexRet = None
+    suffix = ''
     # Yeah, looking for g++ might be a little bit of trouble.
     regex = re.compile(namePat.replace('+','\+') + '$')
     if regex.groups == 0:
@@ -3580,17 +3621,20 @@ def linkBuildName(namePat, subdir, target=None):
             name = parts[len(parts) - 1]
     else:
         name = re.search('\((.+)\)',namePat).group(1)
-        regexRet = regex
+        # XXX +1 ')', +2 '/'
+        suffix = namePat[re.search('\((.+)\)',namePat).end(1) + 2:]
     subpath = subdir
     if target:
         subpath = os.path.join(target,subdir)
     linkBuild = os.path.join(context.value('buildTop'),subpath,name)
-    return linkBuild, regexRet
+    return linkBuild, suffix
+
 
 def linkPatPath(namePat, absolutePath, subdir, target=None):
+    '''Create a link in the build directory.'''
     linkPath = absolutePath
     ext = ''
-    if absolutePath != None:
+    if absolutePath:
         pathname, ext = os.path.splitext(absolutePath)
     subpath = subdir
     if target:
@@ -3602,11 +3646,10 @@ def linkPatPath(namePat, absolutePath, subdir, target=None):
         name = 'lib' + namePat + '.so'
         linkName = os.path.join(context.value('buildTop'),subpath,name)
     else:
-        linkName, regex = linkBuildName(namePat,subdir,target)
-        if absolutePath != None and regex != None:
-            look = regex.search(absolutePath)
-            parts = absolutePath[look.end(1):].split(os.sep)
-            linkPath = absolutePath[:look.end(1)] + parts[0]
+        linkName, suffix = linkBuildName(namePat,subdir,target)
+        if absolutePath and len(suffix) > 0 and absolutePath.endswith(suffix):
+            # Interestingly absolutePath[:-0] returns an empty string.
+            linkPath = absolutePath[:-len(suffix)]
     # create links
     complete = True
     if linkPath:
@@ -3914,7 +3957,6 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
     dbindex.validate()
 
     global errors
-    updated = False
     # Add deep dependencies
     vertices = dbindex.closure(dgen)
     if log and log.graph:
@@ -3948,7 +3990,7 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
                 log.header(v.name)
                 start = datetime.datetime.now()
                 try:
-                    updated |= v.run(context)
+                    v.run(context)
                     finish = datetime.datetime.now()
                     td = finish - start
                     # \todo until most system move to python 2.7, we compute
@@ -3976,7 +4018,7 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         writetext(str(UpdateStep.nbUpdatedProjects) + ' updated project(s).\n')
     else:
         writetext('all project(s) are up-to-date.\n')
-    return updated
+    return UpdateStep.nbUpdatedProjects
 
 
 def versionCandidates(line):
