@@ -2615,8 +2615,6 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
                 writetext('yes\n')
                 results.append((namePat, bin))
         else:
-            # Yeah, looking for g++ might be a little bit of trouble.
-            namePat = namePat.replace('+','\+')
             for p in droots:
                 for b in findFirstFiles(p,namePat):
                     bin = os.path.join(p,b)
@@ -2745,7 +2743,10 @@ def findFirstFiles(base,namePat,subdir=''):
             for p in os.listdir(candidateDir):
                 relative = os.path.join(subdir,p)
                 path = os.path.join(base,relative)
-                look = re.match(namePat,relative)
+                # We must postpend the '$' sign to the regular expression
+                # otherwise "makeconv" and "makeinfo" will be picked up by
+                # a match for the "make" executable.
+                look = re.match(namePat + '$',relative)
                 if look != None:
                     results += [ relative ]
                 elif (((('.*' + os.sep) in namePat)
@@ -2988,7 +2989,7 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        libBasePat = libPrefix() + namePat.replace('+','\+')
+        libBasePat = libPrefix() + namePat
         if libBasePat.endswith('.so'):
             libBasePat = libBasePat[:-3]
             libSuffixByPriority = [ libDynSuffix(), libStaticSuffix() ]
@@ -3023,10 +3024,19 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
         found = False
         for libSysDir in droots:
             libs = []
-            libPat = libBasePat + suffix
             base, ext = os.path.splitext(namePat)
-            if len(ext) > 0 and not ext.startswith('.*'):
-                libPat = namePat.replace('+','\+')
+            if len(ext) > 0 and not (ext.startswith('.so')
+                                     or ext.startswith('.a')):
+                # If we are not dealing with a honest to god library, let's
+                # just use the pattern we were given. This is because, python,
+                # ruby, etc. also put their stuff in libDir.
+                # ex patterns for things also in libDir:
+                #     - ruby/.*/json.rb
+                #     - cgi-bin/awstats.pl
+                #     - .*/registration/__init__.py
+                libPat = namePat
+            else:
+                libPat = libBasePat + suffix
             for libname in findFirstFiles(libSysDir,libPat):
                 numbers = versionCandidates(libname)
                 absolutePath = os.path.join(libSysDir,libname)
@@ -3612,8 +3622,7 @@ def linkBuildName(namePat, subdir, target=None):
     # having to prefix and suffix library names in Makefile with complex
     # variable substitution logic.
     suffix = ''
-    # Yeah, looking for g++ might be a little bit of trouble.
-    regex = re.compile(namePat.replace('+','\+') + '$')
+    regex = re.compile(namePat + '$')
     if regex.groups == 0:
         name = namePat
         parts = namePat.split(os.sep)
@@ -3639,6 +3648,8 @@ def linkPatPath(namePat, absolutePath, subdir, target=None):
     subpath = subdir
     if target:
         subpath = os.path.join(target,subdir)
+    if namePat.endswith('.a') or namePat.endswith('.so'):
+        namePat, patExt = os.path.splitext(namePat)
     if ext == libStaticSuffix():
         name = 'lib' + namePat + '.a'
         linkName = os.path.join(context.value('buildTop'),subpath,name)
@@ -3646,6 +3657,8 @@ def linkPatPath(namePat, absolutePath, subdir, target=None):
         name = 'lib' + namePat + '.so'
         linkName = os.path.join(context.value('buildTop'),subpath,name)
     else:
+        # \todo if the dynamic lib suffix ends with .so.X we will end-up here.
+        # This is wrong since at that time we won't create a lib*name*.so link.
         linkName, suffix = linkBuildName(namePat,subdir,target)
         if absolutePath and len(suffix) > 0 and absolutePath.endswith(suffix):
             # Interestingly absolutePath[:-0] returns an empty string.
