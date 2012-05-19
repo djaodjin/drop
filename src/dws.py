@@ -105,6 +105,7 @@ class Error(Exception):
     which are not *Error*s are concidered bugs in the workspace
     management script.'''
     def __init__(self, msg='unknow error', code=1, projectName=None):
+        Exception.__init__(self)
         self.code = code
         self.msg = msg
         self.projectName = projectName
@@ -246,11 +247,6 @@ class Context:
 #       That code does not work when we are doing dws make (no recurse).
 #       return os.path.join(self.value('buildTop'),'share','dws',name)
 
-    def hostCachePath(self,name):
-        '''Absolute path to a file in the local system cache for host
-        specific packages.'''
-        return os.path.join(self.value('siteTop'),host(),name)
-
     def logPath(self,name):
         '''Absolute path to a file in the local system log
         directory hierarchy.'''
@@ -274,10 +270,10 @@ class Context:
             self.locate()
         if os.path.realpath(os.getcwd()).startswith(
             os.path.realpath(self.value('buildTop'))):
-                top = os.path.realpath(self.value('buildTop'))
+            top = os.path.realpath(self.value('buildTop'))
         elif os.path.realpath(os.getcwd()).startswith(
             os.path.realpath(self.value('srcTop'))):
-                top = os.path.realpath(self.value('srcTop'))
+            top = os.path.realpath(self.value('srcTop'))
         prefix = os.path.commonprefix([top,os.getcwd()])
         return os.getcwd()[len(prefix) + 1:]
 
@@ -507,20 +503,20 @@ class Context:
 # \todo The argparse (http://code.google.com/p/argparse/) might be part
 #       of the standard python library and address the issue at some point.
 class CommandsFormatter(optparse.IndentedHelpFormatter):
-  def format_epilog(self, description):
-    import textwrap
-    result = ""
-    if description:
-        descWidth = self.width - self.current_indent
-        bits = description.split('\n')
-        formattedBits = [
-          textwrap.fill(bit,
-            descWidth,
-            initial_indent="",
-            subsequent_indent="                       ")
-          for bit in bits]
-        result = result + "\n".join(formattedBits) + "\n"
-    return result
+    def format_epilog(self, description):
+        import textwrap
+        result = ""
+        if description:
+            descWidth = self.width - self.current_indent
+            bits = description.split('\n')
+            formattedBits = [
+              textwrap.fill(bit,
+                descWidth,
+                initial_indent="",
+                subsequent_indent="                       ")
+              for bit in bits]
+            result = result + "\n".join(formattedBits) + "\n"
+        return result
 
 
 class IndexProjects:
@@ -882,7 +878,7 @@ class DependencyGenerator(Unserializer):
                                                                nextDepth,
                                                                target)
                     if not nextDepth in self.levels:
-                         self.levels[nextDepth] = set([])
+                        self.levels[nextDepth] = set([])
                     self.levels[ nextDepth ] |= set([target])
 
         self.activePrerequisites = nextActivePrerequisites
@@ -1164,7 +1160,8 @@ class NativeWriter(PdbHandler):
 
 
 class Variable:
-    '''Variable that ends up being defined in the workspace make fragment and thus in Makefile.'''
+    '''Variable that ends up being defined in the workspace make
+    fragment and thus in Makefile.'''
 
     def __init__(self, name, pairs):
         self.name = name
@@ -2311,8 +2308,7 @@ class Project:
         result = 'project ' + self.name + '\n' \
             + '\t' + str(self.title) + '\n' \
             + '\tfound version ' + str(self.installedVersion) \
-            + ' installed locally\n' \
-            + '\tcomplete: ' + str(self.complete) + '\n'
+            + ' installed locally\n'
         if len(self.packages) > 0:
             result = result + '\tpackages\n'
             for p in self.packages:
@@ -2639,9 +2635,9 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
                                     line = cmd.stdout.readline()
                                 cmd.wait()
                                 if cmd.returncode != 0:
-                                    # When the command returns with an error code,
-                                    # we assume we passed an incorrect flag
-                                    # to retrieve the version number.
+                                    # When the command returns with an error
+                                    # code, we assume we passed an incorrect
+                                    # flag to retrieve the version number.
                                     numbers = []
                                 if len(numbers) > 0:
                                     break
@@ -2662,7 +2658,7 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
                                 writetext(str(version) + '\n')
                                 results.append((namePat, bin))
                             else:
-                                writetext('excluded (' + str(numbers[0]) + ')\n')
+                                writetext('excluded (' +str(numbers[0])+ ')\n')
                         else:
                             writetext('yes\n')
                             results.append((namePat, bin))
@@ -3041,7 +3037,8 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
                 numbers = versionCandidates(libname)
                 absolutePath = os.path.join(libSysDir,libname)
                 absolutePathBase = os.path.dirname(absolutePath)
-                absolutePathExt = '.'+os.path.basename(absolutePath).split('.')[1]
+                absolutePathExt = '.' \
+                    + os.path.basename(absolutePath).split('.')[1]
                 if len(numbers) == 1:
                     excluded = False
                     for exclude in excludes:
@@ -3272,7 +3269,7 @@ def cwdProjects(reps, recurse=False):
             for repdir in findFiles(srcDir, Repository.dirPats):
                 reps += [ os.path.dirname(repdir.replace(srcTop + os.sep,'')) ]
     if recurse:
-        raise NotYetImplemented()
+        raise NotImplementedError()
     return reps
 
 
@@ -3339,15 +3336,15 @@ def fetch(context, filenames,
                 sshs += [ p ]
         # fetch https
         for remotename in https:
-                localname = context.localDir(remotename)
-                if not os.path.exists(os.path.dirname(localname)):
-                    os.makedirs(os.path.dirname(localname))
-                writetext('fetching ' + remotename + '...\n')
-                remote = urllib2.urlopen(urllib2.Request(remotename))
-                local = open(localname,'w')
-                local.write(remote.read())
-                local.close()
-                remote.close()
+            localname = context.localDir(remotename)
+            if not os.path.exists(os.path.dirname(localname)):
+                os.makedirs(os.path.dirname(localname))
+            writetext('fetching ' + remotename + '...\n')
+            remote = urllib2.urlopen(urllib2.Request(remotename))
+            local = open(localname,'w')
+            local.write(remote.read())
+            local.close()
+            remote.close()
         # fetch sshs
         if len(sshs) > 0:
             sources = []
@@ -3427,7 +3424,8 @@ def install(packages, dbindex):
             if name in handler.projects:
                 package = handler.asProject(name).packages[context.host()]
                 if package:
-                    packageFiles.insert(createPackageFile(package.fetches()))
+                    packageFiles.insert(createPackageFile(name,
+                                                          package.fetches()))
                 else:
                     managed += [ name ]
             else:
@@ -3522,7 +3520,8 @@ def helpBook(help):
                 sys.stdout.write("<varlistentry>\n<term>" + line + "</term>\n")
             else:
                 if not s[0].startswith('-'):
-                    sys.stdout.write("<varlistentry xml:id=\"dws." + s[0] + "\">\n")
+                    sys.stdout.write("<varlistentry xml:id=\"dws." \
+                                         + s[0] + "\">\n")
                 else:
                     sys.stdout.write("<varlistentry>\n")
                 sys.stdout.write("<term>" + s[0] + "</term>\n")
@@ -3859,16 +3858,19 @@ def shellCommand(commandLine, admin=False, PATH=[], pat=None):
             # Error out if sudo prompts for a password because this should
             # never happen in non-interactive mode.
             if askPass:
-                # \todo Workaround while sudo is broken
-                # http://groups.google.com/group/comp.lang.python/browse_thread/thread/4c2bb14c12d31c29
-                cmdline = [ 'SUDO_ASKPASS="' + askPass + '"'  ] + cmdline + [ '-A' ]
+                # TODO Workaround while sudo is broken
+                # http://groups.google.com/group/comp.lang.python/\
+                # browse_thread/thread/4c2bb14c12d31c29
+                cmdline = [ 'SUDO_ASKPASS="' + askPass + '"'  ] \
+                    + cmdline + [ '-A' ]
             else:
                 cmdline += [ '-n' ]
         cmdline += commandLine
     else:
         cmdline = commandLine
     if log:
-        log.logfile.write('<command><![CDATA[' + ' '.join(cmdline) + ']]></command>\n')
+        log.logfile.write('<command><![CDATA[' + ' '.join(cmdline) \
+                              + ']]></command>\n')
     sys.stdout.write(' '.join(cmdline) + '\n')
     if not doNotExecute:
         if log:
@@ -3921,7 +3923,8 @@ def sshTunnels(hostname, ports = []):
     '''Create ssh tunnels from localhost to a remote host when they don't
     already exist.'''
     if len(ports) > 0:
-        cmd = subprocess.Popen(' '.join(['ps', 'xwww']),
+        cmdline = ' '.join(['ps', 'xwww'])
+        cmd = subprocess.Popen(cmdline,
                                shell=True,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
@@ -4617,7 +4620,8 @@ class ListPdbHandler(PdbHandler):
         if os.path.exists(context.srcDir(p.name)):
             prev = os.getcwd()
             os.chdir(context.srcDir(p.name))
-            cmd = subprocess.Popen(' '.join(['git','rev-parse','HEAD']),
+            cmdline = ' '.join(['git','rev-parse','HEAD'])
+            cmd = subprocess.Popen(cmdline,
                                    shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
@@ -4886,9 +4890,10 @@ def pubUpstream(args):
         pchdir = context.srcDir(os.path.join(context.cwdProject(),
                                              srcdir + '-patch'))
         integrate(srcdir,pchdir)
-        # In the common case, no variables will be added to the workspace make fragment when 
-        # the upstream command is run. Hence sys.stdout will only display
-        # the patched information. This is important to be able to execute:
+        # In the common case, no variables will be added to the workspace
+        # make fragment when the upstream command is run. Hence sys.stdout
+        # will only display the patched information. This is important to be
+        # able to execute:
         #   dws upstream > patch
         cmdline = 'diff -ruNa ' + orgdir + ' ' + srcdir
         p = subprocess.Popen(cmdline, shell=True,
