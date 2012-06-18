@@ -3203,7 +3203,7 @@ def findBootBin(context, name, package = None):
     return executable
 
 
-def findRSync(context, relative=True, admin=False):
+def findRSync(context, relative=True, admin=False, key=None):
     '''Check if rsync is present and install it through the package
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
@@ -3224,13 +3224,18 @@ def findRSync(context, relative=True, admin=False):
     prefix = ""
     if username:
         prefix = prefix + username + '@'
-    cmdline = [ rsync, '-auzbL' ]
+    # -a is equivalent to -rlptgoD, we are only interested in -r (recursive),
+    # -p (permissions), -t (times)
+    cmdline = [ rsync, '-rptuz' ]
     if relative:
-        cmdline = [ rsync, '-auzbLR' ]
+        cmdline = [ rsync, '-rptuzR' ]
     if hostname:
         # We are accessing the remote machine through ssh
         prefix = prefix + hostname + ':'
-        cmdline += [ '--rsh=ssh' ]
+        if key:
+            cmdline += [ '--rsh="ssh -t -i ' + str(key) + '"' ]
+        else:
+            cmdline += [ '--rsh="ssh -t"' ]
     if admin:
         cmdline += [ '--rsync-path "sudo rsync"' ]
 
