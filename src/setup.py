@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2012, Fortylines LLC
+# Copyright (c) 2012, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -23,50 +23,12 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 #   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-include $(shell \
-	d=`pwd` ; \
-	config='dws.mk_not_found' ; \
-	while [ $$d != '/' ] ; do \
-		if [ -f $$d/dws.mk ] ; then \
-			config=$$d/dws.mk ; \
-			break ; \
-		fi ; \
-		d=`dirname $$d` ; \
-	done ; \
-	echo $$config)
+from distutils.core import setup
 
-srcDir		:=	$(srcTop)/drop
-
-include $(srcDir)/src/prefix.mk
-
-docbook2man	:=	docbook-to-man
-
-scripts	:=	dbldpkg dlogfilt dregress dstamp dws dtimeout
-manpages:=	$(addsuffix .1,$(scripts))
-
-%.book: %
-	python $< --help-book > $@ || rm -f $@
-
-dropShareDir	:=	$(srcDir)/src
-
-include $(srcDir)/src/suffix.mk
-
-dws: dws/__init__.py
-	$(SED) -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
-	chmod 755 $@
-
-install:: $(srcDir)/src/prefix.mk \
-		$(srcDir)/src/suffix.mk \
-		$(srcDir)/src/configure.sh \
-		$(srcDir)/src/index.xsd
-	$(installDirs)  $(shareDir)/dws
-	$(installScripts) $(filter %.sh,$^) $(shareDir)/dws
-	$(installFiles) $(filter %.mk %.xsd,$^) $(shareDir)/dws
-
-install::
-	cd $(srcDir)/src && python setup.py --quiet build -b $(CURDIR)/build \
-            install --prefix=$(DESTDIR)$(PREFIX)
-
-all::
-	cd $(srcDir)/src && python setup.py --quiet build -b $(CURDIR)/build
-
+setup(name='drop',
+    description='fortylines workspace management',
+    author='Fortylines, LLC',
+    author_email='info@fortylines.com',
+    url='http://fortylines.com/',
+    packages=[ 'dws' ],
+)
