@@ -48,24 +48,26 @@ clean::
 install:: $(apps)
 
 install:: $(bins)
-	$(if $^,$(installDirs) $(binDir))
-	$(if $^,$(installBins) $^ $(binDir))
+	$(if $^,$(installDirs) $(DESTDIR)$(binDir))
+	$(if $^,$(installBins) $^ $(DESTDIR)$(binDir))
 
 install:: $(scripts)
-	$(if $^,$(installDirs) $(binDir))
-	$(if $^,$(installScripts) $^ $(binDir))
+	$(if $^,$(installDirs) $(DESTDIR)$(binDir))
+	$(if $^,$(installScripts) $^ $(DESTDIR)$(binDir))
 
 install:: $(libs)
-	$(if $^,$(installDirs) $(libDir))
+	$(if $^,$(installDirs) $(DESTDIR)$(libDir))
 	$(if $^,$(installFiles) $^ $(libDir))
 
 install:: $(includes)
-	$(if $^,$(installDirs) $(includeDir))
-	$(if $^, $(installFiles) $^ $(includeDir))
+	$(if $^,$(installDirs) $(DESTDIR)$(includeDir))
+	$(if $^, $(installFiles) $^ $(DESTDIR)$(includeDir))
 
+# Copy all template configuration files that appear in the *srcDir*/etc
+# subdirectory.
 install:: $(etcs)
-	$(if $^,$(installDirs) $(etcDir))
-	$(if $^,$(installFiles) $^ $(etcDir))
+	$(if $^,$(installDirs) $(DESTDIR)$(etcDir))
+	$(if $^,cp -rpf $(srcDir)/etc/* $(DESTDIR)$(etcDir))
 
 # install the stamped result logs and builds the regression log in-place.
 install:: $(logs)

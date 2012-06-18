@@ -700,8 +700,8 @@ class DependencyGenerator(Unserializer):
         from a binary distribution package.
         *excludePats* is a list of projects which should be removed from
         the final topological order.'''
-        Unserializer.__init__(self, packages + repositories,
-                              excludePats,customSteps)
+        self.roots = packages + repositories
+        Unserializer.__init__(self, self.roots, excludePats, customSteps)
         # When True, an exception will stop the recursive make
         # and exit with an error code, otherwise it moves on to
         # the next project.
@@ -1096,6 +1096,17 @@ class MakeGenerator(DependencyGenerator):
                                             flavor.prerequisites(tags))
 
         return (needPrompt, targets)
+
+    def topological(self):
+        '''Filter out the roots from the topological ordering in order
+        for 'make recurse' to behave as expected (i.e. not compiling roots).'''
+        vertices = DependencyGenerator.topological(self)
+        results = []
+        roots = set([ Step.genid(MakeStep, root) for root in self.roots ])
+        for project in vertices:
+            if not project.name in roots:
+                results += [ project ]
+        return results
 
 
 class MakeDepGenerator(MakeGenerator):
@@ -1574,7 +1585,7 @@ class Step:
 
     @staticmethod
     def genid(cls, projectName, targetName = None):
-        name = projectName.replace(os.sep,'_').replace('-','_')
+        name = unicode(projectName.replace(os.sep,'_').replace('-','_'))
         if targetName:
             name = targetName + '_' + name
         if issubclass(cls,ConfigureStep):
@@ -1889,8 +1900,8 @@ class MakeStep(BuildStep):
             # include $(shell dws context) at the top of the Makefile
             # is still a good idea to permit "make" from the command line.
             # Otherwise it just duplicates setting some variables.
-            context = localizeContext(context,self.project,self.target)
-            makefile = context.srcDir(os.path.join(self.project,'Makefile'))
+            context = localizeContext(context, self.project, self.target)
+            makefile = context.srcDir(os.path.join(self.project, 'Makefile'))
             if os.path.isfile(makefile):
                 cmdline = ['make',
                            '-f', context.configFilename,
@@ -1944,6 +1955,7 @@ class SetupStep(TargetStep):
         to add native installer/made package/patch right after run'''
         TargetStep.__init__(self,Step.setup,projectName,target)
         self.files = files
+        self.updated = False
         self.excludes = excludes
 
     def insert(self, setup):
@@ -3161,7 +3173,7 @@ def findBootBin(context, name, package = None):
     the projects dependencies index file.'''
     executable = os.path.join(context.binBuildDir(),name)
     if not os.path.exists(executable):
-        # We do not use validateControls() here because dws in not
+        # We do not use *validateControls* here because dws in not
         # a project in *srcTop* and does not exist on the remote machine.
         # We use findBin() and linkContext() directly also because it looks
         # weird when the script prompts for installing a non-existent dws
@@ -3673,7 +3685,7 @@ def linkPatPath(namePat, absolutePath, subdir, target=None):
     return complete
 
 
-def localizeContext(context,name,target):
+def localizeContext(context, name, target):
     '''Create the environment in *buildTop* necessary to make a project
     from source.'''
     if target:
@@ -3957,7 +3969,7 @@ def sshTunnels(hostname, ports = []):
                                 + hostname + " failed.")
 
 
-def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
+def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6 ]):
     '''Checkout source code files, install packages such that
     the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency
@@ -3968,8 +3980,6 @@ def validateControls(dgen, dbindex=None, priorities = [ 1, 2, 3, 4, 5, 6 ]):
     in *srcTop* and an associated dictionary of Project instances.
     By iterating through the list, it is possible to 'make'
     each prerequisite project in order.'''
-    if not dbindex:
-        dbindex = index
     dbindex.validate()
 
     global errors
@@ -4279,7 +4289,7 @@ def pubBuild(args):
         context.environ['buildstamp'] = '-'.join([socket.gethostname(),
                                             stamp(datetime.datetime.now())])
     context.save()
-    if validateControls(dgen):
+    if validateControls(dgen, index):
         log.close()
         log = None
         # Once we have built the repository, let's report the results
@@ -4649,6 +4659,7 @@ def pubMake(args):
     # \todo That should not be required:
     # context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
     #    os.path.realpath(os.getcwd())))
+    context.targets = []
     global log
     log = LogFile(context.logname(),nolog,logGraph)
     recurse = False
@@ -4672,7 +4683,7 @@ def pubMake(args):
             context.targets += [ opt ]
     if recurse:
         # note that *excludePats* is global.
-        validateControls(MakeGenerator(roots,[],excludePats))
+        validateControls(MakeGenerator(roots,[],excludePats), index)
     else:
         handler = Unserializer(roots)
         if os.path.isfile(context.dbPathname()):
@@ -4821,14 +4832,14 @@ def pubUpdate(args):
     if 'recurse' in args:
         recurse = True
         reps.remove('recurse')
+    index.validate(True)
     reps = cwdProjects(reps)
     if recurse:
         # note that *excludePats* is global.
-        dgen = MakeGenerator(reps,[],excludePats)
-        validateControls(dgen)
+        dgen = MakeGenerator(reps, [], excludePats)
+        validateControls(dgen, index)
     else:
         global errors
-        index.validate(True)
         handler = Unserializer(reps)
         index.parse(handler)
         for name in reps:

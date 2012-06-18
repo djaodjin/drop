@@ -29,6 +29,12 @@
 
 .DEFAULT_GOAL 	:=	all
 
+# names of variables as expected by autoconf-like tools
+SYSCONFDIR		:=  $(etcDir)
+PREFIX			:=  $(installTop)
+LOCALSTATEDIR	:=  $(PREFIX)/var
+DATAROOTDIR		:=	$(PREFIX)/share
+
 # Paths to "normalized" prerequisites
 binBuildDir 	:= 	$(buildTop)/bin
 includeBuildDir :=	$(buildTop)/include

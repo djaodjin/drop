@@ -451,17 +451,17 @@ def buildPackage(project, version, installTop):
     elif dist == 'Fedora':
         tarball = project.name.replace(os.sep,'_') + '-' + version + '.tar.bz2'
         specname = project.name + '.spec'
-        specfile = open(specname,'w')
-        specfile.write('Name: ' + project.name.replace(os.sep,'_') + '\n')
-        specfile.write('Distribution: Fedora\n')
-        specfile.write('Release: 0\n')
-        specfile.write('Version: %s\n' % version)
-        specfile.write('Summary: None\n')
-        specfile.write('License: Unknown\n')
-        specfile.write('Source: http://www.example.com/%s\n' % tarball)
-        specfile.write('\n%description\n' + project.descr + '\n')
-        specfile.write('Packager: ' + str(project.maintainer) + '\n')
-        specfile.write('''
+        with open(specname, 'w') as specfile:
+            specfile.write('Name: ' + project.name.replace(os.sep,'_') + '\n')
+            specfile.write('Distribution: Fedora\n')
+            specfile.write('Release: 0\n')
+            specfile.write('Version: %s\n' % version)
+            specfile.write('Summary: None\n')
+            specfile.write('License: Unknown\n')
+            specfile.write('Source: http://www.example.com/%s\n' % tarball)
+            specfile.write('\n%description\n' + project.descr + '\n')
+            specfile.write('Packager: ' + str(project.maintainer) + '\n')
+            specfile.write('''
 %prep
 %setup -q
 
@@ -475,8 +475,17 @@ make install DESTDIR=%{buildroot}
 
 %files
 %{_sysconfdir}/*
+%{_datarootdir}/*
 ''')
-        specfile.close()
+            if (os.path.exists('/usr/lib/systemd/system')
+                and len(os.listdir('/usr/lib/systemd/system')) > 0):
+                specfile.write('/usr/lib/systemd/system/*\n')
+            postinst = os.path.join('usr', 'share',
+                                    project.name.replace(os.sep,'_'),
+                                    'postinst')
+            if os.path.exists(postinst):
+                specfile.write('\n%%post -p sh /%s\n' % postinst)
+
         rpmlog = dws.shellCommand(['rpmbuild', '-bb', '--clean', specname],
                                   pat='Wrote: (.*)')
         genFiles = []
