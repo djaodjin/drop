@@ -2604,7 +2604,7 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        linkName, suffix = linkBuildName(namePat,'bin',variant)
+        linkName, suffix = linkBuildName(namePat, 'bin', variant)
         if os.path.islink(linkName):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
@@ -2773,7 +2773,7 @@ def findFirstFiles(base,namePat,subdir=''):
     return results
 
 
-def findData(dir,names,searchPath,buildTop,excludes=[],variant=None):
+def findData(dir, names, searchPath, buildTop, excludes=[], variant=None):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by *dir*.'''
     results = []
@@ -2789,7 +2789,7 @@ def findData(dir,names,searchPath,buildTop,excludes=[],variant=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        linkName, suffix = linkBuildName(namePat,dir,variant)
+        linkName, suffix = linkBuildName(namePat, dir, variant)
         if os.path.islink(linkName):
             # If we already have a symbolic link in the dataBuildDir,
             # we will assume it is the one to use in order to cut off
@@ -2810,7 +2810,7 @@ def findData(dir,names,searchPath,buildTop,excludes=[],variant=None):
         # and requires a recursive search for prerequisites. As a result,
         # it might take a lot of time to update unmodified links.
         # We thus first check links in buildDir are still valid.
-        fullNames = findFiles(buildDir,namePat)
+        fullNames = findFiles(buildDir, namePat)
         if len(fullNames) > 0:
             try:
                 s = os.stat(fullNames[0])
@@ -2869,7 +2869,7 @@ def findInclude(names,searchPath,buildTop,excludes=[],variant=None):
             # executed and completed successfuly.
             results.append((namePat, absolutePath))
             continue
-        linkName, suffix = linkBuildName(namePat,'include',variant)
+        linkName, suffix = linkBuildName(namePat, 'include', variant)
         if os.path.islink(linkName):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
@@ -3160,11 +3160,13 @@ def findPrerequisites(deps, excludes=[],variant=None):
                 complete = False
     return installed, complete
 
-def findLibexec(names,searchPath,buildTop,excludes=[],variant=None):
-    return findData('libexec',names,searchPath,buildTop,excludes,variant)
 
-def findShare(names,searchPath,buildTop,excludes=[],variant=None):
-    return findData('share',names,searchPath,buildTop,excludes,variant)
+def findLibexec(names, searchPath, buildTop, excludes=[], variant=None):
+    return findData('libexec', names, searchPath, buildTop, excludes, variant)
+
+
+def findShare(names, searchPath, buildTop, excludes=[], variant=None):
+    return findData('share', names, searchPath, buildTop, excludes, variant)
 
 
 def findBootBin(context, name, package = None):
@@ -3198,7 +3200,7 @@ def findBootBin(context, name, package = None):
         if len(executables) == 0 or not executables[0][1]:
             install([package],dbindex)
         name, absolutePath = executables.pop()
-        linkPatPath(name, absolutePath,'bin')
+        linkPatPath(name, absolutePath, 'bin')
         executable = os.path.join(context.binBuildDir(),name)
     return executable
 
@@ -3603,10 +3605,10 @@ def linkDependencies(files, excludes=[],target=None):
     for dir in installDirs:
         if dir in files:
             for namePat, absolutePath in files[dir]:
-                complete &= linkPatPath(namePat,absolutePath,
-                                        dir,target)
+                complete &= linkPatPath(namePat, absolutePath,
+                                        dir, target)
     if not complete:
-        files, complete = findPrerequisites(files,excludes,target)
+        files, complete = findPrerequisites(files, excludes, target)
         if complete:
             for dir in installDirs:
                 if dir in files:
@@ -3646,6 +3648,8 @@ def linkBuildName(namePat, subdir, target=None):
             name = parts[len(parts) - 1]
     else:
         name = re.search('\((.+)\)',namePat).group(1)
+        if '|' in name:
+            name = name.split('|')[0]
         # XXX +1 ')', +2 '/'
         suffix = namePat[re.search('\((.+)\)',namePat).end(1) + 2:]
     subpath = subdir
@@ -3675,7 +3679,7 @@ def linkPatPath(namePat, absolutePath, subdir, target=None):
     else:
         # \todo if the dynamic lib suffix ends with .so.X we will end-up here.
         # This is wrong since at that time we won't create a lib*name*.so link.
-        linkName, suffix = linkBuildName(namePat,subdir,target)
+        linkName, suffix = linkBuildName(namePat, subdir, target)
         if absolutePath and len(suffix) > 0 and absolutePath.endswith(suffix):
             # Interestingly absolutePath[:-0] returns an empty string.
             linkPath = absolutePath[:-len(suffix)]
@@ -3683,7 +3687,7 @@ def linkPatPath(namePat, absolutePath, subdir, target=None):
     complete = True
     if linkPath:
         if not os.path.isfile(linkName):
-            linkContext(linkPath,linkName)
+            linkContext(linkPath, linkName)
     else:
         if not os.path.isfile(linkName):
             complete = False

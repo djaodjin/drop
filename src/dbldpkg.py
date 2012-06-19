@@ -47,6 +47,7 @@ import cStringIO
 import datetime, time
 from email import utils
 
+SRC_DIR = None
 noInstallDoc = False
 noPathUpdate = False
 
@@ -474,12 +475,30 @@ rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 
 %files
-%{_sysconfdir}/*
-%{_datarootdir}/*
+ %{_prefix}/*
 ''')
-            if (os.path.exists('/usr/lib/systemd/system')
-                and len(os.listdir('/usr/lib/systemd/system')) > 0):
-                specfile.write('/usr/lib/systemd/system/*\n')
+            # TODO see hack above!
+            firstTime = False
+            if (os.path.exists(os.path.join(SRC_DIR, 'etc'))
+                and len(os.listdir(os.path.join(SRC_DIR, 'etc'))) > 0):
+                if not firstTime:
+                    specfile.write('\n%files\n')
+                    firstTime = False
+                specfile.write('%{_sysconfdir}/*\n')
+            if (os.path.exists(os.path.join(SRC_DIR, 'share'))
+                and len(os.listdir(os.path.join(SRC_DIR, 'share'))) > 0):
+                if not firstTime:
+                    specfile.write('\n%files\n')
+                    firstTime = False
+                specfile.write('%{_datarootdir}/*\n')
+            if (os.path.exists(os.path.join(SRC_DIR, 'usr/lib/systemd/system'))
+                and len(os.listdir(os.path.join(SRC_DIR,
+                    'usr/lib/systemd/system'))) > 0):
+                if not firstTime:
+                    specfile.write('\n%files\n')
+                    firstTime = False
+                specfile.write(os.path.join(SRC_DIR,
+                    'usr/lib/systemd/system/*\n'))
             postinst = os.path.join('usr', 'share',
                                     project.name.replace(os.sep,'_'),
                                     'postinst')
@@ -536,7 +555,7 @@ make install DESTDIR=%{buildroot}
             for key, val in envvars.iteritems():
                 if isinstance(val,dws.Metainfo):
                     control.write(key.capitalize() + ': ' + val.value + '\n')
-            control.write('Depends: ' \
+            control.write('Depends: ${shlibs:Depends}, ' \
                               + ', '.join(dws.basenames(
             project.packages[dws.context.host()].prerequisiteNames([dws.context.host()]))) + '\n')        
         descr = ''
@@ -566,15 +585,14 @@ make install DESTDIR=%{buildroot}
            + utils.formatdate(time.mktime(datetime.datetime.now().timetuple()))\
            + '\n\n')
         changelog.close()
-        if None:
-            # \todo getting rid of the warning actually produces a completely
-            # different output. For some reasons /usr/bin, etc. do not make
-            # it into the package...
-            # write debian/compat to fix 'Compatibility level before ...'
-            # messages, see 'man debhelper'.
-            compat = open(os.path.join('debian','compat'),'w')
+        # TODO getting rid of the warning actually produces a completely
+        # different output. For some reasons /usr/bin, etc. do not make
+        # it into the package...
+        # write debian/compat to fix 'Compatibility level before ...'
+        # messages, see 'man debhelper'.
+        # '1' written previously
+        with open(os.path.join('debian','compat'),'w') as compat:
             compat.write('5\n')
-            compat.close()
 
         if noInstallDoc:
             installDocTarget = ''
@@ -583,79 +601,27 @@ make install DESTDIR=%{buildroot}
         if noPathUpdate:
             path = ''
         else:
-            path = 'PATH=' + context.binBuildDir() + ':${PATH} '
+            path = 'PATH=' + dws.context.binBuildDir() + ':${PATH} '
         rules = open(os.path.join('debian','rules'),'w')
         rules.write('''#! /usr/bin/make -f
 
-# Debian's policy is to install package rooted at /usr. Here we are producing
-# packages which are not part of the "official" debian repository so we'd 
-# rather install them rooted at /usr/local.
+DH_VERBOSE := 1
 
-export DH_OPTIONS
-
-.PHONY:    build clean install binary
-
-DEBROOT         :=      $(CURDIR)/debian/tmp
-PREFIX 		:=	$(DEBROOT)/usr
-SYSCONFDIR      :=      $(DEBROOT)/etc
-
-build:
-\t''' + path + '''./configure --prefix=$(PREFIX) --sysconfdir=$(SYSCONFDIR)
-\tmake buildextra=dist
-
-clean:
-\techo "make clean"
-
-install:
-\tdh_testdir
-\tdh_testroot
-\tdh_clean -k
-\tmake install''' + installDocTarget + '''
-\tinstall -d $(PREFIX)/share/doc/''' + project.name + ''' 
-\tdh_installchangelogs
-\tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
-\tif [ -f $(CURDIR)/debian/postinst ] ; then \
-        cp $(CURDIR)/debian/postinst $(CURDIR)/debian/postinst~ ; \
-     fi
-\tif [ -d $(SYSCONFDIR) ] ; then \
-\t\tif [ `cd $(SYSCONFDIR) && find . -type f | wc -l` -gt 0 ] ; then \
-\t\t\techo "#!/bin/sh" > $(CURDIR)/debian/postinst ; \
-\t\t\techo >> $(CURDIR)/debian/postinst ; \
-\t\t\techo "set -e" >> $(CURDIR)/debian/postinst ; \
-\t\t\techo >> $(CURDIR)/debian/postinst ; \
-\t\t\tfor conf in `cd $(SYSCONFDIR) && find . -type f` ; do \
-\t\t\t\techo "install -d `dirname /etc/$$conf`" >> $(CURDIR)/debian/postinst ; \
-\t\t\t\techo "cat > /etc/$$conf <<EOF" >> $(CURDIR)/debian/postinst ; \
-\t\t\t\tsed -e 's,\\$$,\\\\$$,g' $(SYSCONFDIR)/$$conf >> $(CURDIR)/debian/postinst ; \
-\t\t\t\techo >> $(CURDIR)/debian/postinst ; \
-\t\t\t\techo "EOF" >> $(CURDIR)/debian/postinst ; \
-\t\t\t\techo >> $(CURDIR)/debian/postinst ; \
-\t\t\tdone ; \
-\t\tfi ; \
-\t\tif [ -f $(CURDIR)/debian/postinst~ ] ; then \
-\t\t\tcat $(CURDIR)/debian/postinst~ | sed 1,3d >> $(CURDIR)/debian/postinst ; \
-\t\tfi ; \
-\t\trm -rf $(SYSCONFDIR) ; \
-\tfi
-\tdh_compress
-
-binary: install
-\tdh_installdeb
-\tdh_gencontrol
-\tdh_md5sums
-\tdh_builddeb
+%:
+\tdh $@
 
 ''')
-
-#\tinstall -d $(PREFIX)/share/doc/''' + project.name + '''
-#\tinstall -m 644 debian/copyright debian/changelog $(PREFIX)/share/doc/''' + project.name + '''
- 
         rules.close()
-        if os.path.exists('LICENSE'):
-            # The function is executed from within the source tree
-            # so we just need to copy the copyright file if it exists
-            # from the currrent directory.
-            shutil.copy('LICENSE',os.path.join('debian','copyright'))
+        copyrightPath = None
+        for name in [ 'COPYING', 'LICENSE' ]:
+            if os.path.exists(name):
+                # The function is executed from within the source tree
+                # so we just need to copy the copyright file if it exists
+                # from the currrent directory.
+                copyrightPath = name
+                break
+        if copyrightPath:
+            shutil.copy(copyrightPath, os.path.join('debian','copyright'))
         else:
             copyright = open(os.path.join('debian','copyright'),'w')
             copyright.write('Copyright ' + str(datetime.datetime.now().year) \
@@ -776,6 +742,8 @@ if __name__ == "__main__":
     dws.context.locate()
     index = dws.IndexProjects(dws.context,options.spec)
     handler = dws.Unserializer([ '.*' ])
+
+    SRC_DIR = os.path.dirname(options.spec)
 
     index.parse(handler)
     project = handler.firstProject

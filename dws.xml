@@ -21,12 +21,6 @@
       <dep name="xsltproc">
 		<bin>xsltproc</bin>
       </dep>
-      <dep name="docbook-xsl">
-		<!-- We have to link at the docbook-xsl directory level
-			 because the stylesheet expects to find files looking
-			 into into .. -->
-		<share>.*/(docbook-xsl)/fo/docbook.xsl</share>
-      </dep>
       <dep name="fop">
 		<bin>fop</bin>
       </dep>
@@ -34,6 +28,14 @@
       <!-- How to express >=4 when the python XML parser 
 		   throws malformed exceptions? -->
       <alternates>
+		<alternate name="Darwin">
+		  <dep name="docbook-xsl">
+			<!-- We have to link at the docbook-xsl directory level
+				 because the stylesheet expects to find files looking
+				 into into .. -->
+			<share>.*(docbook-xsl)/fo/docbook.xsl</share>
+		  </dep>
+		</alternate>
 		<alternate name="Ubuntu">
 		  <dep name="debhelper">
 			<bin>dh_builddeb</bin>
@@ -44,11 +46,23 @@
 		  <dep name="fakeroot">
 			<bin>fakeroot</bin>
 		  </dep>
+		  <dep name="docbook-xsl">
+			<!-- We have to link at the docbook-xsl directory level
+				 because the stylesheet expects to find files looking
+				 into into .. -->
+			<share>.*(docbook-xsl)/fo/docbook.xsl</share>
+		  </dep>
 		</alternate>
 		<alternate name="Fedora">
 		  <dep name="rpmdevtools">
 			<bin>rpmdev-setuptree</bin> 
 		  </dep>  
+		  <dep name="docbook5-style-xsl">
+			<!-- We have to link at the docbook-xsl directory level
+				 because the stylesheet expects to find files looking
+				 into into .. -->
+			<share>.*(docbook-xsl|xsl-ns-stylesheets)/fo/docbook.xsl</share>
+		  </dep>
 		</alternate>
       </alternates>
     </repository>

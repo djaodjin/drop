@@ -90,22 +90,26 @@ libSearchPath	:=	$(if $(wildcard $(libBuildDir)/*),$(libBuildDir)) $(if $(wildca
 
 # Building dynamic libraries
 # If we do not set the default *dylSuffix*, the rule %$(dylSuffix): in suffix.mk
-# will be triggered by accident when *distHost* is undefined.
-_dylSuffix		:=	.so
-_dylSuffixDarwin	:=	.dylib
-_dylSuffixFedora	:=	.so
-_dylSuffixUbuntu	:=	.so
-dylSuffix		:=	$(_dylSuffix$(distHost))
+# will be triggered by accident.
+ifneq ($(filter Darwin,$(distHost)),)
 
-SHAREDLIBFLAGSDarwin  	:= 	-dynamiclib
-SHAREDLIBFLAGSFedora  	:= 	-shared
-SHAREDLIBFLAGSUbuntu  	:= 	-shared
-SHAREDLIBFLAGS		:=	$(SHAREDLIBFLAGS$(distHost))
+dylSuffix		:=	.dylib
+SHAREDLIBFLAGS  := -dynamiclib
+
+else
+
+dylSuffix		:=	.so.0
+SHAREDLIBFLAGS	= -shared -Wl,-soname,$@
+
+endif
 
 
 # Need -fPIC to build shared libraries
-CFLAGS		?=	-g -Wall -fPIC
-CXXFLAGS	?=	-g -Wall -fPIC
+CFLAGS		?=	-g -Wall
+CXXFLAGS	?=	-g -Wall
+# We force add -fPIC for building shared library.
+CFLAGS		+= -fPIC
+CXXFLAGS	+= -fPIC
 CPPFLAGS	+=	-MMD $(patsubst %,-I%,$(incSearchPath))
 LDFLAGS		+=	$(patsubst %,-L%,$(libSearchPath))
 
@@ -163,14 +167,17 @@ unexpectedZeroExit =	@echo "$(1)" && (($(1) \
 
 vpath %.a 		$(libSearchPath)
 vpath %.so		$(libSearchPath)
-vpath %.hh      	$(incSearchPath)
+vpath %.h       $(incSearchPath) $(srcDir)
+vpath %.hh      $(incSearchPath) $(srcDir)
 vpath %.cc 		$(srcDir)/src
+vpath %.cpp 	$(srcDir)/src
 vpath %.py		$(srcDir)/src
 vpath %.sh		$(srcDir)/src
 vpath %.c 		$(srcDir)/src
 vpath %.m 		$(srcDir)/src
-vpath %.book 		$(srcDir)/doc
-vpath %.mxml 		$(srcDir)/src
+vpath %.book 	$(srcDir)/doc
+vpath %.mxml 	$(srcDir)/src
+vpath %Makefile $(srcDir)
 
 define bldUnitTest
 
@@ -180,26 +187,21 @@ endef
 
 # List of files to be published on the website
 # --------------------------------------------
-htmlSite	:=	$(patsubst $(srcDir)/%.hh,%.html,                 \
+htmlSite	:=	\
+			$(patsubst $(srcDir)/%.h,%.html,              \
+				$(wildcard $(srcDir)/include/*.h))        \
+			$(patsubst $(srcDir)/%.hh,%.html,             \
 				$(wildcard $(srcDir)/include/*.hh))       \
-			$(patsubst $(srcDir)/%.tcc,%.html,                \
+			$(patsubst $(srcDir)/%.tcc,%.html,            \
 				$(wildcard $(srcDir)/include/*.tcc))      \
-			$(patsubst $(srcDir)/%.cc,%.html,                 \
+			$(patsubst $(srcDir)/%.cc,%.html,             \
 				$(wildcard $(srcDir)/src/*.cc             \
-					   $(srcDir)/test/src/*.cc))      \
-			$(patsubst $(srcDir)/%Makefile,%Makefile.html,    \
+					   $(srcDir)/test/src/*.cc))          \
+			$(patsubst $(srcDir)/%Makefile,%Makefile.html,\
 				$(wildcard $(srcDir)/Makefile             \
-					   $(srcDir)/test/src/Makefile))  \
-			$(patsubst $(srcDir)/%.book,%.html,               \
+					   $(srcDir)/test/src/Makefile))      \
+			$(patsubst $(srcDir)/%.book,%.html,           \
 				$(wildcard $(srcDir)/doc/*.book))
-
-# The rules to produce HTML are relative to the project top directory (srcDir)
-# so we need to set the search path accordingly.
-vpath %.hh      $(srcDir)
-vpath %.cc 	$(srcDir)
-vpath %.py	$(srcDir)
-vpath %.book 	$(srcDir)
-vpath %Makefile $(srcDir)
 
 
 # List of files to be installed

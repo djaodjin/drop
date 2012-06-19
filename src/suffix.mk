@@ -34,6 +34,17 @@
 # itself to avoid an infinite dependency loop.
 dropShareDir 	?=		$(shareBuildDir)/dws
 
+# This code is here and not prefix.mk because CXXFLAGS is often set to a default
+# value in prefix.mk and extended in the actual Makefile.
+ifneq ($(filter Darwin,$(distHost)),)
+ifneq ($(filter -std=c++0x,$(CXXFLAGS)),)
+ifneq ($(filter g++,$(CXX)),)
+$(warning warning: g++ does not accept -std=c++0x on Darwin, switching to CXX=clang++)
+CXX			:=  clang++
+endif
+endif
+endif
+
 all::	$(bins) $(apps) $(scripts) $(libs) $(includes) $(etcs)
 
 all::	$(logs)
@@ -41,8 +52,10 @@ all::	$(logs)
 	    	$(wildcard $(logDir)/results-*.log) \
 		$(wildcard $(srcDir)/data/results-*.log))
 
+# Used to be "rm -rf $(objDir)/*" but that would create issues
+# when intermediate files are created in the same directory.
 clean::
-	rm -rf $(objDir)/*
+	rm -f $(bins) $(apps) $(scripts) $(libs) *.o *~
 
 # OSX GUI Applications are compiled but not installed. 
 install:: $(apps)
@@ -57,7 +70,7 @@ install:: $(scripts)
 
 install:: $(libs)
 	$(if $^,$(installDirs) $(DESTDIR)$(libDir))
-	$(if $^,$(installFiles) $^ $(libDir))
+	$(if $^,$(installFiles) $^ $(DESTDIR)$(libDir))
 
 install:: $(includes)
 	$(if $^,$(installDirs) $(DESTDIR)$(includeDir))
@@ -84,10 +97,13 @@ install:: $(resources)
 	$(AR) $(ARFLAGS) $@ $^
 
 %$(dylSuffix):
-	$(LINK.cc) $(SHAREDLIBFLAGS) $^ -o $@
+	$(LINK.cc) $(SHAREDLIBFLAGS) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) -o $@
 
 # %.def appears in dependency (.d) files through an #include of LLVM headers.
 %: %.cc
+	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
+
+%: %.cpp
 	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 %.class: %.java
