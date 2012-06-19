@@ -281,7 +281,7 @@ class Context:
         '''Absolute pathname to the project index file.'''
         if not str(self.environ['indexFile']):
             self.environ['indexFile'].default \
-                = context.localDir(context.value('remoteIndex'))
+                = filterRepExt(context.localDir(context.value('remoteIndex')))
         return self.value('indexFile')
 
     def host(self):
@@ -295,20 +295,7 @@ class Context:
             localname = os.path.join(siteTop,name[pos + 2:])
         elif (str(self.environ['remoteSiteTop'])
               and name.startswith(self.value('remoteSiteTop'))):
-            localname = name
-            remotePathList = name.split(os.sep)
-            for i in range(0,len(remotePathList)):
-                look = re.search(Repository.dirPats + '$', remotePathList[i])
-                if look:
-                    repExt = look.group(1)
-                    if remotePathList[i] == repExt:
-                        localname = os.sep.join(remotePathList[:i] + \
-                                                remotePathList[i+1:])
-                    else:
-                        localname = os.sep.join(remotePathList[:i] + \
-                                       [ remotePathList[i][:-len(repExt)] ] + \
-                                                remotePathList[i+1:])
-                    break
+            localname = filterRepExt(name)
             localname = localname.replace(self.value('remoteSiteTop'),siteTop)
         elif ':' in name:
             localname = os.path.join(siteTop,'resources',os.path.basename(name))
@@ -1796,9 +1783,7 @@ class PipInstallStep(InstallStep):
         InstallStep.__init__(self,projectName,[projectName ])
 
     def _pipexe(self):
-        if context.host() in portDistribs:
-            return 'pip-2.7'
-        return 'pip'
+        return findBootBin(context, '(pip).*')
 
     def run(self, context):
         shellCommand([self._pipexe(), 'install' ] + self.managed, admin=True)
@@ -2510,6 +2495,24 @@ def basenames(pathnames):
         bases += [ os.path.basename(p) ]
     return bases
 
+
+def filterRepExt(name):
+    '''Filters the repository type indication from a pathname.'''
+    localname = name
+    remotePathList = name.split(os.sep)
+    for i in range(0,len(remotePathList)):
+        look = re.search(Repository.dirPats + '$', remotePathList[i])
+        if look:
+            repExt = look.group(1)
+            if remotePathList[i] == repExt:
+                localname = os.sep.join(remotePathList[:i] + \
+                                        remotePathList[i+1:])
+            else:
+                localname = os.sep.join(remotePathList[:i] + \
+                               [ remotePathList[i][:-len(repExt)] ] + \
+                                        remotePathList[i+1:])
+            break
+    return localname
 
 def mark(filename,suffix):
     base, ext = os.path.splitext(filename)
