@@ -1783,7 +1783,8 @@ class PipInstallStep(InstallStep):
         InstallStep.__init__(self,projectName,[projectName ])
 
     def _pipexe(self):
-        return findBootBin(context, '(pip).*')
+        findBootBin(context, '(pip).*')
+        return os.path.join(context.value('buildTop'), 'bin', 'pip')
 
     def run(self, context):
         shellCommand([self._pipexe(), 'install' ] + self.managed, admin=True)
@@ -1793,8 +1794,10 @@ class PipInstallStep(InstallStep):
         info = []
         unmanaged = []
         try:
-            # \todo There are no pip info command ...
-            shellCommand([self._pipexe(), 'info' ] + self.managed)
+            # TODO There are no pip info command, search is the closest we get.
+            # Pip search might match other packages and thus returns zero
+            # inadvertently but it is the closest we get so far.
+            shellCommand([self._pipexe(), 'search' ] + self.managed)
             info = self.managed
         except:
             unmanaged = self.managed
