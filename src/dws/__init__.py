@@ -154,7 +154,7 @@ class Context:
                   'default':''})
         installTop = Pathname('installTop',
                     { 'description':'Root of the tree for installed bin/, include/, lib/, ...',
-                          'base':'siteTop','default':'install'})
+                          'base':'siteTop','default':''})
         # We use installTop (previously siteTop), such that a command like
         # "dws build *remoteIndex* *siteTop*" run from a local build
         # directory creates intermediate and installed files there while
@@ -387,7 +387,7 @@ class Context:
     def patchDir(self,name):
         return os.path.join(self.value('patchTop'),name)
 
-    def fromRemoteIndex(self,remotePath):
+    def fromRemoteIndex(self, remotePath):
         '''We need to set the *remoteIndex* to a realpath when we are dealing
         with a local file else links could end-up generating a different prefix
         than *remoteSiteTop* for *remoteIndex*/*indexName*.'''
@@ -397,26 +397,33 @@ class Context:
         # We compute *base* here through the same algorithm as done
         # in *localDir*. We do not call *localDir* because remoteSiteTop
         # is not yet defined at this point.
-        base = os.path.dirname(remotePath)
+        srcBase = os.path.dirname(remotePath)
+        siteBase = os.path.dirname(srcBase)
         remotePathList = remotePath.split(os.sep)
-        for i in range(0,len(remotePathList)):
+        for i in range(0, len(remotePathList)):
+            if remotePathList[i] == '.':
+                siteBase = os.sep.join(remotePathList[0:i])
+                srcBase = os.path.join(siteBase,remotePathList[i + 1])
+                break
             look = re.search(Repository.dirPats + '$', remotePathList[i])
             if look:
                 repExt = look.group(1)
-                base = os.path.dirname(os.sep.join(remotePathList[0:i + 1]))
+                srcBase = os.path.dirname(os.sep.join(remotePathList[0:i + 1]))
                 if remotePathList[i] == repExt:
-                    base = os.path.dirname(os.sep.join(remotePathList[0:i]))
+                    srcBase = os.path.dirname(os.sep.join(remotePathList[0:i]))
+                siteBase = os.path.dirname(srcBase)
                 break
-        if not ':' in base:
-            base = os.path.realpath(base)
-        self.environ['remoteSrcTop'].default  = base
+        if not ':' in srcBase:
+            base = os.path.realpath(srcBase)
+        if not ':' in siteBase:
+            base = os.path.realpath(siteBase)
+        self.environ['remoteSrcTop'].default  = srcBase
         # Note: We used to set the context[].default field which had for side
         # effect to print the value the first time the variable was used.
         # The problem is that we need to make sure remoteSiteTop is defined
         # before calling *localDir*, otherwise the resulting indexFile value
         # will be different from the place the remoteIndex is fetched to.
-        self.environ['remoteSiteTop'].value \
-            = os.path.dirname(self.environ['remoteSrcTop'].default)
+        self.environ['remoteSiteTop'].value = siteBase
         look = re.match('(\S+@)?(\S+):.*',remotePath)
         if look:
             self.tunnelPoint = look.group(2)
@@ -1285,7 +1292,7 @@ class HostPlatform(Variable):
 class Pathname(Variable):
 
     def __init__(self, name, pairs):
-        Variable.__init__(self,name,pairs)
+        Variable.__init__(self, name, pairs)
         self.base = None
         if 'base' in pairs:
             self.base = pairs['base']
@@ -1312,7 +1319,8 @@ class Pathname(Variable):
             # an absolute pathname.
             if self.base:
                 baseValue = str(context.environ[self.base])
-                if default:
+                if default != None:
+                    # Because '' will evaluates to False
                     showDefault = '*' + self.base + '*/' + default
                 else:
                     showDefault = '*' + self.base + '*/' + leafDir
@@ -1334,7 +1342,8 @@ class Pathname(Variable):
                         baseValue = str(context.environ[self.base])
             else:
                 baseValue = os.getcwd()
-            if default:
+            if default != None:
+                # Because '' will evaluates to False
                 default = os.path.join(baseValue,default)
             else:
                 default = os.path.join(baseValue,leafDir)
@@ -1787,7 +1796,9 @@ class PipInstallStep(InstallStep):
         return os.path.join(context.value('buildTop'), 'bin', 'pip')
 
     def run(self, context):
-        shellCommand([self._pipexe(), 'install' ] + self.managed, admin=True)
+        # When installing through pip, we assume we are running
+        # under virtualenv.
+        shellCommand([self._pipexe(), 'install' ] + self.managed)
         self.updated = True
 
     def info(self):
@@ -4264,7 +4275,7 @@ def pubBuild(args):
         if len(tardirs) > 0:
             prefix = os.path.commonprefix(tardirs)
             tarname = os.path.basename(siteTop) + '-' + stamp() + '.tar.bz2'
-            if os.path.samefile(prefix,siteTop):
+            if os.path.samefile(prefix, siteTop):
                 # optimize common case: *buildTop* and *installTop* are within
                 # *siteTop*. We cd into the parent directory to create the tar
                 # in order to avoid 'Removing leading /' messages. Those do
