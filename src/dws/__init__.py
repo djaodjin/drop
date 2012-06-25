@@ -2385,7 +2385,7 @@ class xmlDbParser(xml.sax.ContentHandler):
             if a == 'name':
                 # \todo have to conserve name if just for fetches.
                 # key = Step.genid(Step,attrs['name'],target)
-                if 'target' in attrs:
+                if 'target' in attrs.keys():
                     target = attrs['target']
                     key = os.path.join(target,attrs['name'])
                 else:
