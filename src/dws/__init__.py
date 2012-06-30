@@ -461,6 +461,10 @@ class Context:
             dirname = os.path.join(os.path.dirname(path),subpath)
             if os.path.isdir(dirname):
                 dirs += [ dirname ]
+        if name == 'lib' and self.host() in portDistribs:
+            # Just because python modules do not get installed
+            # in /opt/local/lib/python2.7/site-packages
+            dirs += [ '/opt/local/Library/Frameworks' ]
         return dirs
 
     def srcDir(self,name):
@@ -1653,7 +1657,7 @@ class AptInstallStep(InstallStep):
         managed = [ projectName ]
         packages = managed
         if target:
-            if target == 'python':
+            if target.startswith('python'):
                 packages = []
                 for m in managed:
                     packages += [ target + '-' + m ]
@@ -1751,10 +1755,12 @@ class MacPortInstallStep(InstallStep):
         managed = [ projectName ]
         packages = managed
         if target:
-            if target == 'python':
+            look = re.match('python(\d(\.\d)?)?', target)
+            if look:
+                prefix = 'py%s-' % look.group(1).replace('.','')
                 packages = []
                 for m in managed:
-                    packages += [ 'py27-' + m ]
+                    packages += [ prefix + m ]
         darwinNames = {
             # translation of package names. It is simpler than
             # creating an <alternates> node even if it look more hacky.
@@ -1830,7 +1836,7 @@ class YumInstallStep(InstallStep):
         managed = [projectName ]
         packages = managed
         if target:
-            if target == 'python':
+            if target.startswith('python'):
                 packages = []
                 for m in managed:
                     packages += [ target + '-' + m ]
@@ -3005,8 +3011,11 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
     results = []
     version = None
     complete = True
-    suffix = '((-.+)|(_.+))?(\\' + libStaticSuffix() \
-        + '|\\' + libDynSuffix() + ')'
+    # We used to look for lib suffixes '-version' and '_version'. Unfortunately
+    # it picked up libldap_r.so when we were looking for libldap.so. Looking
+    # through /usr/lib on Ubuntu does not show any libraries ending with
+    # a '_version' suffix so we will remove it from the regular expression.
+    suffix = '(-.+)?(\\' + libStaticSuffix() + '|\\' + libDynSuffix() + ')'
     droots = searchPath
     for namePat, absolutePath in names:
         if absolutePath != None and os.path.exists(absolutePath):
@@ -3245,16 +3254,19 @@ def findRSync(context, relative=True, admin=False, key=None):
         prefix = prefix + username + '@'
     # -a is equivalent to -rlptgoD, we are only interested in -r (recursive),
     # -p (permissions), -t (times)
-    cmdline = [ rsync, '-rptuz' ]
+    cmdline = [ rsync, '-qrptuz' ]
     if relative:
-        cmdline = [ rsync, '-rptuzR' ]
+        cmdline = [ rsync, '-qrptuzR' ]
     if hostname:
         # We are accessing the remote machine through ssh
         prefix = prefix + hostname + ':'
+        ssh = '--rsh="ssh'
+        if admin:
+            ssh = ssh + ' -t'
         if key:
-            cmdline += [ '--rsh="ssh -t -i ' + str(key) + '"' ]
-        else:
-            cmdline += [ '--rsh="ssh -t"' ]
+            ssh = ssh + ' -i ' + str(key)
+        ssh = ssh + '"'
+        cmdline += [ ssh ]
     if admin:
         cmdline += [ '--rsync-path "sudo rsync"' ]
 
@@ -3415,7 +3427,7 @@ def createManaged(projectName,target):
     else:
         unmanaged = [ projectName ]
     if len(unmanaged) > 0:
-        if target == 'python':
+        if target.startswith('python'):
             installStep = PipInstallStep(projectName,target)
             info, unmanaged = installStep.info()
     if len(unmanaged) > 0:
@@ -3913,12 +3925,15 @@ def shellCommand(commandLine, admin=False, PATH=[], pat=None):
     if not doNotExecute:
         if log:
             log.logfile.write('<output><![CDATA[\n')
+        env = os.environ.copy()
         if len(PATH) > 0:
-            # It is important the export is a single command string.
-            cmdline = [ 'export PATH=' + ':'.join(PATH) + ' ;' ] + cmdline
-        cmd = subprocess.Popen(' '.join(cmdline),shell=True,
+            env['PATH'] = ':'.join(PATH)
+        cmd = subprocess.Popen(' '.join(cmdline),
+                               shell=True,
+                               env=env,
                                stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT)
+                               stderr=subprocess.STDOUT,
+                               close_fds=True)
         line = cmd.stdout.readline()
         while line != '':
             if pat and re.match(pat, line):
@@ -5115,6 +5130,10 @@ def unpack(pkgfilename):
 
 if __name__ == '__main__':
     '''Main Entry Point'''
+
+    # TODO use of this code?
+    # os.setuid(int(os.getenv('SUDO_UID')))
+    # os.setgid(int(os.getenv('SUDO_GID')))
 
     exitCode = 0
     try:

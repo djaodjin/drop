@@ -475,10 +475,10 @@ rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 
 %files
- %{_prefix}/*
+%{_prefix}/*
 ''')
             # TODO see hack above!
-            firstTime = False
+            firstTime = True
             if (os.path.exists(os.path.join(SRC_DIR, 'etc'))
                 and len(os.listdir(os.path.join(SRC_DIR, 'etc'))) > 0):
                 if not firstTime:
@@ -497,8 +497,7 @@ make install DESTDIR=%{buildroot}
                 if not firstTime:
                     specfile.write('\n%files\n')
                     firstTime = False
-                specfile.write(os.path.join(SRC_DIR,
-                    'usr/lib/systemd/system/*\n'))
+                specfile.write('%{_unitdir}/*\n')
             postinst = os.path.join('usr', 'share',
                                     project.name.replace(os.sep,'_'),
                                     'postinst')

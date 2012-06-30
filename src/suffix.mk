@@ -78,7 +78,7 @@ install:: $(includes)
 
 # Copy all template configuration files that appear in the *srcDir*/etc
 # subdirectory.
-install:: $(etcs)
+install-etc: $(etcs)
 	$(if $^,$(installDirs) $(DESTDIR)$(etcDir))
 	$(if $^,cp -rpf $(srcDir)/etc/* $(DESTDIR)$(etcDir))
 
