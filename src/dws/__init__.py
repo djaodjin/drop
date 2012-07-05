@@ -3427,7 +3427,7 @@ def createManaged(projectName,target):
     else:
         unmanaged = [ projectName ]
     if len(unmanaged) > 0:
-        if target.startswith('python'):
+        if target and target.startswith('python'):
             installStep = PipInstallStep(projectName,target)
             info, unmanaged = installStep.info()
     if len(unmanaged) > 0:
