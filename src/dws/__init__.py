@@ -779,6 +779,10 @@ class DependencyGenerator(Unserializer):
                         filenames += [ context.localDir(f) ]
                     installStep = createPackageFile(projectName,filenames)
                     updateS = self.addUpdate(projectName,flavor.update)
+                    # package files won't install without prerequisites already
+                    # on the local system.
+                    installStep.prerequisites += self.addSetup(setup.target,
+                              flavor.prerequisites([context.host()]))
                     if updateS:
                         installStep.prerequisites += [ updateS ]
                 elif project.patch:
@@ -933,6 +937,13 @@ class DependencyGenerator(Unserializer):
         for s in self.vertices:
             remains += [ self.vertices[s] ]
         nextRemains = []
+        if False:
+            writetext('!!!remains:\n')
+            for s in remains:
+                is_vert = ''
+                if s.name in self.vertices:
+                    is_vert = '*'
+                writetext('!!!\t%s %s\n' % (s.name, str(is_vert)))
         while len(remains) > 0:
             for step in remains:
                 ready = True
@@ -962,9 +973,9 @@ class DependencyGenerator(Unserializer):
             remains = nextRemains
             nextRemains = []
         if False:
-            print "!!! => ordered: "
+            writetext("!!! => ordered:")
             for r in ordered:
-                print "!!!\t" + r.name
+                writetext(" " + r.name)
         return ordered
 
 
@@ -1064,6 +1075,7 @@ class MakeGenerator(DependencyGenerator):
                 needPrompt = False
                 installStep, flavor = self.addInstall(name)
                 if flavor:
+                    # XXX This will already have been done in addInstall ...
                     targets = self.addSetup(variant.target,
                                             flavor.prerequisites(tags))
                 if not name in chosen:
@@ -1798,13 +1810,19 @@ class PipInstallStep(InstallStep):
         InstallStep.__init__(self,projectName,[projectName ])
 
     def _pipexe(self):
-        findBootBin(context, '(pip).*')
+        pip_package = None
+        if context.host() in yumDistribs:
+            pip_package = 'python-pip'
+        findBootBin(context, '(pip).*', pip_package)
         return os.path.join(context.value('buildTop'), 'bin', 'pip')
 
     def run(self, context):
-        # When installing through pip, we assume we are running
-        # under virtualenv.
-        shellCommand([self._pipexe(), 'install' ] + self.managed)
+        # In most cases, when installing through pip, we should be running
+        # under virtualenv. This is only true for development machines though.
+        admin=False
+        if not 'VIRTUAL_ENV' in os.environ:
+            admin=True
+        shellCommand([self._pipexe(), 'install' ] + self.managed, admin=admin)
         self.updated = True
 
     def info(self):
@@ -1870,8 +1888,12 @@ class YumInstallStep(InstallStep):
         info = []
         unmanaged = []
         try:
-            shellCommand(['yum', 'info' ] + self.managed)
-            info = self.managed
+            filtered = shellCommand(['yum', 'info' ] + self.managed,
+                                admin=True, pat='Name\s*:\s*(\S+)')
+            if filtered:
+                info = self.managed
+            else:
+                unmanaged = self.managed
         except:
             unmanaged = self.managed
         return info, unmanaged
@@ -3224,7 +3246,10 @@ def findBootBin(context, name, package = None):
                                                  context.searchPath('bin'),
                                                  context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
-            install([package],dbindex)
+            install([package], dbindex)
+            executables, version, complete = findBin([ [ name, None ] ],
+                                                 context.searchPath('bin'),
+                                                 context.value('buildTop'))
         name, absolutePath = executables.pop()
         linkPatPath(name, absolutePath, 'bin')
         executable = os.path.join(context.binBuildDir(),name)
@@ -3412,7 +3437,7 @@ def fetch(context, filenames,
                                     context.value('siteTop') ])
 
 
-def createManaged(projectName,target):
+def createManaged(projectName, target):
     '''Create a step that will install *projectName* through the local
     package manager.'''
     installStep = None
@@ -3480,8 +3505,10 @@ def install(packages, dbindex):
                 managed += [ name ]
 
         if len(managed) > 0:
-            step = createManaged('',managed)
-        step.run(context)
+            step = createManaged(managed[0], target=None)
+            for package in managed[1:]:
+                step.insert(createManaged(package, target=None))
+            step.run(context)
 
     if packageFiles:
         packageFiles.run(context)
