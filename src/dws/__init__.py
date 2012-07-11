@@ -582,12 +582,9 @@ class LogFile:
         if not self.nolog:
             self.logfilename = logfilename
             self.logfile = open(self.logfilename,'w')
-            self.logfile.write('<?xml version="1.0" ?>\n')
-            self.logfile.write('<book>\n')
 
     def close(self):
         if not self.nolog:
-            self.logfile.write('</book>\n')
             self.logfile.close()
 
     def error(self,text):
@@ -599,18 +596,19 @@ class LogFile:
         if not self.nolog:
             self.logfile.write(text)
 
-    def footer(self,status,errcode=0):
+    def footer(self, prefix, elapsed=datetime.timedelta(), errcode=0):
         if not self.nolog:
-            self.logfile.write('<status')
+            self.logfile.write('%s:' % prefix)
             if errcode > 0:
-                self.logfile.write(' error="' + str(errcode) + '"')
-            self.logfile.write('>' + status + '</status>\n')
-            self.logfile.write('</section>\n')
+                self.logfile.write(' error (%d) after %s\n'
+                                   % (errcode, elapsed))
+            else:
+                self.logfile.write(' completed in %s\n' % elapsed)
 
     def header(self, text):
         sys.stdout.write('######## ' + text + '...\n')
         if not self.nolog:
-            self.logfile.write('<section id="' + text + '">\n')
+            self.logfile.write('######## ' + text + '...\n')
 
     def flush(self):
         sys.stdout.flush()
@@ -3946,12 +3944,9 @@ def shellCommand(commandLine, admin=False, PATH=[], pat=None):
     else:
         cmdline = commandLine
     if log:
-        log.logfile.write('<command><![CDATA[' + ' '.join(cmdline) \
-                              + ']]></command>\n')
+        log.logfile.write(' '.join(cmdline) + '\n')
     sys.stdout.write(' '.join(cmdline) + '\n')
     if not doNotExecute:
-        if log:
-            log.logfile.write('<output><![CDATA[\n')
         env = os.environ.copy()
         if len(PATH) > 0:
             env['PATH'] = ':'.join(PATH)
@@ -3968,8 +3963,6 @@ def shellCommand(commandLine, admin=False, PATH=[], pat=None):
             writetext(line)
             line = cmd.stdout.readline()
         cmd.wait()
-        if log:
-            log.logfile.write(']]></output>\n')
         if cmd.returncode != 0:
             raise Error("unable to complete: " + ' '.join(cmdline) \
                             + '\n' + '\n'.join(filteredOutput),
@@ -4102,11 +4095,11 @@ def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6 ]):
                         elapsed = datetime.timedelta(seconds=((td.microseconds \
                            + (td.seconds + td.days * 24 * 3600) * 10**6) \
                                                                   / 10**6)+1)
-                        log.footer(str(elapsed),errcode)
+                        log.footer(v.name, elapsed, errcode)
                         raise e
                     else:
                         log.error(str(e))
-                log.footer(str(elapsed),errcode)
+                log.footer(v.name, elapsed, errcode)
 
     if UpdateStep.nbUpdatedProjects > 0:
         writetext(str(UpdateStep.nbUpdatedProjects) + ' updated project(s).\n')
@@ -4935,11 +4928,11 @@ def pubUpdate(args):
                 try:
                     log.header(update.name)
                     update.run(context)
-                    log.footer("")
+                    log.footer(update.name)
                 except Exception, e:
                     writetext('warning: cannot update repository from ' \
                                   + str(update.rep.url) + '\n')
-                    log.footer("",e.code)
+                    log.footer(update.name, errcode=e.code)
             else:
                 errors += [ name ]
         if len(errors) > 0:
