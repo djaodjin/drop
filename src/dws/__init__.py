@@ -452,15 +452,31 @@ class Context:
         # We want the actual value of *name*Dir and not one derived from binDir
         dirname = context.value(name + 'Dir')
         if variant:
-            subpath = os.path.join(variant,name)
-            dirname = os.path.join(os.path.dirname(dirname),variant,
-                                   os.path.basename(dirname))
+            subpath = os.path.join(name, variant)
+            dirname = os.path.join(os.path.dirname(dirname),
+                                   variant, os.path.basename(dirname))
         if os.path.isdir(dirname):
             dirs += [ dirname ]
         for path in os.environ['PATH'].split(':'):
-            dirname = os.path.join(os.path.dirname(path),subpath)
-            if os.path.isdir(dirname):
-                dirs += [ dirname ]
+            base = os.path.dirname(path)
+            if name == 'bin':
+                # executables are often split between bin/ and sbin/ even
+                # though the sbin/ is often found in the PATH as well.
+                subpath = os.path.join(os.path.basename(path))
+                if variant:
+                    subpath = os.path.join(os.path.basename(path), variant)
+            if name == 'lib':
+                # On mixed 32/64-bit system, libraries also get installed
+                # in lib64/. This is also true for 64-bit native python modules.
+                subpath64 = 'lib64'
+                if variant:
+                    subpath64 = os.path.join('lib64', variant)
+                dirs = merge_unique(dirs,
+                    [ os.path.join(base, x) for x in findFirstFiles(base,
+                                subpath64 + '[^/]*') ])
+            dirs = merge_unique(dirs,
+                [ os.path.join(base, x) for x in findFirstFiles(base,
+                                subpath + '[^/]*') ])
         if name == 'lib' and self.host() in portDistribs:
             # Just because python modules do not get installed
             # in /opt/local/lib/python2.7/site-packages
@@ -1887,7 +1903,7 @@ class YumInstallStep(InstallStep):
         unmanaged = []
         try:
             filtered = shellCommand(['yum', 'info' ] + self.managed,
-                                admin=True, pat='Name\s*:\s*(\S+)')
+                pat='Name\s*:\s*(\S+)')
             if filtered:
                 info = self.managed
             else:
@@ -2759,7 +2775,7 @@ def findCache(context,names):
     return results
 
 
-def findFiles(base,namePat):
+def findFiles(base, namePat, recurse=True):
     '''Search the directory tree rooted at *base* for files matching *namePat*
        and returns a list of absolute pathnames to those files.'''
     result = []
@@ -2770,15 +2786,15 @@ def findFiles(base,namePat):
                 look = re.match('.*' + namePat + '$',path)
                 if look:
                     result += [ path ]
-                elif os.path.isdir(path):
+                elif recurse and os.path.isdir(path):
                     result += findFiles(path,namePat)
     except OSError:
         # In case permission to execute os.listdir is denied.
-        None
-    return result
+        pass
+    return sorted(result, reverse=True)
 
 
-def findFirstFiles(base,namePat,subdir=''):
+def findFirstFiles(base, namePat, subdir=''):
     '''Search the directory tree rooted at *base* for files matching pattern
     *namePat* and returns a list of relative pathnames to those files
     from *base*.
@@ -2812,8 +2828,8 @@ def findFirstFiles(base,namePat,subdir=''):
                 results += findFirstFiles(base,namePat,subdir)
     except OSError, e:
         # Permission to a subdirectory might be denied.
-        None
-    return results
+        pass
+    return sorted(results, reverse=True)
 
 
 def findData(dir, names, searchPath, buildTop, excludes=[], variant=None):
@@ -3079,8 +3095,8 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
         for libSysDir in droots:
             libs = []
             base, ext = os.path.splitext(namePat)
-            if len(ext) > 0 and not (ext.startswith('.so')
-                                     or ext.startswith('.a')):
+            if '.*' in namePat:
+                # We were already given a regular expression.
                 # If we are not dealing with a honest to god library, let's
                 # just use the pattern we were given. This is because, python,
                 # ruby, etc. also put their stuff in libDir.
@@ -3787,6 +3803,15 @@ def localizeContext(context, name, target):
     localContext.save()
 
     return localContext
+
+def merge_unique(left, right):
+    '''Merge a list of additions into a previously existing list.
+    Or: adds elements in *right* to the end of *left* if they were not
+    already present in *left*.'''
+    for r in right:
+        if not r in left:
+            left += [ r ]
+    return left
 
 
 def mergeBuildConf(dbPrev,dbUpd,parser):
