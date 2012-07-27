@@ -83,7 +83,7 @@ srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(CURDIR)))
 objDir		:=	$(subst $(srcTop),$(buildTop),$(srcDir))
 logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 
-resourcesDir	?=	$(siteTop)/resources
+resourcesDir	?=	$(siteTop)/htdocs/resources
 
 incSearchPath	:=	$(srcDir)/include $(includeBuildDir) $(includeDir)
 libSearchPath	:=	$(if $(wildcard $(libBuildDir)/*),$(libBuildDir)) $(if $(wildcard $(libBuildDir)/*),$(libDir))

@@ -244,13 +244,13 @@ doc: $(shares)
 # such that those are available for generating a distribution package
 # as well as acessible through the website.
 install-doc:: $(shares)
-	$(if $^,$(installDirs) $(shareDir)/doc/$(subst -%,,$(project)))
-	$(if $^,$(installFiles) $^ $(shareDir)/doc/$(subst -%,,$(project)))
+	$(if $^,$(installDirs) $(DESTDIR)$(shareDir)/doc/$(subst -%,,$(project)))
+	$(if $^,$(installFiles) $^ $(DESTDIR)$(shareDir)/doc/$(subst -%,,$(project)))
 	$(if $^,$(installFiles) $^ $(resourcesDir))
 
 install-doc:: $(manpages)
-	$(if $^,$(installDirs) $(shareDir)/man/man1)
-	$(if $^,$(installFiles) $(filter %.1,$^) $(shareDir)/man/man1)
+	$(if $^,$(installDirs) $(DESTDIR)$(shareDir)/man/man1)
+	$(if $^,$(installFiles) $(filter %.1,$^) $(DESTDIR)$(shareDir)/man/man1)
 
 # For debugging issues running fop the following command used to work
 #   fop --execdebug -fo $< -pdf $@
