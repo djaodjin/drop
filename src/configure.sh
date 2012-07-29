@@ -18,6 +18,10 @@ while [ $# -gt 0 ] ; do
 	sysconfdir=${1#--sysconfdir=}
 	shift
 	;;
+	--libdir=*)
+	libDir=${1#--libdir=}
+	shift
+	;;
 	*)
 	    echo "warning: $1 is an unknown option."
 	    shift
@@ -26,11 +30,14 @@ done
 
 buildDir=`pwd`
 buildTop=`dirname $buildDir`
-etcDir=${sysconfdir}
 srcDir=`echo $0 | sed -e 's,\(.*\)/.*$,\\1,'`
 srcDir=`cd $srcDir ; pwd`
 srcTop=`dirname $srcDir`
 binBuildDir=${buildDir}/bin
+
+if [ -z "$libDir" ] ; then
+	libDir=${prefix}/lib
+fi
 
 echo buildTop=${buildTop} > ${projmk}
 echo srcTop=${srcTop} >> ${projmk}
@@ -38,9 +45,9 @@ echo siteTop=${srcDir} >> ${projmk}
 echo binBuildDir=${binBuildDir} >> ${projmk}
 echo libBuildDir=${buildDir}/lib >> ${projmk}
 echo binDir=${prefix}/bin >> ${projmk}
-echo etcDir=${etcDir} >> ${projmk}
+echo etcDir=${sysconfdir} >> ${projmk}
 echo includeDir=${prefix}/include >> ${projmk}
-echo libDir=${prefix}/lib >> ${projmk}
+echo libDir=${libDir} >> ${projmk}
 echo shareDir=${prefix}/share >> ${projmk}
 
 # Copy dws files into binDir and ${buildTop}/share/dws because that's where they

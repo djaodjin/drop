@@ -433,7 +433,15 @@ class PackageMaker:
         f.write(format % (numFiles, installedSize, zippedSize))
 
 
-# Shortcut function interface
+def recursive_listdir(dirname):
+    results = []
+    for filename in os.listdir(dirname):
+        if os.path.isdir(os.path.join(dirname, filename)):
+            results += recursive_listdir(os.path.join(dirname, filename))
+        else:
+            results += [ os.path.join(dirname, filename) ]
+        return results
+
 
 def buildPackage(project, version, installTop):
     '''Writes out the necessary files such as specification, control, etc.
@@ -474,37 +482,42 @@ make
 rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 
-%files
-%{_prefix}/*
 ''')
-            # TODO see hack above!
-            firstTime = True
-            if (os.path.exists(os.path.join(SRC_DIR, 'etc'))
-                and len(os.listdir(os.path.join(SRC_DIR, 'etc'))) > 0):
-                if not firstTime:
-                    specfile.write('\n%files\n')
-                    firstTime = False
+            sysconfdir = False
+            datarootdir = False
+            unitdir = False
+            pythondir = True
+            rpm_root = '/home/' + os.environ['LOGNAME'] + '/rpmbuild/BUILDROOT/' + tarball[:-8] + '-0.x86_64'
+            if False:
+                for filename in recursive_listdir(rpm_root):
+                    print "!!! " + filename
+                    filename = filename[len(rpm_root):]
+                    if filename.startswith('etc'):
+                        sysconfdir = True
+                    elif filename.startswith('share'):
+                        datarootdir = True
+                    elif filename.startswith('usr/lib/systemd/system'):
+                        unitdir = True
+                    elif filename.startswith('lib64/python2.7/site-packages'):
+                        pythondir = True
+
+            specfile.write('%files\n')
+            specfile.write('%{_prefix}/*\n')
+            if sysconfdir:
                 specfile.write('%{_sysconfdir}/*\n')
-            if (os.path.exists(os.path.join(SRC_DIR, 'share'))
-                and len(os.listdir(os.path.join(SRC_DIR, 'share'))) > 0):
-                if not firstTime:
-                    specfile.write('\n%files\n')
-                    firstTime = False
+            if datarootdir:
                 specfile.write('%{_datarootdir}/*\n')
-            if (os.path.exists(os.path.join(SRC_DIR, 'usr/lib/systemd/system'))
-                and len(os.listdir(os.path.join(SRC_DIR,
-                    'usr/lib/systemd/system'))) > 0):
-                if not firstTime:
-                    specfile.write('\n%files\n')
-                    firstTime = False
+            if unitdir:
                 specfile.write('%{_unitdir}/*\n')
+            if pythondir:
+                specfile.write('/lib64/python2.7/site-packages/*\n')
             postinst = os.path.join('usr', 'share',
                                     project.name.replace(os.sep,'_'),
                                     'postinst')
             if os.path.exists(postinst):
                 specfile.write('\n%%post -p sh /%s\n' % postinst)
-
-        rpmlog = dws.shellCommand(['rpmbuild', '-bb', '--clean', specname],
+        # '--clean'
+        rpmlog = dws.shellCommand(['rpmbuild', '-bb', specname],
                                   pat='Wrote: (.*)')
         genFiles = []
         for line in rpmlog:

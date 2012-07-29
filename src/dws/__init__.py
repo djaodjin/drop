@@ -1295,6 +1295,7 @@ class HostPlatform(Variable):
             if self.value:
                 self.value = self.value.capitalize()
             if self.value in aptDistribs:
+                # XXX /etc/debian_version
                 if os.path.isfile('/etc/lsb-release'):
                     release = open('/etc/lsb-release')
                     line = release.readline()
@@ -1687,7 +1688,7 @@ class AptInstallStep(InstallStep):
                 packages = []
                 for m in managed:
                     packages += [ target + '-' + m ]
-        InstallStep.__init__(self,projectName,packages)
+        InstallStep.__init__(self, projectName, packages)
 
     def run(self, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
@@ -1857,7 +1858,10 @@ class RpmInstallStep(InstallStep):
     ''' Install a prerequisite to a project through rpm (Fedora).'''
 
     def run(self, context):
-        shellCommand(['rpm', '-i', ' '.join(self.managed)], admin=True)
+        # --nodeps because rpm looks stupid and can't figure out that
+        # the vcd package provides the libvcd.so required by the executable.
+        shellCommand(['rpm', '-i', ' '.join(self.managed), '--nodeps'],
+                     admin=True)
         self.updated = True
 
 
@@ -1885,7 +1889,7 @@ class YumInstallStep(InstallStep):
                 packages += [ p + 'el' ]
             else:
                 packages += [ p ]
-        InstallStep.__init__(self,projectName,packages)
+        InstallStep.__init__(self, projectName, packages)
 
     def run(self, context):
         filtered = shellCommand(['yum', '-y', 'install' ] + self.managed,
@@ -2135,7 +2139,7 @@ class GitRepository(Repository):
     def gitexe(self):
         if not os.path.lexists(\
             os.path.join(context.value('buildTop'),'bin','git')):
-            setup = SetupStep('git-core', files = { 'bin': [('git', None)],
+            setup = SetupStep('git-all', files = { 'bin': [('git', None)],
                                                 'libexec':[('git-core',None)] })
             setup.run(context)
         return 'git'
@@ -3299,7 +3303,7 @@ def findRSync(context, relative=True, admin=False, key=None):
     if hostname:
         # We are accessing the remote machine through ssh
         prefix = prefix + hostname + ':'
-        ssh = '--rsh="ssh'
+        ssh = '--rsh="ssh -q'
         if admin:
             ssh = ssh + ' -t'
         if key:
