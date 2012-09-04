@@ -103,11 +103,14 @@ SHAREDLIBFLAGS	= -shared -Wl,-soname,$@
 
 endif
 
-
-# Need -fPIC to build shared libraries
-CFLAGS		?=	-g -Wall
-CXXFLAGS	?=	-g -Wall
-# We force add -fPIC for building shared library.
+# NOTE: We used to add -g by default into CFLAGS and CXXFLAGS in order
+# to make debugging a lot more convienient. Fedora packager (rpm) will
+# report a "Requires:" on the debug symbols (which by default get packaged
+# in a different .rpm file). As a result rpm will refuse to install our
+# packaged project by itself.
+CFLAGS		?= -Wall
+CXXFLAGS	?= -Wall
+# We need -fPIC to build shared libraries so we force it.
 CFLAGS		+= -fPIC
 CXXFLAGS	+= -fPIC
 CPPFLAGS	+=	-MMD $(patsubst %,-I%,$(incSearchPath))

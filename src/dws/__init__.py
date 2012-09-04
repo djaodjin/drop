@@ -1784,7 +1784,10 @@ class MacPortInstallStep(InstallStep):
         if target:
             look = re.match('python(\d(\.\d)?)?', target)
             if look:
-                prefix = 'py%s-' % look.group(1).replace('.','')
+                if look.group(1):
+                    prefix = 'py%s-' % look.group(1).replace('.','')
+                else:
+                    prefix = 'py27-'
                 packages = []
                 for m in managed:
                     packages += [ prefix + m ]

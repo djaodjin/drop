@@ -465,9 +465,10 @@ def buildPackage(project, version, installTop):
             specfile.write('Distribution: Fedora\n')
             specfile.write('Release: 0\n')
             specfile.write('Version: %s\n' % version)
-            specfile.write('Summary: None\n')
+            specfile.write('Summary: %s\n' % str(project.title))
             specfile.write('License: Unknown\n')
-            specfile.write('Source: http://www.example.com/%s\n' % tarball)
+            specfile.write('Source: http://fortylines.com/resources/srcs/%s\n'
+                           % tarball)
             specfile.write('\n%description\n' + project.descr + '\n')
             specfile.write('Packager: ' + str(project.maintainer) + '\n')
             specfile.write('''
