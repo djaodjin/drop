@@ -256,6 +256,16 @@ class Context:
         '''Absolute path to access a repository on the remote machine.'''
         return os.path.join(self.value('remoteSrcTop'),name)
 
+    def remoteHost(self):
+        '''Returns the host pointed by *remoteSiteTop*'''
+        uri = urlparse.urlparse(context.value('remoteSiteTop'))
+        hostname = uri.netloc
+        if not uri.netloc:
+            # If there is no protocol specified, the hostname
+            # will be in uri.scheme (That seems like a bug in urlparse).
+            hostname = uri.scheme
+        return hostname
+
     def cwdProject(self):
         '''Returns a project name derived out of the current directory.'''
         if not self.buildTopRelativeCwd:
@@ -1582,18 +1592,13 @@ class Maintainer:
 class Step:
     '''Step in the build DAG.'''
 
-    configure = 1
-    install   = 2
-    update    = 3
-    setup     = 4
-    make      = 5
-
-    prefixes = [ '',
-                 'configure',
-                 'install',
-                 'update',
-                 'setup',
-                 '' ]
+    configure        = 1
+    install_native   = 2
+    install_lang     = 3
+    install          = 4
+    update           = 5
+    setup            = 6
+    make             = 7
 
     def __init__(self, priority, projectName):
         self.project = projectName
@@ -1656,8 +1661,9 @@ class InstallStep(Step):
     '''The *install* step in the development cycle installs prerequisites
     to a project.'''
 
-    def __init__(self, projectName, managed = [], target = None):
-        Step.__init__(self,Step.install,projectName)
+    def __init__(self, projectName, managed = [], target = None,
+                 priority=Step.install):
+        Step.__init__(self, priority, projectName)
         if len(managed) == 0:
             self.managed = [ projectName ] + managed
         else:
@@ -1688,7 +1694,8 @@ class AptInstallStep(InstallStep):
                 packages = []
                 for m in managed:
                     packages += [ target + '-' + m ]
-        InstallStep.__init__(self, projectName, packages)
+        InstallStep.__init__(self, projectName, packages,
+                             priority=Step.install_native)
 
     def run(self, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
@@ -1733,6 +1740,10 @@ class AptInstallStep(InstallStep):
 class DarwinInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pkg (Darwin, OSX).'''
 
+    def __init__(self, projectName, filenames, target = None):
+        InstallStep.__init__(self, projectName, managed=filenames,
+                             priority=Step.install_native)
+
     def run(self, context):
         '''Mount *image*, a pathnme to a .dmg file and use the Apple installer
         to install the *pkg*, a .pkg package onto the platform through the Apple
@@ -1770,6 +1781,10 @@ class DarwinInstallStep(InstallStep):
 class DpkgInstallStep(InstallStep):
     ''' Install a prerequisite to a project through dpkg (Debian, Ubuntu).'''
 
+    def __init__(self, projectName, filenames, target = None):
+        InstallStep.__init__(self, projectName, managed=filenames,
+                             priority=Step.install_native)
+
     def run(self, context):
         shellCommand(['dpkg', '-i', ' '.join(self.managed)], admin=True)
         self.updated = True
@@ -1802,7 +1817,8 @@ class MacPortInstallStep(InstallStep):
                 packages += [ darwinNames[p] ]
             else:
                 packages += [ p ]
-        InstallStep.__init__(self,projectName,packages)
+        InstallStep.__init__(self,projectName,packages,
+                             priority=Step.install_native)
 
 
     def run(self, context):
@@ -1825,7 +1841,8 @@ class PipInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pip (Python eggs).'''
 
     def __init__(self, projectName, target = None):
-        InstallStep.__init__(self,projectName,[projectName ])
+        InstallStep.__init__(self,projectName,[projectName ],
+                             priority=Step.install_lang)
 
     def _pipexe(self):
         pip_package = None
@@ -1860,10 +1877,14 @@ class PipInstallStep(InstallStep):
 class RpmInstallStep(InstallStep):
     ''' Install a prerequisite to a project through rpm (Fedora).'''
 
+    def __init__(self, projectName, filenames, target = None):
+        InstallStep.__init__(self, projectName, managed=filenames,
+                             priority=Step.install_native)
+
     def run(self, context):
         # --nodeps because rpm looks stupid and can't figure out that
         # the vcd package provides the libvcd.so required by the executable.
-        shellCommand(['rpm', '-i', ' '.join(self.managed), '--nodeps'],
+        shellCommand(['rpm', '-i', '--force', ' '.join(self.managed), '--nodeps'],
                      admin=True)
         self.updated = True
 
@@ -1892,9 +1913,11 @@ class YumInstallStep(InstallStep):
                 packages += [ p + 'el' ]
             else:
                 packages += [ p ]
-        InstallStep.__init__(self, projectName, packages)
+        InstallStep.__init__(self, projectName, packages,
+                             priority=Step.install_native)
 
     def run(self, context):
+        shellCommand(['yum', '-y', 'update'], admin=True)
         filtered = shellCommand(['yum', '-y', 'install' ] + self.managed,
                                 admin=True, pat='No package (.*) available')
         if len(filtered) > 0:
@@ -3277,22 +3300,14 @@ def findBootBin(context, name, package = None):
     return executable
 
 
-def findRSync(context, relative=True, admin=False, key=None):
+def findRSync(context, host, relative=True, admin=False,
+              username=None, key=None):
     '''Check if rsync is present and install it through the package
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
     through a project.'''
     rsync = findBootBin(context,'rsync')
-    remotePath = context.value('remoteSiteTop')
 
-    # Create the rsync command
-    uri = urlparse.urlparse(remotePath)
-    hostname = uri.netloc
-    if not uri.netloc:
-        # If there is no protocol specified, the hostname
-        # will be in uri.scheme (That seems like a bug in urlparse).
-        hostname = uri.scheme
-    username = None # \todo find out how urlparse is parsing ssh uris.
     # We are accessing the remote machine through a mounted
     # drive or through ssh.
     prefix = ""
@@ -3303,9 +3318,9 @@ def findRSync(context, relative=True, admin=False, key=None):
     cmdline = [ rsync, '-qrptuz' ]
     if relative:
         cmdline = [ rsync, '-qrptuzR' ]
-    if hostname:
+    if host:
         # We are accessing the remote machine through ssh
-        prefix = prefix + hostname + ':'
+        prefix = prefix + host + ':'
         ssh = '--rsh="ssh -q'
         if admin:
             ssh = ssh + ' -t'
@@ -3313,9 +3328,8 @@ def findRSync(context, relative=True, admin=False, key=None):
             ssh = ssh + ' -i ' + str(key)
         ssh = ssh + '"'
         cmdline += [ ssh ]
-    if admin:
+    if admin and username != 'root':
         cmdline += [ '--rsync-path "sudo rsync"' ]
-
     return cmdline, prefix
 
 
@@ -3453,7 +3467,8 @@ def fetch(context, filenames,
                 if admin:
                     shellCommand(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-                cmdline, prefix = findRSync(context,relative,admin)
+                cmdline, prefix = findRSync(context, context.remoteHost(),
+                                            relative, admin)
                 shellCommand(cmdline + ["'" + prefix + ' '.join(sources) + "'",
                                     context.value('siteTop') ])
 
@@ -3876,7 +3891,7 @@ def upload(filenames, cacheDir=None):
     files from the remote server.
     '''
     remoteCachePath = context.remoteDir(context.logPath(''))
-    cmdline, prefix = findRSync(context,not cacheDir)
+    cmdline, prefix = findRSync(context, context.remoteHost(), not cacheDir)
     upCmdline = cmdline + [ ' '.join(filenames), remoteCachePath ]
     shellCommand(upCmdline)
 
@@ -4078,6 +4093,7 @@ def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6 ]):
     global errors
     # Add deep dependencies
     vertices = dbindex.closure(dgen)
+    writetext("!!! vertices=" + str(vertices))
     if log and log.graph:
         gphFilename = os.path.splitext(log.logfilename)[0] + '.dot'
         gphFile = open(gphFilename,'w')
@@ -4103,6 +4119,7 @@ def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         # from *srcTop* and leave other projects in whatever state they are in.
         # This is different from "build" which should update all projects.
         if first.priority in priorities:
+            writetext("!!! glob=" + str(glob))
             for v in glob:
                 errcode = 0
                 elapsed = 0
@@ -4465,7 +4482,7 @@ def pubCollect(args):
                                                    context.value('srcTop')))
             srcPackages = findFiles(buildr,'.tar.bz2')
             if len(srcPackages) > 0:
-                cmdline, prefix = findRSync(context)
+                cmdline, prefix = findRSync(context, context.remoteHost())
                 copySrcPackages = cmdline + [ ' '.join(srcPackages),
                                               srcPackageDir]
             if context.host() in extensions:
@@ -4473,7 +4490,7 @@ def pubCollect(args):
                 pkgIndices += findFiles(buildr,ext[0])
                 binPackages = findFiles(buildr,ext[1])
                 if len(binPackages) > 0:
-                    cmdline, prefix = findRSync(context)
+                    cmdline, prefix = findRSync(context, context.remoteHost())
                     copyBinPackages = cmdline + [ ' '.join(binPackages),
                                                   packageDir ]
 
