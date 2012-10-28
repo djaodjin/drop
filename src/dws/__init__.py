@@ -290,8 +290,16 @@ class Context:
     def dbPathname(self):
         '''Absolute pathname to the project index file.'''
         if not str(self.environ['indexFile']):
-            self.environ['indexFile'].default \
-                = filterRepExt(context.localDir(context.value('remoteIndex')))
+            filtered = filterRepExt(context.value('remoteIndex'))
+            if filtered != context.value('remoteIndex'):
+                prefix = context.value('remoteSrcTop')
+                if not prefix.endswith(os.sep):
+                    prefix = prefix + os.sep
+                self.environ['indexFile'].default = \
+                    context.srcDir(filtered.replace(prefix, ''))
+            else:
+                self.environ['indexFile'].default = \
+                    context.localDir(context.value('remoteIndex'))
         return self.value('indexFile')
 
     def host(self):
@@ -306,7 +314,10 @@ class Context:
         elif (str(self.environ['remoteSiteTop'])
               and name.startswith(self.value('remoteSiteTop'))):
             localname = filterRepExt(name)
-            localname = localname.replace(self.value('remoteSiteTop'),siteTop)
+            remoteSiteTop = self.value('remoteSiteTop')
+            if remoteSiteTop.endswith(':'):
+                siteTop = siteTop + '/'
+            localname = localname.replace(remoteSiteTop, siteTop)
         elif ':' in name:
             localname = os.path.join(siteTop,'resources',os.path.basename(name))
         elif not name.startswith(os.sep):
@@ -404,12 +415,21 @@ class Context:
         if re.search(Repository.dirPats + '$', remotePath):
             remotePath = os.path.join(remotePath, self.indexName)
         self.environ['remoteIndex'].default = remotePath
-        # We compute *base* here through the same algorithm as done
-        # in *localDir*. We do not call *localDir* because remoteSiteTop
-        # is not yet defined at this point.
-        srcBase = os.path.dirname(remotePath)
-        siteBase = os.path.dirname(srcBase)
-        remotePathList = remotePath.split(os.sep)
+        look = re.match('(\S+@)?(\S+):(.*)',remotePath)
+        if look:
+            self.tunnelPoint = look.group(2)
+            srcBase = look.group(3)
+            siteBase = srcBase
+            remotePathList = look.group(3).split(os.sep)
+            host_prefix = look.group(1) + self.tunnelPoint + ':'
+        else:
+            # We compute *base* here through the same algorithm as done
+            # in *localDir*. We do not call *localDir* because remoteSiteTop
+            # is not yet defined at this point.
+            remotePathList = remotePath.split(os.sep)
+            srcBase = os.path.dirname(remotePath)
+            siteBase = os.path.dirname(srcBase)
+            host_prefix = ''
         for i in range(0, len(remotePathList)):
             if remotePathList[i] == '.':
                 siteBase = os.sep.join(remotePathList[0:i])
@@ -418,25 +438,28 @@ class Context:
             look = re.search(Repository.dirPats + '$', remotePathList[i])
             if look:
                 repExt = look.group(1)
-                srcBase = os.path.dirname(os.sep.join(remotePathList[0:i + 1]))
                 if remotePathList[i] == repExt:
-                    srcBase = os.path.dirname(os.sep.join(remotePathList[0:i]))
-                siteBase = os.path.dirname(srcBase)
+                    i = i - 1
+                if i > 2:
+                    srcBase = os.sep.join(remotePathList[0:i])
+                    siteBase = os.sep.join(remotePathList[0:i-1])
+                elif i > 1:
+                    srcBase = remotePathList[0]
+                    siteBase = ''
+                else:
+                    srcBase = ''
+                    siteBase = ''
                 break
-        if not ':' in srcBase:
-            base = os.path.realpath(srcBase)
-        if not ':' in siteBase:
-            base = os.path.realpath(siteBase)
-        self.environ['remoteSrcTop'].default  = srcBase
+        if not host_prefix:
+            srcBase = os.path.realpath(srcBase)
+            siteBase = os.path.realpath(siteBase)
+        self.environ['remoteSrcTop'].default  = host_prefix + srcBase
         # Note: We used to set the context[].default field which had for side
         # effect to print the value the first time the variable was used.
         # The problem is that we need to make sure remoteSiteTop is defined
         # before calling *localDir*, otherwise the resulting indexFile value
         # will be different from the place the remoteIndex is fetched to.
-        self.environ['remoteSiteTop'].value = siteBase
-        look = re.match('(\S+@)?(\S+):.*',remotePath)
-        if look:
-            self.tunnelPoint = look.group(2)
+        self.environ['remoteSiteTop'].value = host_prefix + siteBase
 
     def save(self):
         '''Write the config back to a file.'''
@@ -469,12 +492,6 @@ class Context:
             dirs += [ dirname ]
         for path in os.environ['PATH'].split(':'):
             base = os.path.dirname(path)
-            if name == 'bin':
-                # executables are often split between bin/ and sbin/ even
-                # though the sbin/ is often found in the PATH as well.
-                subpath = os.path.join(os.path.basename(path))
-                if variant:
-                    subpath = os.path.join(os.path.basename(path), variant)
             if name == 'lib':
                 # On mixed 32/64-bit system, libraries also get installed
                 # in lib64/. This is also true for 64-bit native python modules.
@@ -484,9 +501,21 @@ class Context:
                 dirs = merge_unique(dirs,
                     [ os.path.join(base, x) for x in findFirstFiles(base,
                                 subpath64 + '[^/]*') ])
-            dirs = merge_unique(dirs,
-                [ os.path.join(base, x) for x in findFirstFiles(base,
+                dirs = merge_unique(dirs,
+                    [ os.path.join(base, x) for x in findFirstFiles(base,
                                 subpath + '[^/]*') ])
+            elif name == 'bin':
+                # Especially on Fedora, /sbin, /usr/sbin, etc. are many times
+                # not in the PATH.
+                if os.path.isdir(path):
+                    dirs += [ path ]
+                sbin = os.path.join(base, 'sbin')
+                if (not sbin in os.environ['PATH'].split(':')
+                    and os.path.isdir(sbin)):
+                    dirs += [ sbin ]
+            else:
+                if os.path.isdir(os.path.join(base, name)):
+                    dirs += [ os.path.join(base, name) ]
         if name == 'lib' and self.host() in portDistribs:
             # Just because python modules do not get installed
             # in /opt/local/lib/python2.7/site-packages
@@ -563,7 +592,7 @@ class IndexProjects:
         self.validate()
         self.parser.parse(self.source,dgen)
 
-    def validate(self,force=False):
+    def validate(self, force=False):
         '''Create the project index file if it does not exist
         either by fetching it from a remote server or collecting
         projects indices locally.'''
@@ -1511,7 +1540,7 @@ class Dependency:
         self.name = name
         for key, val in pairs.iteritems():
             if key == 'excludes':
-                self.excludes = val
+                self.excludes = eval(val)
             elif key == 'target':
                 # The index file loader will have generated fully-qualified
                 # names to avoid key collisions when a project depends on both
@@ -1837,6 +1866,32 @@ class MacPortInstallStep(InstallStep):
         return info, unmanaged
 
 
+class NpmInstallStep(InstallStep):
+    ''' Install a prerequisite to a project through npm (Node.js manager).'''
+
+    def __init__(self, projectName, target = None):
+        InstallStep.__init__(self,projectName,[projectName ],
+                             priority=Step.install_lang)
+
+    def _manager(self):
+        findBootBin(context, '(npm).*', 'npm')
+        return os.path.join(context.value('buildTop'), 'bin', 'npm')
+
+    def run(self, context):
+        shellCommand([self._manager(), 'install' ] + self.managed, admin=admin)
+        self.updated = True
+
+    def info(self):
+        info = []
+        unmanaged = []
+        try:
+            shellCommand([self._manager(), 'search' ] + self.managed)
+            info = self.managed
+        except:
+            unmanaged = self.managed
+        return info, unmanaged
+
+
 class PipInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pip (Python eggs).'''
 
@@ -2134,7 +2189,7 @@ class Repository:
         rev = None
         if pathname and len(pathname) > 0:
             sync = pathname
-            look = re.match('(.*)@(\S+)$',pathname)
+            look = re.match('(.*)#(\S+)$',pathname)
             if look:
                 sync = look.group(1)
                 rev = look.group(2)
@@ -2212,8 +2267,10 @@ class GitRepository(Repository):
         if not ':' in self.url and context:
             self.url = context.remoteSrcPath(self.url)
         if not name:
-            name = self.url.replace(context.value('remoteSrcTop'),
-                                     context.value('srcTop'))
+            prefix = context.value('remoteSrcTop')
+            if not prefix.endswith(os.sep):
+                prefix = prefix + os.sep
+            name = self.url.replace(prefix,'')
         if name.endswith('.git'):
             name = name[:-4]
         local = context.srcDir(name)
@@ -2377,13 +2434,12 @@ class Project:
             elif key == 'patch':
                 self.patch = InstallFlavor(name,val)
                 if not self.patch.update.rep:
-                    self.patch.update.rep = Repository.associate( \
-                        os.path.join(name,'.git'))
+                    self.patch.update.rep = Repository.associate(name + '.git')
             elif key == 'repository':
                 self.repository = InstallFlavor(name,val)
                 if not self.repository.update.rep:
                     self.repository.update.rep = Repository.associate( \
-                        os.path.join(name,'.git'))
+                        name + '.git')
             else:
                 self.packages[key] = InstallFlavor(name,val)
 
@@ -2641,7 +2697,7 @@ def createIndexPathname(dbIndexPathname,dbPathnames):
     dbIndex.close()
 
 
-def findBin(names,searchPath,buildTop,excludes=[],variant=None):
+def findBin(names, searchPath, buildTop, excludes=[], variant=None):
     '''Search for a list of binaries that can be executed from $PATH.
 
        *names* is a list of (pattern,absolutePath) pairs where the absolutePat
@@ -2676,17 +2732,8 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
     '''
     version = None
     results = []
-    droots = []
+    droots = searchPath
     complete = True
-    if len(names) > 0:
-        # Especially on Fedora, /sbin, /usr/sbin, etc. are many times
-        # not in the PATH.
-        droots = []
-        for path in searchPath:
-            droots += [ path ]
-            sbin = os.path.join(os.path.dirname(path),'sbin')
-            if not sbin in searchPath:
-                droots += [ sbin ]
     for namePat, absolutePath in names:
         if absolutePath != None and os.path.exists(absolutePath):
             # absolute paths only occur when the search has already been
@@ -2706,17 +2753,17 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
         writetext(namePat + '... ')
         found = False
         if namePat.endswith('.app'):
-            bin = os.path.join('/Applications',namePat)
-            if os.path.isdir(bin):
+            binpath = os.path.join('/Applications',namePat)
+            if os.path.isdir(binpath):
                 found = True
                 writetext('yes\n')
-                results.append((namePat, bin))
+                results.append((namePat, binpath))
         else:
-            for p in droots:
-                for b in findFirstFiles(p,namePat):
-                    bin = os.path.join(p,b)
-                    if (os.path.isfile(bin)
-                        and os.access(bin, os.X_OK)):
+            for path in droots:
+                for binname in findFirstFiles(path, namePat):
+                    binpath = os.path.join(path, binname)
+                    if (os.path.isfile(binpath)
+                        and os.access(binpath, os.X_OK)):
                         # We found an executable with the appropriate name,
                         # let's find out if we can retrieve a version number.
                         numbers = []
@@ -2726,7 +2773,7 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
                             # not meant to be run on the native system.
                             for flag in [ '--version', '-V' ]:
                                 numbers = []
-                                cmdline = [ bin, flag ]
+                                cmdline = [ binpath, flag ]
                                 cmd = subprocess.Popen(cmdline,
                                                        stdout=subprocess.PIPE,
                                                        stderr=subprocess.STDOUT)
@@ -2757,12 +2804,12 @@ def findBin(names,searchPath,buildTop,excludes=[],variant=None):
                             if not excluded:
                                 version = numbers[0]
                                 writetext(str(version) + '\n')
-                                results.append((namePat, bin))
+                                results.append((namePat, binpath))
                             else:
                                 writetext('excluded (' +str(numbers[0])+ ')\n')
                         else:
                             writetext('yes\n')
-                            results.append((namePat, bin))
+                            results.append((namePat, binpath))
                         found = True
                         break
                 if found:
@@ -3081,7 +3128,8 @@ def findLib(names,searchPath,buildTop,excludes=[],variant=None):
     # it picked up libldap_r.so when we were looking for libldap.so. Looking
     # through /usr/lib on Ubuntu does not show any libraries ending with
     # a '_version' suffix so we will remove it from the regular expression.
-    suffix = '(-.+)?(\\' + libStaticSuffix() + '|\\' + libDynSuffix() + ')'
+    suffix = '(-.+)?(\\' + libStaticSuffix() \
+        + '|\\' + libDynSuffix() + '(\\.\S+)?)'
     droots = searchPath
     for namePat, absolutePath in names:
         if absolutePath != None and os.path.exists(absolutePath):
@@ -3490,6 +3538,9 @@ def createManaged(projectName, target):
     if len(unmanaged) > 0:
         if target and target.startswith('python'):
             installStep = PipInstallStep(projectName,target)
+            info, unmanaged = installStep.info()
+        elif target and target.startswith('nodejs'):
+            installStep = NpmInstallStep(projectName,target)
             info, unmanaged = installStep.info()
     if len(unmanaged) > 0:
         installStep = None
@@ -4077,7 +4128,7 @@ def sshTunnels(hostname, ports = []):
                                 + hostname + " failed.")
 
 
-def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6 ]):
+def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6, 7 ]):
     '''Checkout source code files, install packages such that
     the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency
@@ -4093,7 +4144,6 @@ def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6 ]):
     global errors
     # Add deep dependencies
     vertices = dbindex.closure(dgen)
-    writetext("!!! vertices=" + str(vertices))
     if log and log.graph:
         gphFilename = os.path.splitext(log.logfilename)[0] + '.dot'
         gphFile = open(gphFilename,'w')
@@ -4119,7 +4169,6 @@ def validateControls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6 ]):
         # from *srcTop* and leave other projects in whatever state they are in.
         # This is different from "build" which should update all projects.
         if first.priority in priorities:
-            writetext("!!! glob=" + str(glob))
             for v in glob:
                 errcode = 0
                 elapsed = 0

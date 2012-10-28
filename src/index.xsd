@@ -156,7 +156,7 @@
   
   <xs:complexType name="packageType">
     <xs:sequence>
-	  <xs:element ref="metainfo" type="xs:string"
+	  <xs:element ref="metainfo"
 				  minOccurs="0" maxOccurs="unbounded"/>
 	  <xs:element ref="fetch"
 				  minOccurs="0" maxOccurs="unbounded"/>
