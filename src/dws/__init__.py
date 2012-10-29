@@ -293,7 +293,7 @@ class Context:
             filtered = filterRepExt(context.value('remoteIndex'))
             if filtered != context.value('remoteIndex'):
                 prefix = context.value('remoteSrcTop')
-                if not prefix.endswith(os.sep):
+                if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
                 self.environ['indexFile'].default = \
                     context.srcDir(filtered.replace(prefix, ''))
@@ -1878,7 +1878,7 @@ class NpmInstallStep(InstallStep):
         return os.path.join(context.value('buildTop'), 'bin', 'npm')
 
     def run(self, context):
-        shellCommand([self._manager(), 'install' ] + self.managed, admin=admin)
+        shellCommand([self._manager(), 'install' ] + self.managed, admin=True)
         self.updated = True
 
     def info(self):
@@ -2268,7 +2268,7 @@ class GitRepository(Repository):
             self.url = context.remoteSrcPath(self.url)
         if not name:
             prefix = context.value('remoteSrcTop')
-            if not prefix.endswith(os.sep):
+            if not prefix.endswith(':') and not prefix.endswith(os.sep):
                 prefix = prefix + os.sep
             name = self.url.replace(prefix,'')
         if name.endswith('.git'):
