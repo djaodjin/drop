@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2009-2012, Fortylines LLC
+# Copyright (c) 2009-2013, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -484,10 +484,14 @@ rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 
 ''')
-            sysconfdir = False
+            # XXX for semilla.
+            #sysconfdir = True
+            #pythondir = False
             datarootdir = False
             unitdir = False
-            pythondir = True
+            # XXX for VCD
+            sysconfdir = False
+            pythondir = False
             rpm_root = '/home/' + os.environ['LOGNAME'] + '/rpmbuild/BUILDROOT/' + tarball[:-8] + '-0.x86_64'
             if False:
                 for filename in recursive_listdir(rpm_root):

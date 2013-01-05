@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2009-2012, Fortylines LLC
+# Copyright (c) 2009-2013, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -800,7 +800,7 @@ class DependencyGenerator(Unserializer):
             self.connectToSetup(setupName,make)
         return self.vertices[makeName]
 
-    def addInstall(self,projectName):
+    def addInstall(self, projectName):
         flavor = None
         installStep = None
         managedName = projectName.split(os.sep)[-1]

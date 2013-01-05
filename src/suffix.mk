@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2012, Fortylines LLC
+# Copyright (c) 2009-2013, Fortylines LLC
 #   All rights reserved.
 #
 #   Redistribution and use in source and binary forms, with or without
@@ -55,7 +55,7 @@ all::	$(logs)
 # Used to be "rm -rf $(objDir)/*" but that would create issues
 # when intermediate files are created in the same directory.
 clean::
-	rm -f $(bins) $(apps) $(scripts) $(libs) *.o *~
+	rm -f $(bins) $(apps) $(scripts) $(libs) *.o *.d *~
 
 # OSX GUI Applications are compiled but not installed. 
 install:: $(apps)
