@@ -453,19 +453,22 @@ def buildDarwinPackage(project, version):
 def buildFedoraPackage(project, version):
     tarball = project.name.replace(os.sep,'_') + '-' + version + '.tar.bz2'
     specname = project.name + '.spec'
-    with open(specname, 'w') as specfile:
-        specfile.write('%define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")\n\n')
-        specfile.write('Name: ' + project.name.replace(os.sep,'_') + '\n')
-        specfile.write('Distribution: Fedora\n')
-        specfile.write('Release: 0\n')
-        specfile.write('Version: %s\n' % version)
-        specfile.write('Summary: %s\n' % str(project.title))
-        specfile.write('License: Unknown\n')
-        specfile.write('Source: http://fortylines.com/resources/srcs/%s\n'
-                       % tarball)
-        specfile.write('\n%description\n' + project.descr + '\n')
-        specfile.write('Packager: ' + str(project.maintainer) + '\n')
-        specfile.write('''
+    if os.path.exists(os.path.join(dws.context.srcDir(project.name), specname)):
+        specname = os.path.join(dws.context.srcDir(project.name), specname)
+    else:
+        with open(specname, 'w') as specfile:
+            specfile.write('%define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")\n\n')
+            specfile.write('Name: ' + project.name.replace(os.sep,'_') + '\n')
+            specfile.write('Distribution: Fedora\n')
+            specfile.write('Release: 0\n')
+            specfile.write('Version: %s\n' % version)
+            specfile.write('Summary: %s\n' % str(project.title))
+            specfile.write('License: Unknown\n')
+            specfile.write('Source: http://fortylines.com/resources/srcs/%s\n'
+                           % tarball)
+            specfile.write('\n%description\n' + project.descr + '\n')
+            specfile.write('Packager: ' + str(project.maintainer) + '\n')
+            specfile.write('''
 %prep
 %setup -q
 
@@ -478,42 +481,42 @@ rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 
 ''')
-        # XXX for semilla.
-        #sysconfdir = True
-        #pythondir = False
-        datarootdir = False
-        unitdir = False
-        # XXX for VCD
-        sysconfdir = False
-        pythondir = False
-        rpm_root = '/home/' + os.environ['LOGNAME'] + '/rpmbuild/BUILDROOT/' + tarball[:-8] + '-0.x86_64'
-        if False:
-            for filename in recursive_listdir(rpm_root):
-                filename = filename[len(rpm_root):]
-                if filename.startswith('etc'):
-                    sysconfdir = True
-                elif filename.startswith('share'):
-                    datarootdir = True
-                elif filename.startswith('usr/lib/systemd/system'):
-                    unitdir = True
-                elif filename.startswith('lib64/python2.7/site-packages'):
-                    pythondir = True
+            # XXX for semilla.
+            #sysconfdir = True
+            #pythondir = False
+            datarootdir = False
+            unitdir = False
+            # XXX for VCD
+            sysconfdir = False
+            pythondir = False
+            rpm_root = '/home/' + os.environ['LOGNAME'] + '/rpmbuild/BUILDROOT/' + tarball[:-8] + '-0.x86_64'
+            if False:
+                for filename in recursive_listdir(rpm_root):
+                    filename = filename[len(rpm_root):]
+                    if filename.startswith('etc'):
+                        sysconfdir = True
+                    elif filename.startswith('share'):
+                        datarootdir = True
+                    elif filename.startswith('usr/lib/systemd/system'):
+                        unitdir = True
+                    elif filename.startswith('lib64/python2.7/site-packages'):
+                        pythondir = True
 
-        specfile.write('%files\n')
-        specfile.write('%{_prefix}/*\n')
-        if sysconfdir:
-            specfile.write('%{_sysconfdir}/*\n')
-        if datarootdir:
-            specfile.write('%{_datarootdir}/*\n')
-        if unitdir:
-            specfile.write('%{_unitdir}/*\n')
-        if pythondir:
-            specfile.write('%{python_sitearch}/*\n')
-        postinst = os.path.join('usr', 'share',
-                                project.name.replace(os.sep,'_'),
-                                'postinst')
-        if os.path.exists(postinst):
-            specfile.write('\n%%post -p sh /%s\n' % postinst)
+            specfile.write('%files\n')
+            specfile.write('%{_prefix}/*\n')
+            if sysconfdir:
+                specfile.write('%{_sysconfdir}/*\n')
+            if datarootdir:
+                specfile.write('%{_datarootdir}/*\n')
+            if unitdir:
+                specfile.write('%{_unitdir}/*\n')
+            if pythondir:
+                specfile.write('%{python_sitearch}/*\n')
+            postinst = os.path.join('usr', 'share',
+                                    project.name.replace(os.sep,'_'),
+                                    'postinst')
+            if os.path.exists(postinst):
+                specfile.write('\n%%post -p sh /%s\n' % postinst)
     # '--clean'
     rpmlog = dws.shellCommand(['rpmbuild', '-bb', specname],
                               pat='Wrote: (.*)')
