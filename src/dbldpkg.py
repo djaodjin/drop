@@ -443,35 +443,29 @@ def recursive_listdir(dirname):
         return results
 
 
-def buildPackage(project, version, installTop):
-    '''Writes out the necessary files such as specification, control, etc.
-    then builds a binary distribution package based on the local system.
+def buildDarwinPackage(project, version):
+    installTop = os.path.join(os.getcwd(), 'install')
+    pm = PackageMaker(project, version, installTop)
+    pm.build()
+    im = ImageMaker(project, version, pm.packageRootFolder)
+    return im.build()
 
-    This routine with returns the name of the package that was built.
-    '''
-
-    dist = dws.context.host()
-    if dist == 'Darwin':
-        pm = PackageMaker(project, version, installTop)
-        pm.build()
-        im = ImageMaker(project, version, pm.packageRootFolder)
-        return im.build()
-
-    elif dist == 'Fedora':
-        tarball = project.name.replace(os.sep,'_') + '-' + version + '.tar.bz2'
-        specname = project.name + '.spec'
-        with open(specname, 'w') as specfile:
-            specfile.write('Name: ' + project.name.replace(os.sep,'_') + '\n')
-            specfile.write('Distribution: Fedora\n')
-            specfile.write('Release: 0\n')
-            specfile.write('Version: %s\n' % version)
-            specfile.write('Summary: %s\n' % str(project.title))
-            specfile.write('License: Unknown\n')
-            specfile.write('Source: http://fortylines.com/resources/srcs/%s\n'
-                           % tarball)
-            specfile.write('\n%description\n' + project.descr + '\n')
-            specfile.write('Packager: ' + str(project.maintainer) + '\n')
-            specfile.write('''
+def buildFedoraPackage(project, version):
+    tarball = project.name.replace(os.sep,'_') + '-' + version + '.tar.bz2'
+    specname = project.name + '.spec'
+    with open(specname, 'w') as specfile:
+        specfile.write('%define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")\n\n')
+        specfile.write('Name: ' + project.name.replace(os.sep,'_') + '\n')
+        specfile.write('Distribution: Fedora\n')
+        specfile.write('Release: 0\n')
+        specfile.write('Version: %s\n' % version)
+        specfile.write('Summary: %s\n' % str(project.title))
+        specfile.write('License: Unknown\n')
+        specfile.write('Source: http://fortylines.com/resources/srcs/%s\n'
+                       % tarball)
+        specfile.write('\n%description\n' + project.descr + '\n')
+        specfile.write('Packager: ' + str(project.maintainer) + '\n')
+        specfile.write('''
 %prep
 %setup -q
 
@@ -484,143 +478,143 @@ rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 
 ''')
-            # XXX for semilla.
-            #sysconfdir = True
-            #pythondir = False
-            datarootdir = False
-            unitdir = False
-            # XXX for VCD
-            sysconfdir = False
-            pythondir = False
-            rpm_root = '/home/' + os.environ['LOGNAME'] + '/rpmbuild/BUILDROOT/' + tarball[:-8] + '-0.x86_64'
-            if False:
-                for filename in recursive_listdir(rpm_root):
-                    print "!!! " + filename
-                    filename = filename[len(rpm_root):]
-                    if filename.startswith('etc'):
-                        sysconfdir = True
-                    elif filename.startswith('share'):
-                        datarootdir = True
-                    elif filename.startswith('usr/lib/systemd/system'):
-                        unitdir = True
-                    elif filename.startswith('lib64/python2.7/site-packages'):
-                        pythondir = True
+        # XXX for semilla.
+        #sysconfdir = True
+        #pythondir = False
+        datarootdir = False
+        unitdir = False
+        # XXX for VCD
+        sysconfdir = False
+        pythondir = False
+        rpm_root = '/home/' + os.environ['LOGNAME'] + '/rpmbuild/BUILDROOT/' + tarball[:-8] + '-0.x86_64'
+        if False:
+            for filename in recursive_listdir(rpm_root):
+                filename = filename[len(rpm_root):]
+                if filename.startswith('etc'):
+                    sysconfdir = True
+                elif filename.startswith('share'):
+                    datarootdir = True
+                elif filename.startswith('usr/lib/systemd/system'):
+                    unitdir = True
+                elif filename.startswith('lib64/python2.7/site-packages'):
+                    pythondir = True
 
-            specfile.write('%files\n')
-            specfile.write('%{_prefix}/*\n')
-            if sysconfdir:
-                specfile.write('%{_sysconfdir}/*\n')
-            if datarootdir:
-                specfile.write('%{_datarootdir}/*\n')
-            if unitdir:
-                specfile.write('%{_unitdir}/*\n')
-            if pythondir:
-                specfile.write('/lib64/python2.7/site-packages/*\n')
-            postinst = os.path.join('usr', 'share',
-                                    project.name.replace(os.sep,'_'),
-                                    'postinst')
-            if os.path.exists(postinst):
-                specfile.write('\n%%post -p sh /%s\n' % postinst)
-        # '--clean'
-        rpmlog = dws.shellCommand(['rpmbuild', '-bb', specname],
-                                  pat='Wrote: (.*)')
-        genFiles = []
-        for line in rpmlog:
-            look = re.match('Wrote: (.*)', line)
-            if look:
-                genFiles += [ look.group(1) ]
-        return genFiles[0]
+        specfile.write('%files\n')
+        specfile.write('%{_prefix}/*\n')
+        if sysconfdir:
+            specfile.write('%{_sysconfdir}/*\n')
+        if datarootdir:
+            specfile.write('%{_datarootdir}/*\n')
+        if unitdir:
+            specfile.write('%{_unitdir}/*\n')
+        if pythondir:
+            specfile.write('%{python_sitearch}/*\n')
+        postinst = os.path.join('usr', 'share',
+                                project.name.replace(os.sep,'_'),
+                                'postinst')
+        if os.path.exists(postinst):
+            specfile.write('\n%%post -p sh /%s\n' % postinst)
+    # '--clean'
+    rpmlog = dws.shellCommand(['rpmbuild', '-bb', specname],
+                              pat='Wrote: (.*)')
+    genFiles = []
+    for line in rpmlog:
+        look = re.match('Wrote: (.*)', line)
+        if look:
+            genFiles += [ look.group(1) ]
+    return genFiles[0]
 
-    elif dist == 'Ubuntu':
-        cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT)
-        longBit = cmd.stdout.readline().strip()
-        cmd.wait()
-        if cmd.returncode != 0:
-            raise dws.Error("problem reading `getconf LONG_BIT`")
-        packageVersion = version
-        distExtUbuntu = '_all.deb'
-        if not os.path.exists('debian'):
-            os.makedirs('debian')
-        control = open(os.path.join('debian','control'),'w')
-        control.write('Source: ' + project.name + '\n')
-        control.write('Maintainer: ' + str(project.maintainer) + '\n')
-        # \todo Temporarly disable the Build-Depends because of "boost"
-        #       prerequisites and how debuild makes packages.
-        if None:
-            if project.repository:
-                control.write('Build-Depends: ' \
-                                  + ', '.join(dws.basenames(
-                project.repository.prerequisiteNames([dws.context.host()]))) + '\n')
-            elif project.patch:
-                control.write('Build-Depends: ' \
-                                  + ', '.join(dws.basenames(
-                project.patch.prerequisiteNames([dws.context.host()]))) + '\n')
 
-        control.write('\nPackage: ' + project.name + '\n')
-        control.write('Priority: extra\n')
-
-        if (not dws.context.host() in project.packages
-            or not 'architecture' in project.packages[dws.context.host()].configure.envvars):
-            control.write('Architecture: any\n')
-            distExtUbuntu = '_amd64.deb'
-            if longBit == '32':
-                distExtUbuntu = '_i386.deb'
-        if dws.context.host() in project.packages:
-            envvars = project.packages[dws.context.host()].configure.envvars
-            for key, val in envvars.iteritems():
-                if isinstance(val,dws.Metainfo):
-                    control.write(key.capitalize() + ': ' + val.value + '\n')
-            control.write('Depends: ${shlibs:Depends}, ' \
+def buildUbuntuPackage(project, version):
+    cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT)
+    longBit = cmd.stdout.readline().strip()
+    cmd.wait()
+    if cmd.returncode != 0:
+        raise dws.Error("problem reading `getconf LONG_BIT`")
+    packageVersion = version
+    distExtUbuntu = '_all.deb'
+    if not os.path.exists('debian'):
+        os.makedirs('debian')
+    control = open(os.path.join('debian','control'),'w')
+    control.write('Source: ' + project.name + '\n')
+    control.write('Maintainer: ' + str(project.maintainer) + '\n')
+    # \todo Temporarly disable the Build-Depends because of "boost"
+    #       prerequisites and how debuild makes packages.
+    if None:
+        if project.repository:
+            control.write('Build-Depends: ' \
                               + ', '.join(dws.basenames(
-            project.packages[dws.context.host()].prerequisiteNames([dws.context.host()]))) + '\n')        
-        descr = ''
-        for i in range(0,len(project.descr),77):
-            descr += ' ' + project.descr[i:i+77] + '\n'
-        #descr += ' ' + project.descr[i:] + '\n'
-        control.write('Description: ' + str(project.title) \
-                          + '\n' + str(descr) + '\n')
-        control.write('\n')
-        control.close()
-        distribCodename = None
-        if os.path.isfile('/etc/lsb-release'):
-            release = open('/etc/lsb-release')
-            line = release.readline()
-            while line:
-                look = re.match('DISTRIB_CODENAME=\s*(\S+)',line)
-                if look:
-                    distribCodename = look.group(1)
-                    break
-                line = release.readline()
-            release.close()
-        changelog = open(os.path.join('debian','changelog'),'w')
-        changelog.write(project.name + ' (' + packageVersion + ') ' \
-                            + str(distribCodename) + '; urgency=low\n\n')
-        changelog.write('  * debian/rules: generate ubuntu package\n\n')
-        changelog.write(' -- ' + str(project.maintainer) + '  ' \
-           + utils.formatdate(time.mktime(datetime.datetime.now().timetuple()))\
-           + '\n\n')
-        changelog.close()
-        # TODO getting rid of the warning actually produces a completely
-        # different output. For some reasons /usr/bin, etc. do not make
-        # it into the package...
-        # write debian/compat to fix 'Compatibility level before ...'
-        # messages, see 'man debhelper'.
-        # '1' written previously
-        with open(os.path.join('debian','compat'),'w') as compat:
-            compat.write('5\n')
+            project.repository.prerequisiteNames([dws.context.host()]))) + '\n')
+        elif project.patch:
+            control.write('Build-Depends: ' \
+                              + ', '.join(dws.basenames(
+            project.patch.prerequisiteNames([dws.context.host()]))) + '\n')
 
-        if noInstallDoc:
-            installDocTarget = ''
-        else:
-            installDocTarget = '\n\tmake install-doc'
-        if noPathUpdate:
-            path = ''
-        else:
-            path = 'PATH=' + dws.context.binBuildDir() + ':${PATH} '
-        rules = open(os.path.join('debian','rules'),'w')
-        rules.write('''#! /usr/bin/make -f
+    control.write('\nPackage: ' + project.name + '\n')
+    control.write('Priority: extra\n')
+
+    if (not dws.context.host() in project.packages
+        or not 'architecture' in project.packages[dws.context.host()].configure.envvars):
+        control.write('Architecture: any\n')
+        distExtUbuntu = '_amd64.deb'
+        if longBit == '32':
+            distExtUbuntu = '_i386.deb'
+    if dws.context.host() in project.packages:
+        envvars = project.packages[dws.context.host()].configure.envvars
+        for key, val in envvars.iteritems():
+            if isinstance(val,dws.Metainfo):
+                control.write(key.capitalize() + ': ' + val.value + '\n')
+        control.write('Depends: ${shlibs:Depends}, ' \
+                          + ', '.join(dws.basenames(
+        project.packages[dws.context.host()].prerequisiteNames([dws.context.host()]))) + '\n')        
+    descr = ''
+    for i in range(0,len(project.descr),77):
+        descr += ' ' + project.descr[i:i+77] + '\n'
+    #descr += ' ' + project.descr[i:] + '\n'
+    control.write('Description: ' + str(project.title) \
+                      + '\n' + str(descr) + '\n')
+    control.write('\n')
+    control.close()
+    distribCodename = None
+    if os.path.isfile('/etc/lsb-release'):
+        release = open('/etc/lsb-release')
+        line = release.readline()
+        while line:
+            look = re.match('DISTRIB_CODENAME=\s*(\S+)',line)
+            if look:
+                distribCodename = look.group(1)
+                break
+            line = release.readline()
+        release.close()
+    changelog = open(os.path.join('debian','changelog'),'w')
+    changelog.write(project.name + ' (' + packageVersion + ') ' \
+                        + str(distribCodename) + '; urgency=low\n\n')
+    changelog.write('  * debian/rules: generate ubuntu package\n\n')
+    changelog.write(' -- ' + str(project.maintainer) + '  ' \
+       + utils.formatdate(time.mktime(datetime.datetime.now().timetuple()))\
+       + '\n\n')
+    changelog.close()
+    # TODO getting rid of the warning actually produces a completely
+    # different output. For some reasons /usr/bin, etc. do not make
+    # it into the package...
+    # write debian/compat to fix 'Compatibility level before ...'
+    # messages, see 'man debhelper'.
+    # '1' written previously
+    with open(os.path.join('debian','compat'),'w') as compat:
+        compat.write('5\n')
+
+    if noInstallDoc:
+        installDocTarget = ''
+    else:
+        installDocTarget = '\n\tmake install-doc'
+    if noPathUpdate:
+        path = ''
+    else:
+        path = 'PATH=' + dws.context.binBuildDir() + ':${PATH} '
+    rules = open(os.path.join('debian','rules'),'w')
+    rules.write('''#! /usr/bin/make -f
 
 DH_VERBOSE := 1
 
@@ -628,43 +622,62 @@ DH_VERBOSE := 1
 \tdh $@
 
 ''')
-        rules.close()
-        copyrightPath = None
-        for name in [ 'COPYING', 'LICENSE' ]:
-            if os.path.exists(name):
-                # The function is executed from within the source tree
-                # so we just need to copy the copyright file if it exists
-                # from the currrent directory.
-                copyrightPath = name
-                break
-        if copyrightPath:
-            shutil.copy(copyrightPath, os.path.join('debian','copyright'))
-        else:
-            copyright = open(os.path.join('debian','copyright'),'w')
-            copyright.write('Copyright ' + str(datetime.datetime.now().year) \
-                                + str(project.maintainer))
-            copyright.close()
+    rules.close()
+    copyrightPath = None
+    for name in [ 'COPYING', 'LICENSE' ]:
+        if os.path.exists(name):
+            # The function is executed from within the source tree
+            # so we just need to copy the copyright file if it exists
+            # from the currrent directory.
+            copyrightPath = name
+            break
+    if copyrightPath:
+        shutil.copy(copyrightPath, os.path.join('debian','copyright'))
+    else:
+        copyright = open(os.path.join('debian','copyright'),'w')
+        copyright.write('Copyright ' + str(datetime.datetime.now().year) \
+                            + str(project.maintainer))
+        copyright.close()
 
-        # We have generated all files debuild requires to create a binary
-        # package so now let's invoke it.
-        #
-        # alternative:
-        #   apt-get install pbuilder
-        #   pbuilder create
-        #   pdebuild --buildresult ..
-        #
-        # debuild will try to install the packages in /usr/local so it needs
-        # permission access to the directory.
-        # Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
-        #
-        # Can only find example in man pages of debuild but cannot
-        # find description of options: "-i -us -uc -b".
-        dws.shellCommand(['debuild', '-i', '-us', '-uc', '-b'])
-        return '../' + project.name + '_' + packageVersion + distExtUbuntu
+    # We have generated all files debuild requires to create a binary
+    # package so now let's invoke it.
+    #
+    # alternative:
+    #   apt-get install pbuilder
+    #   pbuilder create
+    #   pdebuild --buildresult ..
+    #
+    # debuild will try to install the packages in /usr/local so it needs
+    # permission access to the directory.
+    # Remove sudo and use prefix on bootstrap.sh in boost/debian/rules
+    #
+    # Can only find example in man pages of debuild but cannot
+    # find description of options: "-i -us -uc -b".
+    dws.shellCommand(['debuild', '-i', '-us', '-uc', '-b'])
+    return '../' + project.name + '_' + packageVersion + distExtUbuntu
+
+
+def buildPackage(project, version):
+    '''Writes out the necessary files such as specification, control, etc.
+    then builds a binary distribution package based on the local system.
+
+    This routine with returns the name of the package that was built.
+    '''
+
+    dist = dws.context.host()
+    if dist == 'Darwin':
+        return buildDarwinPackage(project, version)
+
+    elif dist == 'Fedora':
+        return buildFedoraPackage(project, version)
+
+    elif dist == 'Ubuntu':
+        return buildUbuntuPackage(project, version)
 
     else:
         # unknown host, we don't know how to make a package for it.
         raise dws.Error("unknown distribution '" + dist + "'")
+
 
 def tabStop(n):
     result = ''
@@ -730,8 +743,6 @@ if __name__ == "__main__":
 ''',formatter=dws.CommandsFormatter())
     parser.add_option('-v', '--version', dest='version', action='store',
                       help='Set version of the package')
-    parser.add_option('-s', '--spec', dest='spec',
-                      action='store', help='Set specification of the package')
     parser.add_option('--help-book', dest='helpBook', action='store_true',
                       help='Print help in docbook format')
     parser.add_option('--no-install-doc', dest='noInstallDoc',
@@ -755,13 +766,12 @@ if __name__ == "__main__":
     if options.noPathUpdate:
         noPathUpdate = True
 
+
     dws.context = dws.Context()
     dws.context.locate()
-    index = dws.IndexProjects(dws.context,options.spec)
-    handler = dws.Unserializer([ '.*' ])
-
-    SRC_DIR = os.path.dirname(options.spec)
-
+    project_name = dws.context.cwdProject()
+    handler = dws.Unserializer([ project_name ])
+    index = dws.IndexProjects(dws.context)
     index.parse(handler)
     project = handler.firstProject
     # Removes any leading directory name from the project name
@@ -769,4 +779,4 @@ if __name__ == "__main__":
     project.name = os.path.basename(project.name)
 
     buildPackageSpecification(project,
-                              buildPackage(project,options.version,args[0]))
+                              buildPackage(project, options.version))

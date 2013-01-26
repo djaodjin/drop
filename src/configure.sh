@@ -69,6 +69,7 @@ echo srcTop=${srcTop} >> ${projmk}
 echo siteTop=${srcDir} >> ${projmk}
 echo binBuildDir=${binBuildDir} >> ${projmk}
 echo libBuildDir=${buildDir}/lib >> ${projmk}
+echo installTop=${prefix} >> ${projmk}
 echo binDir=${prefix}/bin >> ${projmk}
 echo etcDir=${sysconfdir} >> ${projmk}
 echo includeDir=${prefix}/include >> ${projmk}

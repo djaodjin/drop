@@ -72,6 +72,13 @@ install:: $(libs)
 	$(if $^,$(installDirs) $(DESTDIR)$(libDir))
 	$(if $^,$(installFiles) $^ $(DESTDIR)$(libDir))
 
+# We have to install dynamically shared libraries as executables
+# otherwise rpmbuild find-provides will not detect the library
+# and automatically add it to the Provides: field.
+install:: $(dynlibs)
+	$(if $^,$(installDirs) $(DESTDIR)$(libDir))
+	$(if $^,$(installDynLibs) $^ $(DESTDIR)$(libDir))
+
 install:: $(includes)
 	$(if $^,$(installDirs) $(DESTDIR)$(includeDir))
 	$(if $^, $(installFiles) $^ $(DESTDIR)$(includeDir))
@@ -100,6 +107,9 @@ install:: $(resources)
 	$(LINK.cc) $(SHAREDLIBFLAGS) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) -o $@
 
 # %.def appears in dependency (.d) files through an #include of LLVM headers.
+%: %.c
+	$(LINK.c) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
+
 %: %.cc
 	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
 
@@ -178,15 +188,13 @@ $(project)-$(version)::
 		&& ./configure --prefix=${buildUsrLocalDir}
 	cd $(basename $(basename $(notdir $<))) && ${MAKE} install
 	$(installDirs) ${buildInstallDir}
-	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<)))) \
-	         --spec=$(srcDir)/$(projindex) ${buildInstallDir}
+	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<))))
 
 %$(distExtFedora): %.tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
-	cp $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
-	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<)))) \
-	         --spec=$(srcDir)/$(projindex) $(basename $@)
+	$(installFiles) $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
+	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<))))
 
 # Ubuntu can sometimes be annoying using '_' instead of '-' here and there.
 $(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
@@ -194,9 +202,7 @@ $(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
 	tar jxf $<
 	cd $(basename $(basename $(notdir $<))) \
 		&& $(dbldpkg) \
-		 --version=$(subst $(project)-,,$(basename $(basename $(notdir $<)))) \
-	         --spec=$(srcDir)/$(projindex) $(shell echo $@ | \
-			$(SED) -e 's,[^-][^-]*-\(.*\)$(distExtUbuntu),\1,')
+		 --version=$(subst $(project)-,,$(basename $(basename $(notdir $<))))
 
 # Rules to build unit test logs
 # -----------------------------

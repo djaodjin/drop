@@ -1312,50 +1312,39 @@ class HostPlatform(Variable):
         if sysname == 'Darwin':
             self.value = 'Darwin'
         elif sysname == 'Linux':
-            for versionPath in [ '/proc/version', '/etc/apt/sources.list' ]:
-                # If we can't determine the host platform for /proc/version,
-                # let's try to guess from the package manager installed.
+            # Let's try to determine the host platform
+            for versionPath in [ '/etc/system-release', '/etc/lsb-release',
+                                 '/etc/debian_version', '/proc/version' ]:
                 if os.path.exists(versionPath):
                     version = open(versionPath)
                     line = version.readline()
                     while line != '':
-                        for d in [ 'Debian', 'debian', 'Ubuntu', 'ubuntu',
-                                   'fedora' ]:
-                            look = re.match('.*' + d + '.*',line)
+                        for d in [ 'Debian', 'Ubuntu', 'Fedora' ]:
+                            look = re.match('.*' + d + '.*', line)
                             if look:
                                 self.value = d
-                                break
-                        if self.value:
-                            break
+                            look = re.match('.*' + d.lower() + '.*',line)
+                            if look:
+                                self.value = d                            
+                            if not self.distCodename:
+                                look = re.match(
+                                    'DISTRIB_CODENAME=\s*(\S+)', line)
+                                if look:
+                                    self.distCodename = look.group(1)
+                                elif self.value:
+                                    # First time around the loop we will
+                                    # match this pattern but not the previous
+                                    # one that sets value to 'Fedora'.
+                                    look = re.match('.*release (\d+)', line)
+                                    if look:
+                                        self.distCodename = \
+                                            self.value + look.group(1)
                         line = version.readline()
                     version.close()
                     if self.value:
                         break
             if self.value:
                 self.value = self.value.capitalize()
-            if self.value in aptDistribs:
-                # XXX /etc/debian_version
-                if os.path.isfile('/etc/lsb-release'):
-                    release = open('/etc/lsb-release')
-                    line = release.readline()
-                    while line:
-                        look = re.match('DISTRIB_CODENAME=\s*(\S+)',line)
-                        if look:
-                            self.distCodename = look.group(1)
-                            break
-                        line = release.readline()
-                    release.close()
-            elif self.value in yumDistribs:
-                if os.path.isfile('/etc/system-release'):
-                    release = open('/etc/system-release')
-                    line = release.readline()
-                    while line:
-                        look = re.match('.*release (\d+)',line)
-                        if look:
-                            self.distCodename = self.value + look.group(1)
-                            break
-                        line = release.readline()
-                    release.close()
         return True
 
 
@@ -3760,7 +3749,7 @@ def linkDependencies(files, excludes=[],target=None):
     return files, complete
 
 
-def linkContext(path,linkName):
+def linkContext(path, linkName):
     '''link a *path* into the workspace.'''
     if not path:
         log.error('There is no target for link ' + linkName + '\n')
@@ -3785,8 +3774,8 @@ def linkBuildName(namePat, subdir, target=None):
     suffix = ''
     regex = re.compile(namePat + '$')
     if regex.groups == 0:
-        name = namePat
-        parts = namePat.split(os.sep)
+        name = namePat.replace('\\', '')
+        parts = name.split(os.sep)
         if len(parts) > 0:
             name = parts[len(parts) - 1]
     else:

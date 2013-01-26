@@ -55,6 +55,7 @@ buildUsrLocalDir:=	$(buildInstallDir)/usr/local
 dbldpkg			:=	dbldpkg
 ibtool          :=  /Developer/usr/bin/ibtool
 installBins		:=	/usr/bin/install -s -p -m 755
+installDynLibs	:=	/usr/bin/install -p -m 755
 installDirs 	:=	/usr/bin/install -d
 installFiles	:=	/usr/bin/install -p -m 644
 installScripts	:=	/usr/bin/install -p -m 755
@@ -86,7 +87,7 @@ logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 resourcesDir	?=	$(siteTop)/htdocs/resources
 
 incSearchPath	:=	$(srcDir)/include $(includeBuildDir) $(includeDir)
-libSearchPath	:=	$(if $(wildcard $(libBuildDir)/*),$(libBuildDir)) $(if $(wildcard $(libBuildDir)/*),$(libDir))
+libSearchPath	:=	$(if $(wildcard $(libBuildDir)/*),$(libBuildDir)) $(if $(wildcard $(libDir)/*),$(libDir))
 
 # Building dynamic libraries
 # If we do not set the default *dylSuffix*, the rule %$(dylSuffix): in suffix.mk
@@ -98,8 +99,8 @@ SHAREDLIBFLAGS  := -dynamiclib
 
 else
 
-dylSuffix		:=	.so.0
-SHAREDLIBFLAGS	= -shared -Wl,-soname,$@
+dylSuffix		:=	.so
+SHAREDLIBFLAGS	= -pthread -shared -Wl,-soname,$@
 
 endif
 
@@ -212,5 +213,5 @@ htmlSite	:=	\
 bins	:=
 scripts :=
 libs	:=
-includes:=	$(wildcard $(srcDir)/include/*.hh \
+includes:=	$(wildcard $(srcDir)/include/*.h $(srcDir)/include/*.hh \
 	          	   $(srcDir)/include/*.tcc)
