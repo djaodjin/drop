@@ -104,7 +104,7 @@ install:: $(resources)
 	$(AR) $(ARFLAGS) $@ $^
 
 %$(dylSuffix):
-	$(LINK.cc) $(SHAREDLIBFLAGS) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) -o $@
+	$(LINK.o) $(SHAREDLIBFLAGS) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 # %.def appears in dependency (.d) files through an #include of LLVM headers.
 %: %.c
