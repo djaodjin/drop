@@ -481,26 +481,20 @@ rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 
 ''')
-            # XXX for semilla.
-            #sysconfdir = True
-            #pythondir = False
             datarootdir = False
             unitdir = False
-            # XXX for VCD
             sysconfdir = False
             pythondir = False
-            rpm_root = '/home/' + os.environ['LOGNAME'] + '/rpmbuild/BUILDROOT/' + tarball[:-8] + '-0.x86_64'
-            if False:
-                for filename in recursive_listdir(rpm_root):
-                    filename = filename[len(rpm_root):]
-                    if filename.startswith('etc'):
-                        sysconfdir = True
-                    elif filename.startswith('share'):
-                        datarootdir = True
-                    elif filename.startswith('usr/lib/systemd/system'):
-                        unitdir = True
-                    elif filename.startswith('lib64/python2.7/site-packages'):
-                        pythondir = True
+            for filename in recursive_listdir(dws.context.srcDir(project.name)):
+                filename = filename[len(dws.context.srcDir(project.name)):]
+                if filename.startswith('etc'):
+                    sysconfdir = True
+                elif filename.startswith('share'):
+                    datarootdir = True
+                elif filename.startswith('usr/lib/systemd/system'):
+                    unitdir = True
+                elif filename.startswith('lib64/python2.7/site-packages'):
+                    pythondir = True
 
             specfile.write('%files\n')
             specfile.write('%{_prefix}/*\n')
