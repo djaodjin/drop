@@ -440,7 +440,7 @@ def recursive_listdir(dirname):
             results += recursive_listdir(os.path.join(dirname, filename))
         else:
             results += [ os.path.join(dirname, filename) ]
-        return results
+    return results
 
 
 def buildDarwinPackage(project, version):
@@ -486,7 +486,7 @@ make install DESTDIR=%{buildroot}
             sysconfdir = False
             pythondir = False
             for filename in recursive_listdir(dws.context.srcDir(project.name)):
-                filename = filename[len(dws.context.srcDir(project.name)):]
+                filename = filename[len(dws.context.srcDir(project.name)) + 1:]
                 if filename.startswith('etc'):
                     sysconfdir = True
                 elif filename.startswith('share'):
