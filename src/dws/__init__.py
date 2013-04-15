@@ -50,8 +50,8 @@ invoking the script.
 
 __version__ = None
 
-import datetime, hashlib, inspect, re, optparse, os, shutil
-import socket, subprocess, sys, tempfile, urllib2, urlparse
+import datetime, hashlib, inspect, logging, logging.config, re, optparse
+import os, shutil, socket, subprocess, sys, tempfile, urllib2, urlparse
 import xml.dom.minidom, xml.sax
 import cStringIO
 
@@ -66,8 +66,11 @@ ERRORS = []
 # When processing a project dependency index file, all project names matching
 # one of the *EXCLUDE_PATS* will be considered non-existant.
 EXCLUDE_PATS = []
-# Object that logs into an XML formatted file what gets printed on sys.stdout
+# Log commands output
 LOGGER = None
+LOGGER_BUFFER = None
+LOGGER_BUFFERING_COUNT = 0
+
 # Pattern used to search for logs to report through email.
 LOG_PAT = None
 # When True, the log object is not used and output is only
@@ -260,8 +263,8 @@ class Context:
         name to share/dws is derived from the path of the script
         being executed as such: dirname(sys.argv[0])/../share/dws.'''
         return os.path.join(
-          os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))),
-          'share','dws', name)
+            os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))),
+            'share','dws', name)
 #       That code does not work when we are doing dws make (no recurse).
 #       return os.path.join(self.value('buildTop'),'share','dws',name)
 
@@ -288,12 +291,12 @@ class Context:
         '''Returns a project name derived out of the current directory.'''
         if not self.build_top_relative_cwd:
             self.environ['buildTop'].default = os.path.dirname(os.getcwd())
-            writetext('no workspace configuration file could be ' \
+            log_info('no workspace configuration file could be ' \
                + 'found from ' + os.getcwd() \
                + ' all the way up to /. A new one, called ' + self.config_name\
-               + ', will be created in *buildTop* after that path is set.\n')
+               + ', will be created in *buildTop* after that path is set.')
             self.config_filename = os.path.join(self.value('buildTop'),
-                                               self.config_name)
+                                                self.config_name)
             self.save()
             self.locate()
         if os.path.realpath(os.getcwd()).startswith(
@@ -421,7 +424,7 @@ class Context:
 
     def logname(self):
         '''Name of the XML tagged log file where sys.stdout is captured.'''
-        filename = os.path.basename(self.db_pathname())
+        filename = os.path.basename(self.config_name)
         filename = os.path.splitext(filename)[0] + '.log'
         filename = self.log_path(filename)
         if not os.path.exists(os.path.dirname(filename)):
@@ -631,7 +634,8 @@ class IndexProjects:
                 selection = ''
                 if not force:
                     # index or copy.
-                    selection = select_one('The project index file could not '
+                    selection = select_one(
+                                    'The project index file could not '
                                     + 'be found at ' + self.source \
                                     + '. It can be regenerated through one ' \
                                     + 'of the two following method:',
@@ -652,55 +656,6 @@ class IndexProjects:
                         fetch(self.context, {remote_index:''})
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
-
-
-class LogFile:
-    '''Logging into an XML formatted file of sys.stdout and sys.stderr
-    output while the script runs.'''
-
-    def __init__(self, logfilename, nolog, graph=False):
-        self.nolog = nolog
-        self.graph = graph
-        if not self.nolog:
-            self.logfilename = logfilename
-            self.logfile = open(self.logfilename, 'w')
-
-    def close(self):
-        if not self.nolog:
-            self.logfile.close()
-
-    def error(self, text):
-        if not text.startswith('error'):
-            text = 'error: ' + text
-        sys.stdout.flush()
-        self.logfile.flush()
-        sys.stderr.write(text)
-        if not self.nolog:
-            self.logfile.write(text)
-
-    def footer(self, prefix, elapsed=datetime.timedelta(), errcode=0):
-        if not self.nolog:
-            self.logfile.write('%s:' % prefix)
-            if errcode > 0:
-                self.logfile.write(' error (%d) after %s\n'
-                                   % (errcode, elapsed))
-            else:
-                self.logfile.write(' completed in %s\n' % elapsed)
-
-    def header(self, text):
-        sys.stdout.write('######## ' + text + '...\n')
-        if not self.nolog:
-            self.logfile.write('######## ' + text + '...\n')
-
-    def flush(self):
-        sys.stdout.flush()
-        if not self.nolog:
-            self.logfile.flush()
-
-    def write(self, text):
-        sys.stdout.write(text)
-        if not self.nolog:
-            self.logfile.write(text)
 
 
 class PdbHandler:
@@ -1024,12 +979,12 @@ class DependencyGenerator(Unserializer):
             remains += [ self.vertices[step] ]
         next_remains = []
         if False:
-            writetext('!!!remains:\n')
+            log_info('!!!remains:')
             for step in remains:
                 is_vert = ''
                 if step.name in self.vertices:
                     is_vert = '*'
-                writetext('!!!\t%s %s\n' % (step.name, str(is_vert)))
+                log_info('!!!\t%s %s' % (step.name, str(is_vert)))
         while len(remains) > 0:
             for step in remains:
                 ready = True
@@ -1059,9 +1014,9 @@ class DependencyGenerator(Unserializer):
             remains = next_remains
             next_remains = []
         if False:
-            writetext("!!! => ordered:")
+            log_info("!!! => ordered:")
             for ordered_step in ordered:
-                writetext(" " + ordered_step.name)
+                log_info(" " + ordered_step.name)
         return ordered
 
 
@@ -1309,16 +1264,16 @@ class Variable:
             self.value = os.environ[self.name]
         if self.value != None:
             return False
-        writetext('\n' + self.name + ':\n')
-        writetext(self.descr + '\n')
+        log_info('\n' + self.name + ':')
+        log_info(self.descr)
         if USE_DEFAULT_ANSWER:
             self.value = self.default
         else:
             default_prompt = ""
             if self.default:
                 default_prompt = " [" + self.default + "]"
-            self.value = prompt("Enter a string" + default_prompt + ": ")
-        writetext(self.name + ' set to ' + str(self.value) +'\n')
+            self.value = prompt("Enter a string %s: " % default_prompt)
+        log_info("%s set to %s" % (self.name, str(self.value)))
         return True
 
 class HostPlatform(Variable):
@@ -1386,7 +1341,6 @@ class Pathname(Variable):
         *var* value and returns True if the variable value as been set.'''
         if self.value != None:
             return False
-        writetext('\n' + self.name + ':\n' + self.descr + '\n')
         # compute the default leaf directory from the variable name
         leaf_dir = self.name
         for last in range(0, len(self.name)):
@@ -1397,6 +1351,12 @@ class Pathname(Variable):
         base_value = None
         off_base_chosen = False
         default = self.default
+        # We buffer the text and delay writing to log because we can get
+        # here to find out where the log resides!
+        if self.name == 'logDir':
+            global LOGGER_BUFFERING_COUNT
+            LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT + 1
+        log_info('\n%s:\n%s' % (self.name, self.descr))
         if (not default
             or (not ((':' in default) or default.startswith(os.sep)))):
             # If there are no default values or the default is not
@@ -1413,12 +1373,10 @@ class Pathname(Variable):
                     offbase = 'Enter *' + self.base + '*, *' + self.name \
                                  + '* will defaults to ' + show_default  \
                                  + ' ?'
-                    selection = select_one(self.name + ' is based on *' \
-                                              + self.base \
-                        + '* by default. Would you like to ... ',
-                              [ [ offbase  ],
-                                [ directly ] ],
-                                          False)
+                    selection= select_one(
+                        '%s is based on *%s* by default. Would you like to ... '
+                        % (self.name, self.base),
+                        [ [ offbase  ], [ directly ] ], False)
                     if selection == offbase:
                         off_base_chosen = True
                         if isinstance(context.environ[self.base], Pathname):
@@ -1443,7 +1401,7 @@ class Pathname(Variable):
                 dirname = os.path.join(base_value, leaf_dir)
         else:
             if not USE_DEFAULT_ANSWER:
-                dirname = prompt("Enter a pathname [" + default + "]: ")
+                dirname = prompt("Enter a pathname [%s]: " % default)
             if dirname == '':
                 dirname = default
         if not ':' in dirname:
@@ -1451,11 +1409,15 @@ class Pathname(Variable):
         self.value = dirname
         if not ':' in dirname:
             if not os.path.exists(self.value):
-                writetext(self.value + ' does not exist.\n')
+                log_info(self.value + ' does not exist.')
                 # We should not assume the pathname is a directory,
                 # hence we do not issue a os.makedirs(self.value)
-        writetext(self.name + ' set to ' + self.value +'\n')
+        # Now it should be safe to write to the logfile.
+        if self.name == 'logDir':
+            LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
+        log_info('%s set to %s' % (self.name, self.value))
         return True
+
 
 class Metainfo(Variable):
 
@@ -1490,8 +1452,8 @@ class Multiple(Variable):
         descr = self.descr
         if len(self.value) > 0:
             descr +=  " (constrained: " + ", ".join(self.value) + ")"
-        self.value += select_multiple(descr, choices)
-        writetext(self.name + ' set to ' + ', '.join(self.value) +'\n')
+        self.value = select_multiple(descr, choices)
+        log_info('%s set to %s', (self.name, ', '.join(self.value)))
         self.choices = []
         return True
 
@@ -1528,7 +1490,7 @@ class Single(Variable):
         if self.value:
             return False
         self.value = select_one(self.descr, self.choices)
-        writetext(self.name + ' set to ' + self.value +'\n')
+        log_info('%s set to%s' % (self.name, self.value))
         return True
 
     def constrain(self, variables):
@@ -1803,7 +1765,7 @@ class DarwinInstallStep(InstallStep):
                 if target != 'CurrentUserHomeDirectory':
                     message = 'ATTENTION: You need administrator privileges '\
                       + 'on the local machine to execute the following cmmand\n'
-                    writetext(message)
+                    log_info(message)
                     admin = True
                 else:
                     admin = False
@@ -2188,7 +2150,7 @@ class Repository:
                 if pathname.endswith('.patch'):
                     patches += [ pathname ]
             if len(patches) > 0:
-                writetext('######## patching ' + name + '...\n')
+                log_info('######## patching ' + name + '...')
                 prev = os.getcwd()
                 os.chdir(context.src_dir(name))
                 shell_command(['patch',
@@ -2242,7 +2204,7 @@ class GitRepository(Repository):
                 if pathname.endswith('.patch'):
                     patches += [ pathname ]
             if len(patches) > 0:
-                writetext('######## patching ' + name + '...\n')
+                log_info('######## patching ' + name + '...')
                 os.chdir(context.src_dir(name))
                 shell_command([ find_git(context), 'am', '-3', '-k',
                               os.path.join(context.patch_dir(name),
@@ -2297,7 +2259,7 @@ class GitRepository(Repository):
                                    stderr=subprocess.STDOUT)
             line = cmd.stdout.readline()
             while line != '':
-                writetext(line)
+                log_info(line)
                 look = re.match('^updating', line)
                 if look:
                     updated = True
@@ -2758,14 +2720,14 @@ def find_bin(names, search_path, build_top, excludes=None, variant=None):
                             os.path.realpath(os.path.join(link_name, suffix))))
             continue
         if variant:
-            writetext(variant + '/')
-        writetext(name_pat + '... ')
+            log_interactive(variant + '/')
+        log_interactive(name_pat + '... ')
         found = False
         if name_pat.endswith('.app'):
             binpath = os.path.join('/Applications', name_pat)
             if os.path.isdir(binpath):
                 found = True
-                writetext('yes\n')
+                log_info('yes')
                 results.append((name_pat, binpath))
         else:
             for path in droots:
@@ -2812,19 +2774,19 @@ def find_bin(names, search_path, build_top, excludes=None, variant=None):
                                         break
                             if not excluded:
                                 version = numbers[0]
-                                writetext(str(version) + '\n')
+                                log_info(str(version))
                                 results.append((name_pat, binpath))
                             else:
-                                writetext('excluded (' +str(numbers[0])+ ')\n')
+                                log_info('excluded (' +str(numbers[0])+ ')')
                         else:
-                            writetext('yes\n')
+                            log_info('yes')
                             results.append((name_pat, binpath))
                         found = True
                         break
                 if found:
                     break
         if not found:
-            writetext('no\n')
+            log_info('no')
             results.append((name_pat, None))
             complete = False
     return results, version, complete
@@ -2836,7 +2798,7 @@ def find_cache(context, names):
     results = {}
     for pathname in names:
         name = os.path.basename(urlparse.urlparse(pathname).path)
-        writetext(name + "... ")
+        log_interactive(name + "... ")
         local_name = context.local_dir(pathname)
         if os.path.exists(local_name):
             if isinstance(names[pathname], dict):
@@ -2846,16 +2808,16 @@ def find_cache(context, names):
                         sha1sum = hashlib.sha1(local_file.read()).hexdigest()
                     if sha1sum == expected:
                         # checksum are matching
-                        writetext("matched (sha1)\n")
+                        log_info("matched (sha1)")
                     else:
-                        writetext("corrupted? (sha1)\n")
+                        log_info("corrupted? (sha1)")
                 else:
-                    writetext("yes\n")
+                    log_info("yes")
             else:
-                writetext("yes\n")
+                log_info("yes")
         else:
             results[ pathname ] = names[pathname]
-            writetext("no\n")
+            log_info("no")
     return results
 
 
@@ -2944,8 +2906,8 @@ def find_data(dirname, names,
             continue
 
         if variant:
-            writetext(variant + '/')
-        writetext(name_pat + '... ')
+            log_interactive(variant + '/')
+        log_interactive(name_pat + '... ')
         link_num = 0
         if name_pat.startswith('.*' + os.sep):
             link_num = len(name_pat.split(os.sep)) - 2
@@ -2958,7 +2920,7 @@ def find_data(dirname, names,
         if len(full_names) > 0:
             try:
                 os.stat(full_names[0])
-                writetext('yes\n')
+                log_info('yes')
                 results.append((name_pat, full_names[0]))
                 found = True
             except IOError:
@@ -2967,7 +2929,7 @@ def find_data(dirname, names,
             for base in droots:
                 full_names = find_files(base, name_pat)
                 if len(full_names) > 0:
-                    writetext('yes\n')
+                    log_info('yes')
                     tokens = full_names[0].split(os.sep)
                     linked = os.sep.join(tokens[:len(tokens) - link_num])
                     # DEPRECATED: results.append((name_pat, linked))
@@ -2975,7 +2937,7 @@ def find_data(dirname, names,
                     found = True
                     break
         if not found:
-            writetext('no\n')
+            log_info('no')
             results.append((name_pat, None))
             complete = False
     return results, None, complete
@@ -3023,8 +2985,8 @@ def find_include(names, search_path, build_top, excludes=None, variant=None):
                 (name_pat, os.path.realpath(os.path.join(link_name, suffix))))
             continue
         if variant:
-            writetext(variant + '/')
-        writetext(name_pat + '... ')
+            log_interactive(variant + '/')
+        log_interactive(name_pat + '... ')
         found = False
         for include_sys_dir in include_sys_dirs:
             includes = []
@@ -3087,9 +3049,9 @@ def find_include(names, search_path, build_top, excludes=None, variant=None):
             if len(includes) > 0:
                 if includes[0][1]:
                     version = includes[0][1]
-                    writetext(version + '\n')
+                    log_info(version)
                 else:
-                    writetext('yes\n')
+                    log_info('yes')
                 results.append((name_pat, includes[0][0]))
                 name_pat_parts = name_pat.split(os.sep)
                 include_file_parts = includes[0][0].split(os.sep)
@@ -3107,7 +3069,7 @@ def find_include(names, search_path, build_top, excludes=None, variant=None):
                 found = True
                 break
         if not found:
-            writetext('no\n')
+            log_info('no')
             results.append((name_pat, None))
             complete = False
     return results, version, complete
@@ -3177,8 +3139,8 @@ def find_lib(names, search_path, build_top, excludes=None, variant=None):
                 os.path.realpath(os.path.join(link_name, link_suffix))))
             continue
         if variant:
-            writetext(variant + '/')
-        writetext(name_pat + '... ')
+            log_interactive(variant + '/')
+        log_interactive(name_pat + '... ')
         found = False
         for lib_sys_dir in droots:
             libs = []
@@ -3249,14 +3211,14 @@ def find_lib(names, search_path, build_top, excludes=None, variant=None):
                     '.*' + lib_prefix() + name_pat + '(.+)', candidate)
                 if look:
                     suffix = look.group(1)
-                    writetext(suffix + '\n')
+                    log_info(suffix)
                 else:
-                    writetext('yes (no suffix?)\n')
+                    log_info('yes (no suffix?)')
                 results.append((name_pat, candidate))
                 found = True
                 break
         if not found:
-            writetext('no\n')
+            log_info('no')
             results.append((name_pat, None))
             complete = False
     return results, version, complete
@@ -3531,7 +3493,7 @@ def fetch(context, filenames,
             localname = context.local_dir(remotename)
             if not os.path.exists(os.path.dirname(localname)):
                 os.makedirs(os.path.dirname(localname))
-            writetext('fetching ' + remotename + '...\n')
+            log_info('fetching ' + remotename + '...')
             remote = urllib2.urlopen(urllib2.Request(remotename))
             local = open(localname, 'w')
             local.write(remote.read())
@@ -3810,7 +3772,7 @@ def link_prerequisites(files, excludes=None, target=None):
 def link_context(path, link_name):
     '''link a *path* into the workspace.'''
     if not path:
-        LOGGER.error('There is no target for link ' + link_name + '\n')
+        log_error('There is no target for link ' + link_name + '\n')
         return
     if os.path.realpath(path) == os.path.realpath(link_name):
         return
@@ -4092,9 +4054,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
         cmdline += execute
     else:
         cmdline = execute
-    if LOGGER:
-        LOGGER.logfile.write(' '.join(cmdline) + '\n')
-    sys.stdout.write(' '.join(cmdline) + '\n')
+    log_info(' '.join(cmdline))
     if not DO_NOT_EXECUTE:
         env = os.environ.copy()
         if search_path:
@@ -4109,7 +4069,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
         while line != '':
             if pat and re.match(pat, line):
                 filtered_output += [ line ]
-            writetext(line)
+            log_info(line[:-1])
             line = cmd.stdout.readline()
         cmd.wait()
         if cmd.returncode != 0:
@@ -4172,7 +4132,8 @@ def ssh_tunnels(hostname, ports):
                                 + hostname + " failed.")
 
 
-def validate_controls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6, 7 ]):
+def validate_controls(dgen, dbindex,
+                      graph=False, priorities = [ 1, 2, 3, 4, 5, 6, 7 ]):
     '''Checkout source code files, install packages such that
     the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency
@@ -4188,8 +4149,8 @@ def validate_controls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6, 7 ]):
     global ERRORS
     # Add deep dependencies
     vertices = dbindex.closure(dgen)
-    if LOGGER and LOGGER.graph:
-        gph_filename = os.path.splitext(LOGGER.logfilename)[0] + '.dot'
+    if graph:
+        gph_filename = os.path.splitext(CONTEXT.logname())[0] + '.dot'
         gph_file = open(gph_filename,'w')
         gph_file.write("digraph structural {\n")
         for vertex in vertices:
@@ -4217,7 +4178,7 @@ def validate_controls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6, 7 ]):
             for vertex in glob:
                 errcode = 0
                 elapsed = 0
-                LOGGER.header(vertex.name)
+                log_header(vertex.name)
                 start = datetime.datetime.now()
                 try:
                     vertex.run(CONTEXT)
@@ -4232,16 +4193,16 @@ def validate_controls(dgen, dbindex, priorities = [ 1, 2, 3, 4, 5, 6, 7 ]):
                     if dgen.stop_make_after_error:
                         finish = datetime.datetime.now()
                         elapsed = elapsed_duration(start, finish)
-                        LOGGER.footer(vertex.name, elapsed, errcode)
+                        log_footer(vertex.name, elapsed, errcode)
                         raise err
                     else:
-                        LOGGER.error(str(err))
-                LOGGER.footer(vertex.name, elapsed, errcode)
+                        log_error(str(err))
+                log_footer(vertex.name, elapsed, errcode)
 
     if UpdateStep.nb_updated_projects > 0:
-        writetext('%d updated project(s).\n' % UpdateStep.nb_updated_projects)
+        log_info('%d updated project(s).' % UpdateStep.nb_updated_projects)
     else:
-        writetext('all project(s) are up-to-date.\n')
+        log_info('all project(s) are up-to-date.')
     return UpdateStep.nb_updated_projects
 
 
@@ -4399,21 +4360,103 @@ def wait_until_ssh_up(hostname,
         raise Error("ssh connection attempt to " + hostname + " timed out.")
 
 
-def writetext(message):
-    '''Write a message onto stdout and into the log file'''
-    if LOGGER:
-        LOGGER.write(message)
-        LOGGER.flush()
-    else:
-        sys.stdout.write(message)
-        sys.stdout.flush()
-
-
 def prompt(message):
     '''If the script is run through a ssh command, the message would not
     appear if passed directly in raw_input.'''
-    writetext(message)
+    log_interactive(message)
     return raw_input("")
+
+
+def log_init():
+    global LOGGER
+    if not LOGGER:
+        logging.config.dictConfig({
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'simple': {
+                'format': '[%(asctime)s] [%(levelname)s] %(message)s',
+                'datefmt': '%d/%b/%Y:%H:%M:%S %z'
+            },
+        },
+        'handlers': {
+            'logfile':{
+                'level': 'INFO',
+                'class':'logging.handlers.WatchedFileHandler',
+                'filename': CONTEXT.logname(),
+                'formatter': 'simple'
+            },
+         },
+        'loggers': {
+            __name__: {
+                'handlers': [ 'logfile' ],
+                'level': 'INFO',
+                'propagate': True,
+            },
+        },
+        })
+    LOGGER = logging.getLogger(__name__)
+
+
+def log_footer(prefix, elapsed=datetime.timedelta(), errcode=0):
+    '''Write a footer into the log file.'''
+    if not NO_LOG:
+        if not LOGGER:
+            log_init()
+        LOGGER.info('%s:' % prefix)
+        if errcode > 0:
+            LOGGER.info(' error (%d) after %s\n' % (errcode, elapsed))
+        else:
+            LOGGER.info(' completed in %s\n' % elapsed)
+
+
+def log_header(message, *args, **kwargs):
+    '''Write a header into the log file'''
+    sys.stdout.write('######## ' + message + '...\n')
+    if not NO_LOG:
+        if not LOGGER:
+            log_init()
+        LOGGER.info('######## ' + message + '...\n')
+
+
+def log_error(message, *args, **kwargs):
+    '''Write an error message onto stdout and into the log file'''
+    sys.stderr.write('error: ' + message)
+    if not NO_LOG:
+        if not LOGGER:
+            log_init()
+        LOGGER.error(message, *args, **kwargs)
+
+def log_interactive(message):
+    '''Write a message that should absolutely end up on the screen
+    even when no newline is present at the end of the message.'''
+    sys.stdout.write(message)
+    sys.stdout.flush()
+    if not NO_LOG:
+        global LOGGER_BUFFER
+        if not LOGGER_BUFFER:
+            LOGGER_BUFFER = cStringIO.StringIO()
+        LOGGER_BUFFER.write(message)
+
+
+def log_info(message, *args, **kwargs):
+    '''Write a info message onto stdout and into the log file'''
+    sys.stdout.write(message + '\n')
+    if not NO_LOG:
+        global LOGGER_BUFFER
+        if LOGGER_BUFFERING_COUNT > 0:
+            if not LOGGER_BUFFER:
+                LOGGER_BUFFER = cStringIO.StringIO()
+            LOGGER_BUFFER.write((message % args) % kwargs)
+        else:
+            if not LOGGER:
+                log_init()
+            if LOGGER_BUFFER:
+                LOGGER.info(LOGGER_BUFFER.getvalue()
+                            + (message % args) % kwargs)
+                LOGGER_BUFFER = None
+            else:
+                LOGGER.info(message, *args, **kwargs)
 
 
 def pub_build(args, graph=False, noclean=False):
@@ -4450,6 +4493,11 @@ def pub_build(args, graph=False, noclean=False):
         if base:
             site_top = os.path.join(os.getcwd(), base)
     CONTEXT.environ['siteTop'].value = site_top
+    if not noclean:
+        # We don't want to remove the log we just created
+        # so we buffer until it is safe to flush.
+        global LOGGER_BUFFERING_COUNT
+        LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT + 1
     if len(args) > 2:
         CONTEXT.environ['buildTop'].value = args[2]
     else:
@@ -4497,9 +4545,8 @@ def pub_build(args, graph=False, noclean=False):
         if not os.path.exists(build_top):
             os.makedirs(build_top)
         os.chdir(build_top)
+        LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
 
-    global LOGGER
-    LOGGER = LogFile(CONTEXT.logname(), NO_LOG, graph)
     rgen = DerivedSetsGenerator()
     # If we do not force the update of the index file, the dependency
     # graph might not reflect the latest changes in the repository server.
@@ -4513,15 +4560,16 @@ def pub_build(args, graph=False, noclean=False):
         CONTEXT.environ['buildstamp'] = '-'.join([socket.gethostname(),
                                             stamp(datetime.datetime.now())])
     CONTEXT.save()
-    if validate_controls(dgen, INDEX):
-        LOGGER.close()
-        LOGGER = None
+    if validate_controls(dgen, INDEX, graph=graph):
         # Once we have built the repository, let's report the results
         # back to the remote server. We stamp the logfile such that
         # it gets a unique name before uploading it.
         logstamp = stampfile(CONTEXT.logname())
         if not os.path.exists(os.path.dirname(CONTEXT.log_path(logstamp))):
             os.makedirs(os.path.dirname(CONTEXT.log_path(logstamp)))
+        if LOGGER:
+            for handler in LOGGER.handlers:
+                handler.flush()
         shell_command(['install', '-m', '644', CONTEXT.logname(),
                       CONTEXT.log_path(logstamp)])
         look = re.match(r'.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)', logstamp)
@@ -4627,10 +4675,8 @@ def pub_configure(args):
                        the local machine and create the appropriate symbolic
                        links such that the project can be made later on.
     '''
-    global LOGGER
     CONTEXT.environ['indexFile'].value = CONTEXT.src_dir(
         os.path.join(CONTEXT.cwd_project(), CONTEXT.indexName))
-    LOGGER = LogFile(CONTEXT.logname(), NO_LOG)
     project_name = CONTEXT.cwd_project()
     dgen = MakeGenerator([ project_name ], [])
     dbindex = IndexProjects(CONTEXT, CONTEXT.value('indexFile'))
@@ -4784,8 +4830,6 @@ def pub_find(args):
                        Search through a set of directories derived from PATH
                        for *filename*.
     '''
-    global LOGGER
-    LOGGER = LogFile(CONTEXT.logname(), True)
     dir_name = args[0]
     command = 'find_' + dir_name
     searches = []
@@ -4883,8 +4927,6 @@ def pub_make(args, graph=False):
     # context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
     #    os.path.realpath(os.getcwd())))
     CONTEXT.targets = []
-    global LOGGER
-    LOGGER = LogFile(CONTEXT.logname(), NO_LOG, graph)
     recurse = False
     top = os.path.realpath(os.getcwd())
     if (top == os.path.realpath(CONTEXT.value('buildTop'))
@@ -4906,7 +4948,8 @@ def pub_make(args, graph=False):
             CONTEXT.targets += [ opt ]
     if recurse:
         # note that *EXCLUDE_PATS* is global.
-        validate_controls(MakeGenerator(roots, [], EXCLUDE_PATS), INDEX)
+        validate_controls(MakeGenerator(roots, [], EXCLUDE_PATS), INDEX,
+                          graph=graph)
     else:
         handler = Unserializer(roots)
         if os.path.isfile(CONTEXT.db_pathname()):
@@ -4943,7 +4986,7 @@ def pub_patch(args):
     prev = os.getcwd()
     for rep in reps:
         patches = []
-        writetext('######## generating patch for project ' + rep + '\n')
+        log_info('######## generating patch for project ' + rep)
         os.chdir(CONTEXT.src_dir(rep))
         patch_dir = CONTEXT.patch_dir(rep)
         if not os.path.exists(patch_dir):
@@ -4965,8 +5008,6 @@ def pub_push(args):
     '''               Push commits to projects checked out
                        in the workspace.
     '''
-    global LOGGER
-    LOGGER = LogFile(CONTEXT.logname(), NO_LOG)
     reps = args
     recurse = False
     if 'recurse' in args:
@@ -5026,8 +5067,6 @@ def pub_update(args):
                        version provided is greater than the version currently
                        installed.
     '''
-    global LOGGER
-    LOGGER = LogFile(CONTEXT.logname(), NO_LOG)
     reps = args
     recurse = False
     if 'recurse' in args:
@@ -5067,23 +5106,23 @@ def pub_update(args):
                 # \todo We do not propagate force= here to avoid messing up
                 #       the local checkouts on pubUpdate()
                 try:
-                    LOGGER.header(update.name)
+                    log_header(update.name)
                     update.run(CONTEXT)
-                    LOGGER.footer(update.name)
+                    log_footer(update.name)
                 except Error, err:
-                    writetext('warning: cannot update repository from ' \
-                                  + str(update.rep.url) + '\n')
-                    LOGGER.footer(update.name, errcode=err.code)
+                    log_info('warning: cannot update repository from ' \
+                                  + str(update.rep.url))
+                    log_footer(update.name, errcode=err.code)
             else:
                 ERRORS += [ name ]
         if len(ERRORS) > 0:
             raise Error(' '.join(ERRORS) \
                             + ' is/are not project(s) under source control.')
         if UpdateStep.nb_updated_projects > 0:
-            writetext(str(UpdateStep.nb_updated_projects) \
-                          + ' updated project(s).\n')
+            log_info(str(UpdateStep.nb_updated_projects) \
+                          + ' updated project(s).')
         else:
-            writetext('all project(s) are up-to-date.\n')
+            log_info('all project(s) are up-to-date.')
 
 
 def pub_upstream(args):
@@ -5127,6 +5166,7 @@ You have now the choice to install them from a source repository. You will
 later have the choice to install them from either a patch, a binary package
 or not at all.''',
         rep_candidates)
+        log_info(select_string)
     # Filters out the dependencies which the user has decided to install
     # from a repository.
     packages = []
@@ -5149,6 +5189,7 @@ def select_install(package_candidates):
 You have now the choice to install them from a binary package. You can skip
 this step if you know those dependencies will be resolved correctly later on.
 ''', package_candidates)
+        log_info(select_string)
     return packages
 
 
@@ -5175,7 +5216,8 @@ def select_one(description, choices, sort=True):
         try:
             choice = int(selection)
             if choice >= 1 and choice <= len(choices):
-                return choices[choice - 1][0]
+                choice = choices[choice - 1][0]
+                break
         except TypeError:
             choice = None
         except ValueError:
@@ -5196,7 +5238,7 @@ def select_multiple(description, selects):
     choices = [ [ 'all' ] ] + selects
     while len(choices) > 1 and not done:
         show_multiple(description, choices)
-        writetext(str(len(choices) + 1) + ')  done\n')
+        log_info("%d) done", len(choices) + 1)
         if USE_DEFAULT_ANSWER:
             selection = "1"
         else:
@@ -5242,7 +5284,9 @@ def select_yes_no(description):
 
 
 def show_multiple(description, choices):
-    '''Display a list of choices on the user interface.'''
+    '''Returns a list of choices on the user interface as a string.
+    We do this instead of printing directly because this function
+    is called to configure CONTEXT variables, including *logDir*.'''
     # Compute display layout
     widths = []
     displayed = []
@@ -5261,11 +5305,10 @@ def show_multiple(description, choices):
             widths[col_index] = max(widths[col_index], len(col) + 2)
         displayed += [ line ]
     # Ask user to review selection
-    writetext(description + '\n')
+    log_info('%s' % description)
     for project in displayed:
         for col_index, col in enumerate(project):
-            writetext(col.ljust(widths[col_index]))
-        writetext('\n')
+            log_info(col.ljust(widths[col_index]))
 
 
 def unpack(pkgfilename):
@@ -5371,15 +5414,12 @@ def main(args):
         options.func(**func_args)
 
     except Error, err:
-        writetext(str(err))
+        log_error(str(err))
         exit_code = err.code
-
-    if LOGGER:
-        LOGGER.close()
 
     if options.mailto and len(options.mailto) > 0 and LOG_PAT:
         logs = find_files(CONTEXT.log_path(''), LOG_PAT)
-        writetext('forwarding logs ' + ' '.join(logs) + '...\n')
+        log_info('forwarding logs ' + ' '.join(logs) + '...')
         sendmail(createmail('build report', logs), options.mailto)
     return exit_code
 

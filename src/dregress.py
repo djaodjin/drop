@@ -249,7 +249,9 @@ if __name__ == '__main__':
         # not include "previous test" output in the context because
         # that would change value of diffLineNum and mess the following
         # algorithm.
-        diffCmdLine = 'diff -U 1 ' + logfile + ' ' + reffile
+        # XXX The output looks weird because reffile is the second parameter
+        #     instead of the first one.
+        diffCmdLine = 'diff -U 1 %s %s' % (logfile, reffile)
         #print "!!! log cmd line: " + logCmdLine
         #print "!!! diff cmd line: " + diffCmdLine
         log = os.popen(logCmdLine)
