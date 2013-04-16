@@ -28,12 +28,12 @@
   <xs:element name="fetch">
     <xs:complexType>
       <xs:sequence>
+        <xs:element name="url" type="xs:string" minOccurs="1" maxOccurs="1" />
         <xs:element name="size" type="xs:string" minOccurs="0" />
         <xs:element name="md5" type="xs:string" minOccurs="0" />
         <xs:element name="sha1" type="xs:string" minOccurs="0" />
         <xs:element name="sha256" type="xs:string" minOccurs="0" />
       </xs:sequence>
-      <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
   </xs:element>
 

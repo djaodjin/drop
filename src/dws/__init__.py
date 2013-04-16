@@ -1147,7 +1147,6 @@ class MakeGenerator(DependencyGenerator):
                 if flavor:
                     targets = self.add_setup(variant.target,
                                             flavor.prerequisites(tags))
-
         return (need_prompt, targets)
 
     def topological(self):
@@ -2321,14 +2320,16 @@ class InstallFlavor:
         self.deps = {}
         self.make = None
         for key, val in pairs.iteritems():
-            if key == 'sync':
+            if isinstance(val, Variable):
+                variables[key] = val
+            elif key == 'sync':
                 rep = Repository.associate(val)
             elif key == 'shell':
                 self.make = ShellStep(name, val)
-            elif isinstance(val, Variable):
-                variables[key] = val
-            elif len(os.path.splitext(key)[1]) > 0:
-                fetches[key] = val
+            elif key == 'fetch':
+                file_url = val['url']
+                val.pop('url')
+                fetches[file_url] = val
             elif key == 'alternates':
                 self.deps[key] = Alternates(key, val)
             else:
