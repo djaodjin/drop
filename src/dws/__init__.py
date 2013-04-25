@@ -313,6 +313,7 @@ class Context:
         if not str(self.environ['indexFile']):
             filtered = filter_rep_ext(CONTEXT.value('remoteIndex'))
             if filtered != CONTEXT.value('remoteIndex'):
+                print "XXX OK filtered ("+filtered+") different from remoteIndex("+CONTEXT.value('remoteIndex')+")"
                 prefix = CONTEXT.value('remoteSrcTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
@@ -461,7 +462,9 @@ class Context:
             src_base = look.group(3)
             site_base = src_base
             remote_path_list = look.group(3).split(os.sep)
-            host_prefix = look.group(1) + self.tunnel_point + ':'
+            host_prefix = self.tunnel_point + ':'
+            if look.group(1):
+                host_prefix = look.group(1) + host_prefix
         else:
             # We compute *base* here through the same algorithm as done
             # in *local_dir*. We do not call *local_dir* because remoteSiteTop
@@ -4576,7 +4579,9 @@ def pub_build(args, graph=False, noclean=False):
     if len(args) > 2:
         CONTEXT.environ['buildTop'].value = args[2]
     else:
-        CONTEXT.environ['buildTop'].configure(CONTEXT)
+        # Can't call *configure* before *locate*, otherwise config_filename
+        # is set to be inside the buildTop on the first save.
+        CONTEXT.environ['buildTop'].value = os.path.join(site_top, 'build')
     build_top = str(CONTEXT.environ['buildTop'])
     prevcwd = os.getcwd()
     if not os.path.exists(build_top):
