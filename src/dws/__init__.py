@@ -393,8 +393,19 @@ class Context:
         except IOError:
             self.build_top_relative_cwd = None
             self.environ['buildTop'].configure(self)
-            self.config_filename = os.path.join(str(self.environ['buildTop']),
-                                              self.config_name)
+            build_top = str(self.environ['buildTop'])
+            site_top = str(self.environ['siteTop'])
+            if build_top.startswith(site_top):
+                # When build_top is inside the site_top, we create the config
+                # file in site_top for convinience so dws commands can be run
+                # anywhere from within site_top (i.e. both build_top
+                # and src_top).
+                self.config_filename = os.path.join(site_top, self.config_name)
+            else:
+                # When we have a split hierarchy we can build the same src_top
+                # multiple different ways but dws commands should exclusively
+                # be run from within the build_top.
+                self.config_filename = os.path.join(build_top, self.config_name)
             if not os.path.isfile(self.config_filename):
                 self.save()
         if self.build_top_relative_cwd == '.':
@@ -1684,13 +1695,13 @@ class InstallStep(Step):
         self.managed += install_step.managed
 
     def run(self, context):
-        raise Error("Does not know how to install '" \
-                        + str(self.managed) + "' on " + context.host())
+        raise Error("Does not know how to install '%s' on %s for %s"
+                    % (str(self.managed), context.host(), self.name))
 
     def info(self):
-        raise Error("Does not know how to search package manager for '" \
-                        + str(self.managed) + "' on " + CONTEXT.host())
-
+        raise Error(
+            "Does not know how to search package manager for '%s' on %s for %s"
+            % (str(self.managed), CONTEXT.host(), self.name))
 
 
 class AptInstallStep(InstallStep):
@@ -1851,7 +1862,9 @@ class NpmInstallStep(InstallStep):
                              priority=Step.install_lang)
 
     def _manager(self):
-        find_boot_bin(CONTEXT, '(npm).*', 'npm')
+        # nodejs is not available as a package on Fedora 17 or rather,
+        # it was until the repo site went down.
+        find_npm(CONTEXT)
         return os.path.join(CONTEXT.value('buildTop'), 'bin', 'npm')
 
     def run(self, context):
@@ -2033,13 +2046,15 @@ class ShellStep(BuildStep):
 
     def run(self, context):
         if self._should_run():
-            context = localize_context(context, self.name, self.target)
+            context = localize_context(context, self.project, self.target)
             script = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
             script.write('#!/bin/sh\n\n')
             script.write('. ' + context.config_filename + '\n\n')
             script.write(self.script)
             script.close()
-            shell_command([ 'sh', '-x', '-e', script.name ])
+            shell_command([ 'sh', '-x', '-e', script.name ],
+                    search_path=[context.bin_build_dir()]
+                              + context.search_path('bin'))
             os.remove(script.name)
             self.updated = True
 
@@ -2119,8 +2134,8 @@ class UpdateStep(Step):
                         = UpdateStep.nb_updated_projects + 1
                 self.rep.apply_patches(self.project, context)
             except:
-                raise Error('cannot update repository or apply patch for ' \
-                                + str(self.project) + '\n')
+                raise Error('cannot update repository or apply patch for %s\n'
+                            % str(self.project))
 
 
 class Repository:
@@ -2322,14 +2337,24 @@ class InstallFlavor:
         for key, val in pairs.iteritems():
             if isinstance(val, Variable):
                 variables[key] = val
+                # XXX Hack? We add the variable in the context here
+                # because it might be needed by the setup step even though
+                # no configure step has run.
+                if not key in CONTEXT.environ:
+                    CONTEXT.environ[key] = val
             elif key == 'sync':
                 rep = Repository.associate(val)
             elif key == 'shell':
                 self.make = ShellStep(name, val)
             elif key == 'fetch':
-                file_url = val['url']
-                val.pop('url')
-                fetches[file_url] = val
+                if isinstance(val, list):
+                    blocks = val
+                else:
+                    blocks = [ val ]
+                for blk in blocks:
+                    file_url = blk['url']
+                    blk.pop('url')
+                    fetches[file_url] = blk
             elif key == 'alternates':
                 self.deps[key] = Alternates(key, val)
             else:
@@ -2743,7 +2768,10 @@ def find_bin(names, search_path, build_top, excludes=None, variant=None):
                             # When looking for a specific *variant*, we do not
                             # try to execute executables as they are surely
                             # not meant to be run on the native system.
-                            for flag in [ '--version', '-V' ]:
+                            # We run the help flag before --version, -V
+                            # because bzip2 would wait on stdin for data
+                            # otherwise.
+                            for flag in [ '--help', '--version', '-V' ]:
                                 numbers = []
                                 cmdline = [ binpath, flag ]
                                 try:
@@ -2860,7 +2888,8 @@ def find_first_files(base, name_pat, subdir=''):
                 # We must postpend the '$' sign to the regular expression
                 # otherwise "makeconv" and "makeinfo" will be picked up by
                 # a match for the "make" executable.
-                look = re.match(name_pat + '$', relative)
+                regex = name_pat_regex(name_pat)
+                look = regex.match(relative)
                 if look != None:
                     results += [ relative ]
                 elif (((('.*' + os.sep) in name_pat)
@@ -3103,7 +3132,15 @@ def find_lib(names, search_path, build_top, excludes=None, variant=None):
     # a '_version' suffix so we will remove it from the regular expression.
     suffix = '(-.+)?(\\' + lib_static_suffix() \
         + '|\\' + lib_dyn_suffix() + r'(\\.\S+)?)'
-    droots = search_path
+    if not variant and CONTEXT.host() in APT_DISTRIBS:
+        # Ubuntu 12.04+: host libraries are not always installed
+        # in /usr/lib. Sometimes they end-up in /usr/lib/x86_64-linux-gnu
+        # like libgmp.so for example.
+        droots = []
+        for path in search_path:
+            droots += [ path, os.path.join(path, 'x86_64-linux-gnu') ]
+    else:
+        droots = search_path
     for name_pat, absolute_path in names:
         if absolute_path != None and os.path.exists(absolute_path):
             # absolute paths only occur when the search has already been
@@ -3249,6 +3286,7 @@ def find_prerequisites(deps, excludes=None, variant=None):
         # Make sure the extras do not get filtered out.
         if not dep in INSTALL_DIRS:
             installed[dep] = deps[dep]
+    #log_info("XXX [find_prerequisites] " + str(deps))
     for dirname in INSTALL_DIRS:
         # The search order "bin, include, lib, etc" will determine
         # how excluded versions apply.
@@ -3290,7 +3328,7 @@ def find_share(names, search_path, build_top, excludes=None, variant=None):
     return find_data('share', names, search_path, build_top, excludes, variant)
 
 
-def find_boot_bin(context, name, package = None):
+def find_boot_bin(context, name, package=None, dbindex=None):
     '''This script needs a few tools to be installed to bootstrap itself,
     most noticeably the initial source control tool used to checkout
     the projects dependencies index file.'''
@@ -3303,7 +3341,8 @@ def find_boot_bin(context, name, package = None):
         # project before looking for the rsync prerequisite.
         if not package:
             package = name
-        dbindex = IndexProjects(context,
+        if not dbindex:
+            dbindex = IndexProjects(context,
                           '''<?xml version="1.0" ?>
 <projects>
   <project name="dws">
@@ -3332,11 +3371,41 @@ def find_boot_bin(context, name, package = None):
 def find_git(context):
     if not os.path.lexists(
         os.path.join(context.value('buildTop'), 'bin', 'git')):
-        setup = SetupStep('git-all', files = { 'bin': [('git', None)],
-                                            'libexec':[('git-core', None)] })
+        files = { 'bin': [('git', None)]}
+        if context.host() in APT_DISTRIBS:
+            files.update({'share': [('git-core', None)]})
+        else:
+            files.update({'libexec': [('git-core', None)]})
+        setup = SetupStep('git-all', files=files)
         setup.run(context)
     return 'git'
 
+def find_npm(context):
+    build_npm = os.path.join(context.value('buildTop'), 'bin', 'npm')
+    if not os.path.lexists(build_npm):
+        dbindex=IndexProjects(context,
+        '''<?xml version="1.0" ?>
+<projects>
+  <project name="nvm">
+    <repository>
+      <sync>https://github.com/creationix/nvm.git</sync>
+      <shell>
+export NVM_DIR=${buildTop}
+. ${srcTop}/nvm/nvm.sh
+nvm install 0.8.14
+      </shell>
+    </repository>
+  </project>
+</projects>
+''')
+        validate_controls(
+            BuildGenerator([ 'nvm' ], [], force_update = True), dbindex)
+        prev = os.getcwd()
+        os.chdir(os.path.join(context.value('buildTop'), 'bin'))
+        os.symlink('../v0.8.14/bin/npm', 'npm')
+        os.symlink('../v0.8.14/bin/node', 'node')
+        os.chdir(prev)
+    return 'npm'
 
 def find_pip(context):
     pip_package = None
@@ -3378,6 +3447,10 @@ def find_rsync(context, host, relative=True, admin=False,
         cmdline += [ '--rsync-path "sudo rsync"' ]
     return cmdline, prefix
 
+def name_pat_regex(name_pat):
+    # Many C++ tools contain ++ in their name which might trip
+    # the regular expression parser.
+    return re.compile(name_pat.replace('++','\+\+') + '$')
 
 def config_var(context, variables):
     '''Look up the workspace configuration file the workspace make fragment
@@ -3793,7 +3866,7 @@ def link_build_name(name_pat, subdir, target=None):
     # having to prefix and suffix library names in Makefile with complex
     # variable substitution logic.
     suffix = ''
-    regex = re.compile(name_pat + '$')
+    regex = name_pat_regex(name_pat)
     if regex.groups == 0:
         name = name_pat.replace('\\', '')
         parts = name.split(os.sep)
@@ -4186,7 +4259,7 @@ def validate_controls(dgen, dbindex,
                     finish = datetime.datetime.now()
                     elapsed = elapsed_duration(start, finish)
                 except Error, err:
-                    if False:
+                    if True:
                         import traceback
                         traceback.print_exc()
                     errcode = err.code
@@ -4404,11 +4477,11 @@ def log_footer(prefix, elapsed=datetime.timedelta(), errcode=0):
     if not NO_LOG:
         if not LOGGER:
             log_init()
-        LOGGER.info('%s:' % prefix)
         if errcode > 0:
-            LOGGER.info(' error (%d) after %s\n' % (errcode, elapsed))
+            LOGGER.info('%s: error (%d) after %s'
+                        % (prefix, errcode, elapsed))
         else:
-            LOGGER.info(' completed in %s\n' % elapsed)
+            LOGGER.info('%s: completed in %s' % (prefix, elapsed))
 
 
 def log_header(message, *args, **kwargs):
@@ -4417,7 +4490,7 @@ def log_header(message, *args, **kwargs):
     if not NO_LOG:
         if not LOGGER:
             log_init()
-        LOGGER.info('######## ' + message + '...\n')
+        LOGGER.info('######## ' + message + '...')
 
 
 def log_error(message, *args, **kwargs):
@@ -4448,13 +4521,14 @@ def log_info(message, *args, **kwargs):
         if LOGGER_BUFFERING_COUNT > 0:
             if not LOGGER_BUFFER:
                 LOGGER_BUFFER = cStringIO.StringIO()
-            LOGGER_BUFFER.write((message % args) % kwargs)
+            LOGGER_BUFFER.write((message + '\n' % args) % kwargs)
         else:
             if not LOGGER:
                 log_init()
             if LOGGER_BUFFER:
-                LOGGER.info(LOGGER_BUFFER.getvalue()
-                            + (message % args) % kwargs)
+                LOGGER_BUFFER.write((message + '\n' % args) % kwargs)
+                for line in LOGGER_BUFFER.getvalue().splitlines():
+                    LOGGER.info(line)
                 LOGGER_BUFFER = None
             else:
                 LOGGER.info(message, *args, **kwargs)
@@ -4955,6 +5029,7 @@ def pub_make(args, graph=False):
         handler = Unserializer(roots)
         if os.path.isfile(CONTEXT.db_pathname()):
             INDEX.parse(handler)
+
         for name in roots:
             make = None
             src_dir = CONTEXT.src_dir(name)
