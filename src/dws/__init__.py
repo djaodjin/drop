@@ -119,10 +119,9 @@ class Error(RuntimeError):
 class CircleError(Error):
     '''Thrown when a circle has been detected while doing
     a topological traversal of a graph.'''
-    def __init__(self, source, target):
+    def __init__(self, connected):
         Error.__init__(
-            self, msg="circle exception while traversing edge from " \
-                + str(source) + " to " + str(target))
+            self, msg="detected a circle within %s" % ' '.join(connected))
 
 
 class MissingError(Error):
@@ -148,13 +147,16 @@ class Context:
         self.targets = []
         self.overrides = []
         site_top = Pathname('siteTop',
-                          { 'description':'Root of the tree where the website'\
-' is generated and thus where *remoteSiteTop* is cached on the local system',
-                          'default':os.getcwd()})
+              { 'description':
+                    'Root of the tree where the website is generated\n'\
+'                       and thus where *remoteSiteTop* is cached\n'\
+'                       on the local system',
+                'default':os.getcwd()})
         remote_site_top = Pathname('remoteSiteTop',
-             { 'description':'Root of the remote tree that holds'\
-' the published website (ex: url:/var/cache).',
-                  'default':''})
+             { 'description':
+                   'Root of the remote tree that holds the published website\n'
+'                       (ex: url:/var/cache).',
+               'default':''})
         install_top = Pathname('installTop',
                     { 'description':'Root of the tree for installed bin/,'\
 ' include/, lib/, ...',
@@ -169,8 +171,9 @@ class Context:
 ' files are created.',
                             'base':'siteTop','default':'build'})
         src_top = Pathname('srcTop',
-             { 'description': 'Root of the tree where the source code'\
-' under revision control lives on the local machine.',
+             { 'description':
+                   'Root of the tree where the source code under revision\n'
+'                       control lives on the local machine.',
                'base': 'siteTop',
                'default':'reps'})
         self.environ = { 'buildTop': build_top,
@@ -194,8 +197,9 @@ class Context:
 ' are installed',
               'base':'installTop'}),
                          'etcDir': Pathname('etcDir',
-             {'description':'Root of the tree where configuration files'\
-' for the local system are installed',
+             {'description':
+                  'Root of the tree where configuration files for the local\n'
+'                       system are installed',
               'base':'installTop'}),
                          'shareDir': Pathname('shareDir',
              {'description':'Directory where the shared files are installed.',
@@ -213,19 +217,22 @@ class Context:
                                      os.path.basename(sys.argv[0]) + '.xml')}),
                          'remoteSiteTop': remote_site_top,
                          'remoteSrcTop': Pathname('remoteSrcTop',
-             {'description':'Root of the tree on the remote machine'\
-' where repositories are located.',
+             {'description':
+                  'Root of the tree on the remote machine where repositories\n'\
+'                       are located.',
               'base':'remoteSiteTop',
               'default':'reps'}),
                          'remoteIndex': Pathname('remoteIndex',
-             {'description':'Url to the remote index file with'\
-' projects dependencies information',
+             {'description':
+                  'Url to the remote index file with projects dependencies\n'\
+'                       information',
               'base':'remoteSiteTop',
               'default':'reps/dws.git/dws.xml'}),
                         'darwinTargetVolume': Single('darwinTargetVolume',
-              { 'description': 'Destination of installed packages on a'\
-' Darwin local machine. Installing on the "LocalSystem" requires'\
-' administrator privileges.',
+              { 'description':
+                    'Destination of installed packages on a Darwin local\n'\
+'                       machine. Installing on the "LocalSystem" requires\n'\
+'                       administrator privileges.',
               'choices': {'LocalSystem':
                          'install packages on the system root for all users',
                         'CurrentUserHomeDirectory':
@@ -240,18 +247,36 @@ class Context:
 ' which logs are sent.',
                'default':'5870'}),
                          'dwsSmtpLogin': Variable('dwsSmtpLogin',
-             { 'description':'Login on the SMTP server for the user'\
-' through which logs are sent.'}),
+             { 'description':
+                   'Login on the SMTP server for the user through which\n'\
+'                       logs are sent.'}),
                          'dwsSmtpPasswd': Variable('dwsSmtpPasswd',
-             { 'description':'Password on the SMTP server for the user'\
-' through which logs are sent.'}),
+             { 'description':
+                   'Password on the SMTP server for the user through which\n'\
+'                       logs are sent.'}),
                          'dwsEmail': Variable('dwsEmail',
-             { 'description':'dws occasionally emails build reports'\
-' (see --mailto command line option). This is the address that will be'\
-' shown in the *From* field.',
+             { 'description':
+                   'dws occasionally emails build reports (see --mailto\n'
+'                       command line option). This is the address that will\n'\
+'                       be shown in the *From* field.',
                'default':os.environ['LOGNAME'] + '@localhost'}) }
         self.build_top_relative_cwd = None
         self.config_filename = None
+
+    def base(self, name):
+        '''Returns a basename of the uri/path specified in variable *name*.
+        We do not use os.path.basename directly because it wasn't designed
+        to handle uri nor does urlparse was designed to handle git/ssh locators.
+        '''
+        locator = self.value(name)
+        look = re.match('\S+@\S+:(\S+)', locator)
+        if look:
+            return os.path.splitext(os.path.basename(look.group(1)))[0]
+        look = re.match('https?:(\S+)', locator)
+        if look:
+            uri = urlparse.urlparse(locator)
+            return os.path.splitext(os.path.basename(uri.path))[0]
+        return os.path.splitext(os.path.basename(locator))[0]
 
     def bin_build_dir(self):
         '''Returns the bin/ directory located inside buildTop.'''
@@ -313,7 +338,6 @@ class Context:
         if not str(self.environ['indexFile']):
             filtered = filter_rep_ext(CONTEXT.value('remoteIndex'))
             if filtered != CONTEXT.value('remoteIndex'):
-                print "XXX OK filtered ("+filtered+") different from remoteIndex("+CONTEXT.value('remoteIndex')+")"
                 prefix = CONTEXT.value('remoteSrcTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
@@ -443,6 +467,15 @@ class Context:
             os.makedirs(os.path.dirname(filename))
         return filename
 
+    def logbuildname(self):
+        '''Name of the log file for build summary.'''
+        filename = os.path.basename(self.config_name)
+        filename = os.path.splitext(filename)[0] + '-build.log'
+        filename = self.log_path(filename)
+        if not os.path.exists(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
+        return filename
+
     def obj_dir(self, name):
         return os.path.join(self.value('buildTop'), name)
 
@@ -507,8 +540,9 @@ class Context:
     def save(self):
         '''Write the config back to a file.'''
         if not self.config_filename:
-            self.config_filename = os.path.join(self.value('buildTop'),
-                                               self.config_name)
+            # No config_filename means we are still figuring out siteTop,
+            # so we don't know where to store the config file.
+            return
         if not os.path.exists(os.path.dirname(self.config_filename)):
             os.makedirs(os.path.dirname(self.config_filename))
         config_file = open(self.config_filename, 'w')
@@ -663,11 +697,13 @@ class IndexProjects:
                     remote_index = self.context.value('remoteIndex')
                     vcs = Repository.associate(remote_index)
                     if vcs:
+                        # XXX Does not matter here for rsync.
+                        # What about other repos?
                         vcs.update(None, self.context)
-                    else:
-                        if not os.path.exists(os.path.dirname(self.source)):
-                            os.makedirs(os.path.dirname(self.source))
-                        fetch(self.context, {remote_index:''})
+                    #XXXelse:
+                    #    if not os.path.exists(os.path.dirname(self.source)):
+                    #        os.makedirs(os.path.dirname(self.source))
+                    #    fetch(self.context, {remote_index:''})
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
 
@@ -1025,6 +1061,8 @@ class DependencyGenerator(Unserializer):
                     ordered.insert(insert_point, step)
                 else:
                     next_remains += [ step ]
+            if len(remains) <= len(next_remains):
+                raise CircleError([vert.name for vert in next_remains])
             remains = next_remains
             next_remains = []
         if False:
@@ -2048,7 +2086,7 @@ class ShellStep(BuildStep):
         return ShellStep(self.project, self.script, target)
 
     def run(self, context):
-        if self._should_run():
+        if self._should_run() and self.script:
             context = localize_context(context, self.project, self.target)
             script = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
             script.write('#!/bin/sh\n\n')
@@ -2116,7 +2154,7 @@ class UpdateStep(Step):
     '''The *update* step in the development cycle fetches files and source
     repositories from remote server onto the local system.'''
 
-    nb_updated_projects = 0
+    updated_sources = {}
 
     def __init__(self, project_name, rep, fetches):
         Step.__init__(self, Step.update, project_name)
@@ -2133,8 +2171,7 @@ class UpdateStep(Step):
             try:
                 self.updated = self.rep.update(self.project, context)
                 if self.updated:
-                    UpdateStep.nb_updated_projects \
-                        = UpdateStep.nb_updated_projects + 1
+                    UpdateStep.updated_sources[self.project] = self.rep.rev
                 self.rep.apply_patches(self.project, context)
             except:
                 raise Error('cannot update repository or apply patch for %s\n'
@@ -2179,10 +2216,12 @@ class Repository:
     def associate(pathname):
         '''This methods returns a boiler plate *Repository* that does
         nothing in case an empty sync url is specified. This is different
-        from an absent sync field which would assume a default git repository.
+        from an absent sync field which would use rsync as a "Repository".
         '''
         rev = None
         if pathname and len(pathname) > 0:
+            repos = { '.git': GitRepository,
+                      '.svn': SvnRepository }
             sync = pathname
             look = re.match(r'(.*)#(\S+)$', pathname)
             if look:
@@ -2190,18 +2229,16 @@ class Repository:
                 rev = look.group(2)
             path_list = sync.split(os.sep)
             for i in range(0, len(path_list)):
-                if path_list[i].endswith('.git'):
-                    return GitRepository(os.sep.join(path_list[:i + 1]), rev)
-                elif path_list[i].endswith('.svn'):
-                    if path_list[i] == '.svn':
-                        i = i - 1
-                    return SvnRepository(os.sep.join(path_list[:i + 1]), rev)
+                for ext, repo_class in repos.iteritems():
+                    if path_list[i].endswith(ext):
+                        if path_list[i] == ext:
+                            i = i - 1
+                        return repo_class(os.sep.join(path_list[:i + 1]), rev)
             # We will guess, assuming the repository is on the local system
-            if os.path.isdir(os.path.join(pathname, '.git')):
-                return GitRepository(pathname, rev)
-            elif os.path.isdir(os.path.join(pathname, '.svn')):
-                return SvnRepository(pathname, rev)
-            return None
+            for ext, repo_class in repos.iteritems():
+                if os.path.isdir(os.path.join(pathname, ext)):
+                    return repo_class(pathname, rev)
+            return RsyncRepository(pathname, rev)
         return Repository("", rev)
 
     def update(self, name, context, force=False):
@@ -2270,7 +2307,7 @@ class GitRepository(Repository):
         else:
             pulled = True
             os.chdir(local)
-            cmd = subprocess.Popen(' '.join([find_git(context), 'pull']),
+            cmd = subprocess.Popen(' '.join([find_git(context), 'fetch']),
                                    shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
@@ -2299,7 +2336,9 @@ class GitRepository(Repository):
         if updated:
             cmd = [find_git(context), 'log', '-1', '--pretty=oneline' ]
             os.chdir(local)
-            shell_command(cmd)
+            logline = subprocess.check_output(cmd)
+            log_info(logline)
+            self.rev = logline.split(' ')[0]
         os.chdir(cwd)
         return updated
 
@@ -2326,6 +2365,23 @@ class SvnRepository(Repository):
             shell_command(['svn', 'update'])
             os.chdir(cwd)
         # \todo figure out how any updates is signaled by svn.
+        return True
+
+
+class RsyncRepository(Repository):
+    '''All prerequisites information to install a project
+    from a remote directory.'''
+
+    def __init__(self, sync, rev):
+        Repository.__init__(self, sync, rev)
+
+    def update(self, name, context, force=False):
+        # If the path to the remote repository is not absolute,
+        # derive it from *remoteTop*. Binding any sooner will
+        # trigger a potentially unnecessary prompt for remote_cache_path.
+        if not ':' in self.url and context:
+            self.url = context.remote_src_path(self.url)
+        fetch(context, {self.url: ''}, force=True)
         return True
 
 class InstallFlavor:
@@ -2433,12 +2489,11 @@ class Project:
             elif key == 'patch':
                 self.patch = InstallFlavor(name, val)
                 if not self.patch.update.rep:
-                    self.patch.update.rep = Repository.associate(name + '.git')
+                    self.patch.update.rep = Repository.associate(name)
             elif key == 'repository':
                 self.repository = InstallFlavor(name, val)
                 if not self.repository.update.rep:
-                    self.repository.update.rep = Repository.associate( \
-                        name + '.git')
+                    self.repository.update.rep = Repository.associate(name)
             else:
                 self.packages[key] = InstallFlavor(name, val)
 
@@ -2774,7 +2829,8 @@ def find_bin(names, search_path, build_top, excludes=None, variant=None):
                             # We run the help flag before --version, -V
                             # because bzip2 would wait on stdin for data
                             # otherwise.
-                            for flag in [ '--help', '--version', '-V' ]:
+                            # XXX semilla --help is broken :(
+                            for flag in [ '--version', '-V' ]:
                                 numbers = []
                                 cmdline = [ binpath, flag ]
                                 try:
@@ -3507,7 +3563,7 @@ def cwd_projects(reps, recurse=False):
 def ordered_prerequisites(roots, index):
     '''returns the dependencies in topological order for a set of project
     names in *roots*.'''
-    dgen = MakeDepGenerator(roots, [], [], EXCLUDE_PATS)
+    dgen = MakeDepGenerator(roots, [], exclude_pats=EXCLUDE_PATS)
     steps = index.closure(dgen)
     results = []
     for step in steps:
@@ -3598,9 +3654,14 @@ def fetch(context, filenames,
 
 def create_managed(project_name, target):
     '''Create a step that will install *project_name* through the local
-    package manager.'''
+    package manager.
+    If the target is pure python, we will try pip before native package
+    manager because we prefer to install in the virtualenv. We solely rely
+    on the native package manager for python with C bindings.'''
     install_step = None
-    if CONTEXT.host() in APT_DISTRIBS:
+    if target and target.startswith('python'):
+        install_step = PipInstallStep(project_name, target)
+    elif CONTEXT.host() in APT_DISTRIBS:
         install_step = AptInstallStep(project_name, target)
     elif CONTEXT.host() in PORT_DISTRIBS:
         install_step = MacPortInstallStep(project_name, target)
@@ -3611,10 +3672,7 @@ def create_managed(project_name, target):
     else:
         unmanaged = [ project_name ]
     if len(unmanaged) > 0:
-        if target and target.startswith('python'):
-            install_step = PipInstallStep(project_name, target)
-            info, unmanaged = install_step.info()
-        elif target and target.startswith('nodejs'):
+        if target and target.startswith('nodejs'):
             install_step = NpmInstallStep(project_name, target)
             info, unmanaged = install_step.info()
     if len(unmanaged) > 0:
@@ -4276,11 +4334,12 @@ def validate_controls(dgen, dbindex,
                         log_error(str(err))
                 log_footer(vertex.name, elapsed, errcode)
 
-    if UpdateStep.nb_updated_projects > 0:
-        log_info('%d updated project(s).' % UpdateStep.nb_updated_projects)
+    nb_updated_projects = len(UpdateStep.updated_sources)
+    if nb_updated_projects > 0:
+        log_info('%d updated project(s).' % nb_updated_projects)
     else:
         log_info('all project(s) are up-to-date.')
-    return UpdateStep.nb_updated_projects
+    return nb_updated_projects
 
 
 def version_candidates(line):
@@ -4463,6 +4522,12 @@ def log_init():
                 'filename': CONTEXT.logname(),
                 'formatter': 'simple'
             },
+            'logbuild':{
+                'level': 'INFO',
+                'class':'logging.handlers.WatchedFileHandler',
+                'filename': CONTEXT.logbuildname(),
+                'formatter': 'simple'
+            },
          },
         'loggers': {
             __name__: {
@@ -4470,6 +4535,11 @@ def log_init():
                 'level': 'INFO',
                 'propagate': True,
             },
+            'build': {
+                'handlers': [ 'logbuild' ],
+                'level': 'INFO',
+                'propagate': True,
+            }
         },
         })
     LOGGER = logging.getLogger(__name__)
@@ -4538,38 +4608,39 @@ def log_info(message, *args, **kwargs):
 
 
 def pub_build(args, graph=False, noclean=False):
-    '''            remoteIndex [ siteTop [ buildTop ] ]
-                       This command executes a complete build cycle:
-                         - (optional) delete all files in *siteTop*, *buildTop*
-                           and *installTop*.
-                         - fetch the build dependency file *remoteIndex*
-                         - setup third-party prerequisites through the local
-                           package manager.
-                         - update a local source tree from remote repositories
-                         - (optional) apply local patches
-                         - configure required environment variables
-                         - make libraries, executables and tests.
-                         - (optional) send a report email.
-                       As such, this command is most useful as part of a cron
-                       job on build servers. Thus it is designed to run
-                       to completion with no human interaction. To be really
-                       useful in an automatic build system, authentication
-                       to the remote server (if required) should also be setup
-                       to run with no human interaction.
-                         ex: dws build http://hostname/everything.git
-    --graph   Generate a .dot graph of the dependencies
-    --noclean Do not remove any directory before executing a build command.
+    '''remoteIndex [ siteTop [ buildTop ] ]
+    This command executes a complete build cycle:
+      - (optional) delete all files in *siteTop*,
+         *buildTop* and *installTop*.
+      - fetch the build dependency file *remoteIndex*
+      - setup third-party prerequisites through
+        the local package manager.
+      - update a local source tree from remote
+        repositories
+      - (optional) apply local patches
+      - configure required environment variables
+      - make libraries, executables and tests.
+      - (optional) send a report email.
+    As such, this command is most useful as part
+    of a cron job on build servers. Thus it is designed
+    to run to completion with no human interaction.
+    To be really useful in an automatic build system,
+    authentication to the remote server (if required)
+    should also be setup to run with no human
+    interaction.
+    ex: dws build http://hostname/everything.git
+    --graph     Generate a .dot graph of
+                the dependencies
+    --noclean   Do not remove any directory before
+                executing a build command.
     '''
     global USE_DEFAULT_ANSWER
     USE_DEFAULT_ANSWER = True
     CONTEXT.from_remote_index(args[0])
     if len(args) > 1:
-        site_top = args[1]
+        site_top = os.path.abspath(args[1])
     else:
-        base = os.path.basename(str(CONTEXT.environ['remoteSiteTop']))
-        site_top = os.getcwd()
-        if base:
-            site_top = os.path.join(os.getcwd(), base)
+        site_top = os.path.join(os.getcwd(), CONTEXT.base('remoteIndex'))
     CONTEXT.environ['siteTop'].value = site_top
     if not noclean:
         # We don't want to remove the log we just created
@@ -4652,6 +4723,8 @@ def pub_build(args, graph=False, noclean=False):
                 handler.flush()
         shell_command(['install', '-m', '644', CONTEXT.logname(),
                       CONTEXT.log_path(logstamp)])
+        logging.getLogger('build').info(
+            'build %s'% str(UpdateStep.updated_sources))
         look = re.match(r'.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)', logstamp)
         global LOG_PAT
         LOG_PAT = look.group(1)
@@ -4660,12 +4733,12 @@ def pub_build(args, graph=False, noclean=False):
 
 
 def pub_collect(args, output=None):
-    '''            [ project ... ]
-                       Consolidate local dependencies information
-                       into a global dependency database. Copy all
-                       distribution packages built into a platform
-                       distribution directory.
-                       (example: dws --exclude test collect)
+    '''[ project ... ]
+    Consolidate local dependencies information
+    into a global dependency database. Copy all
+    distribution packages built into a platform
+    distribution directory.
+    (example: dws --exclude test collect)
     '''
 
     # Collect cannot log or it will prompt for index file.
@@ -4751,9 +4824,10 @@ def pub_collect(args, output=None):
 
 
 def pub_configure(args):
-    '''       Locate direct dependencies of a project on
-                       the local machine and create the appropriate symbolic
-                       links such that the project can be made later on.
+    '''Locate direct dependencies of a project on
+    the local machine and create the appropriate
+    symbolic links such that the project can be made
+    later on.
     '''
     CONTEXT.environ['indexFile'].value = CONTEXT.src_dir(
         os.path.join(CONTEXT.cwd_project(), CONTEXT.indexName))
@@ -4777,12 +4851,13 @@ def pub_configure(args):
 
 
 def pub_context(args):
-    '''            [ file ]
-                       Prints the absolute pathname to a *file*.
-                       If the file cannot be found from the current
-                       directory up to the workspace root, i.e where the .mk
-                       fragment is located (usually *buildTop*, it assumes the
-                       file is in *shareDir* alongside other make helpers.
+    '''[ file ]
+    Prints the absolute pathname to a *file*.
+    If the file cannot be found from the current
+    directory up to the workspace root, i.e where
+    the .mk fragment is located (usually *buildTop*,
+    it assumes the file is in *shareDir* alongside
+    other make helpers.
     '''
     pathname = CONTEXT.config_filename
     if len(args) >= 1:
@@ -4795,7 +4870,7 @@ def pub_context(args):
 
 
 def pub_deps(args):
-    '''               Prints the dependency graph for a project.
+    ''' Prints the dependency graph for a project.
     '''
     top = os.path.realpath(os.getcwd())
     if ((str(CONTEXT.environ['buildTop'])
@@ -4814,9 +4889,9 @@ def pub_deps(args):
 
 
 def pub_export(args):
-    '''            rootpath
-                       Exports the project index file in a format compatible
-                       with Jenkins. [experimental]
+    '''rootpath
+    Exports the project index file in a format
+    compatible with Jenkins. [experimental]
     '''
     rootpath = args[0]
     top = os.path.realpath(os.getcwd())
@@ -4906,9 +4981,9 @@ dws make
 
 
 def pub_find(args):
-    '''            bin|lib filename ...
-                       Search through a set of directories derived from PATH
-                       for *filename*.
+    '''bin|lib filename ...
+    Search through a set of directories derived
+    from PATH for *filename*.
     '''
     dir_name = args[0]
     command = 'find_' + dir_name
@@ -4923,28 +4998,29 @@ def pub_find(args):
 
 
 def pub_init(args):
-    '''               Prompt for variables which have not been
-                       initialized in the workspace make fragment. Fetch the project index.
+    '''    Prompt for variables which have not been
+    initialized in the workspace make fragment.
+    (This will fetch the project index).
     '''
     config_var(CONTEXT, CONTEXT.environ)
     INDEX.validate()
 
 
 def pub_install(args):
-    '''            [ binPackage | project ... ]
-                       Install a package *binPackage* on the local system
-                       or a binary package associated to *project*
-                       through either a *package* or *patch* node in the
-                       index database or through the local package
-                       manager.
+    ''' [ binPackage | project ... ]
+     Install a package *binPackage* on the local system
+     or a binary package associated to *project*
+     through either a *package* or *patch* node in the
+     index database or through the local package
+     manager.
     '''
     INDEX.validate()
     install(args, INDEX)
 
 
 def pub_integrate(args):
-    '''    [ srcPackage ... ]
-                       Integrate a patch into a source package
+    '''[ srcPackage ... ]
+    Integrate a patch into a source package
     '''
     while len(args) > 0:
         srcdir = unpack(args.pop(0))
@@ -4993,15 +5069,15 @@ class ListPdbHandler(PdbHandler):
 
 
 def pub_list(args):
-    '''               List available projects
+    '''    List available projects
     '''
     INDEX.parse(ListPdbHandler())
 
 
 def pub_make(args, graph=False):
-    '''               Make projects. "make recurse" will build
-                       all dependencies required before a project
-                       can be itself built.
+    '''    Make projects. "make recurse" will build
+    all dependencies required before a project
+    can be itself built.
     '''
     # \todo That should not be required:
     # context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
@@ -5055,8 +5131,9 @@ def pub_make(args, graph=False):
 
 
 def pub_patch(args):
-    '''               Generate patches vs. the last pull from a remote
-                       repository, optionally send it to a list of receipients.
+    '''    Generate patches vs. the last pull from a remote
+    repository, optionally send it to a list
+    of receipients.
     '''
     reps = args
     recurse = False
@@ -5086,8 +5163,8 @@ def pub_patch(args):
 
 
 def pub_push(args):
-    '''               Push commits to projects checked out
-                       in the workspace.
+    '''    Push commits to projects checked out
+    in the workspace.
     '''
     reps = args
     recurse = False
@@ -5103,8 +5180,8 @@ def pub_push(args):
 
 
 def pub_status(args, recurse=False):
-    '''               Show status of projects checked out
-                       in the workspace with regards to commits.
+    '''    Show status of projects checked out
+    in the workspace with regards to commits.
     '''
     reps = cwd_projects(args, recurse)
 
@@ -5137,16 +5214,16 @@ def pub_status(args, recurse=False):
 
 
 def pub_update(args):
-    '''            [ project ... ]
-                       Update projects that have a *repository* or *patch*
-                       node in the index database and are also present in
-                       the workspace by pulling changes from the remote
-                       server. "update recurse" will recursively update all
-                       dependencies for *project*.
-                       If a project only contains a *package* node in the index
-                       database, the local system will be modified only if the
-                       version provided is greater than the version currently
-                       installed.
+    '''[ project ... ]
+    Update projects that have a *repository* or *patch*
+    node in the index database and are also present in
+    the workspace by pulling changes from the remote
+    server. "update recurse" will recursively update all
+    dependencies for *project*.
+    If a project only contains a *package* node in
+    the index database, the local system will be
+    modified only if the version provided is greater
+    than the version currently installed.
     '''
     reps = args
     recurse = False
@@ -5197,20 +5274,20 @@ def pub_update(args):
             else:
                 ERRORS += [ name ]
         if len(ERRORS) > 0:
-            raise Error(' '.join(ERRORS) \
-                            + ' is/are not project(s) under source control.')
-        if UpdateStep.nb_updated_projects > 0:
-            log_info(str(UpdateStep.nb_updated_projects) \
-                          + ' updated project(s).')
+            raise Error('%s is/are not project(s) under source control.'
+                        % ' '.join(ERRORS))
+        nb_updated_projects = len(UpdateStep.updated_sources)
+        if nb_updated_projects > 0:
+            log_info('%d updated project(s).' % nb_updated_projects)
         else:
             log_info('all project(s) are up-to-date.')
 
 
 def pub_upstream(args):
-    '''    [ srcPackage ... ]
-                       Generate a patch to submit to upstream
-                       maintainer out of a source package and
-                       a -patch subdirectory in a project src_dir.
+    '''[ srcPackage ... ]
+    Generate a patch to submit to upstream
+    maintainer out of a source package and
+    a -patch subdirectory in a project src_dir.
     '''
     while len(args) > 0:
         pkgfilename = args.pop(0)
@@ -5424,11 +5501,12 @@ def main(args):
         for varname in keys:
             var = CONTEXT.environ[varname]
             if var.descr:
-                epilog += var.name.ljust(23, ' ') + var.descr + '\n\n'
+                epilog += ('  ' + var.name).ljust(23, ' ') + var.descr + '\n'
 
-        parser = argparse.ArgumentParser(\
+        parser = argparse.ArgumentParser(
             usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version '
             + str(__version__),
+            formatter_class=argparse.RawTextHelpFormatter,
             epilog=epilog)
         parser.add_argument('--version', action='version',
                             version='%(prog)s ' + str(__version__))
