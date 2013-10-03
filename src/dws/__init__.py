@@ -2944,15 +2944,12 @@ def find_first_files(base, name_pat, subdir=''):
             for filename in os.listdir(candidate_dir):
                 relative = os.path.join(subdir, filename)
                 path = os.path.join(base, relative)
-                # We must postpend the '$' sign to the regular expression
-                # otherwise "makeconv" and "makeinfo" will be picked up by
-                # a match for the "make" executable.
                 regex = name_pat_regex(name_pat)
                 look = regex.match(relative)
                 if look != None:
                     results += [ relative ]
                 elif (((('.*' + os.sep) in name_pat)
-                       or (sub_num_sub_dirs < pat_num_sub_dirs))
+                       or (sub_num_sub_dirs < pat_num_sub_dirs - 1))
                       and os.path.isdir(path)):
                     # When we see .*/, it means we are looking for a pattern
                     # that can be matched by files in subdirectories
@@ -3207,33 +3204,36 @@ def find_lib(names, search_path, build_top, excludes=None, variant=None):
             results.append((name_pat, absolute_path))
             continue
         lib_base_pat = lib_prefix() + name_pat
-        if lib_base_pat.endswith('.so'):
+        if '.*' in name_pat:
+            # Dealing with a regular expression already
+            lib_suffix_by_priority = []
+            link_pats = [ name_pat ]
+        elif lib_base_pat.endswith('.so'):
+            # local override to select dynamic library.
             lib_base_pat = lib_base_pat[:-3]
             lib_suffix_by_priority = [ lib_dyn_suffix(), lib_static_suffix() ]
-            nor_suffix_by_priority = [ '.so', lib_static_suffix() ]
+            link_pats = [ lib_base_pat + '.so',
+                          lib_base_pat + lib_static_suffix() ]
         elif STATIC_LIB_FIRST:
             lib_suffix_by_priority = [ lib_static_suffix(), lib_dyn_suffix() ]
-            nor_suffix_by_priority = [ lib_static_suffix(), '.so' ]
+            link_pats = [ lib_base_pat + lib_static_suffix(),
+                          lib_base_pat + '.so' ]
         else:
             lib_suffix_by_priority = [ lib_dyn_suffix(), lib_static_suffix() ]
-            nor_suffix_by_priority = [ '.so', lib_static_suffix() ]
-        link_name, link_suffix = link_build_name(
-            lib_base_pat+nor_suffix_by_priority[0], 'lib', variant)
-        if os.path.islink(link_name):
-            # If we already have a symbolic link in the binBuildDir,
-            # we will assume it is the one to use in order to cut off
-            # recomputing of things that hardly change.
-            results.append((name_pat, os.path.realpath(os.path.join(
-                            link_name, link_suffix))))
-            continue
-        link_name, link_suffix = link_build_name(
-            lib_base_pat+nor_suffix_by_priority[1], 'lib', variant)
-        if os.path.islink(link_name):
-            # If we already have a symbolic link in the binBuildDir,
-            # we will assume it is the one to use in order to cut off
-            # recomputing of things that hardly change.
-            results.append((name_pat,
-                os.path.realpath(os.path.join(link_name, link_suffix))))
+            link_pats = [ lib_base_pat + '.so',
+                          lib_base_pat + lib_static_suffix() ]
+        found = False
+        for link_pat in link_pats:
+            link_name, link_suffix = link_build_name(link_pat, 'lib', variant)
+            if os.path.islink(link_name):
+                # If we already have a symbolic link in the libBuildDir,
+                # we will assume it is the one to use in order to cut off
+                # recomputing of things that hardly change.
+                results.append((name_pat, os.path.realpath(os.path.join(
+                                link_name, link_suffix))))
+                found = True
+                break
+        if found:
             continue
         if variant:
             log_interactive(variant + '/')
@@ -3304,8 +3304,7 @@ def find_lib(names, search_path, build_top, excludes=None, variant=None):
             if len(libs) > 0:
                 candidate = libs[0][0]
                 version = libs[0][1]
-                look = re.match(
-                    '.*' + lib_prefix() + name_pat + '(.+)', candidate)
+                look = re.match('.*%s(.+)' % lib_base_pat, candidate)
                 if look:
                     suffix = look.group(1)
                     log_info(suffix)
@@ -3509,6 +3508,9 @@ def find_rsync(context, host, relative=True, admin=False,
 def name_pat_regex(name_pat):
     # Many C++ tools contain ++ in their name which might trip
     # the regular expression parser.
+    # We must postpend the '$' sign to the regular expression
+    # otherwise "makeconv" and "makeinfo" will be picked up by
+    # a match for the "make" executable.
     return re.compile(name_pat.replace('++','\+\+') + '$')
 
 def config_var(context, variables):
