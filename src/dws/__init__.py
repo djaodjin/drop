@@ -486,9 +486,12 @@ class Context:
         '''We need to set the *remoteIndex* to a realpath when we are dealing
         with a local file else links could end-up generating a different prefix
         than *remoteSiteTop* for *remoteIndex*/*indexName*.'''
-        if re.search(Repository.dirPats + '$', remote_path):
+        if search_repo_pat(remote_path):
             remote_path = os.path.join(remote_path, self.indexName)
-        self.environ['remoteIndex'].default = remote_path
+        # Set remoteIndex.value instead of remoteIndex.default because
+        # we don't want to trigger a configure of logDir before we have
+        # a chance to set the siteTop.
+        self.environ['remoteIndex'].value = remote_path
         look = re.match(r'(\S+@)?(\S+):(.*)', remote_path)
         if look:
             self.tunnel_point = look.group(2)
@@ -511,9 +514,9 @@ class Context:
                 site_base = os.sep.join(remote_path_list[0:i])
                 src_base = os.path.join(site_base, remote_path_list[i + 1])
                 break
-            look = re.search(Repository.dirPats + '$', remote_path_list[i])
+            look = search_repo_pat(remote_path_list[i])
             if look:
-                rep_ext = look.group(1)
+                _, rep_ext = os.path.splitext(look.group(1))
                 if remote_path_list[i] == rep_ext:
                     i = i - 1
                 if i > 2:
@@ -696,14 +699,9 @@ class IndexProjects:
                 elif selection == 'fetching' or force:
                     remote_index = self.context.value('remoteIndex')
                     vcs = Repository.associate(remote_index)
-                    if vcs:
-                        # XXX Does not matter here for rsync.
-                        # What about other repos?
-                        vcs.update(None, self.context)
-                    #XXXelse:
-                    #    if not os.path.exists(os.path.dirname(self.source)):
-                    #        os.makedirs(os.path.dirname(self.source))
-                    #    fetch(self.context, {remote_index:''})
+                    # XXX Does not matter here for rsync.
+                    # What about other repos?
+                    vcs.update(None, self.context)
             if not os.path.exists(self.source):
                 raise Error(self.source + ' does not exist.')
 
@@ -2168,14 +2166,14 @@ class UpdateStep(Step):
         except IOError:
             raise Error("unable to fetch " + str(self.fetches))
         if self.rep:
-            try:
-                self.updated = self.rep.update(self.project, context)
-                if self.updated:
-                    UpdateStep.updated_sources[self.project] = self.rep.rev
-                self.rep.apply_patches(self.project, context)
-            except:
-                raise Error('cannot update repository or apply patch for %s\n'
-                            % str(self.project))
+#            try:
+            self.updated = self.rep.update(self.project, context)
+            if self.updated:
+                UpdateStep.updated_sources[self.project] = self.rep.rev
+            self.rep.apply_patches(self.project, context)
+#            except:
+#                raise Error('cannot update repository or apply patch for %s\n'
+#                            % str(self.project))
 
 
 class Repository:
@@ -2223,10 +2221,10 @@ class Repository:
             repos = { '.git': GitRepository,
                       '.svn': SvnRepository }
             sync = pathname
-            look = re.match(r'(.*)#(\S+)$', pathname)
+            look = search_repo_pat(pathname)
             if look:
                 sync = look.group(1)
-                rev = look.group(2)
+                rev = look.group(4)
             path_list = sync.split(os.sep)
             for i in range(0, len(path_list)):
                 for ext, repo_class in repos.iteritems():
@@ -2301,13 +2299,16 @@ class GitRepository(Repository):
         pulled = False
         updated = False
         cwd = os.getcwd()
+        git_executable = find_git(context)
         if not os.path.exists(os.path.join(local, '.git')):
-            shell_command([ find_git(context), 'clone', self.url, local])
+            shell_command([ git_executable, 'clone', self.url, local])
             updated = True
         else:
             pulled = True
             os.chdir(local)
-            cmd = subprocess.Popen(' '.join([find_git(context), 'fetch']),
+            cmdline = ' '.join([git_executable, 'fetch'])
+            log_info(cmdline)
+            cmd = subprocess.Popen(cmdline,
                                    shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
@@ -2326,7 +2327,7 @@ class GitRepository(Repository):
         cof = '-m'
         if force:
             cof = '-f'
-        cmd = [ find_git(context), 'checkout', cof ]
+        cmd = [ git_executable, 'checkout', cof ]
         if self.rev:
             cmd += [ self.rev ]
         if self.rev or pulled:
@@ -2334,7 +2335,8 @@ class GitRepository(Repository):
             shell_command(cmd)
         # Print HEAD
         if updated:
-            cmd = [find_git(context), 'log', '-1', '--pretty=oneline' ]
+            # Just the commit: cmd = [git_executable, 'rev-parse', 'HEAD']
+            cmd = [git_executable, 'log', '-1', '--pretty=oneline' ]
             os.chdir(local)
             logline = subprocess.check_output(cmd)
             log_info(logline)
@@ -2692,15 +2694,18 @@ def basenames(pathnames):
         bases += [ os.path.basename(pathname) ]
     return bases
 
+def search_repo_pat(sync_path):
+    '''returns a RegexMatch if *sync_path* refers to a repository url/path.'''
+    return re.search('(\S+%s)(@(\S+))?$' % Repository.dirPats, sync_path)
 
 def filter_rep_ext(name):
     '''Filters the repository type indication from a pathname.'''
     localname = name
     remote_path_list = name.split(os.sep)
     for i in range(0, len(remote_path_list)):
-        look = re.search(Repository.dirPats + '$', remote_path_list[i])
+        look = search_repo_pat(remote_path_list[i])
         if look:
-            rep_ext = look.group(1)
+            _, rep_ext = os.path.splitext(look.group(1))
             if remote_path_list[i] == rep_ext:
                 localname = os.sep.join(remote_path_list[:i] + \
                                         remote_path_list[i+1:])
@@ -3663,21 +3668,15 @@ def create_managed(project_name, target):
     install_step = None
     if target and target.startswith('python'):
         install_step = PipInstallStep(project_name, target)
+    elif target and target.startswith('nodejs'):
+        install_step = NpmInstallStep(project_name, target)
     elif CONTEXT.host() in APT_DISTRIBS:
         install_step = AptInstallStep(project_name, target)
     elif CONTEXT.host() in PORT_DISTRIBS:
         install_step = MacPortInstallStep(project_name, target)
     elif CONTEXT.host() in YUM_DISTRIBS:
         install_step = YumInstallStep(project_name, target)
-    if install_step:
-        info, unmanaged = install_step.info()
     else:
-        unmanaged = [ project_name ]
-    if len(unmanaged) > 0:
-        if target and target.startswith('nodejs'):
-            install_step = NpmInstallStep(project_name, target)
-            info, unmanaged = install_step.info()
-    if len(unmanaged) > 0:
         install_step = None
     return install_step
 
