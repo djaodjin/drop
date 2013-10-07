@@ -21,6 +21,7 @@
     <xs:simpleContent>
       <xs:extension base="xs:string">
         <xs:attribute name="excludes" type="xs:string"/>
+        <xs:attribute name="includes" type="xs:string"/>
       </xs:extension>
     </xs:simpleContent>
   </xs:complexType>

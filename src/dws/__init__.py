@@ -491,7 +491,6 @@ class Context:
         # Set remoteIndex.value instead of remoteIndex.default because
         # we don't want to trigger a configure of logDir before we have
         # a chance to set the siteTop.
-        self.environ['remoteIndex'].value = remote_path
         look = re.match(r'(\S+@)?(\S+):(.*)', remote_path)
         if look:
             self.tunnel_point = look.group(2)
@@ -505,8 +504,13 @@ class Context:
             # We compute *base* here through the same algorithm as done
             # in *local_dir*. We do not call *local_dir* because remoteSiteTop
             # is not yet defined at this point.
-            remote_path_list = remote_path.split(os.sep)
             src_base = os.path.dirname(remote_path)
+            while not os.path.isdir(src_base):
+                src_base = os.path.dirname(src_base)
+            remote_path = remote_path.replace(
+                src_base, os.path.realpath(src_base))
+            src_base = os.path.realpath(src_base)
+            remote_path_list = remote_path.split(os.sep)
             site_base = os.path.dirname(src_base)
             host_prefix = ''
         for i in range(0, len(remote_path_list)):
@@ -516,7 +520,11 @@ class Context:
                 break
             look = search_repo_pat(remote_path_list[i])
             if look:
-                _, rep_ext = os.path.splitext(look.group(1))
+                # splitext does not return any extensions when the path
+                # starts with dot.
+                rep_ext = look.group(1)
+                if not rep_ext.startswith('.'):
+                    _, rep_ext = os.path.splitext(look.group(1))
                 if remote_path_list[i] == rep_ext:
                     i = i - 1
                 if i > 2:
@@ -529,9 +537,7 @@ class Context:
                     src_base = ''
                     site_base = ''
                 break
-        if not host_prefix:
-            src_base = os.path.realpath(src_base)
-            site_base = os.path.realpath(site_base)
+        self.environ['remoteIndex'].value = remote_path
         self.environ['remoteSrcTop'].default  = host_prefix + src_base
         # Note: We used to set the context[].default field which had for side
         # effect to print the value the first time the variable was used.
@@ -858,7 +864,8 @@ class DependencyGenerator(Unserializer):
             if name.endswith(setup_name):
                 setup = step
         if (setup and not setup.run(CONTEXT)):
-            install_step = create_managed(managed_name, setup.target)
+            install_step = create_managed(
+                managed_name, setup.versions, setup.target)
             if not install_step and project_name in self.projects:
                 project = self.projects[project_name]
                 if CONTEXT.host() in project.packages:
@@ -905,7 +912,7 @@ class DependencyGenerator(Unserializer):
                 setup = self.custom_steps[cap](dep.name, dep.files)
             else:
                 setup = SetupStep(
-                    dep.name, dep.files, dep.excludes, target_name)
+                    dep.name, dep.files, dep.versions, target_name)
             if not setup.name in self.vertices:
                 self.vertices[setup.name] = setup
             else:
@@ -1032,7 +1039,9 @@ class DependencyGenerator(Unserializer):
                 is_vert = ''
                 if step.name in self.vertices:
                     is_vert = '*'
-                log_info('!!!\t%s %s' % (step.name, str(is_vert)))
+                log_info('!!!\t%s %s %s'
+                         % (step.name, str(is_vert),
+                            str([ pre.name for pre in step.prerequisites])))
         while len(remains) > 0:
             for step in remains:
                 ready = True
@@ -1227,7 +1236,7 @@ class MakeDepGenerator(MakeGenerator):
             target_name = dep.target
             if not dep.target:
                 target_name = target
-            setup = SetupStep(dep.name, dep.files, dep.excludes, target_name)
+            setup = SetupStep(dep.name, dep.files, dep.versions, target_name)
             if not setup.name in self.vertices:
                 self.vertices[setup.name] = setup
             else:
@@ -1561,13 +1570,15 @@ class Single(Variable):
 class Dependency:
 
     def __init__(self, name, pairs):
-        self.excludes = []
+        self.versions = { 'includes': [], 'excludes': [] }
         self.target = None
         self.files = {}
         self.name = name
         for key, val in pairs.iteritems():
             if key == 'excludes':
-                self.excludes = eval(val)
+                self.versions['excludes'] = eval(val)
+            elif key == 'includes':
+                self.versions['includes'] = [ val ]
             elif key == 'target':
                 # The index file loader will have generated fully-qualified
                 # names to avoid key collisions when a project depends on both
@@ -1924,9 +1935,27 @@ class NpmInstallStep(InstallStep):
 class PipInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pip (Python eggs).'''
 
-    def __init__(self, project_name, target = None):
-        InstallStep.__init__(self, project_name, [project_name ],
+    def __init__(self, project_name, versions=None, target=None):
+        install_name = project_name
+        if (versions and 'includes' in versions
+            and len(versions['includes']) > 0):
+            install_name = '%s==%s' % (project_name, versions['includes'][0])
+        InstallStep.__init__(self, project_name, [install_name],
                              priority=Step.install_lang)
+
+    def collect(self, context):
+        """Collect prerequisites from requirements.txt"""
+        filepath = context.src_dir(
+            os.path.join(self.project, 'requirements.txt'))
+        with open(filepath) as file_obj:
+            for line in file_obj.readlines():
+                look = re.match('([\w\-_]+)((>=|==)(\S+))?', line)
+                if look:
+                    prerequisite = look.group(1)
+                    sys.stdout.write('''<dep name="%s">
+    <lib>.*/(%s)/__init__.py</lib>
+</dep>
+''' % (prerequisite, prerequisite))
 
     def run(self, context):
         # In most cases, when installing through pip, we should be running
@@ -2103,16 +2132,16 @@ class SetupStep(TargetStep):
     prerequisites. This steps gathers all the <dep> statements referring
     to a specific prerequisite.'''
 
-    def __init__(self, project_name, files, excludes=None, target=None):
+    def __init__(self, project_name, files, versions=None, target=None):
         '''We keep a reference to the project because we want to decide
         to add native installer/made package/patch right after run'''
         TargetStep.__init__(self, Step.setup, project_name, target)
         self.files = files
         self.updated = False
-        if excludes:
-            self.excludes = list(excludes)
+        if versions:
+            self.versions = versions
         else:
-            self.excludes = []
+            self.versions = {'includes': [], 'excludes': [] }
 
     def insert(self, setup):
         '''We only add prerequisites from *dep* which are not already present
@@ -2135,15 +2164,16 @@ class SetupStep(TargetStep):
                         if not dirname in files:
                             files[dirname] = []
                         files[dirname] += [ prereq_1 ]
-        self.excludes += setup.excludes
-        return SetupStep(self.project, files, self.excludes, self.target)
+        self.versions['excludes'] += setup.versions['excludes']
+        self.versions['includes'] += setup.versions['includes']
+        return SetupStep(self.project, files, self.versions, self.target)
 
     def run(self, context):
         self.files, complete = find_prerequisites(
-            self.files, self.excludes, self.target)
+            self.files, self.versions, self.target)
         if complete:
             self.files, complete = link_prerequisites(
-                self.files, self.excludes, self.target)
+                self.files, self.versions, self.target)
         self.updated = True
         return complete
 
@@ -2491,11 +2521,11 @@ class Project:
             elif key == 'patch':
                 self.patch = InstallFlavor(name, val)
                 if not self.patch.update.rep:
-                    self.patch.update.rep = Repository.associate(name)
+                    self.patch.update.rep = Repository.associate(name+'.git')
             elif key == 'repository':
                 self.repository = InstallFlavor(name, val)
                 if not self.repository.update.rep:
-                    self.repository.update.rep = Repository.associate(name)
+                    self.repository.update.rep = Repository.associate(name+'.git')
             else:
                 self.packages[key] = InstallFlavor(name, val)
 
@@ -2696,7 +2726,7 @@ def basenames(pathnames):
 
 def search_repo_pat(sync_path):
     '''returns a RegexMatch if *sync_path* refers to a repository url/path.'''
-    return re.search('(\S+%s)(@(\S+))?$' % Repository.dirPats, sync_path)
+    return re.search('(\S*%s)(@(\S+))?$' % Repository.dirPats, sync_path)
 
 def filter_rep_ext(name):
     '''Filters the repository type indication from a pathname.'''
@@ -2757,14 +2787,14 @@ def create_index_pathname(db_index_pathname, db_pathnames):
     db_index.close()
 
 
-def find_bin(names, search_path, build_top, excludes=None, variant=None):
+def find_bin(names, search_path, build_top, versions=None, variant=None):
     '''Search for a list of binaries that can be executed from $PATH.
 
        *names* is a list of (pattern,absolute_path) pairs where the absolutePat
        can be None and in which case pattern will be used to search
-       for an executable. *excludes* is a list of versions that are concidered
-       false positive and need to be excluded, usually as a result
-       of incompatibilities.
+       for an executable. *versions['excludes']* is a list of versions
+       that are concidered false positive and need to be excluded, usually
+       as a result of incompatibilities.
 
        This function returns a list of populated (pattern,absolute_path)
        and a version number. The version number is retrieved
@@ -2791,6 +2821,10 @@ def find_bin(names, search_path, build_top, excludes=None, variant=None):
        the tests for it.
     '''
     version = None
+    if versions and 'excludes' in versions:
+        excludes = versions['excludes']
+    else:
+        excludes = []
     results = []
     droots = search_path
     complete = True
@@ -2970,12 +3004,16 @@ def find_first_files(base, name_pat, subdir=''):
 
 
 def find_data(dirname, names,
-              search_path, build_top, excludes=None, variant=None):
+              search_path, build_top, versions=None, variant=None):
     '''Search for a list of extra files that can be found from $PATH
        where bin was replaced by *dir*.'''
     results = []
     droots = search_path
     complete = True
+    if versions and 'excludes' in versions:
+        excludes = versions['excludes']
+    else:
+        excludes = []
     if variant:
         build_dir = os.path.join(build_top, variant, dirname)
     else:
@@ -3034,10 +3072,10 @@ def find_data(dirname, names,
     return results, None, complete
 
 
-def find_etc(names, search_path, build_top, excludes=None, variant=None):
-    return find_data('etc', names, search_path, build_top, excludes)
+def find_etc(names, search_path, build_top, versions=None, variant=None):
+    return find_data('etc', names, search_path, build_top, versions)
 
-def find_include(names, search_path, build_top, excludes=None, variant=None):
+def find_include(names, search_path, build_top, versions=None, variant=None):
     '''Search for a list of headers that can be found from $PATH
        where bin was replaced by include.
 
@@ -3057,6 +3095,10 @@ def find_include(names, search_path, build_top, excludes=None, variant=None):
     a version number.'''
     results = []
     version = None
+    if versions and 'excludes' in versions:
+        excludes = versions['excludes']
+    else:
+        excludes = []
     complete = True
     prefix = ''
     include_sys_dirs = search_path
@@ -3166,7 +3208,7 @@ def find_include(names, search_path, build_top, excludes=None, variant=None):
     return results, version, complete
 
 
-def find_lib(names, search_path, build_top, excludes=None, variant=None):
+def find_lib(names, search_path, build_top, versions=None, variant=None):
     '''Search for a list of libraries that can be found from $PATH
        where bin was replaced by lib.
 
@@ -3186,6 +3228,10 @@ def find_lib(names, search_path, build_top, excludes=None, variant=None):
     in order to deduce a version number if possible.'''
     results = []
     version = None
+    if versions and 'excludes' in versions:
+        excludes = versions['excludes']
+    else:
+        excludes = []
     complete = True
     # We used to look for lib suffixes '-version' and '_version'. Unfortunately
     # it picked up libldap_r.so when we were looking for libldap.so. Looking
@@ -3325,7 +3371,7 @@ def find_lib(names, search_path, build_top, excludes=None, variant=None):
     return results, version, complete
 
 
-def find_prerequisites(deps, excludes=None, variant=None):
+def find_prerequisites(deps, versions=None, variant=None):
     '''Find a set of executables, headers, libraries, etc. on a local machine.
 
     *deps* is a dictionary where each key associates an install directory
@@ -3349,7 +3395,6 @@ def find_prerequisites(deps, excludes=None, variant=None):
         # Make sure the extras do not get filtered out.
         if not dep in INSTALL_DIRS:
             installed[dep] = deps[dep]
-    #log_info("XXX [find_prerequisites] " + str(deps))
     for dirname in INSTALL_DIRS:
         # The search order "bin, include, lib, etc" will determine
         # how excluded versions apply.
@@ -3366,29 +3411,29 @@ def find_prerequisites(deps, excludes=None, variant=None):
                 getattr(sys.modules[__name__], command)(deps[dirname],
                                           CONTEXT.search_path(dirname,variant),
                                           CONTEXT.value('buildTop'),
-                                          excludes, variant)
+                                          versions, variant)
             # Once we have selected a version out of the installed
             # local system, we lock it down and only search for
             # that specific version.
             if not version and installed_version:
                 version = installed_version
-                excludes = [ (None, version), (version_incr(version), None) ]
+                versions = { 'excludes': [ (None, version), (version_incr(version), None) ] }
             if not installed_complete:
                 complete = False
     return installed, complete
 
 
-def find_libexec(names, search_path, build_top, excludes=None, variant=None):
+def find_libexec(names, search_path, build_top, versions=None, variant=None):
     '''find files specificed in names inside the libexec/ directory.
     *excludes* is a list of version to exclude from the set of matches.'''
     return find_data(
-        'libexec', names, search_path, build_top, excludes, variant)
+        'libexec', names, search_path, build_top, versions, variant)
 
 
-def find_share(names, search_path, build_top, excludes=None, variant=None):
+def find_share(names, search_path, build_top, versions=None, variant=None):
     '''find files specificed in names inside the share/ directory.
     *excludes* is a list of version to exclude from the set of matches.'''
-    return find_data('share', names, search_path, build_top, excludes, variant)
+    return find_data('share', names, search_path, build_top, versions, variant)
 
 
 def find_boot_bin(context, name, package=None, dbindex=None):
@@ -3659,7 +3704,7 @@ def fetch(context, filenames,
                                     context.value('siteTop') ])
 
 
-def create_managed(project_name, target):
+def create_managed(project_name, versions, target):
     '''Create a step that will install *project_name* through the local
     package manager.
     If the target is pure python, we will try pip before native package
@@ -3667,7 +3712,7 @@ def create_managed(project_name, target):
     on the native package manager for python with C bindings.'''
     install_step = None
     if target and target.startswith('python'):
-        install_step = PipInstallStep(project_name, target)
+        install_step = PipInstallStep(project_name, versions, target)
     elif target and target.startswith('nodejs'):
         install_step = NpmInstallStep(project_name, target)
     elif CONTEXT.host() in APT_DISTRIBS:
@@ -3737,9 +3782,9 @@ def install(packages, dbindex):
                 managed += [ name ]
 
         if len(managed) > 0:
-            step = create_managed(managed[0], target=None)
+            step = create_managed(managed[0], versions=None, target=None)
             for package in managed[1:]:
-                step.insert(create_managed(package, target=None))
+                step.insert(create_managed(package, versions=None, target=None))
             step.run(CONTEXT)
 
     if package_files:
@@ -3878,7 +3923,7 @@ def lib_dyn_suffix():
     return '.so'
 
 
-def link_prerequisites(files, excludes=None, target=None):
+def link_prerequisites(files, versions=None, target=None):
     '''All projects which are dependencies but are not part of *srcTop*
     are not under development in the current workspace. Links to
     the required executables, headers, libraries, etc. will be added to
@@ -3895,7 +3940,7 @@ def link_prerequisites(files, excludes=None, target=None):
                 complete &= link_pat_path(name_pat, absolute_path,
                                         dirname, target)
     if not complete:
-        files, complete = find_prerequisites(files, excludes, target)
+        files, complete = find_prerequisites(files, versions, target)
         if complete:
             for dirname in INSTALL_DIRS:
                 if dirname in files:
@@ -4741,7 +4786,6 @@ def pub_collect(args, output=None):
     distribution directory.
     (example: dws --exclude test collect)
     '''
-
     # Collect cannot log or it will prompt for index file.
     roots = []
     if len(args) > 0:
