@@ -567,29 +567,29 @@ class Context:
         '''Derives a list of directory names based on the PATH
         environment variable, *name* and a *variant* triplet.'''
         dirs = []
-        subpath = name
         # We want the actual value of *name*Dir and not one derived from binDir
         dirname = CONTEXT.value(name + 'Dir')
-        if variant:
-            subpath = os.path.join(name, variant)
-            dirname = os.path.join(os.path.dirname(dirname),
-                                   variant, os.path.basename(dirname))
         if os.path.isdir(dirname):
-            dirs += [ dirname ]
+            if variant:
+                for subdir in os.listdir(dirname):
+                    if re.match(variant, subdir):
+                        dirs += [ os.path.join(dirname, subdir) ]
+            else:
+                dirs += [ dirname ]
         for path in os.environ['PATH'].split(':'):
             base = os.path.dirname(path)
             if name == 'lib':
                 # On mixed 32/64-bit system, libraries also get installed
                 # in lib64/. This is also true for 64-bit native python modules.
-                subpath64 = 'lib64'
-                if variant:
-                    subpath64 = os.path.join('lib64', variant)
-                dirs = merge_unique(dirs,
-                    [ os.path.join(base, x) for x in find_first_files(base,
-                                subpath64 + '[^/]*') ])
-                dirs = merge_unique(dirs,
-                    [ os.path.join(base, x) for x in find_first_files(base,
-                                subpath + '[^/]*') ])
+                for subpath in [ name, 'lib64' ]:
+                    dirname = os.path.join(base, subpath)
+                    if os.path.isdir(dirname):
+                        if variant:
+                            for subdir in os.listdir(dirname):
+                                if re.match(variant, subdir):
+                                    dirs += [ os.path.join(dirname, subdir) ]
+                        else:
+                            dirs += [ dirname ]
             elif name == 'bin':
                 # Especially on Fedora, /sbin, /usr/sbin, etc. are many times
                 # not in the PATH.
@@ -2984,11 +2984,11 @@ def find_first_files(base, name_pat, subdir=''):
                 relative = os.path.join(subdir, filename)
                 path = os.path.join(base, relative)
                 regex = name_pat_regex(name_pat)
-                look = regex.match(relative)
+                look = regex.match(path)
                 if look != None:
                     results += [ relative ]
                 elif (((('.*' + os.sep) in name_pat)
-                       or (sub_num_sub_dirs < pat_num_sub_dirs - 1))
+                       or (sub_num_sub_dirs < pat_num_sub_dirs))
                       and os.path.isdir(path)):
                     # When we see .*/, it means we are looking for a pattern
                     # that can be matched by files in subdirectories
@@ -3561,7 +3561,10 @@ def name_pat_regex(name_pat):
     # We must postpend the '$' sign to the regular expression
     # otherwise "makeconv" and "makeinfo" will be picked up by
     # a match for the "make" executable.
-    return re.compile(name_pat.replace('++','\+\+') + '$')
+    pat = name_pat.replace('++','\+\+')
+    if not pat.startswith('.*'):
+        pat = '.*' + pat
+    return re.compile(pat + '$')
 
 def config_var(context, variables):
     '''Look up the workspace configuration file the workspace make fragment
