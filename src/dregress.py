@@ -166,8 +166,8 @@ if __name__ == '__main__':
                       help='format of the log output (currently only junit is supported)')
     parser.add_option('-o', dest='output',
                       metavar="FILE",
-                      default='regression.log',
-                      help='Output regression log FILE')
+                      default='regression.xml',
+                      help='Output regression junit xml FILE')
     parser.add_option('--help-book', dest='helpBook', action='store_true',
                       help='Print help in docbook format')
 
