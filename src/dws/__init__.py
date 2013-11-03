@@ -330,6 +330,9 @@ class Context:
         elif os.path.realpath(os.getcwd()).startswith(
             os.path.realpath(self.value('srcTop'))):
             top = os.path.realpath(self.value('srcTop'))
+        else:
+            raise Error("You must run dws from within a subdirectory of "\
+                        "buildTop or srcTop")
         prefix = os.path.commonprefix([top, os.getcwd()])
         return os.getcwd()[len(prefix) + 1:]
 
@@ -3563,7 +3566,9 @@ def name_pat_regex(name_pat):
     # a match for the "make" executable.
     pat = name_pat.replace('++','\+\+')
     if not pat.startswith('.*'):
-        pat = '.*' + pat
+        # If we don't add the separator here we will end-up with unrelated
+        # links to automake, pkmake, etc. when we are looking for "make".
+        pat = '.*' + os.sep + pat
     return re.compile(pat + '$')
 
 def config_var(context, variables):
@@ -4464,7 +4469,10 @@ def build_subcommands_parser(parser, module):
                     parser.add_argument(arg)
                 parser.add_argument(argspec.args[flags - 1], nargs='*')
             for idx, arg in enumerate(argspec.args[flags:]):
-                if argspec.defaults[idx] is False:
+                if isinstance(argspec.defaults[idx], list):
+                    parser.add_argument('-%s' % arg[0], '--%s' % arg,
+                                        action='append')
+                elif argspec.defaults[idx] is False:
                     parser.add_argument('-%s' % arg[0], '--%s' % arg,
                                         action='store_true')
                 else:
