@@ -2398,13 +2398,15 @@ class GitRepository(Repository):
                 # It is ok to get an error in case we are running
                 # this on the server machine.
                 pass
-        cof = '-m'
-        if force:
-            cof = '-f'
-        cmd = [ git_executable, 'checkout', cof ]
+            # OK. We do a rebase here because we don't anticipate much
+            # (conflicting) changes.
+            shell_command([git_executable, 'rebase'])
         if self.rev:
+            cof = '-m'
+            if force:
+                cof = '-f'
+            cmd = [ git_executable, 'checkout', cof ]
             cmd += [ self.rev ]
-        if self.rev or pulled:
             os.chdir(local)
             shell_command(cmd)
         # Print HEAD
