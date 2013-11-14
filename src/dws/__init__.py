@@ -613,6 +613,8 @@ class Context:
             # Just because python modules do not get installed
             # in /opt/local/lib/python2.7/site-packages
             dirs += [ '/opt/local/Library/Frameworks' ]
+        if name == 'share' and self.host() in APT_DISTRIBS:
+            dirs += [ '/var/lib/gems' ]
         return dirs
 
     def src_dir(self, name):
@@ -1863,6 +1865,40 @@ class DpkgInstallStep(InstallStep):
     def run(self, context):
         shell_command(['dpkg', '-i', ' '.join(self.managed)], admin=True)
         self.updated = True
+
+
+class GemInstallStep(InstallStep):
+    '''Install a prerequisite to a project through gem (Ruby).'''
+
+    def __init__(self, project_name, versions=None, target=None):
+        install_name = project_name
+        if (versions and 'includes' in versions
+            and len(versions['includes']) > 0):
+            install_name = '%s==%s' % (project_name, versions['includes'][0])
+        InstallStep.__init__(self, project_name, [install_name],
+                             priority=Step.install_lang)
+
+    def collect(self, context):
+        """Collect prerequisites from Gemfile"""
+        sys.stdout.write('''XXX collect from Gemfile NotYetImplemented!\n''')
+
+    def run(self, context):
+        shell_command(
+            [find_gem(context), 'install' ] + self.managed, admin=True)
+        self.updated = True
+
+    def info(self):
+        info = []
+        unmanaged = []
+        try:
+            # XXX There are no pip info command, search is the closest we get.
+            # Pip search might match other packages and thus returns zero
+            # inadvertently but it is the closest we get so far.
+            shell_command([find_gem(CONTEXT), 'search' ] + self.managed)
+            info = self.managed
+        except Error:
+            unmanaged = self.managed
+        return info, unmanaged
 
 
 class MacPortInstallStep(InstallStep):
@@ -3484,6 +3520,14 @@ def find_boot_bin(context, name, package=None, dbindex=None):
     return executable
 
 
+def find_gem(context):
+    gem_package = None
+    if context.host() in APT_DISTRIBS:
+        gem_package = 'rubygems'
+    find_boot_bin(context, '(gem).*', gem_package)
+    return os.path.join(context.value('buildTop'), 'bin', 'gem')
+
+
 def find_git(context):
     if not os.path.lexists(
         os.path.join(context.value('buildTop'), 'bin', 'git')):
@@ -3726,6 +3770,8 @@ def create_managed(project_name, versions, target):
     install_step = None
     if target and target.startswith('python'):
         install_step = PipInstallStep(project_name, versions, target)
+    elif target and target.startswith('gems'):
+        install_step = GemInstallStep(project_name, versions, target)
     elif target and target.startswith('nodejs'):
         install_step = NpmInstallStep(project_name, target)
     elif CONTEXT.host() in APT_DISTRIBS:
