@@ -339,16 +339,16 @@ class Context:
     def db_pathname(self):
         '''Absolute pathname to the project index file.'''
         if not str(self.environ['indexFile']):
-            filtered = filter_rep_ext(CONTEXT.value('remoteIndex'))
-            if filtered != CONTEXT.value('remoteIndex'):
-                prefix = CONTEXT.value('remoteSrcTop')
+            filtered = filter_rep_ext(self.value('remoteIndex'))
+            if filtered != self.value('remoteIndex'):
+                prefix = self.value('remoteSrcTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
                 self.environ['indexFile'].default = \
-                    CONTEXT.src_dir(filtered.replace(prefix, ''))
+                    self.src_dir(filtered.replace(prefix, ''))
             else:
                 self.environ['indexFile'].default = \
-                    CONTEXT.local_dir(CONTEXT.value('remoteIndex'))
+                    self.local_dir(self.value('remoteIndex'))
         return self.value('indexFile')
 
     def host(self):
@@ -2399,8 +2399,8 @@ class GitRepository(Repository):
                 # this on the server machine.
                 pass
             # OK. We do a rebase here because we don't anticipate much
-            # (conflicting) changes.
-            shell_command([git_executable, 'rebase'])
+            # (conflicting) changes. XXX pull instead.
+            shell_command([git_executable, 'pull'])
         if self.rev:
             cof = '-m'
             if force:
