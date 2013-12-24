@@ -345,7 +345,7 @@ class Context:
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
                 self.environ['indexFile'].default = \
-                    self.src_dir(filtered.replace(prefix, ''))
+                    self.src_dir(os.path.normpath(filtered).replace(prefix, ''))
             else:
                 self.environ['indexFile'].default = \
                     self.local_dir(self.value('remoteIndex'))
@@ -540,10 +540,18 @@ class Context:
         if not self.tunnel_point:
             # We can't use realpath before we figured out where the '.'
             # delimiter is in remote_path.
-            remote_path = remote_path.replace(
-                src_base, os.path.realpath(src_base))
-            src_base = os.path.realpath(src_base)
-            site_base = os.path.realpath(site_base)
+            if len(src_base) > 0:
+                remote_path = os.path.normpath(remote_path).replace(
+                    src_base, os.path.realpath(src_base))
+                src_base = os.path.realpath(src_base)
+            else:
+                remote_path = os.path.normpath(
+                    os.path.join(os.getcwd(), remote_path))
+                src_base = os.getcwd()
+            if len(site_base) > 0:
+                site_base = os.path.realpath(site_base)
+            else:
+                site_base = os.getcwd()
         self.environ['remoteIndex'].value = remote_path
         self.environ['remoteSrcTop'].default  = host_prefix + src_base
         # Note: We used to set the context[].default field which had for side
@@ -873,9 +881,7 @@ class DependencyGenerator(Unserializer):
             if name.endswith(setup_name):
                 setup = step
         if (setup and not setup.run(CONTEXT)):
-            install_step = create_managed(
-                managed_name, setup.versions, setup.target)
-            if not install_step and project_name in self.projects:
+            if project_name in self.projects:
                 project = self.projects[project_name]
                 if CONTEXT.host() in project.packages:
                     filenames = []
@@ -902,6 +908,14 @@ class DependencyGenerator(Unserializer):
                     install_step = self.add_config_make(
                         TargetStep(0, project_name, setup.target),
                         flavor.configure, flavor.make, prereqs)
+            else:
+                # XXX Previously we picked the local package manager
+                # before patched sources without checking if it is available.
+                # Of course it created problems, yet we want to check existance
+                # as late as possible so there was no way to decide
+                # at this point.
+                install_step = create_managed(
+                    managed_name, setup.versions, setup.target)
             if not install_step:
                 # Remove special case install_step is None; replace it with
                 # a placeholder instance that will throw an exception
@@ -1042,7 +1056,7 @@ class DependencyGenerator(Unserializer):
         for step in self.vertices:
             remains += [ self.vertices[step] ]
         next_remains = []
-        if False:
+        if True:
             log_info('!!!remains:')
             for step in remains:
                 is_vert = ''
@@ -1051,7 +1065,9 @@ class DependencyGenerator(Unserializer):
                 log_info('!!!\t%s %s %s'
                          % (step.name, str(is_vert),
                             str([ pre.name for pre in step.prerequisites])))
+        loop_cnt = 0
         while len(remains) > 0:
+            loop_cnt = loop_cnt + 1
             for step in remains:
                 ready = True
                 insert_point = 0
@@ -2366,7 +2382,7 @@ class GitRepository(Repository):
             prefix = context.value('remoteSrcTop')
             if not prefix.endswith(':') and not prefix.endswith(os.sep):
                 prefix = prefix + os.sep
-            name = self.url.replace(prefix, '')
+            name = os.path.normpath(self.url).replace(prefix, '')
         if name.endswith('.git'):
             name = name[:-4]
         local = context.src_dir(name)
@@ -2778,7 +2794,7 @@ def filter_rep_ext(name):
     '''Filters the repository type indication from a pathname.'''
     localname = name
     remote_path_list = name.split(os.sep)
-    for i in range(0, len(remote_path_list)):
+    for i in range(len(remote_path_list) - 1, -1, -1):
         look = search_repo_pat(remote_path_list[i])
         if look:
             _, rep_ext = os.path.splitext(look.group(1))
@@ -3303,20 +3319,20 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
         lib_base_pat = lib_prefix() + name_pat
         if '.*' in name_pat:
             # Dealing with a regular expression already
-            lib_suffix_by_priority = []
+            lib_priority_suffix = ''
             link_pats = [ name_pat ]
         elif lib_base_pat.endswith('.so'):
             # local override to select dynamic library.
             lib_base_pat = lib_base_pat[:-3]
-            lib_suffix_by_priority = [ lib_dyn_suffix(), lib_static_suffix() ]
+            lib_priority_suffix = lib_dyn_suffix()
             link_pats = [ lib_base_pat + '.so',
                           lib_base_pat + lib_static_suffix() ]
         elif STATIC_LIB_FIRST:
-            lib_suffix_by_priority = [ lib_static_suffix(), lib_dyn_suffix() ]
+            lib_priority_suffix = lib_static_suffix()
             link_pats = [ lib_base_pat + lib_static_suffix(),
                           lib_base_pat + '.so' ]
         else:
-            lib_suffix_by_priority = [ lib_dyn_suffix(), lib_static_suffix() ]
+            lib_priority_suffix = lib_dyn_suffix()
             link_pats = [ lib_base_pat + '.so',
                           lib_base_pat + lib_static_suffix() ]
         found = False
@@ -3378,8 +3394,7 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
                                 or version_compare(lib[1], numbers[0]) < 0):
                                 break
                             elif (absolute_path_base == lib_path_base
-                                and absolute_path_ext
-                                  == lib_suffix_by_priority[0]):
+                                and absolute_path_ext == lib_priority_suffix):
                                 break
                             index = index + 1
                         libs.insert(index, (absolute_path, numbers[0]))
@@ -3392,7 +3407,7 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
                         if lib[1]:
                             pass
                         elif absolute_path_base == lib_path_base:
-                            if absolute_path_ext == lib_suffix_by_priority[0]:
+                            if absolute_path_ext == lib_priority_suffix:
                                 break
                         elif lib_path_base.startswith(absolute_path_base):
                             break

@@ -39,7 +39,8 @@ def timeoutCommand(cmdline, timeout, showPID=True):
                            stderr=None)
     sys.stdout.write("started a " + str(timeout) + " seconds timeout")
     if showPID:
-        sys.stdout.write(" on PID " + str(cmd.pid) + "...\n")
+        sys.stdout.write(" on PID " + str(cmd.pid) + "...")
+    sys.stdout.write('\n')
     while cmd.poll() is None:
        time.sleep(0.1)
        now = datetime.datetime.now()
@@ -47,6 +48,8 @@ def timeoutCommand(cmdline, timeout, showPID=True):
            try:
                os.kill(cmd.pid, signal.SIGKILL)
                os.waitpid(-1, os.WNOHANG)
+               # We killed the process, return a positive error code for sure.
+               return 1
            except OSError, err:
                err = str(err)
                if err.find("No such process") > 0:
