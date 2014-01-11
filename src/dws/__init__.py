@@ -1056,7 +1056,7 @@ class DependencyGenerator(Unserializer):
         for step in self.vertices:
             remains += [ self.vertices[step] ]
         next_remains = []
-        if True:
+        if False:
             log_info('!!!remains:')
             for step in remains:
                 is_vert = ''

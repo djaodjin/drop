@@ -146,9 +146,10 @@ def logAdvance(log):
             logTestName = look.group(2)
             # group(3) if present is status
         else:
-            raise dws.Error("unexpected format of result log. Line '" \
-                                + logLine + "' does not match " \
-                                + "'(\d+):@@ test: (\S+) (\S+)? @@'.")
+            raise dws.Error("unexpected format of result log. Line '%s'" \
+                            " in %s does not match " \
+                            "'(\d+):@@ test: (\S+) (\S+)? @@'."
+                            % (logLine, str(log)))
     return logLineNum, logTestName
 
 

@@ -211,6 +211,8 @@ $(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
 # \todo When results.log depends on $(wildcard *Test.cout), it triggers 
 #       a recompile and rerunning of *Test when making regression.log.
 #       It should not but why it does in unknown yet.
+#
+# Unconditionally add an eol after the test output.
 results.log: 
 	$(MAKE) -k -f $(srcDir)/Makefile results ; \
 		echo "ok to get positive errcodes" > /dev/null
@@ -230,6 +232,7 @@ results.log:
 		  echo "@@ test: $$funtest pass @@" >> $@ ; \
 		fi ; \
 		  cat $${funtest}.cout >> $@ ; \
+		  echo "" >> $@ ; \
 		fi ; \
 	done
 
