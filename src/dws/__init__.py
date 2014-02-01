@@ -2251,19 +2251,23 @@ class UpdateStep(Step):
         self.updated = False
 
     def run(self, context):
-        try:
-            fetch(context, self.fetches)
-        except IOError:
-            raise Error("unable to fetch " + str(self.fetches))
         if self.rep:
 #            try:
             self.updated = self.rep.update(self.project, context)
             if self.updated:
                 UpdateStep.updated_sources[self.project] = self.rep.rev
-            self.rep.apply_patches(self.project, context)
 #            except:
 #                raise Error('cannot update repository or apply patch for %s\n'
 #                            % str(self.project))
+        try:
+            # We cannot fetch resources before a clone of the repo otherwise
+            # git will complain. We though have to fetch resources before
+            # we try to apply any patches as those might be resources.
+            fetch(context, self.fetches)
+        except IOError:
+            raise Error("unable to fetch " + str(self.fetches))
+        if self.rep:
+            self.rep.apply_patches(self.project, context)
 
 
 class Repository:
