@@ -3621,7 +3621,9 @@ def find_rsync(context, host, relative=True, admin=False,
         ssh = ssh + '"'
         cmdline += [ ssh ]
     if admin and username != 'root':
-        cmdline += [ '--rsync-path "sudo rsync"' ]
+        cmdline += [ '--rsync-path "sudo /usr/bin/rsync"' ]
+    else:
+        cmdline += [ '--rsync-path "/usr/bin/rsync"' ]
     return cmdline, prefix
 
 def name_pat_regex(name_pat):
@@ -3711,6 +3713,11 @@ def fetch(context, filenames,
         # Expand filenames to absolute urls
         remote_site_top = context.value('remoteSiteTop')
         uri = urlparse.urlparse(remote_site_top)
+        hostname = uri.netloc
+        if not uri.netloc:
+            # If there is no protocol specified, the hostname
+            # will be in uri.scheme (That seems like a bug in urlparse).
+            hostname = uri.scheme
         pathnames = {}
         for name in filenames:
             # Absolute path to access a file on the remote machine.
@@ -3760,21 +3767,30 @@ def fetch(context, filenames,
             remote.close()
         # fetch sshs
         if len(sshs) > 0:
-            sources = []
-            hostname = uri.netloc
-            if not uri.netloc:
-                # If there is no protocol specified, the hostname
-                # will be in uri.scheme (That seems like a bug in urlparse).
-                hostname = uri.scheme
-                for ssh in sshs:
-                    sources += [ ssh.replace(hostname + ':', '') ]
-            if len(sources) > 0:
-                if admin:
+            local_sources = []
+            remote_sources = {}
+            for ssh in sshs:
+                parts = ssh.split(':')
+                if len(parts) == 2:
+                    host = parts[0]
+                    path = parts[1]
+                    if not host in remote_sources:
+                        remote_sources[host] = [ path ]
+                    else:
+                        remote_sources[host] += [ path ]
+                else:
+                    local_sources += parts
+            if local_sources:
+                cmdline, prefix = find_rsync(context, "", relative, admin)
+                shell_command(cmdline + ["'" + ' '.join(local_sources) + "'",
+                                    context.value('siteTop') ])
+            for hostname, paths in remote_sources.iteritems():
+                if hostname and admin:
                     shell_command(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-                cmdline, prefix = find_rsync(context, context.remote_host(),
+                cmdline, prefix = find_rsync(context, hostname,
                                             relative, admin)
-                shell_command(cmdline + ["'" + prefix + ' '.join(sources) + "'",
+                shell_command(cmdline + ["'" + prefix + ' '.join(paths) + "'",
                                     context.value('siteTop') ])
 
 
