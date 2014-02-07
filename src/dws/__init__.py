@@ -2993,7 +2993,9 @@ def find_cache(context, names):
         name = os.path.basename(urlparse.urlparse(pathname).path)
         log_interactive(name + "... ")
         local_name = context.local_dir(pathname)
-        if os.path.exists(local_name):
+        if os.path.isfile(local_name):
+            # It is required for fetching asset directories within a source
+            # repo on update that directories are always rsync'ed.
             if isinstance(names[pathname], dict):
                 if 'sha1' in names[pathname]:
                     expected = names[pathname]['sha1']
