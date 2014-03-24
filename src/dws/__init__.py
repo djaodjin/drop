@@ -1,29 +1,28 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2009-2013, Fortylines LLC
-#   All rights reserved.
+# Copyright (c) 2014, Fortylines LLC
+# All rights reserved.
 #
-#   Redistribution and use in source and binary forms, with or without
-#   modification, are permitted provided that the following conditions are met:
-#     * Redistributions of source code must retain the above copyright
-#       notice, this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#     * Neither the name of fortylines nor the
-#       names of its contributors may be used to endorse or promote products
-#       derived from this software without specific prior written permission.
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#   THIS SOFTWARE IS PROVIDED BY Fortylines LLC ''AS IS'' AND ANY
-#   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-#   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-#   DISCLAIMED. IN NO EVENT SHALL Fortylines LLC BE LIABLE FOR ANY
-#   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-#   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-#   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-#   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-#   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 """
 Implements workspace management.
@@ -1728,6 +1727,14 @@ class Step:
             name = name
         return name
 
+    @property
+    def title(self):
+        """
+        Returns a title that can later be parsed to report status on building
+        the associated project.
+        """
+        # project is a name (unicode) here.
+        return "%s:%s" % (self.project, self.__class__.__name__[:-4].lower())
 
 class TargetStep(Step):
 
@@ -2390,7 +2397,6 @@ class GitRepository(Repository):
         if name.endswith('.git'):
             name = name[:-4]
         local = context.src_dir(name)
-        pulled = False
         updated = False
         cwd = os.getcwd()
         git_executable = find_git(context)
@@ -2398,9 +2404,11 @@ class GitRepository(Repository):
             shell_command([ git_executable, 'clone', self.url, local])
             updated = True
         else:
-            pulled = True
             os.chdir(local)
-            cmdline = ' '.join([git_executable, 'fetch'])
+            # Make sure we are not on a detached HEAD.
+            shell_command([git_executable, 'checkout', 'master'])
+            # 'pull' does fetch and rebase all in one.
+            cmdline = ' '.join([git_executable, 'pull'])
             log_info(cmdline)
             cmd = subprocess.Popen(cmdline,
                                    shell=True,
@@ -2418,9 +2426,6 @@ class GitRepository(Repository):
                 # It is ok to get an error in case we are running
                 # this on the server machine.
                 pass
-            # OK. We do a rebase here because we don't anticipate much
-            # (conflicting) changes. XXX pull instead.
-            shell_command([git_executable, 'pull'])
         if self.rev:
             cof = '-m'
             if force:
@@ -4457,7 +4462,7 @@ def validate_controls(dgen, dbindex,
             for vertex in glob:
                 errcode = 0
                 elapsed = 0
-                log_header(vertex.name)
+                log_header(vertex.title)
                 start = datetime.datetime.now()
                 try:
                     vertex.run(CONTEXT)
@@ -4472,11 +4477,11 @@ def validate_controls(dgen, dbindex,
                     if dgen.stop_make_after_error:
                         finish = datetime.datetime.now()
                         elapsed = elapsed_duration(start, finish)
-                        log_footer(vertex.name, elapsed, errcode)
+                        log_footer(vertex.title, elapsed, errcode)
                         raise err
                     else:
                         log_error(str(err))
-                log_footer(vertex.name, elapsed, errcode)
+                log_footer(vertex.title, elapsed, errcode)
 
     nb_updated_projects = len(UpdateStep.updated_sources)
     if nb_updated_projects > 0:
@@ -4653,6 +4658,10 @@ def prompt(message):
 def log_init():
     global LOGGER
     if not LOGGER:
+        if os.path.exists(CONTEXT.logname()):
+            # We would rather not append to the previous logfile
+            # but rather create a new one.
+            os.remove(CONTEXT.logname())
         logging.config.dictConfig({
         'version': 1,
         'disable_existing_loggers': False,
@@ -4698,8 +4707,8 @@ def log_footer(prefix, elapsed=datetime.timedelta(), errcode=0):
         if not LOGGER:
             log_init()
         if errcode > 0:
-            LOGGER.info('%s: error (%d) after %s'
-                        % (prefix, errcode, elapsed))
+            LOGGER.info('%s: error after %s (%d)'
+                        % (prefix, elapsed, errcode))
         else:
             LOGGER.info('%s: completed in %s' % (prefix, elapsed))
 
@@ -4858,25 +4867,24 @@ def pub_build(args, graph=False, noclean=False):
         CONTEXT.environ['buildstamp'] = '-'.join([socket.gethostname(),
                                             stamp(datetime.datetime.now())])
     CONTEXT.save()
-    if validate_controls(dgen, INDEX, graph=graph):
-        # Once we have built the repository, let's report the results
-        # back to the remote server. We stamp the logfile such that
-        # it gets a unique name before uploading it.
-        logstamp = stampfile(CONTEXT.logname())
-        if not os.path.exists(os.path.dirname(CONTEXT.log_path(logstamp))):
-            os.makedirs(os.path.dirname(CONTEXT.log_path(logstamp)))
-        if LOGGER:
-            for handler in LOGGER.handlers:
-                handler.flush()
-        shell_command(['install', '-m', '644', CONTEXT.logname(),
-                      CONTEXT.log_path(logstamp)])
-        logging.getLogger('build').info(
-            'build %s'% str(UpdateStep.updated_sources))
-        look = re.match(r'.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)', logstamp)
-        global LOG_PAT
-        LOG_PAT = look.group(1)
-        if len(ERRORS) > 0:
-            raise Error("Found errors while making " + ' '.join(ERRORS))
+    validate_controls(dgen, INDEX, graph=graph)
+    # Once we have built the repository, let's report the results.
+    # We stamp the logfile such that it gets a unique name.
+    logstamp = stampfile(CONTEXT.logname())
+    if not os.path.exists(os.path.dirname(CONTEXT.log_path(logstamp))):
+        os.makedirs(os.path.dirname(CONTEXT.log_path(logstamp)))
+    if LOGGER:
+        for handler in LOGGER.handlers:
+            handler.flush()
+    shell_command(['install', '-m', '644', CONTEXT.logname(),
+                  CONTEXT.log_path(logstamp)])
+    logging.getLogger('build').info(
+        'build %s'% str(UpdateStep.updated_sources))
+    look = re.match(r'.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)', logstamp)
+    global LOG_PAT
+    LOG_PAT = look.group(1)
+    if len(ERRORS) > 0:
+        raise Error("Found errors while making " + ' '.join(ERRORS))
 
 
 def pub_collect(args, output=None):
@@ -5410,13 +5418,13 @@ def pub_update(args):
                 # \todo We do not propagate force= here to avoid messing up
                 #       the local checkouts on pubUpdate()
                 try:
-                    log_header(update.name)
+                    log_header(update.title)
                     update.run(CONTEXT)
-                    log_footer(update.name)
+                    log_footer(update.title)
                 except Error, err:
                     log_info('warning: cannot update repository from ' \
                                   + str(update.rep.url))
-                    log_footer(update.name, errcode=err.code)
+                    log_footer(update.title, errcode=err.code)
             else:
                 ERRORS += [ name ]
         if len(ERRORS) > 0:

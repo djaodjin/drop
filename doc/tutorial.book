@@ -183,6 +183,17 @@ $ dws patch
   </section>
 
 <!--
+    <para>
+      In case you choose to keep all tree roots (<emphasis>srcTop</emphasis>,
+      <emphasis>buildTop</emphasis>, <emphasis>installTop</emphasis>) under
+      a single <emphasis>siteTop</emphasis>, you might want to move
+      <emphasis>buildTop</emphasis>/dws.mk one level up for convienience.
+      This will allow you to run dws commands from within any subtree.
+    </para>
+    <programlisting>
+$ mv *buildTop*/dws.mk *siteTop*/dws.mk
+    </programlisting>
+
   <section>
   <title>Make helper fragments</title>
   <para>
