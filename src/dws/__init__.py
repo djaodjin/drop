@@ -57,6 +57,8 @@ import cStringIO
 # \todo executable used to return a password compatible with sudo. This is used
 # temporarly while sudo implementation is broken when invoked with no tty.
 ASK_PASS = ''
+# filename for context configuration
+CONTEXT_FILENAME = None
 # When True, all commands invoked through shell_command() are printed
 # but not executed.
 DO_NOT_EXECUTE = False
@@ -414,6 +416,7 @@ class Context:
                 self.config_filename = config_filename
                 self.config_name = os.path.basename(config_filename)
                 self.build_top_relative_cwd = os.path.dirname(config_filename)
+                self.load_context(self.config_filename)
             else:
                 self.build_top_relative_cwd, self.config_filename \
                     = search_back_to_root(self.config_name)
@@ -458,7 +461,6 @@ class Context:
             # such as *buildTop* and *srcTop* defaults are based on it.
             self.environ['siteTop'].value = os.path.dirname(
                 self.config_filename)
-
 
     def logname(self):
         '''Name of the XML tagged log file where sys.stdout is captured.'''
@@ -4815,7 +4817,7 @@ def pub_build(args, graph=False, noclean=False):
     if not os.path.exists(build_top):
         os.makedirs(build_top)
     os.chdir(build_top)
-    CONTEXT.locate()
+    CONTEXT.locate(CONTEXT_FILENAME)
     if not str(CONTEXT.environ['installTop']):
         CONTEXT.environ['installTop'].configure(CONTEXT)
     install_top = str(CONTEXT.environ['installTop'])
@@ -5665,8 +5667,8 @@ def main(args):
             epilog=epilog)
         parser.add_argument('--version', action='version',
                             version='%(prog)s ' + str(__version__))
-        parser.add_argument('--config', dest='config', action='store',
-            help='Set the path to the config file instead of deriving it'\
+        parser.add_argument('--context', dest='context', action='store',
+            help='Set the path to the context file instead of deriving it'\
 ' from the current directory.')
         parser.add_argument('--default', dest='default', action='store_true',
             help='Use default answer for every interactive prompt.')
@@ -5708,12 +5710,15 @@ def main(args):
         if options.exclude_pats:
             global EXCLUDE_PATS
             EXCLUDE_PATS = options.exclude_pats
+        if options.context:
+            global CONTEXT_FILENAME
+            CONTEXT_FILENAME = options.context
 
         if not options.func in [ pub_build ]:
             # The *build* command is special in that it does not rely
             # on locating a pre-existing context file.
             try:
-                CONTEXT.locate(options.config)
+                CONTEXT.locate(CONTEXT_FILENAME)
             except IOError:
                 pass
             except:
