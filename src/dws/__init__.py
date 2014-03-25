@@ -4229,13 +4229,14 @@ def merge_build_conf(db_prev, db_upd, parser):
         return db_next
 
 
-def upload(filenames, cache_dir=None):
+def upload(filenames, remote_cache_path=None):
     '''upload *filenames*, typically a list of result logs,
     to the remote server. See the fetch function for downloading
     files from the remote server.
     '''
-    remote_cache_path = CONTEXT.remote_dir(CONTEXT.log_path(''))
-    cmdline, _ = find_rsync(CONTEXT, CONTEXT.remote_host(), not cache_dir)
+    if not remote_cache_path:
+        remote_cache_path = CONTEXT.remote_dir(CONTEXT.log_path(''))
+    cmdline, _ = find_rsync(CONTEXT, CONTEXT.remote_host(), relative=True)
     up_cmdline = cmdline + [ ' '.join(filenames), remote_cache_path ]
     shell_command(up_cmdline)
 
@@ -5680,6 +5681,8 @@ def main(args):
             help='Set the root for installed bin, include, lib, etc. ')
         parser.add_argument('--mailto', dest='mailto', action='append',
             help='Add an email address to send log reports to')
+        parser.add_argument('--rsyncto', dest='rsyncto', action='append',
+            help='Upload log files to remote host')
         build_subcommands_parser(parser, __main__)
 
         if len(args) <= 1:
@@ -5734,6 +5737,14 @@ def main(args):
         logs = find_files(CONTEXT.log_path(''), LOG_PAT)
         log_info('forwarding logs ' + ' '.join(logs) + '...')
         sendmail(createmail('build report', logs), options.mailto)
+    if options.rsyncto and len(options.rsyncto) > 0 and LOG_PAT:
+        log_dir = CONTEXT.log_path('')
+        logs = find_files(log_dir, LOG_PAT)
+        log_info('uploading logs ' + ' '.join(logs) + '...')
+        logs = [log.replace(log_dir, log_dir + './') for log in logs]
+        for remote_path in options.rsyncto:
+            upload(logs, remote_path)
+
     return exit_code
 
 
