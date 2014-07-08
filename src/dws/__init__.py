@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2014, Fortylines LLC
+# Copyright (c) 2014, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -50,7 +50,7 @@ invoking the script.
 __version__ = None
 
 import datetime, hashlib, inspect, logging, logging.config, re, optparse
-import os, shutil, socket, subprocess, sys, tempfile, urllib2, urlparse
+import os, shutil, socket, stat, subprocess, sys, tempfile, urllib2, urlparse
 import xml.dom.minidom, xml.sax
 import cStringIO
 
@@ -2029,11 +2029,16 @@ class PipInstallStep(InstallStep):
     def run(self, context):
         # In most cases, when installing through pip, we should be running
         # under virtualenv. This is only true for development machines though.
+        pip = find_pip(context)
+        site_packages = None
+        pip_version = subprocess.check_output([pip, '-V'])
+        look = re.match(r'pip [1-9\.]+ from (\S+)', pip_version)
+        if look:
+            site_packages = look.group(1)
         admin = False
-        if not 'VIRTUAL_ENV' in os.environ:
+        if os.stat(site_packages).st_uid != os.getuid():
             admin = True
-        shell_command([find_pip(context), 'install' ] + self.managed,
-                      admin=admin)
+        shell_command([pip, 'install' ] + self.managed, admin=admin)
         self.updated = True
 
     def info(self):
@@ -4670,7 +4675,7 @@ def log_init():
         'disable_existing_loggers': False,
         'formatters': {
             'simple': {
-                'format': '[%(asctime)s] [%(levelname)s] %(message)s',
+                'format': '%(message)s',
                 'datefmt': '%d/%b/%Y:%H:%M:%S %z'
             },
         },
