@@ -45,7 +45,7 @@ endif
 endif
 endif
 
-all::	$(bins) $(apps) $(scripts) $(libs) $(includes) $(etcs)
+all::	$(bins) $(apps) $(scripts) $(dynlibs) $(libs) $(includes) $(etcs)
 
 all::	$(logs)
 	$(if $^,-dregress -o regression.log $^ \
@@ -104,17 +104,17 @@ install:: $(resources)
 	$(AR) $(ARFLAGS) $@ $^
 
 %$(dylSuffix):
-	$(LINK.o) $(SHAREDLIBFLAGS) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.o) $(SHAREDLIBFLAGS) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def $(dylSuffix),$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 # %.def appears in dependency (.d) files through an #include of LLVM headers.
 %: %.c
-	$(LINK.c) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.c) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def $(dylSuffix),$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 %: %.cc
-	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def $(dylSuffix),$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 %: %.cpp
-	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def,$^) $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.cc) $(filter-out %.h %.hh %.hpp %.ipp %.tcc %.def $(dylSuffix),$^) $(LOADLIBES) $(LDLIBS) -o $@
 
 %.class: %.java
 	$(JAVAC) $(JAVAC_FLAGS) $(subst $(srcDir)/src/,,$<)
