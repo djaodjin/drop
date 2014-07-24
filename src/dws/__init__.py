@@ -2100,7 +2100,7 @@ class YumInstallStep(InstallStep):
 
     def run(self, context):
         cmdline = ['yum', '-y', 'install' ] + self.managed
-        log_info(cmdline)
+        log_info(' '.join(cmdline))
         shell_command(['yum', '-y', 'update'], admin=True)
         filtered = shell_command(
             cmdline, admin=True, pat='No package (.*) available')
