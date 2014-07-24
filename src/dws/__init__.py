@@ -2099,9 +2099,11 @@ class YumInstallStep(InstallStep):
                              priority=Step.install_native)
 
     def run(self, context):
+        cmdline = ['yum', '-y', 'install' ] + self.managed
+        log_info(cmdline)
         shell_command(['yum', '-y', 'update'], admin=True)
-        filtered = shell_command(['yum', '-y', 'install' ] + self.managed,
-                                admin=True, pat='No package (.*) available')
+        filtered = shell_command(
+            cmdline, admin=True, pat='No package (.*) available')
         if len(filtered) > 0:
             look = re.match('No package (.*) available', filtered[0])
             if look:
