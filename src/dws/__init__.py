@@ -4835,19 +4835,16 @@ def pub_build(args, graph=False, noclean=False):
                 tardirs += [ path ]
         if len(tardirs) > 0:
             prefix = os.path.commonprefix(tardirs)
-            tarname = os.path.basename(site_top) + '-' + stamp() + '.tar.bz2'
+            pkgbase = '%s-%s' % (os.path.basename(site_top), stamp())
             if os.path.samefile(prefix, site_top):
                 # optimize common case: *buildTop* and *installTop* are within
                 # *siteTop*. We cd into the parent directory to create the tar
                 # in order to avoid 'Removing leading /' messages. Those do
                 # not display the same on Darwin and Ubuntu, creating false
                 # positive regressions between both systems.
-                shell_command(['cd', os.path.dirname(site_top),
-                              '&&', 'tar', 'jcf', tarname,
-                              os.path.basename(site_top) ])
+                shell_command(create_tarball(pkgbase, site_top))
             else:
-                shell_command(['cd', os.path.dirname(site_top),
-                              '&&', 'tar', 'jcf', tarname ] + tardirs)
+                shell_command(create_tarball(pkgbase, site_top, tardirs))
         os.chdir(prevcwd)
         for dirpath in [ build_top, install_top]:
             # we only remove build_top and installTop. Can neither be too
@@ -5629,6 +5626,22 @@ def show_multiple(description, choices):
     for project in displayed:
         for col_index, col in enumerate(project):
             log_info(col.ljust(widths[col_index]))
+
+
+def create_tarball(pkgbase, site_top, inputs=None):
+    """
+    Create a package.
+    """
+    if not inputs:
+        inputs = [os.path.basename(site_top)]
+    if os.path.exists('/usr/bin/bzip2'):
+        pkgflag = 'j'
+        tarname = pkgbase + '.tar.bz2'
+    else:
+        pkgflag = 'z'
+        tarname = pkgbase + '.tar.gz'
+    return ['cd', os.path.dirname(site_top),
+            '&&', 'tar', pkgflag + 'cf', tarname] + inputs
 
 
 def unpack(pkgfilename):
