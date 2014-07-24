@@ -94,6 +94,11 @@ APT_DISTRIBS = [ 'Debian', 'Ubuntu' ]
 YUM_DISTRIBS = [ 'Fedora' ]
 PORT_DISTRIBS = [ 'Darwin' ]
 
+# Real uid and gid when the -u,--user and/or -g,--group command
+# line arguments are used.
+USER = None
+GROUP = None
+
 CONTEXT = None
 INDEX = None
 
@@ -2100,7 +2105,7 @@ class YumInstallStep(InstallStep):
 
     def run(self, context):
         cmdline = ['yum', '-y', 'install' ] + self.managed
-        log_info(' '.join(cmdline))
+        log_info('update, then run: %s' % ' '.join(cmdline))
         shell_command(['yum', '-y', 'update'], admin=True)
         filtered = shell_command(
             cmdline, admin=True, pat='No package (.*) available')
@@ -4324,28 +4329,37 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
     sudo is used when *admin* is True.
     the text output is filtered and returned when pat exists.
     '''
+    euid = None
+    egid = None
     filtered_output = []
     if admin:
-        if False:
-            # \todo cannot do this simple check because of a shell variable
-            # setup before call to apt-get.
-            if not execute.startswith('/'):
-                raise Error("admin command without a fully quaified path: " \
-                                + execute)
-        # ex: su username -c 'sudo port install icu'
-        cmdline = [ '/usr/bin/sudo' ]
-        if USE_DEFAULT_ANSWER:
-            # Error out if sudo prompts for a password because this should
-            # never happen in non-interactive mode.
-            if ASK_PASS:
-                # XXX Workaround while sudo is broken
-                # http://groups.google.com/group/comp.lang.python/\
-                # browse_thread/thread/4c2bb14c12d31c29
-                cmdline = [ 'SUDO_ASKPASS="' + ASK_PASS + '"'  ] \
-                    + cmdline + [ '-A' ]
-            else:
-                cmdline += [ '-n' ]
-        cmdline += execute
+        if USER:
+            euid = os.geteuid()
+            os.seteuid(USER)
+        if GROUP:
+            egid = os.getegid()
+            os.setegid(GROUP)
+        else:
+            if False:
+                # \todo cannot do this simple check because of a shell variable
+                # setup before call to apt-get.
+                if not execute.startswith('/'):
+                    raise Error("admin command without a fully quaified path: "
+                        + execute)
+            # ex: su username -c 'sudo port install icu'
+            cmdline = [ '/usr/bin/sudo' ]
+            if USE_DEFAULT_ANSWER:
+                # Error out if sudo prompts for a password because this should
+                # never happen in non-interactive mode.
+                if ASK_PASS:
+                    # XXX Workaround while sudo is broken
+                    # http://groups.google.com/group/comp.lang.python/\
+                    # browse_thread/thread/4c2bb14c12d31c29
+                    cmdline = [ 'SUDO_ASKPASS="' + ASK_PASS + '"'  ] \
+                        + cmdline + [ '-A' ]
+                else:
+                    cmdline += [ '-n' ]
+            cmdline += execute
     else:
         cmdline = execute
     log_info(' '.join(cmdline))
@@ -4366,6 +4380,11 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
             log_info(line[:-1])
             line = cmd.stdout.readline()
         cmd.wait()
+        if admin:
+            if euid:
+                os.seteuid(euid)
+            if egid:
+                os.setegid(egid)
         if cmd.returncode != 0:
             raise Error("unable to complete: " + ' '.join(cmdline) \
                             + '\n' + '\n'.join(filtered_output),
@@ -5660,10 +5679,6 @@ def unpack(pkgfilename):
 def main(args):
     '''Main Entry Point'''
 
-    # XXX use of this code?
-    # os.setuid(int(os.getenv('SUDO_UID')))
-    # os.setgid(int(os.getenv('SUDO_GID')))
-
     exit_code = 0
     try:
         import __main__
@@ -5705,6 +5720,10 @@ def main(args):
             help='Add an email address to send log reports to')
         parser.add_argument('--rsyncto', dest='rsyncto', action='append',
             help='Upload log files to remote host')
+        parser.add_argument('-u', '--user', dest='user', action='store',
+            help='Run as user')
+        parser.add_argument('-g', '--group', dest='group', action='store',
+            help='Run as group')
         build_subcommands_parser(parser, __main__)
 
         if len(args) <= 1:
@@ -5721,6 +5740,17 @@ def main(args):
             return 0
 
         options = parser.parse_args(args[1:])
+
+        if options.user or options.group:
+            import pwd
+            if options.user:
+                global USER
+                USER = os.getuid()
+                os.seteuid(pwd.getpwnam(options.user).pw_uid)
+            if options.group:
+                global GROUP
+                GROUP = os.getgid()
+                os.setegid(pwd.getpwnam(options.user).pw_gid)
 
         # Find the build information
         global USE_DEFAULT_ANSWER
