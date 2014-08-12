@@ -587,17 +587,21 @@ class Context:
     def search_path(self, name, variant=None):
         '''Derives a list of directory names based on the PATH
         environment variable, *name* and a *variant* triplet.'''
-        dirs = []
+        candidates = []
         # We want the actual value of *name*Dir and not one derived from binDir
         dirname = CONTEXT.value(name + 'Dir')
         if os.path.isdir(dirname):
+            # First look into variant and finally in no variant directory
+            # because even though libraries are often in variant subdirectories,
+            # executables often are not.
             if variant:
                 for subdir in os.listdir(dirname):
                     if re.match(variant, subdir):
-                        dirs += [ os.path.join(dirname, subdir) ]
-            else:
-                dirs += [ dirname ]
-        for path in os.environ['PATH'].split(':'):
+                        candidates += [ os.path.join(dirname, subdir) ]
+            candidates += [ dirname ]
+        candidates += os.environ['PATH'].split(':')
+        dirs = []
+        for path in candidates:
             base = os.path.dirname(path)
             if name == 'lib':
                 # On mixed 32/64-bit system, libraries also get installed
@@ -1939,14 +1943,18 @@ class MacPortInstallStep(InstallStep):
         packages = managed
         if target:
             look = re.match(r'python(\d(\.\d)?)?', target)
+        else:
+            look = re.match(r'python(\d(\.\d)?)?-(.*)', project_name)
             if look:
-                if look.group(1):
-                    prefix = 'py%s-' % look.group(1).replace('.', '')
-                else:
-                    prefix = 'py27-'
-                packages = []
-                for man in managed:
-                    packages += [ prefix + man ]
+                managed = [ look.group(3) ]
+        if look:
+            if look.group(1):
+                prefix = 'py%s-' % look.group(1).replace('.', '')
+            else:
+                prefix = 'py27-'
+            packages = []
+            for man in managed:
+                packages += [ prefix + man ]
         darwin_names = {
             # translation of package names. It is simpler than
             # creating an <alternates> node even if it look more hacky.
@@ -3495,9 +3503,9 @@ def find_prerequisites(deps, versions=None, variant=None):
             # deprecated: done in search_path. context.value(dir + 'Dir')
             installed[dirname], installed_version, installed_complete = \
                 getattr(sys.modules[__name__], command)(deps[dirname],
-                                          CONTEXT.search_path(dirname,variant),
-                                          CONTEXT.value('buildTop'),
-                                          versions, variant)
+                    CONTEXT.search_path(dirname, variant),
+                    CONTEXT.value('buildTop'),
+                    versions, variant)
             # Once we have selected a version out of the installed
             # local system, we lock it down and only search for
             # that specific version.
@@ -3650,6 +3658,11 @@ def find_rsync(context, host, relative=True, admin=False,
     else:
         cmdline += [ '--rsync-path "/usr/bin/rsync"' ]
     return cmdline, prefix
+
+def find_virtualenv(context):
+    virtual_package = 'python-virtualenv'
+    find_boot_bin(context, '(virtualenv).*', virtual_package)
+    return os.path.join(context.value('buildTop'), 'bin', 'virtualenv')
 
 def name_pat_regex(name_pat):
     # Many C++ tools contain ++ in their name which might trip
@@ -4792,7 +4805,7 @@ def log_info(message, *args, **kwargs):
                 LOGGER.info(message, *args, **kwargs)
 
 
-def pub_build(args, graph=False, noclean=False):
+def pub_build(args, graph=False, clean=False, novirtualenv=False):
     '''remoteIndex [ siteTop [ buildTop ] ]
     This command executes a complete build cycle:
       - (optional) delete all files in *siteTop*,
@@ -4814,10 +4827,11 @@ def pub_build(args, graph=False, noclean=False):
     should also be setup to run with no human
     interaction.
     ex: dws build http://hostname/everything.git
-    --graph     Generate a .dot graph of
-                the dependencies
-    --noclean   Do not remove any directory before
-                executing a build command.
+    --graph        Generate a .dot graph of the dependencies
+    --clean        Backup *siteTop* and remove all subdirectories
+                   before executing a build command.
+    --novirtualenv Install pure python packages in
+                   the system paths.
     '''
     global USE_DEFAULT_ANSWER
     USE_DEFAULT_ANSWER = True
@@ -4827,7 +4841,7 @@ def pub_build(args, graph=False, noclean=False):
     else:
         site_top = os.path.join(os.getcwd(), CONTEXT.base('remoteIndex'))
     CONTEXT.environ['siteTop'].value = site_top
-    if not noclean:
+    if clean:
         # We don't want to remove the log we just created
         # so we buffer until it is safe to flush.
         global LOGGER_BUFFERING_COUNT
@@ -4847,7 +4861,7 @@ def pub_build(args, graph=False, noclean=False):
     if not str(CONTEXT.environ['installTop']):
         CONTEXT.environ['installTop'].configure(CONTEXT)
     install_top = str(CONTEXT.environ['installTop'])
-    if not noclean:
+    if clean:
         # First we backup everything in siteTop, buildTop and installTop
         # as we are about to remove those directories - just in case.
         tardirs = []
@@ -4879,6 +4893,11 @@ def pub_build(args, graph=False, noclean=False):
             os.makedirs(build_top)
         os.chdir(build_top)
         LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
+
+    if (not novirtualenv
+        and not os.path.isfile(os.path.join(install_top, 'bin', 'pip'))):
+        shell_command([
+            find_virtualenv(CONTEXT), '--system-site-packages', site_top])
 
     rgen = DerivedSetsGenerator()
     # If we do not force the update of the index file, the dependency
