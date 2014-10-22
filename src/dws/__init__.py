@@ -2438,8 +2438,8 @@ class GitRepository(Repository):
                                    stderr=subprocess.STDOUT)
             line = cmd.stdout.readline()
             while line != '':
-                log_info(line)
-                look = re.match('^updating', line)
+                log_info(line.strip())
+                look = re.match(r'^[Uu]pdating', line)
                 if look:
                     updated = True
                 line = cmd.stdout.readline()
@@ -5393,18 +5393,18 @@ def pub_status(args, recurse=False):
                                              stderr=subprocess.STDOUT)
             untracked = False
             for line in output.splitlines():
-                look = re.match(r'#\s+([a-z]+):\s+(\S+)', line)
+                look = re.match(r'#?\s*([a-z]+):\s+(\S+)', line)
                 if look:
                     sys.stdout.write(' '.join([
                                 look.group(1).capitalize()[0],
                                 rep, look.group(2)]) + '\n')
-                elif re.match('# Untracked files:', line):
+                elif re.match(r'#?\s*Untracked files:', line):
                     untracked = True
                 elif untracked:
-                    look = re.match(r'#	(\S+)', line)
+                    look = re.match(r'#?\s+([A-Za-z0-9_\-/]+)', line)
                     if look:
-                        sys.stdout.write(' '.join(['?', rep,
-                                                   look.group(1)]) + '\n')
+                        sys.stdout.write(
+                            ' '.join(['?', rep, look.group(1)]) + '\n')
         except subprocess.CalledProcessError:
             # It is ok. git will return error code 1 when no changes
             # are to be committed.
