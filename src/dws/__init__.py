@@ -87,12 +87,12 @@ STATIC_LIB_FIRST = True
 USE_DEFAULT_ANSWER = False
 
 # Directories where things get installed
-INSTALL_DIRS = [ 'bin', 'include', 'lib', 'libexec', 'etc', 'share' ]
+INSTALL_DIRS = ['bin', 'include', 'lib', 'libexec', 'etc', 'share']
 
 # distributions per native package managers
-APT_DISTRIBS = [ 'Debian', 'Ubuntu' ]
-YUM_DISTRIBS = [ 'Fedora' ]
-PORT_DISTRIBS = [ 'Darwin' ]
+APT_DISTRIBS = ['Debian', 'Ubuntu']
+YUM_DISTRIBS = ['Fedora', 'CentOS']
+PORT_DISTRIBS = ['Darwin']
 
 # Real uid and gid when the -u,--user and/or -g,--group command
 # line arguments are used.
@@ -133,11 +133,11 @@ class CircleError(Error):
 class MissingError(Error):
     '''This error is thrown whenever a project has missing prerequisites.'''
     def __init__(self, project_name, prerequisites):
-        Error.__init__(self,'The following prerequisistes are missing: ' \
-                           + ' '.join(prerequisites),2,project_name)
+        Error.__init__(self, 'The following prerequisistes are missing: ' \
+                           + ' '.join(prerequisites), 2, project_name)
 
 
-class Context:
+class Context(object):
     '''The workspace configuration file contains environment variables used
     to update, build and package projects. The environment variables are roots
     of the general dependency graph as most other routines depend on srcTop
@@ -153,38 +153,38 @@ class Context:
         self.targets = []
         self.overrides = []
         site_top = Pathname('siteTop',
-              { 'description':
+              {'description':
                     'Root of the tree where the website is generated\n'\
 '                       and thus where *remoteSiteTop* is cached\n'\
 '                       on the local system',
                 'default':os.getcwd()})
         remote_site_top = Pathname('remoteSiteTop',
-             { 'description':
+             {'description':
                    'Root of the remote tree that holds the published website\n'
 '                       (ex: url:/var/cache).',
                'default':''})
         install_top = Pathname('installTop',
-                    { 'description':'Root of the tree for installed bin/,'\
+                    {'description':'Root of the tree for installed bin/,'\
 ' include/, lib/, ...',
-                          'base':'siteTop','default':''})
+                     'base':'siteTop', 'default':''})
         # We use installTop (previously siteTop), such that a command like
         # "dws build *remoteIndex* *siteTop*" run from a local build
         # directory creates intermediate and installed files there while
         # checking out the sources under siteTop.
         # It might just be my preference...
         build_top = Pathname('buildTop',
-                    { 'description':'Root of the tree where intermediate'\
+                    {'description':'Root of the tree where intermediate'\
 ' files are created.',
-                            'base':'siteTop','default':'build'})
+                     'base':'siteTop', 'default':'build'})
         src_top = Pathname('srcTop',
-             { 'description':
+             {'description':
                    'Root of the tree where the source code under revision\n'
 '                       control lives on the local machine.',
                'base': 'siteTop',
                'default':'reps'})
-        self.environ = { 'buildTop': build_top,
-                         'srcTop' : src_top,
-                         'patchTop': Pathname('patchTop',
+        self.environ = {'buildTop': build_top,
+                        'srcTop' : src_top,
+                        'patchTop': Pathname('patchTop',
              {'description':'Root of the tree where patches are stored',
               'base':'siteTop',
               'default':'patch'}),
@@ -235,39 +235,42 @@ class Context:
               'base':'remoteSiteTop',
               'default':'reps/dws.git/dws.xml'}),
                         'darwinTargetVolume': Single('darwinTargetVolume',
-              { 'description':
+              {'description':
                     'Destination of installed packages on a Darwin local\n'\
 '                       machine. Installing on the "LocalSystem" requires\n'\
 '                       administrator privileges.',
               'choices': {'LocalSystem':
                          'install packages on the system root for all users',
                         'CurrentUserHomeDirectory':
-                         'install packages for the current user only'} }),
+                         'install packages for the current user only'}}),
                          'distHost': HostPlatform('distHost'),
                          'smtpHost': Variable('smtpHost',
-             { 'description':'Hostname for the SMTP server through'\
+             {'description':'Hostname for the SMTP server through'\
 ' which logs are sent.',
                'default':'localhost'}),
                          'smtpPort': Variable('smtpPort',
-             { 'description':'Port for the SMTP server through'\
+             {'description':'Port for the SMTP server through'\
 ' which logs are sent.',
                'default':'5870'}),
                          'dwsSmtpLogin': Variable('dwsSmtpLogin',
-             { 'description':
+             {'description':
                    'Login on the SMTP server for the user through which\n'\
 '                       logs are sent.'}),
                          'dwsSmtpPasswd': Variable('dwsSmtpPasswd',
-             { 'description':
+             {'description':
                    'Password on the SMTP server for the user through which\n'\
 '                       logs are sent.'}),
                          'dwsEmail': Variable('dwsEmail',
-             { 'description':
+             {'description':
                    'dws occasionally emails build reports (see --mailto\n'
 '                       command line option). This is the address that will\n'\
 '                       be shown in the *From* field.',
-               'default':os.environ['LOGNAME'] + '@localhost'}) }
+               'default':os.environ['LOGNAME'] + '@localhost'})}
         self.build_top_relative_cwd = None
         self.config_filename = None
+
+    def __getattr__(self, name):
+        return self.value(name)
 
     def base(self, name):
         '''Returns a basename of the uri/path specified in variable *name*.
@@ -275,10 +278,10 @@ class Context:
         to handle uri nor does urlparse was designed to handle git/ssh locators.
         '''
         locator = self.value(name)
-        look = re.match('\S+@\S+:(\S+)', locator)
+        look = re.match(r'\S+@\S+:(\S+)', locator)
         if look:
             return os.path.splitext(os.path.basename(look.group(1)))[0]
-        look = re.match('https?:(\S+)', locator)
+        look = re.match(r'https?:(\S+)', locator)
         if look:
             uri = urlparse.urlparse(locator)
             return os.path.splitext(os.path.basename(uri.path))[0]
@@ -288,14 +291,15 @@ class Context:
         '''Returns the bin/ directory located inside buildTop.'''
         return os.path.join(self.value('buildTop'), 'bin')
 
-    def derived_helper(self, name):
+    @staticmethod
+    def derived_helper(name):
         '''Absolute path to a file which is part of drop helper files
         located in the share/dws subdirectory. The absolute directory
         name to share/dws is derived from the path of the script
         being executed as such: dirname(sys.argv[0])/../share/dws.'''
         return os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))),
-            'share','dws', name)
+            'share', 'dws', name)
 #       That code does not work when we are doing dws make (no recurse).
 #       return os.path.join(self.value('buildTop'),'share','dws',name)
 
@@ -310,7 +314,7 @@ class Context:
 
     def remote_host(self):
         '''Returns the host pointed by *remoteSiteTop*'''
-        uri = urlparse.urlparse(CONTEXT.value('remoteSiteTop'))
+        uri = urlparse.urlparse(self.value('remoteSiteTop'))
         hostname = uri.netloc
         if not uri.netloc:
             # If there is no protocol specified, the hostname
@@ -377,7 +381,7 @@ class Context:
             localname = localname.replace(remote_site_top, site_top)
         elif ':' in name:
             localname = os.path.join(
-                site_top,'resources', os.path.basename(name))
+                site_top, 'resources', os.path.basename(name))
         elif not name.startswith(os.sep):
             localname = os.path.join(site_top, name)
         else:
@@ -559,7 +563,7 @@ class Context:
             else:
                 site_base = os.getcwd()
         self.environ['remoteIndex'].value = remote_path
-        self.environ['remoteSrcTop'].default  = host_prefix + src_base
+        self.environ['remoteSrcTop'].default = host_prefix + src_base
         # Note: We used to set the context[].default field which had for side
         # effect to print the value the first time the variable was used.
         # The problem is that we need to make sure remoteSiteTop is defined
@@ -597,8 +601,8 @@ class Context:
             if variant:
                 for subdir in os.listdir(dirname):
                     if re.match(variant, subdir):
-                        candidates += [ os.path.join(dirname, subdir) ]
-            candidates += [ dirname ]
+                        candidates += [os.path.join(dirname, subdir)]
+            candidates += [dirname]
         candidates += os.environ['PATH'].split(':')
         dirs = []
         for path in candidates:
@@ -606,33 +610,33 @@ class Context:
             if name == 'lib':
                 # On mixed 32/64-bit system, libraries also get installed
                 # in lib64/. This is also true for 64-bit native python modules.
-                for subpath in [ name, 'lib64' ]:
+                for subpath in [name, 'lib64']:
                     dirname = os.path.join(base, subpath)
                     if os.path.isdir(dirname):
                         if variant:
                             for subdir in os.listdir(dirname):
                                 if re.match(variant, subdir):
-                                    dirs += [ os.path.join(dirname, subdir) ]
+                                    dirs += [os.path.join(dirname, subdir)]
                         else:
-                            dirs += [ dirname ]
+                            dirs += [dirname]
             elif name == 'bin':
                 # Especially on Fedora, /sbin, /usr/sbin, etc. are many times
                 # not in the PATH.
                 if os.path.isdir(path):
-                    dirs += [ path ]
+                    dirs += [path]
                 sbin = os.path.join(base, 'sbin')
                 if (not sbin in os.environ['PATH'].split(':')
                     and os.path.isdir(sbin)):
-                    dirs += [ sbin ]
+                    dirs += [sbin]
             else:
                 if os.path.isdir(os.path.join(base, name)):
-                    dirs += [ os.path.join(base, name) ]
+                    dirs += [os.path.join(base, name)]
         if name == 'lib' and self.host() in PORT_DISTRIBS:
             # Just because python modules do not get installed
             # in /opt/local/lib/python2.7/site-packages
-            dirs += [ '/opt/local/Library/Frameworks' ]
+            dirs += ['/opt/local/Library/Frameworks']
         if name == 'share' and self.host() in APT_DISTRIBS:
-            dirs += [ '/var/lib/gems' ]
+            dirs += ['/var/lib/gems']
         return dirs
 
     def src_dir(self, name):
@@ -686,10 +690,10 @@ class CommandsFormatter(optparse.IndentedHelpFormatter):
         return result
 
 
-class IndexProjects:
+class IndexProjects(object):
     '''Index file containing the graph dependency for all projects.'''
 
-    def __init__(self, context, source = None):
+    def __init__(self, context, source=None):
         self.context = context
         self.parser = XMLDbParser(context)
         self.source = source
@@ -719,14 +723,13 @@ class IndexProjects:
                 if not force:
                     # index or copy.
                     selection = select_one(
-                                    'The project index file could not '
-                                    + 'be found at "' + self.source \
-                                    + '". It can be regenerated through one ' \
-                                    + 'of the two following method:',
-                                    [ [ 'fetching', 'from remote server' ],
-                                      [ 'indexing',
-                                        'local projects in the workspace' ] ],
-                                          False)
+                        'The project index file could not '
+                        + 'be found at "' + self.source \
+                        + '". It can be regenerated through one ' \
+                        + 'of the two following method:',
+                        [['fetching', 'from remote server'],
+                         ['indexing', 'local projects in the workspace']],
+                        False)
                 if selection == 'indexing':
                     pub_collect([])
                 elif selection == 'fetching' or force:
@@ -783,10 +786,10 @@ class Unserializer(PdbHandler):
 
     def filters(self, project_name):
         for inc in self.include_pats:
-            inc = inc.replace('+','\\+')
+            inc = inc.replace('+', '\\+')
             if re.match(inc, project_name):
                 for exc in self.exclude_pats:
-                    if re.match(exc.replace('+','\\+'), project_name):
+                    if re.match(exc.replace('+', '\\+'), project_name):
                         return False
                 return True
         return False
@@ -814,8 +817,8 @@ class DependencyGenerator(Unserializer):
     bootstrapping and other "recurse" features.
     '''
 
-    def __init__(self, repositories, packages, exclude_pats = None,
-                 custom_steps = None, force_update = False):
+    def __init__(self, repositories, packages, exclude_pats=None,
+                 custom_steps=None, force_update=False):
         '''*repositories* will be installed from compiling
         a source controlled repository while *packages* will be installed
         from a binary distribution package.
@@ -832,11 +835,11 @@ class DependencyGenerator(Unserializer):
         self.active_prerequisites = {}
         for prereq_name in repositories + packages:
             self.active_prerequisites[prereq_name] = (
-                prereq_name, 0, TargetStep(0, prereq_name) )
+                prereq_name, 0, TargetStep(0, prereq_name))
         self.levels = {}
         self.levels[0] = set([])
         for rep in repositories + packages:
-            self.levels[0] |= set([ TargetStep(0, rep) ])
+            self.levels[0] |= set([TargetStep(0, rep)])
         # Vertices in the dependency tree
         self.vertices = {}
         self.force_update = force_update
@@ -844,9 +847,9 @@ class DependencyGenerator(Unserializer):
     def __str__(self):
         return "vertices:\n%s" % str(self.vertices)
 
-    def connect_to_setup(self, name, step):
+    def connect_to(self, name, step):
         if name in self.vertices:
-            self.vertices[name].prerequisites += [ step ]
+            self.vertices[name].prerequisites += [step]
 
     def add_config_make(self, variant, configure, make, prerequisites):
         config = None
@@ -862,21 +865,20 @@ class DependencyGenerator(Unserializer):
             make.force_update = self.force_update
             self.vertices[make_name] = make
             for prereq in prerequisites:
-                make.prerequisites += [ prereq ]
+                make.prerequisites += [prereq]
             if config:
-                make.prerequisites += [ config ]
+                make.prerequisites += [config]
             setup_name = SetupStep.genid(variant.project, variant.target)
-            self.connect_to_setup(setup_name, make)
+            self.connect_to(setup_name, make)
         return self.vertices[make_name]
 
-    def add_install(self, project_name):
-        flavor = None
+    def add_install(self, project_name, target=None):
         install_step = None
         managed_name = project_name.split(os.sep)[-1]
         install_name = InstallStep.genid(managed_name)
         if install_name in self.vertices:
             # We already decided to install this project, nothing more to add.
-            return self.vertices[install_name], flavor
+            return self.vertices[install_name]
 
         # We do not know the target at this point so we can't build a fully
         # qualified setup_name and index into *vertices* directly. Since we
@@ -885,54 +887,46 @@ class DependencyGenerator(Unserializer):
         # That's a primary reason why target got somewhat slightly overloaded.
         # We used runtime="python" instead of target="python" in an earlier
         # design.
-        setup = None
-        setup_name = SetupStep.genid(project_name)
-        for name, step in self.vertices.iteritems():
-            if name.endswith(setup_name):
-                setup = step
-        if (setup and not setup.run(CONTEXT)):
-            if project_name in self.projects:
-                project = self.projects[project_name]
-                if CONTEXT.host() in project.packages:
-                    filenames = []
-                    flavor = project.packages[CONTEXT.host()]
-                    for remote_path in flavor.update.fetches:
-                        filenames += [ CONTEXT.local_dir(remote_path) ]
-                    install_step = create_package_file(project_name, filenames)
-                    update_s = self.add_update(project_name, flavor.update)
-                    # package files won't install without prerequisites already
-                    # on the local system.
-                    install_step.prerequisites += self.add_setup(setup.target,
-                              flavor.prerequisites([CONTEXT.host()]))
-                    if update_s:
-                        install_step.prerequisites += [ update_s ]
-                elif project.patch:
-                    # build and install from source
-                    flavor = project.patch
-                    prereqs = self.add_setup(setup.target,
-                                         flavor.prerequisites([CONTEXT.host()]))
-                    update_s = self.add_update(
-                        project_name, project.patch.update)
-                    if update_s:
-                        prereqs += [ update_s ]
-                    install_step = self.add_config_make(
-                        TargetStep(0, project_name, setup.target),
-                        flavor.configure, flavor.make, prereqs)
-            else:
-                # XXX Previously we picked the local package manager
-                # before patched sources without checking if it is available.
-                # Of course it created problems, yet we want to check existance
-                # as late as possible so there was no way to decide
-                # at this point.
-                install_step = create_managed(
-                    managed_name, setup.versions, setup.target)
-            if not install_step:
-                # Remove special case install_step is None; replace it with
-                # a placeholder instance that will throw an exception
-                # when the *run* method is called.
-                install_step = InstallStep(project_name, target=setup.target)
-            self.connect_to_setup(setup_name, install_step)
-        return install_step, flavor
+        if project_name in self.projects:
+            project = self.projects[project_name]
+            if CONTEXT.host() in project.packages:
+                filenames = []
+                flavor = project.packages[CONTEXT.host()]
+                for remote_path in flavor.update.fetches:
+                    filenames += [CONTEXT.local_dir(remote_path)]
+                install_step = create_package_file(project_name, filenames)
+                update_s = self.add_update(project_name, flavor.update)
+                if update_s:
+                    install_step.prerequisites += [update_s]
+            elif project.patch:
+                # build and install from source
+                flavor = project.patch
+                prereqs = [] # XXX used to contain setup of prerequisites.
+                update_s = self.add_update(
+                    project_name, project.patch.update)
+                if update_s:
+                    prereqs += [update_s]
+                install_step = self.add_config_make(
+                    TargetStep(0, project_name, target),
+                    flavor.configure, flavor.make, prereqs)
+        else:
+            # XXX Previously we picked the local package manager
+            # before patched sources without checking if it is available.
+            # Of course it created problems, yet we want to check existance
+            # as late as possible so there was no way to decide
+            # at this point.
+            install_step = create_managed(
+                managed_name, versions=None, target=target)
+        if not install_step:
+            # Remove special case install_step is None; replace it with
+            # a placeholder instance that will throw an exception
+            # when the *run* method is called.
+            install_step = InstallStep(project_name, target=setup.target)
+        if install_step:
+            self.vertices[install_name] = install_step
+            setup_name = SetupStep.genid(project_name)
+            self.connect_to(setup_name, install_step)
+        return install_step
 
     def add_setup(self, target, deps):
         targets = []
@@ -950,7 +944,7 @@ class DependencyGenerator(Unserializer):
                 self.vertices[setup.name] = setup
             else:
                 self.vertices[setup.name].insert(setup)
-            targets += [ self.vertices[setup.name] ]
+            targets += [self.vertices[setup.name]]
         return targets
 
     def add_update(self, project_name, update, update_rep=True):
@@ -1001,16 +995,14 @@ class DependencyGenerator(Unserializer):
                         if next_active_prerequisites[target_name][0] > color:
                             # We propagate a color attribute through
                             # the constructed DAG to detect cycles later on.
-                            next_active_prerequisites[target_name] = (color,
-                                                                   next_depth,
-                                                                   target)
+                            next_active_prerequisites[target_name] = (
+                                color, next_depth, target)
                     else:
-                        next_active_prerequisites[target_name] = (color,
-                                                               next_depth,
-                                                               target)
+                        next_active_prerequisites[target_name] = (
+                            color, next_depth, target)
                     if not next_depth in self.levels:
                         self.levels[next_depth] = set([])
-                    self.levels[ next_depth ] |= set([target])
+                    self.levels[next_depth] |= set([target])
 
         self.active_prerequisites = next_active_prerequisites
         if not further:
@@ -1026,17 +1018,17 @@ class DependencyGenerator(Unserializer):
                     # If a prerequisite project is not defined as an explicit
                     # package, we will assume the prerequisite name is
                     # enough to install the required tools for the prerequisite.
-                    row = [ name ]
+                    row = [name]
                     if name in self.projects:
                         project = self.as_project(name)
                         if project.installed_version:
-                            row += [ project.installed_version ]
+                            row += [project.installed_version]
                         if project.repository:
-                            reps += [ row ]
+                            reps += [row]
                         if not project.repository:
-                            packages += [ row ]
+                            packages += [row]
                     else:
-                        packages += [ row ]
+                        packages += [row]
             # Prompt to choose amongst installing from repository
             # patch or package when those tags are available.'''
             reps, packages = select_checkout(reps, packages)
@@ -1046,7 +1038,7 @@ class DependencyGenerator(Unserializer):
         # information the next time around.
         for name in self.active_prerequisites:
             if not name in self.include_pats:
-                self.include_pats |= set([ name ])
+                self.include_pats |= set([name])
 
     def more(self):
         '''True if there are more iterations to conduct.'''
@@ -1060,11 +1052,11 @@ class DependencyGenerator(Unserializer):
             # We have to wait until here to create the install steps. Before
             # then, we do not know if they will be required nor if prerequisites
             # are repository projects in the index file or not.
-            install_step, _ = self.add_install(name)
+            install_step = self.add_install(name)
             if install_step and not install_step.name in self.vertices:
-                remains += [ install_step ]
+                remains += [install_step]
         for step in self.vertices:
-            remains += [ self.vertices[step] ]
+            remains += [self.vertices[step]]
         next_remains = []
         if False:
             log_info('!!!remains:')
@@ -1074,7 +1066,7 @@ class DependencyGenerator(Unserializer):
                     is_vert = '*'
                 log_info('!!!\t%s %s %s'
                          % (step.name, str(is_vert),
-                            str([ pre.name for pre in step.prerequisites])))
+                            str([pre.name for pre in step.prerequisites])))
         loop_cnt = 0
         while len(remains) > 0:
             loop_cnt = loop_cnt + 1
@@ -1102,7 +1094,7 @@ class DependencyGenerator(Unserializer):
                         insert_point = insert_point + 1
                     ordered.insert(insert_point, step)
                 else:
-                    next_remains += [ step ]
+                    next_remains += [step]
             if len(remains) <= len(next_remains):
                 raise CircleError([vert.name for vert in next_remains])
             remains = next_remains
@@ -1119,13 +1111,16 @@ class BuildGenerator(DependencyGenerator):
     is available in a project.'''
 
     def contextual_targets(self, variant):
-        '''At this point we want to add all prerequisites which are either
+        """
+        At this point we want to add all prerequisites which are either
         a repository or a patch/package for which the dependencies are not
-        complete.'''
+        complete.
+        """
         targets = []
+        dist = CONTEXT.host()
         name = variant.project
         if name in self.projects:
-            tags = [ CONTEXT.host() ]
+            tags = [dist]
             project = self.as_project(name)
             if project.repository:
                 self.repositories |= set([name])
@@ -1134,21 +1129,23 @@ class BuildGenerator(DependencyGenerator):
                 update_s = self.add_update(name, project.repository.update)
                 prereqs = targets
                 if update_s:
-                    prereqs = [ update_s ] + targets
+                    prereqs = [update_s] + targets
                 self.add_config_make(variant,
                                    project.repository.configure,
                                    project.repository.make,
                                    prereqs)
-            else:
+            elif dist in project.packages:
                 self.packages |= set([name])
-                install_step, flavor = self.add_install(name)
-                if flavor:
-                    targets = self.add_setup(variant.target,
-                                            flavor.prerequisites(tags))
+                targets = self.add_setup(variant.target,
+                    project.packages[dist].prerequisites(tags))
+                install_step = self.add_install(name, variant.target)
+                # package files won't install without prerequisites already
+                # on the local system.
+                install_step.prerequisites = targets + install_step.prerequisites
         else:
             # We leave the native host package manager to deal with this one...
-            self.packages |= set([ name ])
-            self.add_install(name)
+            self.packages |= set([name])
+            self.add_install(name, variant.target)
         return (False, targets)
 
 
@@ -1157,16 +1154,17 @@ class MakeGenerator(DependencyGenerator):
     is available in a project.'''
 
     def __init__(self, repositories, packages,
-                 exclude_pats = None, custom_steps = None):
+                 exclude_pats=None, custom_steps=None):
         DependencyGenerator.__init__(
             self, repositories, packages,
             exclude_pats, custom_steps, force_update=True)
         self.stop_make_after_error = True
 
     def contextual_targets(self, variant):
+        dist = CONTEXT.host()
         name = variant.project
         if not name in self.projects:
-            self.packages |= set([ name ])
+            self.packages |= set([name])
             return (False, [])
 
         need_prompt = True
@@ -1187,7 +1185,7 @@ class MakeGenerator(DependencyGenerator):
                 nb_choices = nb_choices + 1
 
         targets = []
-        tags = [ CONTEXT.host() ]
+        tags = [dist]
         if nb_choices == 1:
             # Only one choice is easy. We just have to make sure we won't
             # put the project in two different sets.
@@ -1200,7 +1198,7 @@ class MakeGenerator(DependencyGenerator):
                     name, project.repository.update, False)
                 prereqs = targets
                 if update_s:
-                    prereqs = [ update_s ] + targets
+                    prereqs = [update_s] + targets
                 self.add_config_make(variant,
                                    project.repository.configure,
                                    project.repository.make,
@@ -1209,11 +1207,12 @@ class MakeGenerator(DependencyGenerator):
                     self.repositories |= set([name])
             elif len(project.packages) > 0 or project.patch:
                 need_prompt = False
-                install_step, flavor = self.add_install(name)
-                if flavor:
-                    # XXX This will already have been done in add_install ...
-                    targets = self.add_setup(variant.target,
-                                            flavor.prerequisites(tags))
+                targets = self.add_setup(variant.target,
+                    project.packages[dist].prerequisites(tags))
+                install_step = self.add_install(name, variant.target)
+                # package files won't install without prerequisites already
+                # on the local system.
+                install_step.prerequisites = targets + install_step.prerequisites
                 if not name in chosen:
                     self.packages |= set([name])
 
@@ -1230,17 +1229,19 @@ class MakeGenerator(DependencyGenerator):
                     name, project.repository.update, False)
                 prereqs = targets
                 if update_s:
-                    prereqs = [ update_s ] + targets
+                    prereqs = [update_s] + targets
                 self.add_config_make(variant,
                                    project.repository.configure,
                                    project.repository.make,
                                    prereqs)
             elif len(project.packages) > 0 or project.patch:
                 need_prompt = False
-                install_step, flavor = self.add_install(name)
-                if flavor:
-                    targets = self.add_setup(variant.target,
-                                            flavor.prerequisites(tags))
+                targets = self.add_setup(variant.target,
+                    project.packages[dist].prerequisites(tags))
+                install_step = self.add_install(name, variant.target)
+                # package files won't install without prerequisites already
+                # on the local system.
+                install_step.prerequisites = targets + install_step.prerequisites
         return (need_prompt, targets)
 
     def topological(self):
@@ -1248,10 +1249,10 @@ class MakeGenerator(DependencyGenerator):
         for 'make recurse' to behave as expected (i.e. not compiling roots).'''
         vertices = DependencyGenerator.topological(self)
         results = []
-        roots = set([ MakeStep.genid(root) for root in self.roots ])
+        roots = set([MakeStep.genid(root) for root in self.roots])
         for project in vertices:
             if not project.name in roots:
-                results += [ project ]
+                results += [project]
         return results
 
 
@@ -1259,11 +1260,11 @@ class MakeDepGenerator(MakeGenerator):
     '''Generate the set of prerequisite projects regardless of the executables,
     libraries, etc. which are already installed.'''
 
-    def add_install(self, name):
+    def add_install(self, project_name, target=None):
         # We use a special "no-op" add_install in the MakeDepGenerator because
         # we are not interested in prerequisites past the repository projects
         # and their direct dependencies.
-        return InstallStep(name), None
+        return InstallStep(project_name)
 
     def add_setup(self, target, deps):
         targets = []
@@ -1276,7 +1277,7 @@ class MakeDepGenerator(MakeGenerator):
                 self.vertices[setup.name] = setup
             else:
                 setup = self.vertices[setup.name].insert(setup)
-            targets += [ self.vertices[setup.name] ]
+            targets += [self.vertices[setup.name]]
         return targets
 
 
@@ -1290,14 +1291,14 @@ class DerivedSetsGenerator(PdbHandler):
         self.nonroots = []
 
     def project(self, proj):
-        for dep_name in proj.prerequisite_names([ CONTEXT.host() ]):
+        for dep_name in proj.prerequisite_names([CONTEXT.host()]):
             if dep_name in self.roots:
                 self.roots.remove(dep_name)
             if not dep_name in self.nonroots:
-                self.nonroots += [ dep_name ]
+                self.nonroots += [dep_name]
         if (not proj.name in self.nonroots
             and not proj.name in self.roots):
-            self.roots += [ proj.name ]
+            self.roots += [proj.name]
 
 # =============================================================================
 #     Writers are used to save *Project* instances to persistent storage
@@ -1311,7 +1312,7 @@ class NativeWriter(PdbHandler):
         PdbHandler.__init__(self)
 
 
-class Variable:
+class Variable(object):
     '''Variable that ends up being defined in the workspace make
     fragment and thus in Makefile.'''
 
@@ -1386,13 +1387,13 @@ class HostPlatform(Variable):
             self.value = 'Darwin'
         elif sysname == 'Linux':
             # Let's try to determine the host platform
-            for version_path in [ '/etc/system-release', '/etc/lsb-release',
-                                 '/etc/debian_version', '/proc/version' ]:
+            for version_path in ['/etc/system-release', '/etc/lsb-release',
+                                 '/etc/debian_version', '/proc/version']:
                 if os.path.exists(version_path):
                     version = open(version_path)
                     line = version.readline()
                     while line != '':
-                        for dist in [ 'Debian', 'Ubuntu', 'Fedora' ]:
+                        for dist in APT_DISTRIBS + YUM_DISTRIBS:
                             look = re.match('.*' + dist + '.*', line)
                             if look:
                                 self.value = dist
@@ -1416,8 +1417,6 @@ class HostPlatform(Variable):
                     version.close()
                     if self.value:
                         break
-            if self.value:
-                self.value = self.value.capitalize()
         return True
 
 
@@ -1466,10 +1465,10 @@ class Pathname(Variable):
                     offbase = 'Enter *' + self.base + '*, *' + self.name \
                                  + '* will defaults to ' + show_default  \
                                  + ' ?'
-                    selection= select_one(
+                    selection = select_one(
                         '%s is based on *%s* by default. Would you like to ... '
                         % (self.name, self.base),
-                        [ [ offbase  ], [ directly ] ], False)
+                        [[offbase], [directly]], False)
                     if selection == offbase:
                         off_base_chosen = True
                         if isinstance(context.environ[self.base], Pathname):
@@ -1539,12 +1538,12 @@ class Multiple(Variable):
         choices = []
         for key, descr in self.choices.iteritems():
             if not key in self.value:
-                choices += [ [key, descr] ]
+                choices += [[key, descr]]
         if len(choices) == 0:
             return False
         descr = self.descr
         if len(self.value) > 0:
-            descr +=  " (constrained: " + ", ".join(self.value) + ")"
+            descr += " (constrained: " + ", ".join(self.value) + ")"
         self.value = select_multiple(descr, choices)
         log_info('%s set to %s', (self.name, ', '.join(self.value)))
         self.choices = []
@@ -1575,7 +1574,7 @@ class Single(Variable):
         if 'choices' in pairs:
             self.choices = []
             for key, descr in pairs['choices'].iteritems():
-                self.choices += [ [key, descr] ]
+                self.choices += [[key, descr]]
 
     def configure(self, context):
         '''Generate an interactive prompt to enter a workspace variable
@@ -1602,10 +1601,10 @@ class Single(Variable):
                         self.value = variables[var].constrains[val][self.name]
 
 
-class Dependency:
+class Dependency(object):
 
     def __init__(self, name, pairs):
-        self.versions = { 'includes': [], 'excludes': [] }
+        self.versions = {'includes': [], 'excludes': []}
         self.target = None
         self.files = {}
         self.name = name
@@ -1613,7 +1612,7 @@ class Dependency:
             if key == 'excludes':
                 self.versions['excludes'] = eval(val)
             elif key == 'includes':
-                self.versions['includes'] = [ val ]
+                self.versions['includes'] = [val]
             elif key == 'target':
                 # The index file loader will have generated fully-qualified
                 # names to avoid key collisions when a project depends on both
@@ -1625,9 +1624,9 @@ class Dependency:
                 if isinstance(val, list):
                     self.files[key] = []
                     for filename in val:
-                        self.files[key] += [ (filename, None) ]
+                        self.files[key] += [(filename, None)]
                 else:
-                    self.files[key] = [ (val, None) ]
+                    self.files[key] = [(val, None)]
 
     def populate(self, build_deps):
         '''*build_deps* is a dictionary.'''
@@ -1641,15 +1640,15 @@ class Dependency:
                         if not look_path:
                             for pat, path in deps[dep]:
                                 if pat == look_pat:
-                                    files += [ (look_pat, path) ]
+                                    files += [(look_pat, path)]
                                     found = True
                                     break
                         if not found:
-                            files += [ (look_pat, look_path) ]
+                            files += [(look_pat, look_path)]
                     self.files[dep] = files
 
     def prerequisites(self, tags):
-        return [ self ]
+        return [self]
 
 
 class Alternates(Dependency):
@@ -1663,7 +1662,7 @@ class Alternates(Dependency):
         for key, val in pairs.iteritems():
             self.by_tags[key] = []
             for dep_key, dep_val in val.iteritems():
-                self.by_tags[key] += [ Dependency(dep_key, dep_val) ]
+                self.by_tags[key] += [Dependency(dep_key, dep_val)]
 
     def __str__(self):
         return 'alternates: ' + str(self.by_tags)
@@ -1683,7 +1682,7 @@ class Alternates(Dependency):
         return prereqs
 
 
-class Maintainer:
+class Maintainer(object):
     '''Information about the maintainer of a project.'''
 
     def __init__(self, fullname, email):
@@ -1694,16 +1693,16 @@ class Maintainer:
         return self.fullname + ' <' + self.email + '>'
 
 
-class Step:
+class Step(object):
     '''Step in the build DAG.'''
 
-    configure        = 1
-    install_native   = 2
-    install_lang     = 3
-    install          = 4
-    update           = 5
-    setup            = 6
-    make             = 7
+    configure = 1
+    install_native = 2
+    install_lang = 3
+    install = 4
+    update = 5
+    setup = 6
+    make = 7
 
     def __init__(self, priority, project_name):
         self.project = project_name
@@ -1715,14 +1714,14 @@ class Step:
     def __str__(self):
         return self.name
 
-    def qualified_project_name(self, target_name = None):
+    def qualified_project_name(self, target_name=None):
         name = self.project
         if target_name:
             name = os.path.join(target_name, self.project)
         return name
 
     @classmethod
-    def genid(cls, project_name, target_name = None):
+    def genid(cls, project_name, target_name=None):
         name = unicode(project_name.replace(os.sep, '_').replace('-', '_'))
         if target_name:
             name = target_name + '_' + name
@@ -1749,7 +1748,7 @@ class Step:
 
 class TargetStep(Step):
 
-    def __init__(self, prefix, project_name, target = None ):
+    def __init__(self, prefix, project_name, target=None):
         self.target = target
         Step.__init__(self, prefix, project_name)
         self.name = self.__class__.genid(project_name, target)
@@ -1760,7 +1759,7 @@ class ConfigureStep(TargetStep):
     that drive the make step such as compiler flags, where files are installed,
     etc.'''
 
-    def __init__(self, project_name, envvars, target = None):
+    def __init__(self, project_name, envvars, target=None):
         TargetStep.__init__(self, Step.configure, project_name, target)
         self.envvars = envvars
 
@@ -1775,11 +1774,11 @@ class InstallStep(Step):
     '''The *install* step in the development cycle installs prerequisites
     to a project.'''
 
-    def __init__(self, project_name, managed = None, target = None,
+    def __init__(self, project_name, managed=None, target=None,
                  priority=Step.install):
         Step.__init__(self, priority, project_name)
         if managed and len(managed) == 0:
-            self.managed = [ project_name ]
+            self.managed = [project_name]
         else:
             self.managed = managed
         self.target = target
@@ -1801,11 +1800,11 @@ class InstallStep(Step):
 class AptInstallStep(InstallStep):
     ''' Install a prerequisite to a project through apt (Debian, Ubuntu).'''
 
-    def __init__(self, project_name, target = None):
-        managed = [ project_name ]
+    def __init__(self, project_name, target=None):
+        managed = [project_name]
         packages = managed
         if target and target.startswith('python'):
-            packages = [ target + '-' + man for man in managed ]
+            packages = [target + '-' + man for man in managed]
         InstallStep.__init__(self, project_name, packages,
                              priority=Step.install_native)
 
@@ -1829,7 +1828,7 @@ class AptInstallStep(InstallStep):
         try:
             # apt-cache showpkg will return 0 even when the package cannot
             # be found.
-            cmdline = ['apt-cache', 'showpkg' ] + self.managed
+            cmdline = ['apt-cache', 'showpkg'] + self.managed
             manager_output = subprocess.check_output(
                 ' '.join(cmdline), shell=True, stderr=subprocess.STDOUT)
             found = False
@@ -1850,7 +1849,7 @@ class AptInstallStep(InstallStep):
 class DarwinInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pkg (Darwin, OSX).'''
 
-    def __init__(self, project_name, filenames, target = None):
+    def __init__(self, project_name, filenames, target=None):
         InstallStep.__init__(self, project_name, managed=filenames,
                              priority=Step.install_native)
 
@@ -1892,7 +1891,7 @@ class DarwinInstallStep(InstallStep):
 class DpkgInstallStep(InstallStep):
     ''' Install a prerequisite to a project through dpkg (Debian, Ubuntu).'''
 
-    def __init__(self, project_name, filenames, target = None):
+    def __init__(self, project_name, filenames, target=None):
         InstallStep.__init__(self, project_name, managed=filenames,
                              priority=Step.install_native)
 
@@ -1918,7 +1917,7 @@ class GemInstallStep(InstallStep):
 
     def run(self, context):
         shell_command(
-            [find_gem(context), 'install' ] + self.managed, admin=True)
+            [find_gem(context), 'install'] + self.managed, admin=True)
         self.updated = True
 
     def info(self):
@@ -1928,7 +1927,7 @@ class GemInstallStep(InstallStep):
             # XXX There are no pip info command, search is the closest we get.
             # Pip search might match other packages and thus returns zero
             # inadvertently but it is the closest we get so far.
-            shell_command([find_gem(CONTEXT), 'search' ] + self.managed)
+            shell_command([find_gem(CONTEXT), 'search'] + self.managed)
             info = self.managed
         except Error:
             unmanaged = self.managed
@@ -1938,15 +1937,15 @@ class GemInstallStep(InstallStep):
 class MacPortInstallStep(InstallStep):
     ''' Install a prerequisite to a project through Macports.'''
 
-    def __init__(self, project_name, target = None):
-        managed = [ project_name ]
+    def __init__(self, project_name, target=None):
+        managed = [project_name]
         packages = managed
         if target:
             look = re.match(r'python(\d(\.\d)?)?', target)
         else:
             look = re.match(r'python(\d(\.\d)?)?-(.*)', project_name)
             if look:
-                managed = [ look.group(3) ]
+                managed = [look.group(3)]
         if look:
             if look.group(1):
                 prefix = 'py%s-' % look.group(1).replace('.', '')
@@ -1954,24 +1953,24 @@ class MacPortInstallStep(InstallStep):
                 prefix = 'py27-'
             packages = []
             for man in managed:
-                packages += [ prefix + man ]
+                packages += [prefix + man]
         darwin_names = {
             # translation of package names. It is simpler than
             # creating an <alternates> node even if it look more hacky.
-            'libicu-dev': 'icu' }
+            'libicu-dev': 'icu'}
         pre_packages = packages
         packages = []
         for package in pre_packages:
             if package in darwin_names:
-                packages += [ darwin_names[package] ]
+                packages += [darwin_names[package]]
             else:
-                packages += [ package ]
+                packages += [package]
         InstallStep.__init__(self, project_name, packages,
                              priority=Step.install_native)
 
 
     def run(self, context):
-        shell_command(['/opt/local/bin/port', 'install' ] + self.managed,
+        shell_command(['/opt/local/bin/port', 'install'] + self.managed,
                      admin=True)
         self.updated = True
 
@@ -1979,7 +1978,7 @@ class MacPortInstallStep(InstallStep):
         info = []
         unmanaged = []
         try:
-            shell_command(['port', 'info' ] + self.managed)
+            shell_command(['port', 'info'] + self.managed)
             info = self.managed
         except Error:
             unmanaged = self.managed
@@ -1989,8 +1988,8 @@ class MacPortInstallStep(InstallStep):
 class NpmInstallStep(InstallStep):
     ''' Install a prerequisite to a project through npm (Node.js manager).'''
 
-    def __init__(self, project_name, target = None):
-        InstallStep.__init__(self, project_name, [project_name ],
+    def __init__(self, project_name, target=None):
+        InstallStep.__init__(self, project_name, [project_name],
                              priority=Step.install_lang)
 
     def _manager(self):
@@ -2000,14 +1999,14 @@ class NpmInstallStep(InstallStep):
         return os.path.join(CONTEXT.value('buildTop'), 'bin', 'npm')
 
     def run(self, context):
-        shell_command([self._manager(), 'install' ] + self.managed, admin=True)
+        shell_command([self._manager(), 'install'] + self.managed, admin=True)
         self.updated = True
 
     def info(self):
         info = []
         unmanaged = []
         try:
-            shell_command([self._manager(), 'search' ] + self.managed)
+            shell_command([self._manager(), 'search'] + self.managed)
             info = self.managed
         except Error:
             unmanaged = self.managed
@@ -2031,7 +2030,7 @@ class PipInstallStep(InstallStep):
             os.path.join(self.project, 'requirements.txt'))
         with open(filepath) as file_obj:
             for line in file_obj.readlines():
-                look = re.match('([\w\-_]+)((>=|==)(\S+))?', line)
+                look = re.match(r'([\w\-_]+)((>=|==)(\S+))?', line)
                 if look:
                     prerequisite = look.group(1)
                     sys.stdout.write('''<dep name="%s">
@@ -2051,7 +2050,7 @@ class PipInstallStep(InstallStep):
         admin = False
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
-        shell_command([pip, 'install' ] + self.managed, admin=admin)
+        shell_command([pip, 'install'] + self.managed, admin=admin)
         self.updated = True
 
     def info(self):
@@ -2061,7 +2060,7 @@ class PipInstallStep(InstallStep):
             # XXX There are no pip info command, search is the closest we get.
             # Pip search might match other packages and thus returns zero
             # inadvertently but it is the closest we get so far.
-            shell_command([find_pip(CONTEXT), 'search' ] + self.managed)
+            shell_command([find_pip(CONTEXT), 'search'] + self.managed)
             info = self.managed
         except Error:
             unmanaged = self.managed
@@ -2071,15 +2070,15 @@ class PipInstallStep(InstallStep):
 class RpmInstallStep(InstallStep):
     ''' Install a prerequisite to a project through rpm (Fedora).'''
 
-    def __init__(self, project_name, filenames, target = None):
+    def __init__(self, project_name, filenames, target=None):
         InstallStep.__init__(self, project_name, managed=filenames,
                              priority=Step.install_native)
 
     def run(self, context):
         # --nodeps because rpm looks stupid and can't figure out that
         # the vcd package provides the libvcd.so required by the executable.
-        shell_command(['rpm', '-i', '--force',
-                      ' '.join(self.managed), '--nodeps'],
+        shell_command(
+            ['rpm', '-i', '--force', ' '.join(self.managed), '--nodeps'],
                      admin=True)
         self.updated = True
 
@@ -2087,32 +2086,37 @@ class RpmInstallStep(InstallStep):
 class YumInstallStep(InstallStep):
     ''' Install a prerequisite to a project through yum (Fedora).'''
 
-    def __init__(self, project_name, target = None):
-        managed = [project_name ]
+    def __init__(self, project_name, target=None):
+        managed = [project_name]
         packages = managed
         if target:
             if target.startswith('python'):
                 packages = []
                 for man in managed:
-                    packages += [ target + '-' + man ]
+                    packages += [target + '-' + man]
         fedora_names = {
             'libbz2-dev': 'bzip2-devel',
             'python-all-dev': 'python-devel',
-            'zlib1g-dev': 'zlib-devel' }
+            'zlib1g-dev': 'zlib-devel'}
         pre_packages = packages
         packages = []
         for package in pre_packages:
             if package in fedora_names:
-                packages += [ fedora_names[package] ]
+                packages += [fedora_names[package]]
             elif package.endswith('-dev'):
-                packages += [ package + 'el' ]
+                packages += [package + 'el']
             else:
-                packages += [ package ]
+                packages += [package]
         InstallStep.__init__(self, project_name, packages,
                              priority=Step.install_native)
 
     def run(self, context):
-        cmdline = ['yum', '-y', 'install' ] + self.managed
+        # XXX Might not be the best place to do this,
+        # yet CentOS does not include basic tools such as fail2ban.
+        if context.host() == 'CentOS':
+            shell_command(['rpm', '-Uvh',
+'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'])
+        cmdline = ['yum', '-y', 'install'] + self.managed
         log_info('update, then run: %s' % ' '.join(cmdline))
         shell_command(['yum', '-y', 'update'], admin=True)
         filtered = shell_command(
@@ -2129,7 +2133,7 @@ class YumInstallStep(InstallStep):
         info = []
         unmanaged = []
         try:
-            filtered = shell_command(['yum', 'info' ] + self.managed,
+            filtered = shell_command(['yum', 'info'] + self.managed,
                 pat=r'Name\s*:\s*(\S+)')
             if filtered:
                 info = self.managed
@@ -2143,7 +2147,7 @@ class YumInstallStep(InstallStep):
 class BuildStep(TargetStep):
     '''Build a project running make, executing a script, etc.'''
 
-    def __init__(self, project_name, target = None, force_update = True):
+    def __init__(self, project_name, target=None, force_update=True):
         TargetStep.__init__(self, Step.make, project_name, target)
         self.force_update = force_update
 
@@ -2194,7 +2198,7 @@ class MakeStep(BuildStep):
 class ShellStep(BuildStep):
     '''Run a shell script to *make* a step in the development cycle.'''
 
-    def __init__(self, project_name, script, target = None):
+    def __init__(self, project_name, script, target=None):
         BuildStep.__init__(self, project_name, target)
         self.script = script
 
@@ -2209,9 +2213,9 @@ class ShellStep(BuildStep):
             script.write('. ' + context.config_filename + '\n\n')
             script.write(self.script)
             script.close()
-            shell_command([ 'sh', '-x', '-e', script.name ],
-                    search_path=[context.bin_build_dir()]
-                              + context.search_path('bin'))
+            shell_command(['sh', '-x', '-e', script.name],
+                search_path=[context.bin_build_dir()]
+                          + context.search_path('bin'))
             os.remove(script.name)
             self.updated = True
 
@@ -2230,12 +2234,12 @@ class SetupStep(TargetStep):
         if versions:
             self.versions = versions
         else:
-            self.versions = {'includes': [], 'excludes': [] }
+            self.versions = {'includes': [], 'excludes': []}
 
     def insert(self, setup):
         '''We only add prerequisites from *dep* which are not already present
-        in *self*. This is important because *find_prerequisites* will initialize
-        tuples (name_pat,absolute_path).'''
+        in *self*. This is important because *find_prerequisites* will
+        initialize tuples (name_pat,absolute_path).'''
         files = {}
         for dirname in setup.files:
             if not dirname in self.files:
@@ -2249,10 +2253,10 @@ class SetupStep(TargetStep):
                             found = True
                             break
                     if not found:
-                        self.files[dirname] += [ prereq_1 ]
+                        self.files[dirname] += [prereq_1]
                         if not dirname in files:
                             files[dirname] = []
-                        files[dirname] += [ prereq_1 ]
+                        files[dirname] += [prereq_1]
         self.versions['excludes'] += setup.versions['excludes']
         self.versions['includes'] += setup.versions['includes']
         return SetupStep(self.project, files, self.versions, self.target)
@@ -2299,7 +2303,7 @@ class UpdateStep(Step):
             self.rep.apply_patches(self.project, context)
 
 
-class Repository:
+class Repository(object):
     '''All prerequisites information to install a project
     from a source control system.'''
 
@@ -2323,14 +2327,14 @@ class Repository:
             patches = []
             for pathname in os.listdir(context.patch_dir(name)):
                 if pathname.endswith('.patch'):
-                    patches += [ pathname ]
+                    patches += [pathname]
             if len(patches) > 0:
                 log_info('######## patching ' + name + '...')
                 prev = os.getcwd()
                 os.chdir(context.src_dir(name))
-                shell_command(['patch',
-                              '< ' + os.path.join(context.patch_dir(name),
-                                           '*.patch')])
+                shell_command(
+                    ['patch', '< ' + os.path.join(context.patch_dir(name),
+                                                  '*.patch')])
                 os.chdir(prev)
 
     @staticmethod
@@ -2341,8 +2345,8 @@ class Repository:
         '''
         rev = None
         if pathname and len(pathname) > 0:
-            repos = { '.git': GitRepository,
-                      '.svn': SvnRepository }
+            repos = {'.git': GitRepository,
+                     '.svn': SvnRepository}
             sync = pathname
             look = search_repo_pat(pathname)
             if look:
@@ -2377,19 +2381,18 @@ class GitRepository(Repository):
             patches = []
             for pathname in os.listdir(context.patch_dir(name)):
                 if pathname.endswith('.patch'):
-                    patches += [ pathname ]
+                    patches += [pathname]
             if len(patches) > 0:
                 log_info('######## patching ' + name + '...')
                 os.chdir(context.src_dir(name))
-                shell_command([ find_git(context), 'am', '-3', '-k',
-                              os.path.join(context.patch_dir(name),
-                                           '*.patch')])
+                shell_command([find_git(context), 'am', '-3', '-k',
+                    os.path.join(context.patch_dir(name), '*.patch')])
         os.chdir(prev)
 
     def push(self, pathname):
         prev = os.getcwd()
         os.chdir(pathname)
-        shell_command([ find_git(CONTEXT), 'push' ])
+        shell_command([find_git(CONTEXT), 'push'])
         os.chdir(prev)
 
     def tarball(self, name, version='HEAD'):
@@ -2398,10 +2401,10 @@ class GitRepository(Repository):
         cwd = os.getcwd()
         os.chdir(local)
         if version == 'HEAD':
-            shell_command([ gitexe, 'rev-parse', version ])
+            shell_command([gitexe, 'rev-parse', version])
         prefix = name + '-' + version
         output_name = os.path.join(cwd, prefix + '.tar.bz2')
-        shell_command([ gitexe, 'archive', '--prefix', prefix + os.sep,
+        shell_command([gitexe, 'archive', '--prefix', prefix + os.sep,
               '-o', output_name, 'HEAD'])
         os.chdir(cwd)
 
@@ -2423,7 +2426,7 @@ class GitRepository(Repository):
         cwd = os.getcwd()
         git_executable = find_git(context)
         if not os.path.exists(os.path.join(local, '.git')):
-            shell_command([ git_executable, 'clone', self.url, local])
+            shell_command([git_executable, 'clone', self.url, local])
             updated = True
         else:
             os.chdir(local)
@@ -2452,14 +2455,14 @@ class GitRepository(Repository):
             cof = '-m'
             if force:
                 cof = '-f'
-            cmd = [ git_executable, 'checkout', cof ]
-            cmd += [ self.rev ]
+            cmd = [git_executable, 'checkout', cof]
+            cmd += [self.rev]
             os.chdir(local)
             shell_command(cmd)
         # Print HEAD
         if updated:
             # Just the commit: cmd = [git_executable, 'rev-parse', 'HEAD']
-            cmd = [git_executable, 'log', '-1', '--pretty=oneline' ]
+            cmd = [git_executable, 'log', '-1', '--pretty=oneline']
             os.chdir(local)
             logline = subprocess.check_output(cmd)
             log_info(logline)
@@ -2509,7 +2512,7 @@ class RsyncRepository(Repository):
         fetch(context, {self.url: ''}, force=True)
         return True
 
-class InstallFlavor:
+class InstallFlavor(object):
     '''All information necessary to install a project on the local system.'''
 
     def __init__(self, name, pairs):
@@ -2534,7 +2537,7 @@ class InstallFlavor:
                 if isinstance(val, list):
                     blocks = val
                 else:
-                    blocks = [ val ]
+                    blocks = [val]
                 for blk in blocks:
                     file_url = blk['url']
                     blk.pop('url')
@@ -2578,14 +2581,14 @@ class InstallFlavor:
         of the prerequisite projects.'''
         names = []
         for dep in self.deps.itervalues():
-            names += [ prereq.name for prereq in dep.prerequisites(tags) ]
+            names += [prereq.name for prereq in dep.prerequisites(tags)]
         return names
 
     def vars(self):
         return self.configure.envvars
 
 
-class Project:
+class Project(object):
     '''Definition of a project with its prerequisites.'''
 
     def __init__(self, name, pairs):
@@ -2618,7 +2621,8 @@ class Project:
             elif key == 'repository':
                 self.repository = InstallFlavor(name, val)
                 if not self.repository.update.rep:
-                    self.repository.update.rep = Repository.associate(name+'.git')
+                    self.repository.update.rep = Repository.associate(
+                        name + '.git')
             else:
                 self.packages[key] = InstallFlavor(name, val)
 
@@ -2657,7 +2661,7 @@ class Project:
         of the prerequisite projects.'''
         names = []
         for prereq in self.prerequisites(tags):
-            names += [ prereq.name ]
+            names += [prereq.name]
         return names
 
 
@@ -2701,7 +2705,7 @@ class XMLDbParser(xml.sax.ContentHandler):
                     key = attrs['name']
             else:
                 elems[attr] = attrs[attr]
-        self.nodes += [ (name, {key:elems}) ]
+        self.nodes += [(name, {key:elems})]
 
     def characters(self, characters):
         self.text += characters
@@ -2726,17 +2730,16 @@ class XMLDbParser(xml.sax.ContentHandler):
                     if isinstance(pairs[k], list):
                         aggregate[k] += pairs[k]
                     else:
-                        aggregate[k] += [ pairs[k] ]
+                        aggregate[k] += [pairs[k]]
                 else:
                     if isinstance(pairs[k], list):
-                        aggregate[k] = [ aggregate[k] ] + pairs[k]
+                        aggregate[k] = [aggregate[k]] + pairs[k]
                     else:
-                        aggregate[k] = [ aggregate[k], pairs[k] ]
+                        aggregate[k] = [aggregate[k], pairs[k]]
             node_name, pairs = self.nodes.pop()
         key = pairs.keys()[0]
         cap = name.capitalize()
-        if cap in [ 'Metainfo', 'Multiple',
-                     'Pathname', 'Single', 'Variable' ]:
+        if cap in ['Metainfo', 'Multiple', 'Pathname', 'Single', 'Variable']:
             aggregate = getattr(sys.modules[__name__], cap)(key, aggregate)
         if isinstance(aggregate, dict):
             pairs[key].update(aggregate)
@@ -2746,7 +2749,7 @@ class XMLDbParser(xml.sax.ContentHandler):
             self.handler.project(Project(key, pairs[key]))
         elif name == 'projects':
             self.handler.end_parse()
-        self.nodes += [ (name, pairs) ]
+        self.nodes += [(name, pairs)]
 
 
     def parse(self, source, handler):
@@ -2814,12 +2817,12 @@ def basenames(pathnames):
     '''return the basename of all pathnames in a list.'''
     bases = []
     for pathname in pathnames:
-        bases += [ os.path.basename(pathname) ]
+        bases += [os.path.basename(pathname)]
     return bases
 
 def search_repo_pat(sync_path):
     '''returns a RegexMatch if *sync_path* refers to a repository url/path.'''
-    return re.search('(\S*%s)(@(\S+))?$' % Repository.dirPats, sync_path)
+    return re.search(r'(\S*%s)(@(\S+))?$' % Repository.dirPats, sync_path)
 
 def filter_rep_ext(name):
     '''Filters the repository type indication from a pathname.'''
@@ -2834,8 +2837,8 @@ def filter_rep_ext(name):
                                         remote_path_list[i+1:])
             else:
                 localname = os.sep.join(remote_path_list[:i] + \
-                               [ remote_path_list[i][:-len(rep_ext)] ] + \
-                                        remote_path_list[i+1:])
+                    [remote_path_list[i][:-len(rep_ext)]] + \
+                    remote_path_list[i+1:])
             break
     return localname
 
@@ -2962,9 +2965,9 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
                             # because bzip2 would wait on stdin for data
                             # otherwise.
                             # XXX semilla --help is broken :(
-                            for flag in [ '--version', '-V' ]:
+                            for flag in ['--version', '-V']:
                                 numbers = []
-                                cmdline = [ binpath, flag ]
+                                cmdline = [binpath, flag]
                                 try:
                                     output = subprocess.check_output(
                                         cmdline, stderr=subprocess.STDOUT)
@@ -3038,7 +3041,7 @@ def find_cache(context, names):
             else:
                 log_info("yes")
         else:
-            results[ pathname ] = names[pathname]
+            results[pathname] = names[pathname]
             log_info("no")
     return results
 
@@ -3053,7 +3056,7 @@ def find_files(base, name_pat, recurse=True):
                 path = os.path.join(base, name)
                 look = re.match('.*' + name_pat + '$', path)
                 if look:
-                    result += [ path ]
+                    result += [path]
                 elif recurse and os.path.isdir(path):
                     result += find_files(path, name_pat)
     except OSError:
@@ -3081,14 +3084,14 @@ def find_first_files(base, name_pat, subdir=''):
                 regex = name_pat_regex(name_pat)
                 look = regex.match(path)
                 if look != None:
-                    results += [ relative ]
+                    results += [relative]
                 elif (((('.*' + os.sep) in name_pat)
                        or (sub_num_sub_dirs < pat_num_sub_dirs))
                       and os.path.isdir(path)):
                     # When we see .*/, it means we are looking for a pattern
                     # that can be matched by files in subdirectories
                     # of the base.
-                    subdirs += [ relative ]
+                    subdirs += [relative]
         if len(results) == 0:
             for subdir in subdirs:
                 results += find_first_files(base, name_pat, subdir)
@@ -3229,17 +3232,17 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 for part in parts:
                     for ver in version_candidates(part):
                         if not ver in numbers:
-                            numbers += [ ver ]
+                            numbers += [ver]
                 # Second open the file and search for a version identifier...
                 header = os.path.join(include_sys_dir, header)
-                with open(header, 'rt') as header_file:
+                with open(header) as header_file:
                     line = header_file.readline()
                     while line != '':
                         look = re.match(r'\s*#define.*VERSION\s+(\S+)', line)
                         if look != None:
                             for ver in version_candidates(look.group(1)):
                                 if not ver in numbers:
-                                    numbers += [ ver ]
+                                    numbers += [ver]
                         line = header_file.readline()
                 # At this point *numbers* contains a list that can
                 # interpreted as versions. Hopefully, there is only
@@ -3291,9 +3294,9 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 prefix = os.sep.join(name_pat_parts)
                 if prefix and len(prefix) > 0:
                     prefix = prefix + os.sep
-                    include_sys_dirs = [ os.sep.join(include_file_parts) ]
+                    include_sys_dirs = [os.sep.join(include_file_parts)]
                 else:
-                    include_sys_dirs = [ os.path.dirname(includes[0][0]) ]
+                    include_sys_dirs = [os.path.dirname(includes[0][0])]
                 found = True
                 break
         if not found:
@@ -3340,7 +3343,7 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
         # like libgmp.so for example.
         droots = []
         for path in search_path:
-            droots += [ path, os.path.join(path, 'x86_64-linux-gnu') ]
+            droots += [path, os.path.join(path, 'x86_64-linux-gnu')]
     else:
         droots = search_path
     for name_pat, absolute_path in names:
@@ -3353,21 +3356,21 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
         if '.*' in name_pat:
             # Dealing with a regular expression already
             lib_priority_suffix = ''
-            link_pats = [ name_pat ]
+            link_pats = [name_pat]
         elif lib_base_pat.endswith('.so'):
             # local override to select dynamic library.
             lib_base_pat = lib_base_pat[:-3]
             lib_priority_suffix = lib_dyn_suffix()
-            link_pats = [ lib_base_pat + '.so',
-                          lib_base_pat + lib_static_suffix() ]
+            link_pats = [lib_base_pat + '.so',
+                         lib_base_pat + lib_static_suffix()]
         elif STATIC_LIB_FIRST:
             lib_priority_suffix = lib_static_suffix()
-            link_pats = [ lib_base_pat + lib_static_suffix(),
-                          lib_base_pat + '.so' ]
+            link_pats = [lib_base_pat + lib_static_suffix(),
+                         lib_base_pat + '.so']
         else:
             lib_priority_suffix = lib_dyn_suffix()
-            link_pats = [ lib_base_pat + '.so',
-                          lib_base_pat + lib_static_suffix() ]
+            link_pats = [lib_base_pat + '.so',
+                         lib_base_pat + lib_static_suffix()]
         found = False
         for link_pat in link_pats:
             link_name, link_suffix = link_build_name(link_pat, 'lib', variant)
@@ -3511,7 +3514,8 @@ def find_prerequisites(deps, versions=None, variant=None):
             # that specific version.
             if not version and installed_version:
                 version = installed_version
-                versions = { 'excludes': [ (None, version), (version_incr(version), None) ] }
+                versions = {'excludes':
+                    [(None, version), (version_incr(version), None)]}
             if not installed_complete:
                 complete = False
     return installed, complete
@@ -3530,10 +3534,16 @@ def find_share(names, search_path, build_top, versions=None, variant=None):
     return find_data('share', names, search_path, build_top, versions, variant)
 
 
-def find_boot_bin(context, name, package=None, dbindex=None):
+def find_boot_bin(name, package=None, context=None, dbindex=None):
     '''This script needs a few tools to be installed to bootstrap itself,
     most noticeably the initial source control tool used to checkout
     the projects dependencies index file.'''
+    if not context:
+        global CONTEXT
+        if not CONTEXT:
+            CONTEXT = Context()
+            CONTEXT.locate()
+        context = CONTEXT
     executable = os.path.join(context.bin_build_dir(), name)
     if not os.path.exists(executable):
         # We do not use *validate_controls* here because dws in not
@@ -3556,14 +3566,12 @@ def find_boot_bin(context, name, package=None, dbindex=None):
   </project>
 </projects>
 ''' % (package, name))
-        executables, version, complete = find_bin([ [ name, None ] ],
-                                                 context.search_path('bin'),
-                                                 context.value('buildTop'))
+        executables, version, complete = find_bin([[name, None]],
+            context.search_path('bin'), context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
             install([package], dbindex)
-            executables, version, complete = find_bin([ [ name, None ] ],
-                                                 context.search_path('bin'),
-                                                 context.value('buildTop'))
+            executables, version, complete = find_bin([[name, None]],
+                context.search_path('bin'), context.value('buildTop'))
         name, absolute_path = executables.pop()
         link_pat_path(name, absolute_path, 'bin')
         executable = os.path.join(context.bin_build_dir(), name)
@@ -3574,14 +3582,14 @@ def find_gem(context):
     gem_package = None
     if context.host() in APT_DISTRIBS:
         gem_package = 'rubygems'
-    find_boot_bin(context, '(gem).*', gem_package)
+    find_boot_bin('(gem).*', package=gem_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'gem')
 
 
 def find_git(context):
     if not os.path.lexists(
         os.path.join(context.value('buildTop'), 'bin', 'git')):
-        files = { 'bin': [('git', None)]}
+        files = {'bin': [('git', None)]}
         if context.host() in APT_DISTRIBS:
             files.update({'share': [('git-core', None)]})
         else:
@@ -3593,7 +3601,7 @@ def find_git(context):
 def find_npm(context):
     build_npm = os.path.join(context.value('buildTop'), 'bin', 'npm')
     if not os.path.lexists(build_npm):
-        dbindex=IndexProjects(context,
+        dbindex = IndexProjects(context,
         '''<?xml version="1.0" ?>
 <projects>
   <project name="nvm">
@@ -3609,7 +3617,7 @@ nvm install 0.8.14
 </projects>
 ''')
         validate_controls(
-            BuildGenerator([ 'nvm' ], [], force_update = True), dbindex)
+            BuildGenerator(['nvm'], [], force_update=True), dbindex)
         prev = os.getcwd()
         os.chdir(os.path.join(context.value('buildTop'), 'bin'))
         os.symlink('../v0.8.14/bin/npm', 'npm')
@@ -3621,17 +3629,17 @@ def find_pip(context):
     pip_package = None
     if context.host() in YUM_DISTRIBS:
         pip_package = 'python-pip'
-    find_boot_bin(context, '(pip).*', pip_package)
+    find_boot_bin('(pip).*', package=pip_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'pip')
 
 
-def find_rsync(context, host, relative=True, admin=False,
+def find_rsync(host, context=None, relative=True, admin=False,
               username=None, key=None):
     '''Check if rsync is present and install it through the package
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
     through a project.'''
-    rsync = find_boot_bin(context, 'rsync')
+    rsync = find_boot_bin('rsync', context=context)
 
     # We are accessing the remote machine through a mounted
     # drive or through ssh.
@@ -3640,9 +3648,9 @@ def find_rsync(context, host, relative=True, admin=False,
         prefix = prefix + username + '@'
     # -a is equivalent to -rlptgoD, we are only interested in -r (recursive),
     # -p (permissions), -t (times)
-    cmdline = [ rsync, '-qrptuz' ]
+    cmdline = [rsync, '-qrptuz']
     if relative:
-        cmdline = [ rsync, '-qrptuzR' ]
+        cmdline = [rsync, '-qrptuzR']
     if host:
         # We are accessing the remote machine through ssh
         prefix = prefix + host + ':'
@@ -3652,16 +3660,16 @@ def find_rsync(context, host, relative=True, admin=False,
         if key:
             ssh = ssh + ' -i ' + str(key)
         ssh = ssh + '"'
-        cmdline += [ ssh ]
+        cmdline += [ssh]
     if admin and username != 'root':
-        cmdline += [ '--rsync-path "sudo /usr/bin/rsync"' ]
+        cmdline += ['--rsync-path "sudo /usr/bin/rsync"']
     else:
-        cmdline += [ '--rsync-path "/usr/bin/rsync"' ]
+        cmdline += ['--rsync-path "/usr/bin/rsync"']
     return cmdline, prefix
 
 def find_virtualenv(context):
     virtual_package = 'python-virtualenv'
-    find_boot_bin(context, '(virtualenv).*', virtual_package)
+    find_boot_bin('(virtualenv).*', package=virtual_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'virtualenv')
 
 def name_pat_regex(name_pat):
@@ -3670,7 +3678,7 @@ def name_pat_regex(name_pat):
     # We must postpend the '$' sign to the regular expression
     # otherwise "makeconv" and "makeinfo" will be picked up by
     # a match for the "make" executable.
-    pat = name_pat.replace('++','\+\+')
+    pat = name_pat.replace('++', '\+\+')
     if not pat.startswith('.*'):
         # If we don't add the separator here we will end-up with unrelated
         # links to automake, pkmake, etc. when we are looking for "make".
@@ -3707,8 +3715,8 @@ def cwd_projects(reps, recurse=False):
         src_top = os.path.realpath(CONTEXT.value('srcTop'))
         project_name = None
         src_dir = src_top
-        src_prefix = os.path.commonprefix([ cwd, src_top ])
-        build_prefix = os.path.commonprefix([ cwd, build_top ])
+        src_prefix = os.path.commonprefix([cwd, src_top])
+        build_prefix = os.path.commonprefix([cwd, build_top])
         if src_prefix == src_top:
             src_dir = cwd
             project_name = src_dir[len(src_top) + 1:]
@@ -3716,11 +3724,11 @@ def cwd_projects(reps, recurse=False):
             src_dir = cwd.replace(build_top, src_top)
             project_name = src_dir[len(src_top) + 1:]
         if project_name:
-            reps = [ project_name ]
+            reps = [project_name]
         else:
             for repdir in find_files(src_dir, Repository.dirPats):
-                reps += [ os.path.dirname(
-                        repdir.replace(src_top + os.sep, '')) ]
+                reps += [os.path.dirname(
+                        repdir.replace(src_top + os.sep, ''))]
     if recurse:
         raise NotImplementedError()
     return reps
@@ -3735,7 +3743,7 @@ def ordered_prerequisites(roots, index):
     for step in steps:
         # XXX this is an ugly little hack!
         if isinstance(step, InstallStep) or isinstance(step, BuildStep):
-            results += [ step.qualified_project_name() ]
+            results += [step.qualified_project_name()]
     return results
 
 
@@ -3770,7 +3778,7 @@ def fetch(context, filenames,
                     remote_path = '/.' + name
                 else:
                     remote_path = os.path.join(remote_site_top, './' + name)
-            pathnames[ remote_path ] = filenames[name]
+            pathnames[remote_path] = filenames[name]
 
         # Check the local cache
         if force:
@@ -3789,9 +3797,9 @@ def fetch(context, filenames,
         for package in downloads:
             # Splits between files downloaded through http and ssh.
             if package.startswith('http'):
-                https += [ package ]
+                https += [package]
             else:
-                sshs += [ package ]
+                sshs += [package]
         # fetch https
         for remotename in https:
             localname = context.local_dir(remotename)
@@ -3813,23 +3821,24 @@ def fetch(context, filenames,
                     host = parts[0]
                     path = parts[1]
                     if not host in remote_sources:
-                        remote_sources[host] = [ path ]
+                        remote_sources[host] = [path]
                     else:
-                        remote_sources[host] += [ path ]
+                        remote_sources[host] += [path]
                 else:
                     local_sources += parts
             if local_sources:
-                cmdline, prefix = find_rsync(context, "", relative, admin)
+                cmdline, prefix = find_rsync(
+                    "", context=context, relative=relative, admin=admin)
                 shell_command(cmdline + ["'" + ' '.join(local_sources) + "'",
-                                    context.value('siteTop') ])
+                                    context.value('siteTop')])
             for hostname, paths in remote_sources.iteritems():
                 if hostname and admin:
                     shell_command(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
-                cmdline, prefix = find_rsync(context, hostname,
-                                            relative, admin)
+                cmdline, prefix = find_rsync(
+                    hostname, context=context, relative=relative, admin=admin)
                 shell_command(cmdline + ["'" + prefix + ' '.join(paths) + "'",
-                                    context.value('siteTop') ])
+                                    context.value('siteTop')])
 
 
 def create_managed(project_name, versions, target):
@@ -3887,9 +3896,9 @@ def install(packages, dbindex):
     package_files = None
     for name in packages:
         if os.path.isfile(name):
-            local_files += [ name ]
+            local_files += [name]
         else:
-            projects += [ name ]
+            projects += [name]
     if len(local_files) > 0:
         package_files = create_package_file(local_files[0], local_files)
 
@@ -3907,9 +3916,9 @@ def install(packages, dbindex):
                     package_files.insert(create_package_file(name,
                                                           package.fetches()))
                 else:
-                    managed += [ name ]
+                    managed += [name]
             else:
-                managed += [ name ]
+                managed += [name]
 
         if len(managed) > 0:
             step = create_managed(managed[0], versions=None, target=None)
@@ -4190,7 +4199,7 @@ def localize_context(context, name, target):
     # This code was moved to be executed right before the issue
     # of a "make" subprocess in order to let the project index file
     # a change to override defaults for installTop, etc.
-    for dir_name in [ 'include', 'lib', 'bin', 'etc', 'share' ]:
+    for dir_name in ['include', 'lib', 'bin', 'etc', 'share']:
         name = local_context.value(dir_name + 'Dir')
     # \todo save local context only when necessary
     local_context.save()
@@ -4203,7 +4212,7 @@ def merge_unique(left, right):
     already present in *left*.'''
     for item in right:
         if not item in left:
-            left += [ item ]
+            left += [item]
     return left
 
 
@@ -4263,8 +4272,9 @@ def upload(filenames, remote_cache_path=None):
     '''
     if not remote_cache_path:
         remote_cache_path = CONTEXT.remote_dir(CONTEXT.log_path(''))
-    cmdline, _ = find_rsync(CONTEXT, CONTEXT.remote_host(), relative=True)
-    up_cmdline = cmdline + [ ' '.join(filenames), remote_cache_path ]
+    cmdline, _ = find_rsync(
+        CONTEXT.remote_host(), context=CONTEXT, relative=True)
+    up_cmdline = cmdline + [' '.join(filenames), remote_cache_path]
     shell_command(up_cmdline)
 
 def createmail(subject, filenames=None):
@@ -4300,7 +4310,7 @@ def sendmail(msgtext, dests):
                 # Can't connect to that port on local host, we will thus assume
                 # we are accessing the smtp server through a ssh tunnel.
                 ssh_tunnels(CONTEXT.tunnel_point,
-                           [ CONTEXT.value('smtpPort')[:-1] ])
+                    [CONTEXT.value('smtpPort')[:-1]])
 
         import smtplib
         # Send the message via our own SMTP server, but don't include the
@@ -4360,7 +4370,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
                     raise Error("admin command without a fully quaified path: "
                         + execute)
             # ex: su username -c 'sudo port install icu'
-            cmdline = [ '/usr/bin/sudo' ]
+            cmdline = ['/usr/bin/sudo']
             if USE_DEFAULT_ANSWER:
                 # Error out if sudo prompts for a password because this should
                 # never happen in non-interactive mode.
@@ -4368,10 +4378,10 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
                     # XXX Workaround while sudo is broken
                     # http://groups.google.com/group/comp.lang.python/\
                     # browse_thread/thread/4c2bb14c12d31c29
-                    cmdline = [ 'SUDO_ASKPASS="' + ASK_PASS + '"'  ] \
-                        + cmdline + [ '-A' ]
+                    cmdline = ['SUDO_ASKPASS="' + ASK_PASS + '"'] \
+                        + cmdline + ['-A']
                 else:
-                    cmdline += [ '-n' ]
+                    cmdline += ['-n']
             cmdline += execute
     else:
         cmdline = execute
@@ -4389,7 +4399,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
         line = cmd.stdout.readline()
         while line != '':
             if pat and re.match(pat, line):
-                filtered_output += [ line ]
+                filtered_output += [line]
             log_info(line[:-1])
             line = cmd.stdout.readline()
         cmd.wait()
@@ -4439,7 +4449,7 @@ def ssh_tunnels(hostname, ports):
                         stderr=subprocess.STDOUT).splitlines():
             look = re.match('ssh', line)
             if look:
-                connections += [ line ]
+                connections += [line]
         tunnels = []
         for port in ports:
             found = False
@@ -4450,16 +4460,16 @@ def ssh_tunnels(hostname, ports):
                     found = True
                     break
             if not found:
-                tunnels += [ '-L', tunnel ]
+                tunnels += ['-L', tunnel]
         if len(tunnels) > 0:
-            err = os.system(' '.join(['ssh', '-fN' ] + tunnels + [hostname]))
+            err = os.system(' '.join(['ssh', '-fN'] + tunnels + [hostname]))
             if err:
-                raise Error("attempt to create ssh tunnels to " \
-                                + hostname + " failed.")
+                raise Error("attempt to create ssh tunnels to "
+                            + hostname + " failed.")
 
 
 def validate_controls(dgen, dbindex,
-                      graph=False, priorities = [ 1, 2, 3, 4, 5, 6, 7 ]):
+                      graph=False, priorities=[1, 2, 3, 4, 5, 6, 7]):
     '''Checkout source code files, install packages such that
     the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency
@@ -4477,7 +4487,7 @@ def validate_controls(dgen, dbindex,
     vertices = dbindex.closure(dgen)
     if graph:
         gph_filename = os.path.splitext(CONTEXT.logname())[0] + '.dot'
-        gph_file = open(gph_filename,'w')
+        gph_file = open(gph_filename, 'w')
         gph_file.write("digraph structural {\n")
         for vertex in vertices:
             for project in vertex.prerequisites:
@@ -4487,7 +4497,7 @@ def validate_controls(dgen, dbindex,
         gph_file.close()
     while len(vertices) > 0:
         first = vertices.pop(0)
-        glob = [ first ]
+        glob = [first]
         while len(vertices) > 0:
             vertex = vertices.pop(0)
             if vertex.__class__ != first.__class__:
@@ -4496,7 +4506,7 @@ def validate_controls(dgen, dbindex,
             if 'insert' in dir(first):
                 first.insert(vertex)
             else:
-                glob += [ vertex ]
+                glob += [vertex]
         # \todo "make recurse" should update only projects which are missing
         # from *srcTop* and leave other projects in whatever state they are in.
         # This is different from "build" which should update all projects.
@@ -4515,7 +4525,7 @@ def validate_controls(dgen, dbindex,
                         import traceback
                         traceback.print_exc()
                     errcode = err.code
-                    ERRORS += [ str(vertex) ]
+                    ERRORS += [str(vertex)]
                     if dgen.stop_make_after_error:
                         finish = datetime.datetime.now()
                         elapsed = elapsed_duration(start, finish)
@@ -4546,12 +4556,12 @@ def version_candidates(line):
             part = look.group(1)
             look = re.match(r'[^0-9]*([0-9]+([_\.][0-9]+)+)+(.*)', part)
             if look:
-                candidates += [ look.group(1) ]
+                candidates += [look.group(1)]
                 part = look.group(2)
             else:
                 while (len(part) > 0
                        and part[0] in ['0', '1', '2', '3', '4', '5',
-                                       '6', '7', '8', '9' ]):
+                                       '6', '7', '8', '9']):
                     part = part[1:]
         else:
             part = ''
@@ -4623,7 +4633,7 @@ def filter_subcommand_args(func, options):
     argspec = inspect.getargspec(func)
     for arg in argspec.args:
         if arg in options:
-            kwargs.update({ arg: getattr(options, arg)})
+            kwargs.update({arg: getattr(options, arg)})
     return kwargs
 
 
@@ -4669,15 +4679,15 @@ def wait_until_ssh_up(hostname,
                '-v',
                '-o', 'ConnectTimeout 30',
                '-o', 'BatchMode yes',
-               '-o', 'StrictHostKeyChecking no' ]
+               '-o', 'StrictHostKeyChecking no']
     if port:
-        cmdline += [ '-p', str(port) ]
+        cmdline += ['-p', str(port)]
     if keyfile:
-        cmdline += [ '-i', keyfile ]
+        cmdline += ['-i', keyfile]
     ssh_connect = hostname
     if login:
         ssh_connect = login + '@' + hostname
-    cmdline += [ ssh_connect, 'echo' ]
+    cmdline += [ssh_connect, 'echo']
     while (not is_up) and (waited <= timeout):
         try:
             subprocess.check_call(cmdline)
@@ -4729,12 +4739,12 @@ def log_init():
          },
         'loggers': {
             __name__: {
-                'handlers': [ 'logfile' ],
+                'handlers': ['logfile'],
                 'level': 'INFO',
                 'propagate': True,
             },
             'build': {
-                'handlers': [ 'logbuild' ],
+                'handlers': ['logbuild'],
                 'level': 'INFO',
                 'propagate': True,
             }
@@ -4867,7 +4877,7 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
         tardirs = []
         for path in [site_top, build_top, install_top]:
             if os.path.isdir(path):
-                tardirs += [ path ]
+                tardirs += [path]
         if len(tardirs) > 0:
             prefix = os.path.commonprefix(tardirs)
             pkgbase = '%s-%s' % (os.path.basename(site_top), stamp())
@@ -4881,7 +4891,7 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
             else:
                 shell_command(create_tarball(pkgbase, site_top, tardirs))
         os.chdir(prevcwd)
-        for dirpath in [ build_top, install_top]:
+        for dirpath in [build_top, install_top]:
             # we only remove build_top and installTop. Can neither be too
             # prudent.
             if os.path.isdir(dirpath):
@@ -4906,7 +4916,7 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
     INDEX.parse(rgen)
     # note that *EXCLUDE_PATS* is global.
     dgen = BuildGenerator(rgen.roots, [], EXCLUDE_PATS)
-    CONTEXT.targets = [ 'install' ]
+    CONTEXT.targets = ['install']
     # Set the buildstamp that will be use by all "install" commands.
     if not 'buildstamp' in CONTEXT.environ:
         CONTEXT.environ['buildstamp'] = '-'.join([socket.gethostname(),
@@ -4924,7 +4934,7 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
     shell_command(['install', '-m', '644', CONTEXT.logname(),
                   CONTEXT.log_path(logstamp)])
     logging.getLogger('build').info(
-        'build %s'% str(UpdateStep.updated_sources))
+        'build %s', str(UpdateStep.updated_sources))
     look = re.match(r'.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)', logstamp)
     global LOG_PAT
     LOG_PAT = look.group(1)
@@ -4944,9 +4954,9 @@ def pub_collect(args, output=None):
     roots = []
     if len(args) > 0:
         for dir_name in args:
-            roots += [ os.path.join(CONTEXT.value('srcTop'), dir_name) ]
+            roots += [os.path.join(CONTEXT.value('srcTop'), dir_name)]
     else:
-        roots = [ CONTEXT.value('srcTop') ]
+        roots = [CONTEXT.value('srcTop')]
     # Name of the output index file generated by collect commands.
     collected_index = output
     if not collected_index:
@@ -4964,11 +4974,10 @@ def pub_collect(args, output=None):
 
     # Create the project index file
     # and copy the packages in the distribution directory.
-    extensions = { 'Darwin': (r'\.dsx', r'\.dmg'),
-                   'Fedora': (r'\.spec', r'\.rpm'),
-                   'Debian': (r'\.dsc', r'\.deb'),
-                   'Ubuntu': (r'\.dsc', r'\.deb')
-                 }
+    extensions = {'Darwin': (r'\.dsx', r'\.dmg'),
+                  'Fedora': (r'\.spec', r'\.rpm'),
+                  'Debian': (r'\.dsc', r'\.deb'),
+                  'Ubuntu': (r'\.dsc', r'\.deb')}
     # collect index files and packages
     indices = []
     for root in roots:
@@ -4985,7 +4994,7 @@ def pub_collect(args, output=None):
                         found = True
                         break
             if not found:
-                indices += [ index ]
+                indices += [index]
 
     pkg_indices = []
     cpy_src_packages = None
@@ -4999,17 +5008,19 @@ def pub_collect(args, output=None):
                                                    CONTEXT.value('srcTop')))
             src_packages = find_files(buildr, '.tar.bz2')
             if len(src_packages) > 0:
-                cmdline, prefix = find_rsync(CONTEXT, CONTEXT.remote_host())
-                cpy_src_packages = cmdline + [ ' '.join(src_packages),
-                                              src_package_dir]
+                cmdline, prefix = find_rsync(
+                    CONTEXT.remote_host(), context=CONTEXT)
+                cpy_src_packages = cmdline + [
+                    ' '.join(src_packages), src_package_dir]
             if CONTEXT.host() in extensions:
                 ext = extensions[CONTEXT.host()]
                 pkg_indices += find_files(buildr, ext[0])
                 bin_packages = find_files(buildr, ext[1])
                 if len(bin_packages) > 0:
-                    cmdline, prefix = find_rsync(CONTEXT, CONTEXT.remote_host())
-                    copy_bin_packages = cmdline + [ ' '.join(bin_packages),
-                                                  package_dir ]
+                    cmdline, prefix = find_rsync(
+                        CONTEXT.remote_host(), context=CONTEXT)
+                    copy_bin_packages = cmdline + [' '.join(bin_packages),
+                                                  package_dir]
 
     # Create the index and checks it is valid according to the schema.
     create_index_pathname(collected_index, indices + pkg_indices)
@@ -5031,7 +5042,7 @@ def pub_configure(args):
     CONTEXT.environ['indexFile'].value = CONTEXT.src_dir(
         os.path.join(CONTEXT.cwd_project(), CONTEXT.indexName))
     project_name = CONTEXT.cwd_project()
-    dgen = MakeGenerator([ project_name ], [])
+    dgen = MakeGenerator([project_name], [])
     dbindex = IndexProjects(CONTEXT, CONTEXT.value('indexFile'))
     dbindex.parse(dgen)
     prerequisites = set([])
@@ -5039,12 +5050,12 @@ def pub_configure(args):
         if vertex.endswith('Setup'):
             setup = dgen.vertices[vertex]
             if not setup.run(CONTEXT):
-                prerequisites |= set([ str(setup.project) ])
+                prerequisites |= set([str(setup.project)])
         elif vertex.startswith('update_'):
             update = dgen.vertices[vertex]
             if len(update.fetches) > 0:
                 for miss in update.fetches:
-                    prerequisites |= set([ miss ])
+                    prerequisites |= set([miss])
     if len(prerequisites) > 0:
         raise MissingError(project_name, prerequisites)
 
@@ -5078,7 +5089,7 @@ def pub_deps(args):
         or (str(CONTEXT.environ['srcTop'])
             and top.startswith(os.path.realpath(CONTEXT.value('srcTop')))
             and top != os.path.realpath(CONTEXT.value('srcTop')))):
-        roots = [ CONTEXT.cwd_project() ]
+        roots = [CONTEXT.cwd_project()]
     else:
         # make from the top directory makes every project in the index file.
         rgen = DerivedSetsGenerator()
@@ -5095,12 +5106,12 @@ def pub_export(args):
     rootpath = args[0]
     top = os.path.realpath(os.getcwd())
     if (top == os.path.realpath(CONTEXT.value('buildTop'))
-        or top ==  os.path.realpath(CONTEXT.value('srcTop'))):
+        or top == os.path.realpath(CONTEXT.value('srcTop'))):
         rgen = DerivedSetsGenerator()
         INDEX.parse(rgen)
         roots = rgen.roots
     else:
-        roots = [ CONTEXT.cwd_project() ]
+        roots = [CONTEXT.cwd_project()]
     handler = Unserializer(roots)
     if os.path.isfile(CONTEXT.db_pathname()):
         INDEX.parse(handler)
@@ -5188,7 +5199,7 @@ def pub_find(args):
     command = 'find_' + dir_name
     searches = []
     for arg in args[1:]:
-        searches += [ (arg, None) ]
+        searches += [(arg, None)]
     installed, _, complete = \
         getattr(sys.modules[__name__], command)(
         searches, CONTEXT.search_path(dir_name), CONTEXT.value('buildTop'))
@@ -5242,7 +5253,7 @@ class FilteredList(PdbHandler):
         if host in proj_obj.packages and proj_obj.packages[host]:
             if len(proj_obj.packages[host].update.fetches) > 0:
                 for file_to_fetch in proj_obj.packages[host].update.fetches:
-                    self.fetches += [ file_to_fetch ]
+                    self.fetches += [file_to_fetch]
 
 
 class ListPdbHandler(PdbHandler):
@@ -5285,26 +5296,26 @@ def pub_make(args, graph=False):
     recurse = False
     top = os.path.realpath(os.getcwd())
     if (top == os.path.realpath(CONTEXT.value('buildTop'))
-        or top ==  os.path.realpath(CONTEXT.value('srcTop'))):
+        or top == os.path.realpath(CONTEXT.value('srcTop'))):
         # make from the top directory makes every project in the index file.
         rgen = DerivedSetsGenerator()
         INDEX.parse(rgen)
         roots = rgen.roots
         recurse = True
     else:
-        roots = [ CONTEXT.cwd_project() ]
+        roots = [CONTEXT.cwd_project()]
     for opt in args:
         if opt == 'recurse':
-            CONTEXT.targets += [ 'install' ]
+            CONTEXT.targets += ['install']
             recurse = True
         elif re.match(r'\S+=.*', opt):
-            CONTEXT.overrides += [ opt ]
+            CONTEXT.overrides += [opt]
         else:
-            CONTEXT.targets += [ opt ]
+            CONTEXT.targets += [opt]
     if recurse:
         # note that *EXCLUDE_PATS* is global.
-        validate_controls(MakeGenerator(roots, [], EXCLUDE_PATS), INDEX,
-                          graph=graph)
+        validate_controls(
+            MakeGenerator(roots, [], EXCLUDE_PATS), INDEX, graph=graph)
     else:
         handler = Unserializer(roots)
         if os.path.isfile(CONTEXT.db_pathname()):
@@ -5351,7 +5362,7 @@ def pub_patch(args):
         cmdline = ['git', 'format-patch', '-o', patch_dir, 'origin']
         for line in subprocess.check_output(' '.join(cmdline), shell=True,
                         stderr=subprocess.STDOUT).splitlines():
-            patches += [ line.strip() ]
+            patches += [line.strip()]
             sys.stdout.write(line)
         for patch in patches:
             with open(patch) as msgfile:
@@ -5471,7 +5482,7 @@ def pub_update(args):
                                   + str(update.rep.url))
                     log_footer(update.title, errcode=err.code)
             else:
-                ERRORS += [ name ]
+                ERRORS += [name]
         if len(ERRORS) > 0:
             raise Error('%s is/are not project(s) under source control.'
                         % ' '.join(ERRORS))
@@ -5504,7 +5515,7 @@ def pub_upstream(args):
         # will only display the patched information. This is important to be
         # able to execute:
         #   dws upstream > patch
-        cmdline = [ 'diff', '-ruNa', orgdir, srcdir ]
+        cmdline = ['diff', '-ruNa', orgdir, srcdir]
         subprocess.call(' '.join(cmdline), shell=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
@@ -5523,13 +5534,12 @@ You have now the choice to install them from a source repository. You will
 later have the choice to install them from either a patch, a binary package
 or not at all.''',
         rep_candidates)
-        log_info(select_string)
     # Filters out the dependencies which the user has decided to install
     # from a repository.
     packages = []
     for row in package_candidates:
         if not row[0] in reps:
-            packages += [ row ]
+            packages += [row]
     packages = select_install(packages)
     return reps, packages
 
@@ -5546,7 +5556,6 @@ def select_install(package_candidates):
 You have now the choice to install them from a binary package. You can skip
 this step if you know those dependencies will be resolved correctly later on.
 ''', package_candidates)
-        log_info(select_string)
     return packages
 
 
@@ -5592,7 +5601,7 @@ def select_multiple(description, selects):
     result = []
     done = False
     selects.sort()
-    choices = [ [ 'all' ] ] + selects
+    choices = [['all']] + selects
     while len(choices) > 1 and not done:
         show_multiple(description, choices)
         log_info("%d) done", len(choices) + 1)
@@ -5613,11 +5622,11 @@ def select_multiple(description, selects):
             except ValueError:
                 choice = 0
             if choice > 1 and choice <= len(choices):
-                result += [ choices[choice - 1][0] ]
+                result += [choices[choice - 1][0]]
             elif choice == 1:
                 result = []
                 for choice_value in choices[1:]:
-                    result += [ choice_value[0] ]
+                    result += [choice_value[0]]
                 done = True
             elif choice == len(choices) + 1:
                 done = True
@@ -5625,7 +5634,7 @@ def select_multiple(description, selects):
         remains = []
         for row in choices:
             if not row[0] in result:
-                remains += [ row ]
+                remains += [row]
         choices = remains
     return result
 
@@ -5649,18 +5658,18 @@ def show_multiple(description, choices):
     displayed = []
     for item, row in enumerate(choices, start=1):
         line = []
-        for col_index, column in enumerate([ str(item) + ')' ] + row):
+        for col_index, column in enumerate([str(item) + ')'] + row):
             col = column
             if isinstance(col, dict):
                 if 'description' in column:
                     col = column['description'] # { description: ... }
                 else:
                     col = ""
-            line += [ col ]
+            line += [col]
             if len(widths) <= col_index:
-                widths += [ 2 ]
+                widths += [2]
             widths[col_index] = max(widths[col_index], len(col) + 2)
-        displayed += [ line ]
+        displayed += [line]
     # Ask user to review selection
     log_info('%s' % description)
     for project in displayed:
@@ -5783,7 +5792,7 @@ def main(args):
             global CONTEXT_FILENAME
             CONTEXT_FILENAME = options.context
 
-        if not options.func in [ pub_build ]:
+        if not options.func in [pub_build]:
             # The *build* command is special in that it does not rely
             # on locating a pre-existing context file.
             try:
