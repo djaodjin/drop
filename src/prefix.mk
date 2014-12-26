@@ -66,7 +66,7 @@ JAVAC       :=	javac
 LN_S        :=	/bin/ln -fs
 MXMLC       :=	mxmlc
 SED         :=	sed
-SEMILLA     :=	semilla
+SEMILLA     :=	semilla --themeDir $(themeDir)
 XSLTPROC    :=	xsltproc -xinclude 		\
 			--stringparam use.extensions 0 	\
 			--stringparam fop1.extensions 1
@@ -87,7 +87,7 @@ logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 resourcesDir	?=	$(siteTop)/htdocs/resources
 
 incSearchPath	:=	$(srcDir)/include $(includeBuildDir) $(includeDir)
-libSearchPath	:=	$(if $(wildcard $(libBuildDir)/*),$(libBuildDir)) $(if $(wildcard $(libDir)/*),$(libDir))
+libSearchPath	:=	$(objDir) $(if $(wildcard $(libBuildDir)/*),$(libBuildDir)) $(if $(wildcard $(libDir)/*),$(libDir))
 
 # Building dynamic libraries
 # If we do not set the default *dylSuffix*, the rule %$(dylSuffix): in suffix.mk
