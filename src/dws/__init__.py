@@ -887,6 +887,7 @@ class DependencyGenerator(Unserializer):
         # That's a primary reason why target got somewhat slightly overloaded.
         # We used runtime="python" instead of target="python" in an earlier
         # design.
+        setup_name = SetupStep.genid(project_name, target)
         if project_name in self.projects:
             project = self.projects[project_name]
             if CONTEXT.host() in project.packages:
@@ -915,16 +916,18 @@ class DependencyGenerator(Unserializer):
             # Of course it created problems, yet we want to check existance
             # as late as possible so there was no way to decide
             # at this point.
+            versions = None
+            if setup_name in self.vertices:
+                versions = self.vertices[setup_name].versions
             install_step = create_managed(
-                managed_name, versions=None, target=target)
+                managed_name, versions=versions, target=target)
         if not install_step:
             # Remove special case install_step is None; replace it with
             # a placeholder instance that will throw an exception
             # when the *run* method is called.
-            install_step = InstallStep(project_name, target=setup.target)
+            install_step = InstallStep(project_name, target=target)
         if install_step:
             self.vertices[install_name] = install_step
-            setup_name = SetupStep.genid(project_name)
             self.connect_to(setup_name, install_step)
         return install_step
 
