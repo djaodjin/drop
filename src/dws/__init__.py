@@ -3614,7 +3614,7 @@ def find_npm(context):
       <shell>
 export NVM_DIR=${buildTop}
 . ${srcTop}/nvm/nvm.sh
-nvm install 0.8.14
+nvm install 0.10.35
       </shell>
     </repository>
   </project>
