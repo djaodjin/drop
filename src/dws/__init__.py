@@ -2002,7 +2002,9 @@ class NpmInstallStep(InstallStep):
         return os.path.join(CONTEXT.value('buildTop'), 'bin', 'npm')
 
     def run(self, context):
-        shell_command([self._manager(), 'install'] + self.managed, admin=True)
+        shell_command([self._manager(), 'install',
+            '-g', '--prefix', context.value('installTop')] + self.managed,
+            admin=True)
         self.updated = True
 
     def info(self):
