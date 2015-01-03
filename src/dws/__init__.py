@@ -3603,6 +3603,7 @@ def find_git(context):
     return 'git'
 
 def find_npm(context):
+    version = '0.10.35'
     build_npm = os.path.join(context.value('buildTop'), 'bin', 'npm')
     if not os.path.lexists(build_npm):
         dbindex = IndexProjects(context,
@@ -3614,18 +3615,23 @@ def find_npm(context):
       <shell>
 export NVM_DIR=${buildTop}
 . ${srcTop}/nvm/nvm.sh
-nvm install 0.10.35
+nvm install %s
       </shell>
     </repository>
   </project>
 </projects>
-''')
+''' % version)
         validate_controls(
             BuildGenerator(['nvm'], [], force_update=True), dbindex)
         prev = os.getcwd()
         os.chdir(os.path.join(context.value('buildTop'), 'bin'))
-        os.symlink('../v0.8.14/bin/npm', 'npm')
-        os.symlink('../v0.8.14/bin/node', 'node')
+        os.symlink('../v%s/bin/npm' % version, 'npm')
+        os.symlink('../v%s/bin/node' % version, 'node')
+        os.chdir(os.path.join(context.value('binDir')))
+        os.symlink(
+            '%s/v%s/bin/npm' % (context.value('buildTop'), version), 'npm')
+        os.symlink(
+            '%s/v%s/bin/node' % (context.value('buildTop'), version), 'node')
         os.chdir(prev)
     return 'npm'
 
