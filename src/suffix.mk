@@ -55,9 +55,9 @@ all::	$(logs)
 # Used to be "rm -rf $(objDir)/*" but that would create issues
 # when intermediate files are created in the same directory.
 clean::
-	rm -f $(bins) $(apps) $(scripts) $(libs) *.o *.d *~
+	rm -f $(bins) $(apps) $(scripts) $(libs) *.o *.d *~ *.dSYM
 
-# OSX GUI Applications are compiled but not installed. 
+# OSX GUI Applications are compiled but not installed.
 install:: $(apps)
 
 install:: $(bins)
