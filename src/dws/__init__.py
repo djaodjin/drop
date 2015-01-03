@@ -2003,8 +2003,7 @@ class NpmInstallStep(InstallStep):
 
     def run(self, context):
         shell_command([self._manager(), 'install',
-            '-g', '--prefix', context.value('installTop')] + self.managed,
-            admin=True)
+            '-g', '--prefix', context.value('installTop')] + self.managed)
         self.updated = True
 
     def info(self):
