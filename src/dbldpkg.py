@@ -1,34 +1,33 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2009-2013, Fortylines LLC
-#   All rights reserved.
+# Copyright (c) 2015, DjaoDjin inc.
+# All rights reserved.
 #
-#   Redistribution and use in source and binary forms, with or without
-#   modification, are permitted provided that the following conditions are met:
-#     * Redistributions of source code must retain the above copyright
-#       notice, this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#     * Neither the name of fortylines nor the
-#       names of its contributors may be used to endorse or promote products
-#       derived from this software without specific prior written permission.
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#   THIS SOFTWARE IS PROVIDED BY Fortylines LLC ''AS IS'' AND ANY
-#   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-#   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-#   DISCLAIMED. IN NO EVENT SHALL Fortylines LLC BE LIABLE FOR ANY
-#   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-#   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-#   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-#   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-#   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# This script contains code to build Fedora, OSX and Ubuntu packages.
-#
-# Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
-#
+"""
+This script contains code to build Fedora, OSX and Ubuntu packages.
+"""
+
 # The OSX code has been derived from code released under the FreeBSD license
 # and originally written by
 #
@@ -443,18 +442,19 @@ def recursive_listdir(dirname):
     return results
 
 
-def buildDarwinPackage(project, version):
+def build_darwin_package(project, version):
     installTop = os.path.join(os.getcwd(), 'install')
     pm = PackageMaker(project, version, installTop)
     pm.build()
     im = ImageMaker(project, version, pm.packageRootFolder)
     return im.build()
 
-def buildFedoraPackage(project, version):
+
+def build_rpm_package(project, version):
     tarball = project.name.replace(os.sep,'_') + '-' + version + '.tar.bz2'
     specname = project.name + '.spec'
-    if os.path.exists(os.path.join(dws.context.srcDir(project.name), specname)):
-        specname = os.path.join(dws.context.srcDir(project.name), specname)
+    if os.path.exists(os.path.join(dws.CONTEXT.src_dir(project.name), specname)):
+        specname = os.path.join(dws.CONTEXT.src_dir(project.name), specname)
     else:
         with open(specname, 'w') as specfile:
             specfile.write('%define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")\n\n')
@@ -485,8 +485,8 @@ make install DESTDIR=%{buildroot}
             unitdir = False
             sysconfdir = False
             pythondir = False
-            for filename in recursive_listdir(dws.context.srcDir(project.name)):
-                filename = filename[len(dws.context.srcDir(project.name)) + 1:]
+            for filename in recursive_listdir(dws.CONTEXT.src_dir(project.name)):
+                filename = filename[len(dws.CONTEXT.src_dir(project.name)) + 1:]
                 if filename.startswith('etc'):
                     sysconfdir = True
                 elif filename.startswith('share'):
@@ -522,7 +522,7 @@ make install DESTDIR=%{buildroot}
     return genFiles[0]
 
 
-def buildUbuntuPackage(project, version):
+def build_deb_package(project, version):
     cmd = subprocess.Popen("getconf LONG_BIT",shell=True,
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT)
@@ -543,29 +543,29 @@ def buildUbuntuPackage(project, version):
         if project.repository:
             control.write('Build-Depends: ' \
                               + ', '.join(dws.basenames(
-            project.repository.prerequisiteNames([dws.context.host()]))) + '\n')
+            project.repository.prerequisiteNames([dws.CONTEXT.host()]))) + '\n')
         elif project.patch:
             control.write('Build-Depends: ' \
                               + ', '.join(dws.basenames(
-            project.patch.prerequisiteNames([dws.context.host()]))) + '\n')
+            project.patch.prerequisiteNames([dws.CONTEXT.host()]))) + '\n')
 
     control.write('\nPackage: ' + project.name + '\n')
     control.write('Priority: extra\n')
 
-    if (not dws.context.host() in project.packages
-        or not 'architecture' in project.packages[dws.context.host()].configure.envvars):
+    if (not dws.CONTEXT.host() in project.packages
+        or not 'architecture' in project.packages[dws.CONTEXT.host()].configure.envvars):
         control.write('Architecture: any\n')
         distExtUbuntu = '_amd64.deb'
         if longBit == '32':
             distExtUbuntu = '_i386.deb'
-    if dws.context.host() in project.packages:
-        envvars = project.packages[dws.context.host()].configure.envvars
+    if dws.CONTEXT.host() in project.packages:
+        envvars = project.packages[dws.CONTEXT.host()].configure.envvars
         for key, val in envvars.iteritems():
             if isinstance(val,dws.Metainfo):
                 control.write(key.capitalize() + ': ' + val.value + '\n')
         control.write('Depends: ${shlibs:Depends}, ' \
                           + ', '.join(dws.basenames(
-        project.packages[dws.context.host()].prerequisiteNames([dws.context.host()]))) + '\n')        
+        project.packages[dws.CONTEXT.host()].prerequisiteNames([dws.CONTEXT.host()]))) + '\n')        
     descr = ''
     for i in range(0,len(project.descr),77):
         descr += ' ' + project.descr[i:i+77] + '\n'
@@ -609,7 +609,7 @@ def buildUbuntuPackage(project, version):
     if noPathUpdate:
         path = ''
     else:
-        path = 'PATH=' + dws.context.binBuildDir() + ':${PATH} '
+        path = 'PATH=' + dws.CONTEXT.bin_build_dir() + ':${PATH} '
     rules = open(os.path.join('debian','rules'),'w')
     rules.write('''#! /usr/bin/make -f
 
@@ -654,35 +654,33 @@ DH_VERBOSE := 1
     return '../' + project.name + '_' + packageVersion + distExtUbuntu
 
 
-def buildPackage(project, version):
-    '''Writes out the necessary files such as specification, control, etc.
+def build_package(project, version):
+    """
+    Writes out the necessary files such as specification, control, etc.
     then builds a binary distribution package based on the local system.
 
     This routine with returns the name of the package that was built.
-    '''
+    """
 
-    dist = dws.context.host()
+    dist = dws.CONTEXT.host()
     if dist == 'Darwin':
-        return buildDarwinPackage(project, version)
-
-    elif dist == 'Fedora':
-        return buildFedoraPackage(project, version)
-
-    elif dist == 'Ubuntu':
-        return buildUbuntuPackage(project, version)
-
+        return build_darwin_package(project, version)
+    elif dist in dws.YUM_DISTRIBS:
+        return build_rpm_package(project, version)
+    elif dist in dws.APT_DISTRIBS:
+        return build_deb_package(project, version)
     else:
         # unknown host, we don't know how to make a package for it.
         raise dws.Error("unknown distribution '" + dist + "'")
 
 
-def tabStop(n):
+def tab_stop(n):
     result = ''
     for i in range(0,n):
         result += '  '
     return result
 
-def buildPackageSpecification(project,packageName):
+def build_package_spec(project,packageName):
     '''Buils a package specification file named *packageSpec*
     that describes how to find and install the binary package.
     The package specification is made out of *sourceSpec*.
@@ -693,30 +691,30 @@ def buildPackageSpecification(project,packageName):
     package = open(packageSpec,'w')
     package.write('<?xml version="1.0" ?>\n')
     package.write('<' + dws.xmlDbParser.tagDb + '>\n')
-    package.write(tabStop(1) + '<' + dws.xmlDbParser.tagProject \
+    package.write(tab_stop(1) + '<' + dws.xmlDbParser.tagProject \
                       + ' name="' + project.name + '">\n')
-    package.write(tabStop(2) + '<' + dws.xmlDbParser.tagPackage + '>\n')
-    package.write(tabStop(3) + '<' + dws.xmlDbParser.tagTag + '>' \
-                      + dws.context.host() \
+    package.write(tab_stop(2) + '<' + dws.xmlDbParser.tagPackage + '>\n')
+    package.write(tab_stop(3) + '<' + dws.xmlDbParser.tagTag + '>' \
+                      + dws.CONTEXT.host() \
                       + '</' + dws.xmlDbParser.tagTag + '>\n')
-    package.write(tabStop(3) + '<' + dws.xmlDbParser.tagFetch \
+    package.write(tab_stop(3) + '<' + dws.xmlDbParser.tagFetch \
                       + ' name="' + packageName + '">\n')
-    package.write(tabStop(4) + '<size>' + str(os.path.getsize(packageName)) \
+    package.write(tab_stop(4) + '<size>' + str(os.path.getsize(packageName)) \
                       + '</size>\n')
     f = open(packageName,'rb')
-    package.write(tabStop(4) + '<md5>' + hashlib.md5(f.read()).hexdigest() \
+    package.write(tab_stop(4) + '<md5>' + hashlib.md5(f.read()).hexdigest() \
                       + '</md5>\n')
     f.seek(0)
-    package.write(tabStop(4) + '<' + dws.xmlDbParser.tagHash + '>' \
+    package.write(tab_stop(4) + '<' + dws.xmlDbParser.tagHash + '>' \
                       + hashlib.sha1(f.read()).hexdigest() \
                       + '</' + dws.xmlDbParser.tagHash + '>\n')
     f.seek(0)
-    package.write(tabStop(4) + '<sha256>' + hashlib.sha256(f.read()).hexdigest() \
+    package.write(tab_stop(4) + '<sha256>' + hashlib.sha256(f.read()).hexdigest() \
                       + '</sha256>\n')
     f.close()
-    package.write(tabStop(3) + '</' + dws.xmlDbParser.tagFetch + '>\n')
-    package.write(tabStop(2) + '</' + dws.xmlDbParser.tagPackage + '>\n')
-    package.write(tabStop(1) + '</' + dws.xmlDbParser.tagProject + '>\n')
+    package.write(tab_stop(3) + '</' + dws.xmlDbParser.tagFetch + '>\n')
+    package.write(tab_stop(2) + '</' + dws.xmlDbParser.tagPackage + '>\n')
+    package.write(tab_stop(1) + '</' + dws.xmlDbParser.tagProject + '>\n')
     package.write('</' + dws.xmlDbParser.tagDb + '>\n')
     package.close()
 
@@ -763,17 +761,15 @@ if __name__ == "__main__":
     if options.noPathUpdate:
         noPathUpdate = True
 
-
-    dws.context = dws.Context()
-    dws.context.locate()
-    project_name = dws.context.cwdProject()
+    dws.CONTEXT = dws.Context()
+    dws.CONTEXT.locate()
+    project_name = dws.CONTEXT.cwd_project()
     handler = dws.Unserializer([ project_name ])
-    index = dws.IndexProjects(dws.context)
+    index = dws.IndexProjects(dws.CONTEXT)
     index.parse(handler)
     project = handler.firstProject
     # Removes any leading directory name from the project name
     # else debuild is not very happy.
     project.name = os.path.basename(project.name)
 
-    buildPackageSpecification(project,
-                              buildPackage(project, options.version))
+    build_package_spec(project, build_package(project, options.version))
