@@ -142,10 +142,10 @@ endif
 # Name of the binary distribution package
 # We use '=' and not ':=' here because the version might be defined
 # later in the Makefile.
-binDistDarwin	=	$(project)-$(version)$(distExtDarwin)
-binDistUbuntu	=	$(project)_$(version)$(distExtUbuntu)
-binDistFedora	=	$(project)-$(version)$(distExtFedora)
-binDist		=	$(binDist$(distHost))
+_binDistDarwin	=	$(project)-$(version)$(distExtDarwin)
+_binDistUbuntu	=	$(project)_$(version)$(distExtUbuntu)
+_binDistFedora	=	$(project)-$(version)$(distExtFedora)
+binDist		=	$(_binDist$(distHost))
 
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
 htmlxsl		:=	$(shareBuildDir)/docbook-xsl/html/docbook.xsl
