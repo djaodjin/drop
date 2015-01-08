@@ -36,5 +36,5 @@ setup(name='drop',
         % dws.__version__,
     license='BSD',
     description='DjaoDjin workspace management',
-    long_description=open('README.md').read(),
+    long_description=open('../README.md').read(),
 )
