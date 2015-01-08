@@ -167,10 +167,11 @@ $(project)-$(version)::
 		$(SED) -e "s,<project  *name=\".*$(project),<project name=\"$@,g" \
 		$(srcDir)/$(projindex) > $@/$(projindex) ; \
 	fi
+	echo 'include $(dwsmk)' > $@/Makefile.in
 	$(SED) -e 's,$$(shell dws context),$(dwsmk),' \
-	    -e 's,-include $$(buildTop)/share/dws/,-include share/dws/,' \
+	    -e 's,-include $$(buildTop)/share/dws/,include share/dws/,' \
 	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
-		$(srcDir)/Makefile > $@/Makefile.in
+		$(srcDir)/Makefile >> $@/Makefile.in
 	rm -f $@/Makefile
 	$(installScripts) $(binBuildDir)/dws $@
 	$(installDirs) $@/share/dws
