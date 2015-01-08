@@ -690,14 +690,14 @@ def build_package_spec(project,packageName):
     packageSpec = os.path.splitext(packageName)[0] + '.dsx'
     package = open(packageSpec,'w')
     package.write('<?xml version="1.0" ?>\n')
-    package.write('<' + dws.xmlDbParser.tagDb + '>\n')
-    package.write(tab_stop(1) + '<' + dws.xmlDbParser.tagProject \
+    package.write('<' + dws.XMLDbParser.tagDb + '>\n')
+    package.write(tab_stop(1) + '<' + dws.XMLDbParser.tagProject \
                       + ' name="' + project.name + '">\n')
-    package.write(tab_stop(2) + '<' + dws.xmlDbParser.tagPackage + '>\n')
-    package.write(tab_stop(3) + '<' + dws.xmlDbParser.tagTag + '>' \
+    package.write(tab_stop(2) + '<' + dws.XMLDbParser.tagPackage + '>\n')
+    package.write(tab_stop(3) + '<' + dws.XMLDbParser.tagTag + '>' \
                       + dws.CONTEXT.host() \
-                      + '</' + dws.xmlDbParser.tagTag + '>\n')
-    package.write(tab_stop(3) + '<' + dws.xmlDbParser.tagFetch \
+                      + '</' + dws.XMLDbParser.tagTag + '>\n')
+    package.write(tab_stop(3) + '<' + dws.XMLDbParser.tagFetch \
                       + ' name="' + packageName + '">\n')
     package.write(tab_stop(4) + '<size>' + str(os.path.getsize(packageName)) \
                       + '</size>\n')
@@ -705,17 +705,17 @@ def build_package_spec(project,packageName):
     package.write(tab_stop(4) + '<md5>' + hashlib.md5(f.read()).hexdigest() \
                       + '</md5>\n')
     f.seek(0)
-    package.write(tab_stop(4) + '<' + dws.xmlDbParser.tagHash + '>' \
+    package.write(tab_stop(4) + '<' + dws.XMLDbParser.tagHash + '>' \
                       + hashlib.sha1(f.read()).hexdigest() \
-                      + '</' + dws.xmlDbParser.tagHash + '>\n')
+                      + '</' + dws.XMLDbParser.tagHash + '>\n')
     f.seek(0)
     package.write(tab_stop(4) + '<sha256>' + hashlib.sha256(f.read()).hexdigest() \
                       + '</sha256>\n')
     f.close()
-    package.write(tab_stop(3) + '</' + dws.xmlDbParser.tagFetch + '>\n')
-    package.write(tab_stop(2) + '</' + dws.xmlDbParser.tagPackage + '>\n')
-    package.write(tab_stop(1) + '</' + dws.xmlDbParser.tagProject + '>\n')
-    package.write('</' + dws.xmlDbParser.tagDb + '>\n')
+    package.write(tab_stop(3) + '</' + dws.XMLDbParser.tagFetch + '>\n')
+    package.write(tab_stop(2) + '</' + dws.XMLDbParser.tagPackage + '>\n')
+    package.write(tab_stop(1) + '</' + dws.XMLDbParser.tagProject + '>\n')
+    package.write('</' + dws.XMLDbParser.tagDb + '>\n')
     package.close()
 
 
