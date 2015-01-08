@@ -168,7 +168,7 @@ $(project)-$(version)::
 		$(srcDir)/$(projindex) > $@/$(projindex) ; \
 	fi
 	$(SED) -e 's,$$(shell dws context),$(dwsmk),' \
-	    -e 's,-include $$(buildTop)/share/dws/,-include share/dws/\1,' \
+	    -e 's,-include $$(buildTop)/share/dws/,-include share/dws/,' \
 	    -e 's,$$(srcTop)/drop,$$(srcTop)/$@,' \
 		$(srcDir)/Makefile > $@/Makefile.in
 	rm -f $@/Makefile
