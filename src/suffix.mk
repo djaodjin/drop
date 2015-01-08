@@ -187,21 +187,20 @@ $(project)-$(version)::
 		&& ./configure --prefix=${buildUsrLocalDir}
 	cd $(basename $(basename $(notdir $<))) && ${MAKE} install
 	$(installDirs) ${buildInstallDir}
-	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<))))
+	$(dbldpkg) $(subst $(project)-,,$(basename $(basename $(notdir $<))))
 
 %$(distExtFedora): %.tar.bz2 \
 		$(wildcard $(srcDir)/src/$(project)-*.patch)
 	rpmdev-setuptree -d
 	$(installFiles) $(filter %.tar.bz2 %.patch,$^) $(HOME)/rpmbuild/SOURCES
-	$(dbldpkg) --version=$(subst $(project)-,,$(basename $(basename $(notdir $<))))
+	$(dbldpkg) $(subst $(project)-,,$(basename $(basename $(notdir $<))))
 
 # Ubuntu can sometimes be annoying using '_' instead of '-' here and there.
 $(project)_$(version)$(distExtUbuntu): $(project)-$(version).tar.bz2
 	bzip2 -dc $< | gzip > $(shell echo $< | $(SED) -e 's,\([^-][^-]*\)-\(.*\).tar.bz2,\1_\2.orig.tar.gz,')
 	tar jxf $<
 	cd $(basename $(basename $(notdir $<))) \
-		&& $(dbldpkg) \
-		 --version=$(subst $(project)-,,$(basename $(basename $(notdir $<))))
+		&& $(dbldpkg) $(subst $(project)-,,$(basename $(basename $(notdir $<))))
 
 # Rules to build unit test logs
 # -----------------------------

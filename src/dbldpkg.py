@@ -512,7 +512,7 @@ make install DESTDIR=%{buildroot}
             if os.path.exists(postinst):
                 specfile.write('\n%%post -p sh /%s\n' % postinst)
     # '--clean'
-    rpmlog = dws.shellCommand(['rpmbuild', '-bb', specname],
+    rpmlog = dws.shell_command(['rpmbuild', '-bb', specname],
                               pat='Wrote: (.*)')
     genFiles = []
     for line in rpmlog:
@@ -650,7 +650,7 @@ DH_VERBOSE := 1
     #
     # Can only find example in man pages of debuild but cannot
     # find description of options: "-i -us -uc -b".
-    dws.shellCommand(['debuild', '-i', '-us', '-uc', '-b'])
+    dws.shell_command(['debuild', '-i', '-us', '-uc', '-b'])
     return '../' + project.name + '_' + packageVersion + distExtUbuntu
 
 
@@ -726,9 +726,8 @@ if __name__ == "__main__":
     try:
         import dws
     except:
-        dws = imp.load_source('dws',
-                              os.path.join(os.path.dirname(\
-                    os.path.realpath(sys.argv[0])),'dws'))
+        dws = imp.load_source('dws', os.path.join(os.path.dirname(
+            os.path.realpath(sys.argv[0])), 'dws'))
     parser = OptionParser(usage="%prog [options] <root> [<resources>]",
                           description=
 '''builds a distribution package''',
@@ -736,16 +735,14 @@ if __name__ == "__main__":
     root          the package root folder
     resources     the package resources folder
 ''',formatter=dws.CommandsFormatter())
-    parser.add_option('-v', '--version', dest='version', action='store',
-                      help='Set version of the package')
     parser.add_option('--help-book', dest='helpBook', action='store_true',
-                      help='Print help in docbook format')
+        help='Print help in docbook format')
     parser.add_option('--no-install-doc', dest='noInstallDoc',
-                      action='store_true',
-                      help='Do not execute "make install-doc"')
+        action='store_true',
+        help='Do not execute "make install-doc"')
     parser.add_option('--no-path-update', dest='noPathUpdate',
-                      action='store_true',
-                      help='Assumes all tools required by configure (dws, etc.) are already in PATH.')
+        action='store_true',
+        help='Assumes all tools required by configure (dws, etc.) are already in PATH.')
 
     options, args = parser.parse_args()
 
@@ -767,9 +764,9 @@ if __name__ == "__main__":
     handler = dws.Unserializer([ project_name ])
     index = dws.IndexProjects(dws.CONTEXT)
     index.parse(handler)
-    project = handler.firstProject
+    project = handler.first_project
     # Removes any leading directory name from the project name
     # else debuild is not very happy.
     project.name = os.path.basename(project.name)
 
-    build_package_spec(project, build_package(project, options.version))
+    build_package_spec(project, build_package(project, args[0]))
