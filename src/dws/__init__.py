@@ -59,6 +59,8 @@ import cStringIO
 ASK_PASS = ''
 # filename for context configuration
 CONTEXT_FILENAME = None
+# Extensions for more complex prerequisite setup
+CUSTOM_STEPS = None
 # When True, all commands invoked through shell_command() are printed
 # but not executed.
 DO_NOT_EXECUTE = False
@@ -400,20 +402,19 @@ class Context(object):
 
     def load_context(self, filename):
         site_top_found = False
-        config_file = open(filename)
-        line = config_file.readline()
-        while line != '':
-            look = re.match(r'(\S+)\s*=\s*(\S+)', line)
-            if look != None:
-                if look.group(1) == 'siteTop':
-                    site_top_found = True
-                if (look.group(1) in self.environ
-                    and isinstance(self.environ[look.group(1)], Variable)):
-                    self.environ[look.group(1)].value = look.group(2)
-                else:
-                    self.environ[look.group(1)] = look.group(2)
+        with open(filename) as config_file:
             line = config_file.readline()
-        config_file.close()
+            while line != '':
+                look = re.match(r'(\S+)\s*=\s*(\S+)', line)
+                if look != None:
+                    if look.group(1) == 'siteTop':
+                        site_top_found = True
+                    if (look.group(1) in self.environ
+                        and isinstance(self.environ[look.group(1)], Variable)):
+                        self.environ[look.group(1)].value = look.group(2)
+                    else:
+                        self.environ[look.group(1)] = look.group(2)
+                line = config_file.readline()
         return site_top_found
 
 
@@ -464,7 +465,7 @@ class Context(object):
         if os.path.exists(user_default_config):
             self.load_context(user_default_config)
         site_top_found = self.load_context(self.config_filename)
-        if not site_top_found:
+        if not site_top_found and not self.environ['siteTop'].value:
             # By default we set *siteTop* to be the directory
             # where the configuration file was found since basic paths
             # such as *buildTop* and *srcTop* defaults are based on it.
@@ -1432,8 +1433,10 @@ class Pathname(Variable):
             self.base = pairs['base']
 
     def configure(self, context):
-        '''Generate an interactive prompt to enter a workspace variable
-        *var* value and returns True if the variable value as been set.'''
+        """
+        Generate an interactive prompt to enter a workspace variable
+        value and returns True if the variable value as been set.
+        """
         if self.value != None:
             return False
         # compute the default leaf directory from the variable name
@@ -2079,12 +2082,13 @@ class RpmInstallStep(InstallStep):
                              priority=Step.install_native)
 
     def run(self, context):
-        # --nodeps because rpm looks stupid and can't figure out that
-        # the vcd package provides the libvcd.so required by the executable.
-        shell_command(
-            ['rpm', '-i', '--force', ' '.join(self.managed), '--nodeps'],
-                     admin=True)
-        self.updated = True
+        if self.managed:
+            # --nodeps because rpm looks stupid and can't figure out that
+            # the vcd package provides the libvcd.so required by the executable.
+            shell_command(
+                ['rpm', '-i', '--force', ' '.join(self.managed), '--nodeps'],
+                         admin=True)
+            self.updated = True
 
 
 class YumInstallStep(InstallStep):
@@ -2117,9 +2121,11 @@ class YumInstallStep(InstallStep):
     def run(self, context):
         # XXX Might not be the best place to do this,
         # yet CentOS does not include basic tools such as fail2ban.
-        if context.host() == 'CentOS':
+        if context.host() == 'CentOS' and not os.path.exists(
+            '/etc/yum.repos.d/epel.repo'):
             shell_command(['rpm', '-Uvh',
-'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'])
+'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
+            admin=True)
         cmdline = ['yum', '-y', 'install'] + self.managed
         log_info('update, then run: %s' % ' '.join(cmdline))
         shell_command(['yum', '-y', 'update'], admin=True)
@@ -3624,10 +3630,13 @@ nvm install %s
         validate_controls(
             BuildGenerator(['nvm'], [], force_update=True), dbindex)
         prev = os.getcwd()
-        os.chdir(os.path.join(context.value('buildTop'), 'bin'))
+        buildBinDir = os.path.join(context.value('buildTop'), 'bin')
+        if not os.path.exists(buildBinDir):
+            os.makedirs(buildBinDir)
+        os.chdir(buildBinDir)
         os.symlink('../v%s/bin/npm' % version, 'npm')
         os.symlink('../v%s/bin/node' % version, 'node')
-        os.chdir(os.path.join(context.value('binDir')))
+        os.chdir(context.value('binDir'))
         os.symlink(
             '%s/v%s/bin/npm' % (context.value('buildTop'), version), 'npm')
         os.symlink(
@@ -3851,7 +3860,7 @@ def fetch(context, filenames,
                                     context.value('siteTop')])
 
 
-def create_managed(project_name, versions, target):
+def create_managed(project_name, versions=None, target=None):
     '''Create a step that will install *project_name* through the local
     package manager.
     If the target is pure python, we will try pip before native package
@@ -4856,23 +4865,29 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
     global USE_DEFAULT_ANSWER
     USE_DEFAULT_ANSWER = True
     CONTEXT.from_remote_index(args[0])
-    if len(args) > 1:
-        site_top = os.path.abspath(args[1])
-    else:
-        site_top = os.path.join(os.getcwd(), CONTEXT.base('remoteIndex'))
-    CONTEXT.environ['siteTop'].value = site_top
+    # When CONTEXT.logDir is called before pub_build, the siteTop
+    # will be set already.
+    site_top = str(CONTEXT.environ['siteTop'])
+    if not site_top:
+        if len(args) > 1:
+            site_top = os.path.abspath(args[1])
+        else:
+            site_top = os.path.join(os.getcwd(), CONTEXT.base('remoteIndex'))
+        CONTEXT.environ['siteTop'].value = site_top
     if clean:
         # We don't want to remove the log we just created
         # so we buffer until it is safe to flush.
         global LOGGER_BUFFERING_COUNT
         LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT + 1
-    if len(args) > 2:
-        CONTEXT.environ['buildTop'].value = args[2]
-    else:
-        # Can't call *configure* before *locate*, otherwise config_filename
-        # is set to be inside the buildTop on the first save.
-        CONTEXT.environ['buildTop'].value = os.path.join(site_top, 'build')
     build_top = str(CONTEXT.environ['buildTop'])
+    if not build_top:
+        if len(args) > 2:
+            build_top = args[2]
+        else:
+            # Can't call *configure* before *locate*, otherwise config_filename
+            # is set to be inside the buildTop on the first save.
+            build_top = os.path.join(site_top, 'build')
+        CONTEXT.environ['buildTop'].value = build_top
     prevcwd = os.getcwd()
     if not os.path.exists(build_top):
         os.makedirs(build_top)
@@ -4924,8 +4939,9 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
     # graph might not reflect the latest changes in the repository server.
     INDEX.validate(True)
     INDEX.parse(rgen)
-    # note that *EXCLUDE_PATS* is global.
-    dgen = BuildGenerator(rgen.roots, [], EXCLUDE_PATS)
+    # note that *EXCLUDE_PATS* and *CUSTOM_STEPS* are global.
+    dgen = BuildGenerator(
+        rgen.roots, [], exclude_pats=EXCLUDE_PATS, custom_steps=CUSTOM_STEPS)
     CONTEXT.targets = ['install']
     # Set the buildstamp that will be use by all "install" commands.
     if not 'buildstamp' in CONTEXT.environ:
@@ -4945,11 +4961,13 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
                   CONTEXT.log_path(logstamp)])
     logging.getLogger('build').info(
         'build %s', str(UpdateStep.updated_sources))
-    look = re.match(r'.*(-.+-\d\d\d\d_\d\d_\d\d-\d\d\.log)', logstamp)
+    look = re.match(r'.*((-.+)?-\d\d\d\d_\d\d_\d\d-\d\d\.log)', logstamp)
     global LOG_PAT
     LOG_PAT = look.group(1)
     if len(ERRORS) > 0:
         raise Error("Found errors while making " + ' '.join(ERRORS))
+    return [setup for setup in dgen.topological()
+        if setup.__class__ in CUSTOM_STEPS]
 
 
 def pub_collect(args, output=None):
