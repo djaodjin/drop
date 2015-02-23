@@ -1095,6 +1095,10 @@ class DependencyGenerator(Unserializer):
                     for ordered_step in ordered[insert_point:]:
                         if ordered_step.priority > step.priority:
                             break
+                        if(hasattr(ordered_step, 'target')
+                           and hasattr(step, 'target')
+                           and str(ordered_step.target) > str(step.target)):
+                            break
                         insert_point = insert_point + 1
                     ordered.insert(insert_point, step)
                 else:
@@ -1704,11 +1708,13 @@ class Step(object):
 
     configure = 1
     install_native = 2
-    install_lang = 3
-    install = 4
-    update = 5
-    setup = 6
-    make = 7
+    install_gem = 3
+    install_npm = 4
+    install_pip = 5
+    install = 6
+    update = 8
+    setup = 9
+    make = 10
 
     def __init__(self, priority, project_name):
         self.project = project_name
@@ -1752,12 +1758,20 @@ class Step(object):
         # project is a name (unicode) here.
         return "%s:%s" % (self.project, self.__class__.__name__[:-4].lower())
 
+
 class TargetStep(Step):
 
     def __init__(self, prefix, project_name, target=None):
         self.target = target
         Step.__init__(self, prefix, project_name)
         self.name = self.__class__.genid(project_name, target)
+
+    @property
+    def title(self):
+        generic_title = super(TargetStep, self).title
+        if self.target:
+            return "%s:%s" % (self.target, generic_title)
+        return generic_title
 
 
 class ConfigureStep(TargetStep):
@@ -1915,7 +1929,7 @@ class GemInstallStep(InstallStep):
             and len(versions['includes']) > 0):
             install_name = '%s==%s' % (project_name, versions['includes'][0])
         InstallStep.__init__(self, project_name, [install_name],
-                             priority=Step.install_lang)
+                             priority=Step.install_gem)
 
     def collect(self, context):
         """Collect prerequisites from Gemfile"""
@@ -1996,7 +2010,7 @@ class NpmInstallStep(InstallStep):
 
     def __init__(self, project_name, target=None):
         InstallStep.__init__(self, project_name, [project_name],
-                             priority=Step.install_lang)
+                             priority=Step.install_npm)
 
     def _manager(self):
         # nodejs is not available as a package on Fedora 17 or rather,
@@ -2029,7 +2043,7 @@ class PipInstallStep(InstallStep):
             and len(versions['includes']) > 0):
             install_name = '%s==%s' % (project_name, versions['includes'][0])
         InstallStep.__init__(self, project_name, [install_name],
-                             priority=Step.install_lang)
+                             priority=Step.install_pip)
 
     def collect(self, context):
         """Collect prerequisites from requirements.txt"""
@@ -2247,9 +2261,11 @@ class SetupStep(TargetStep):
             self.versions = {'includes': [], 'excludes': []}
 
     def insert(self, setup):
-        '''We only add prerequisites from *dep* which are not already present
+        """
+        We only add prerequisites from *dep* which are not already present
         in *self*. This is important because *find_prerequisites* will
-        initialize tuples (name_pat,absolute_path).'''
+        initialize tuples (name_pat, absolute_path).
+        """
         files = {}
         for dirname in setup.files:
             if not dirname in self.files:
@@ -4494,8 +4510,12 @@ def ssh_tunnels(hostname, ports):
                             + hostname + " failed.")
 
 
-def validate_controls(dgen, dbindex,
-                      graph=False, priorities=[1, 2, 3, 4, 5, 6, 7]):
+def validate_controls(dgen, dbindex, graph=False,
+    priorities=[Step.configure, Step.install_native,
+                Step.install_gem, Step.install_npm,
+                Step.install_pip, Step.install,
+                Step.update, Step.setup,
+                Step.make]):
     '''Checkout source code files, install packages such that
     the projects specified in *repositories* can be built.
     *dbindex* is the project index that contains the dependency
@@ -4526,7 +4546,9 @@ def validate_controls(dgen, dbindex,
         glob = [first]
         while len(vertices) > 0:
             vertex = vertices.pop(0)
-            if vertex.__class__ != first.__class__:
+            if(vertex.__class__ != first.__class__
+               or (hasattr(vertex, 'target') and hasattr(first, 'target')
+                   and vertex.target != first.target)):
                 vertices.insert(0, vertex)
                 break
             if 'insert' in dir(first):
