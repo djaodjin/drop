@@ -3627,22 +3627,29 @@ nvm install %s
   </project>
 </projects>
 ''' % version)
-        validate_controls(
-            BuildGenerator(['nvm'], [], force_update=True), dbindex)
-        prev = os.getcwd()
-        buildBinDir = os.path.join(context.value('buildTop'), 'bin')
-        if not os.path.exists(buildBinDir):
-            os.makedirs(buildBinDir)
-        os.chdir(buildBinDir)
-        os.symlink('../v%s/bin/npm' % version, 'npm')
-        os.symlink('../v%s/bin/node' % version, 'node')
-        os.chdir(context.value('binDir'))
-        os.symlink(
-            '%s/v%s/bin/npm' % (context.value('buildTop'), version), 'npm')
-        os.symlink(
-            '%s/v%s/bin/node' % (context.value('buildTop'), version), 'node')
-        os.chdir(prev)
-    return 'npm'
+        executables, _, complete = find_bin(
+            [('node', None), ('npm', None)],
+            context.search_path('bin'), context.value('buildTop'))
+        if len(executables) == 0 or not executables[0][1]:
+            validate_controls(
+                BuildGenerator(['nvm'], [], force_update=True), dbindex)
+            prev = os.getcwd()
+            os.chdir(context.value('binDir'))
+            node = os.path.join(context.value('binDir'), 'node')
+            if not os.path.exists(node):
+                os.symlink('%s/v%s/bin/node' % (
+                    context.value('buildTop'), version), 'node')
+            npm = os.path.join(context.value('binDir'), 'npm')
+            if not os.path.exists(npm):
+                os.symlink('%s/v%s/bin/npm' % (
+                    context.value('buildTop'), version), 'npm')
+            os.chdir(prev)
+            executables, _, complete = find_bin(
+                [('node', None), ('npm', None)],
+                context.search_path('bin'), context.value('buildTop'))
+        for name, absolute_path in executables:
+            link_pat_path(name, absolute_path, 'bin')
+    return os.path.join(context.bin_build_dir(), 'npm')
 
 def find_pip(context):
     pip_package = None
@@ -4533,6 +4540,7 @@ def validate_controls(dgen, dbindex,
             for vertex in glob:
                 errcode = 0
                 elapsed = 0
+                prev_cwd = os.getcwd()
                 log_header(vertex.title)
                 start = datetime.datetime.now()
                 try:
@@ -4553,6 +4561,7 @@ def validate_controls(dgen, dbindex,
                     else:
                         log_error(str(err))
                 log_footer(vertex.title, elapsed, errcode)
+                os.chdir(prev_cwd)
 
     nb_updated_projects = len(UpdateStep.updated_sources)
     if nb_updated_projects > 0:
