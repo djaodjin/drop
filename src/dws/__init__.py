@@ -947,7 +947,7 @@ class DependencyGenerator(Unserializer):
             if not setup.name in self.vertices:
                 self.vertices[setup.name] = setup
             else:
-                self.vertices[setup.name].insert(setup)
+                self.vertices[setup.name].add_prerequisites(setup)
             targets += [self.vertices[setup.name]]
         return targets
 
@@ -1284,7 +1284,7 @@ class MakeDepGenerator(MakeGenerator):
             if not setup.name in self.vertices:
                 self.vertices[setup.name] = setup
             else:
-                setup = self.vertices[setup.name].insert(setup)
+                setup = self.vertices[setup.name].add_prerequisites(setup)
             targets += [self.vertices[setup.name]]
         return targets
 
@@ -2089,7 +2089,7 @@ class PipInstallStep(InstallStep):
 
 
 class RpmInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through rpm (Fedora).'''
+    ''' Install a prerequisite to a project through rpm (Redhat-based).'''
 
     def __init__(self, project_name, filenames, target=None):
         InstallStep.__init__(self, project_name, managed=filenames,
@@ -2106,7 +2106,7 @@ class RpmInstallStep(InstallStep):
 
 
 class YumInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through yum (Fedora).'''
+    ''' Install a prerequisite to a project through yum (Redhat-based).'''
 
     def __init__(self, project_name, target=None):
         managed = [project_name]
@@ -2260,7 +2260,7 @@ class SetupStep(TargetStep):
         else:
             self.versions = {'includes': [], 'excludes': []}
 
-    def insert(self, setup):
+    def add_prerequisites(self, setup):
         """
         We only add prerequisites from *dep* which are not already present
         in *self*. This is important because *find_prerequisites* will
@@ -3362,7 +3362,7 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
     # through /usr/lib on Ubuntu does not show any libraries ending with
     # a '_version' suffix so we will remove it from the regular expression.
     suffix = '(-.+)?(\\' + lib_static_suffix() \
-        + '|\\' + lib_dyn_suffix() + r'(\\.\S+)?)'
+        + '|\\' + lib_dyn_suffix() + r'(\.\d+)?)'
     if not variant and CONTEXT.host() in APT_DISTRIBS:
         # Ubuntu 12.04+: host libraries are not always installed
         # in /usr/lib. Sometimes they end-up in /usr/lib/x86_64-linux-gnu
@@ -4183,16 +4183,15 @@ def link_pat_path(name_pat, absolute_path, subdir, target=None):
     if target:
         subpath = os.path.join(target, subdir)
     if name_pat.endswith('.a') or name_pat.endswith('.so'):
-        name_pat, _ = os.path.splitext(name_pat)
-    if ext == lib_static_suffix():
-        name = 'lib' + name_pat + '.a'
-        link_name = os.path.join(CONTEXT.value('buildTop'), subpath, name)
-    elif ext == lib_dyn_suffix():
-        name = 'lib' + name_pat + '.so'
-        link_name = os.path.join(CONTEXT.value('buildTop'), subpath, name)
+        # static/dynamic was explicitly specified. We override ``ext``
+        # because it could have been previously computed as ``.so.X``.
+        name_pat, ext = os.path.splitext(name_pat)
+    if ext in ['.a', lib_static_suffix()]:
+        link_name = CONTEXT.obj_dir(os.path.join(subpath, 'lib%s.a' % name_pat))
+    elif ext in ['.so', lib_dyn_suffix()]:
+        link_name = CONTEXT.obj_dir(os.path.join(
+            subpath, 'lib%s.so' % name_pat))
     else:
-        # \todo if the dynamic lib suffix ends with .so.X we will end-up here.
-        # This is wrong since at that time we won't create a lib*name*.so link.
         link_name, suffix = link_build_name(name_pat, subdir, target)
         if absolute_path and len(suffix) > 0 and absolute_path.endswith(suffix):
             # Interestingly absolute_path[:-0] returns an empty string.
@@ -5034,6 +5033,7 @@ def pub_collect(args, output=None):
     # Create the project index file
     # and copy the packages in the distribution directory.
     extensions = {'Darwin': (r'\.dsx', r'\.dmg'),
+                  'CentOS': (r'\.spec', r'\.rpm'),
                   'Fedora': (r'\.spec', r'\.rpm'),
                   'Debian': (r'\.dsc', r'\.deb'),
                   'Ubuntu': (r'\.dsc', r'\.deb')}
