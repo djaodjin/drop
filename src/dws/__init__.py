@@ -2019,8 +2019,10 @@ class NpmInstallStep(InstallStep):
         return os.path.join(CONTEXT.value('buildTop'), 'bin', 'npm')
 
     def run(self, context):
-        shell_command([self._manager(), 'install',
-            '-g', '--prefix', context.value('installTop')] + self.managed)
+        shell_command([self._manager(), 'install', '-g',
+                '--cache', os.path.join(context.value('installTop'), '.npm'),
+                '--tmp', os.path.join(context.value('installTop'), 'tmp'),
+                '--prefix', context.value('installTop')] + self.managed)
         self.updated = True
 
     def info(self):
@@ -2071,7 +2073,8 @@ class PipInstallStep(InstallStep):
         admin = False
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
-        shell_command([pip, 'install'] + self.managed, admin=admin)
+        shell_command([pip, '--log-file', context.log_path('pip.log'),
+            'install'] + self.managed, admin=admin)
         self.updated = True
 
     def info(self):
@@ -3813,13 +3816,12 @@ def fetch(context, filenames,
             if name:
                 if name.startswith('http') or ':' in name:
                     remote_path = name
-                elif len(uri.path) > 0 and name.startswith(uri.path):
-                    remote_path = os.path.join(remote_site_top,
-                                    '.' + name.replace(uri.path, ''))
+                elif ':' in remote_site_top:
+                    remote_path = remote_site_top + name
                 elif name.startswith('/'):
-                    remote_path = '/.' + name
+                    remote_path = name
                 else:
-                    remote_path = os.path.join(remote_site_top, './' + name)
+                    remote_path = os.path.join(remote_site_top, name)
             pathnames[remote_path] = filenames[name]
 
         # Check the local cache
