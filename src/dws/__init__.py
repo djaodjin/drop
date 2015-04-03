@@ -2067,7 +2067,7 @@ class PipInstallStep(InstallStep):
         pip = find_pip(context)
         site_packages = None
         pip_version = subprocess.check_output([pip, '-V'])
-        look = re.match(r'pip [1-9\.]+ from (\S+)', pip_version)
+        look = re.match(r'pip [0-9\.]+ from (\S+)', pip_version)
         if look:
             site_packages = look.group(1)
         admin = False
