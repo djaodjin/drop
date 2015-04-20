@@ -4998,8 +4998,10 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
     LOG_PAT = look.group(1)
     if len(ERRORS) > 0:
         raise Error("Found errors while making " + ' '.join(ERRORS))
-    return [setup for setup in dgen.topological()
-        if setup.__class__ in CUSTOM_STEPS]
+    if CUSTOM_STEPS is not None:
+        return [setup for setup in dgen.topological()
+            if setup.__class__ in CUSTOM_STEPS]
+    return []
 
 
 def pub_collect(args, output=None):
