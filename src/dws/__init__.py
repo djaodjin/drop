@@ -4673,15 +4673,20 @@ def build_subcommands_parser(parser, module):
                 for arg in argspec.args[:flags - 1]:
                     parser.add_argument(arg)
                 parser.add_argument(argspec.args[flags - 1], nargs='*')
+            short_opts = set([])
             for idx, arg in enumerate(argspec.args[flags:]):
-                if isinstance(argspec.defaults[idx], list):
-                    parser.add_argument('-%s' % arg[0], '--%s' % arg,
-                                        action='append')
-                elif argspec.defaults[idx] is False:
-                    parser.add_argument('-%s' % arg[0], '--%s' % arg,
-                                        action='store_true')
+                short_opt = arg[0]
+                if not (arg.startswith('no') or (short_opt in short_opts)):
+                    opts = ['-%s' % short_opt, '--%s' % arg]
                 else:
-                    parser.add_argument('-%s' % arg[0], '--%s' % arg)
+                    opts = ['--%s' % arg]
+                short_opts |= set([short_opt])
+                if isinstance(argspec.defaults[idx], list):
+                    parser.add_argument(*opts, action='append')
+                elif argspec.defaults[idx] is False:
+                    parser.add_argument(*opts, action='store_true')
+                else:
+                    parser.add_argument(*opts)
 
 
 def filter_subcommand_args(func, options):
