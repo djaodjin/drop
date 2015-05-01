@@ -151,6 +151,7 @@ class Context(object):
     def __init__(self):
         # Two following variables are used by interactively change the make
         # command-line.
+        self.nonative = False
         self.tunnel_point = None
         self.targets = []
         self.overrides = []
@@ -496,10 +497,11 @@ class Context(object):
     def patch_dir(self, name):
         return os.path.join(self.value('patchTop'), name)
 
-    def from_remote_index(self, remote_path):
+    def from_remote_index(self, remote_path, nonative=False):
         '''We need to set the *remoteIndex* to a realpath when we are dealing
         with a local file else links could end-up generating a different prefix
         than *remoteSiteTop* for *remoteIndex*/*indexName*.'''
+        self.nonative = nonative
         if search_repo_pat(remote_path):
             remote_path = os.path.join(remote_path, self.indexName)
         # Set remoteIndex.value instead of remoteIndex.default because
@@ -1149,7 +1151,8 @@ class BuildGenerator(DependencyGenerator):
                 install_step = self.add_install(name, variant.target)
                 # package files won't install without prerequisites already
                 # on the local system.
-                install_step.prerequisites = targets + install_step.prerequisites
+                install_step.prerequisites = (targets
+                    + install_step.prerequisites)
         else:
             # We leave the native host package manager to deal with this one...
             self.packages |= set([name])
@@ -1220,7 +1223,8 @@ class MakeGenerator(DependencyGenerator):
                 install_step = self.add_install(name, variant.target)
                 # package files won't install without prerequisites already
                 # on the local system.
-                install_step.prerequisites = targets + install_step.prerequisites
+                install_step.prerequisites = (targets
+                    + install_step.prerequisites)
                 if not name in chosen:
                     self.packages |= set([name])
 
@@ -1249,7 +1253,8 @@ class MakeGenerator(DependencyGenerator):
                 install_step = self.add_install(name, variant.target)
                 # package files won't install without prerequisites already
                 # on the local system.
-                install_step.prerequisites = targets + install_step.prerequisites
+                install_step.prerequisites = (targets
+                    + install_step.prerequisites)
         return (need_prompt, targets)
 
     def topological(self):
@@ -1835,11 +1840,10 @@ class AptInstallStep(InstallStep):
         # in /etc afterwards anyway.
         # Emit only one shell command so that we can find out what the script
         # tried to do when we did not get priviledge access.
-        shell_command(['sh', '-c',
-                      '"/usr/bin/apt-get update'\
-' && DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install '
-                      + ' '.join(self.managed) + '"'],
-                     admin=True)
+        shell_command(['sh', '-c', '"/usr/bin/apt-get update'\
+' && DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install %s"'
+                       % ' '.join(self.managed)],
+                      admin=True, noexecute=context.nonative)
         self.updated = True
 
     def info(self):
@@ -1916,7 +1920,8 @@ class DpkgInstallStep(InstallStep):
                              priority=Step.install_native)
 
     def run(self, context):
-        shell_command(['dpkg', '-i', ' '.join(self.managed)], admin=True)
+        shell_command(['dpkg', '-i', ' '.join(self.managed)],
+            admin=True, noexecute=context.nonative)
         self.updated = True
 
 
@@ -1937,7 +1942,8 @@ class GemInstallStep(InstallStep):
 
     def run(self, context):
         shell_command(
-            [find_gem(context), 'install'] + self.managed, admin=True)
+            [find_gem(context), 'install'] + self.managed,
+            admin=True, noexecute=context.nonative)
         self.updated = True
 
     def info(self):
@@ -1991,7 +1997,7 @@ class MacPortInstallStep(InstallStep):
 
     def run(self, context):
         shell_command(['/opt/local/bin/port', 'install'] + self.managed,
-                     admin=True)
+            admin=True, noexecute=context.nonative)
         self.updated = True
 
     def info(self):
@@ -2104,7 +2110,7 @@ class RpmInstallStep(InstallStep):
             # the vcd package provides the libvcd.so required by the executable.
             shell_command(
                 ['rpm', '-i', '--force', ' '.join(self.managed), '--nodeps'],
-                         admin=True)
+                admin=True, noexecute=context.nonative)
             self.updated = True
 
 
@@ -2142,12 +2148,14 @@ class YumInstallStep(InstallStep):
             '/etc/yum.repos.d/epel.repo'):
             shell_command(['rpm', '-Uvh',
 'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
-            admin=True)
+            admin=True, noexecute=context.nonative)
         cmdline = ['yum', '-y', 'install'] + self.managed
         log_info('update, then run: %s' % ' '.join(cmdline))
-        shell_command(['yum', '-y', 'update'], admin=True)
-        filtered = shell_command(
-            cmdline, admin=True, pat='No package (.*) available')
+        shell_command(['yum', '-y', 'update'],
+            admin=True, noexecute=context.nonative)
+        filtered = shell_command(cmdline,
+            admin=True, noexecute=context.nonative,
+            pat='No package (.*) available')
         if len(filtered) > 0:
             look = re.match('No package (.*) available', filtered[0])
             if look:
@@ -4390,49 +4398,49 @@ def search_back_to_root(filename, root=os.sep):
     return dirname, os.path.join(cur_dir, filename)
 
 
-def shell_command(execute, admin=False, search_path=None, pat=None):
+def shell_command(execute, admin=False, search_path=None, pat=None,
+    noexecute=False):
     '''Execute a shell command and throws an exception when the command fails.
     sudo is used when *admin* is True.
     the text output is filtered and returned when pat exists.
     '''
-    euid = None
-    egid = None
     filtered_output = []
-    if admin:
-        if USER:
-            euid = os.geteuid()
-            os.seteuid(USER)
-        if GROUP:
-            egid = os.getegid()
-            os.setegid(GROUP)
-        else:
-            if False:
-                # \todo cannot do this simple check because of a shell variable
-                # setup before call to apt-get.
-                if not execute.startswith('/'):
-                    raise Error("admin command without a fully quaified path: "
-                        + execute)
-            # ex: su username -c 'sudo port install icu'
-            cmdline = ['/usr/bin/sudo']
-            if USE_DEFAULT_ANSWER:
-                # Error out if sudo prompts for a password because this should
-                # never happen in non-interactive mode.
-                if ASK_PASS:
-                    # XXX Workaround while sudo is broken
-                    # http://groups.google.com/group/comp.lang.python/\
-                    # browse_thread/thread/4c2bb14c12d31c29
-                    cmdline = ['SUDO_ASKPASS="' + ASK_PASS + '"'] \
-                        + cmdline + ['-A']
-                else:
-                    cmdline += ['-n']
-            cmdline += execute
+    if admin and not (USER or GROUP):
+        if False:
+            # \todo cannot do this simple check because of a shell variable
+            # setup before call to apt-get.
+            if not execute.startswith('/'):
+                raise Error("admin command without a fully quaified path: "
+                    + execute)
+        # ex: su username -c 'sudo port install icu'
+        cmdline = ['/usr/bin/sudo']
+        if USE_DEFAULT_ANSWER:
+            # Error out if sudo prompts for a password because this should
+            # never happen in non-interactive mode.
+            if ASK_PASS:
+                # XXX Workaround while sudo is broken
+                # http://groups.google.com/group/comp.lang.python/\
+                # browse_thread/thread/4c2bb14c12d31c29
+                cmdline = ['SUDO_ASKPASS="' + ASK_PASS + '"'] \
+                    + cmdline + ['-A']
+            else:
+                cmdline += ['-n']
+        cmdline += execute
     else:
         cmdline = execute
+    env = os.environ.copy()
+    if search_path:
+        env['PATH'] = ':'.join(search_path)
     log_info(' '.join(cmdline))
-    if not DO_NOT_EXECUTE:
-        env = os.environ.copy()
-        if search_path:
-            env['PATH'] = ':'.join(search_path)
+    if not (noexecute or DO_NOT_EXECUTE):
+        prev_euid = None
+        prev_egid = None
+        if admin and USER:
+            prev_euid = os.geteuid()
+            os.seteuid(USER)
+        if admin and GROUP:
+            prev_egid = os.getegid()
+            os.setegid(GROUP)
         cmd = subprocess.Popen(' '.join(cmdline),
                                shell=True,
                                env=env,
@@ -4446,11 +4454,10 @@ def shell_command(execute, admin=False, search_path=None, pat=None):
             log_info(line[:-1])
             line = cmd.stdout.readline()
         cmd.wait()
-        if admin:
-            if euid:
-                os.seteuid(euid)
-            if egid:
-                os.setegid(egid)
+        if prev_euid:
+            os.seteuid(prev_euid)
+        if prev_egid:
+            os.setegid(prev_egid)
         if cmd.returncode != 0:
             raise Error("unable to complete: " + ' '.join(cmdline) \
                             + '\n' + '\n'.join(filtered_output),
@@ -4866,14 +4873,15 @@ def log_info(message, *args, **kwargs):
                 LOGGER.info(message, *args, **kwargs)
 
 
-def pub_build(args, graph=False, clean=False, novirtualenv=False):
+def pub_build(args, graph=False, clean=False,
+              novirtualenv=False, nonative=False):
     '''remoteIndex [ siteTop [ buildTop ] ]
     This command executes a complete build cycle:
       - (optional) delete all files in *siteTop*,
          *buildTop* and *installTop*.
       - fetch the build dependency file *remoteIndex*
       - setup third-party prerequisites through
-        the local package manager.
+        the appropriate package manager.
       - update a local source tree from remote
         repositories
       - (optional) apply local patches
@@ -4893,10 +4901,12 @@ def pub_build(args, graph=False, clean=False, novirtualenv=False):
                    before executing a build command.
     --novirtualenv Install pure python packages in
                    the system paths.
+    --nonative     Do not attempt to install native packages
+                   (otherwise sudo permissions are required)
     '''
     global USE_DEFAULT_ANSWER
     USE_DEFAULT_ANSWER = True
-    CONTEXT.from_remote_index(args[0])
+    CONTEXT.from_remote_index(args[0], nonative=nonative)
     # When CONTEXT.logDir is called before pub_build, the siteTop
     # will be set already.
     site_top = str(CONTEXT.environ['siteTop'])
@@ -5789,8 +5799,7 @@ def main(args):
         parser = argparse.ArgumentParser(
             usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version '
             + str(__version__),
-            formatter_class=argparse.RawTextHelpFormatter,
-            epilog=epilog)
+            formatter_class=argparse.RawTextHelpFormatter, epilog=epilog)
         parser.add_argument('--version', action='version',
                             version='%(prog)s ' + str(__version__))
         parser.add_argument('--context', dest='context', action='store',
