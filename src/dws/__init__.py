@@ -942,10 +942,11 @@ class DependencyGenerator(Unserializer):
                 target_name = target
             cap = SetupStep.genid(dep.name)
             if cap in self.custom_steps:
-                setup = self.custom_steps[cap](dep.name, dep.files)
+                setup_class = self.custom_steps[cap]
             else:
-                setup = SetupStep(
-                    dep.name, dep.files, dep.versions, target_name)
+                setup_class = SetupStep
+            setup = setup_class(dep.name, dep.files,
+                versions=dep.versions, target=target_name)
             if not setup.name in self.vertices:
                 self.vertices[setup.name] = setup
             else:
