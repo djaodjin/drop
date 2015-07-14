@@ -1626,7 +1626,7 @@ class Dependency(object):
         self.name = name
         for key, val in pairs.iteritems():
             if key == 'excludes':
-                self.versions['excludes'] = eval(val)
+                self.versions['excludes'] = [val]
             elif key == 'includes':
                 self.versions['includes'] = [val]
             elif key == 'target':
