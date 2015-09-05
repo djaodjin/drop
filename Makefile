@@ -34,12 +34,10 @@
 	done ; \
 	echo $$config)
 
-srcDir        ?= .
+srcTop        ?= ..
 installTop    ?= $(VIRTUAL_ENV)
-binDir        ?= $(installTop)/bin
-shareDir      ?= $(installTop)/share
 
-include $(srcDir)/src/prefix.mk
+include $(srcTop)/drop/src/prefix.mk
 
 scripts := dbldpkg dlogfilt dregress dstamp dws dtimeout dservices
 manpages:= $(addsuffix .1,$(scripts))
