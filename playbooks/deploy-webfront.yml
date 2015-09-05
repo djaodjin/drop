@@ -1,0 +1,12 @@
+---
+# This playbook configures machines used for web session front-end
+
+- name: Configure machines machines used for web session front-end
+  hosts: security_group_castle_gate
+  gather_facts: False
+  sudo: yes
+  sudo_user: root
+
+  roles:
+    - warmup
+    - webfront

@@ -46,7 +46,7 @@ if os.path.exists(dwsDerivePath):
     import imp
     dws = imp.load_source('dws',dwsDerivePath)
 else:
-    import dws
+    import tero as dws
 
 doNotExecute = True
 verbose = False

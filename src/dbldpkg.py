@@ -724,7 +724,7 @@ if __name__ == "__main__":
     from optparse import OptionParser
 
     try:
-        import dws
+        import tero as dws
     except:
         dws = imp.load_source('dws', os.path.join(os.path.dirname(
             os.path.realpath(sys.argv[0])), 'dws'))

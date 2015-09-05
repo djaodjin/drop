@@ -95,7 +95,7 @@ if __name__ == '__main__':
             import imp
             dws = imp.load_source('dws',dwsDerivePath)
         else:
-            import dws
+            import tero as dws
         help = cStringIO.StringIO()
         parser.print_help(help)
         dws.helpBook(help)

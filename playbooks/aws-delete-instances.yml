@@ -1,0 +1,17 @@
+---
+# This playbook deletes all ec2 instances
+#
+# USE WITH CARE!
+
+- name: Delete devel EC2 instances
+  hosts: security_group_kitchen_door
+  connection: local
+  gather_facts: False
+  tasks:
+  - name: Terminate {{ec2_id}} instance in {{aws_region}}
+    local_action:
+        module: ec2
+        state: 'absent'
+        region: '{{aws_region}}'
+        instance_ids: '{{ec2_id}}'
+

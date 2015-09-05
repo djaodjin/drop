@@ -1,0 +1,17 @@
+# Upload dservices to the remote machine
+# XXX Couldn't get Ansible 'synchronize' module to work here ...
+
+- name: Upload dservices to the remote machine
+  sudo: no
+  copy: src=../src/tero dest=/tmp/profile-setup
+
+- name: Upload dservices to the remote machine
+  sudo: no
+  copy: src=../src/dservices.py dest=/tmp/profile-setup
+
+- name: Upload profiles to the remote machine
+  sudo: no
+  copy: src=../share dest=/tmp/profile-setup
+
+
+

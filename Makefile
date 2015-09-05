@@ -1,29 +1,28 @@
 # Copyright (c) 2015, DjaoDjin inc.
-#   All rights reserved.
+# All rights reserved.
 #
-#   Redistribution and use in source and binary forms, with or without
-#   modification, are permitted provided that the following conditions are met:
-#     * Redistributions of source code must retain the above copyright
-#       notice, this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#     * Neither the name of fortylines nor the
-#       names of its contributors may be used to endorse or promote products
-#       derived from this software without specific prior written permission.
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#   THIS SOFTWARE IS PROVIDED BY Fortylines LLC ''AS IS'' AND ANY
-#   EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-#   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-#   DISCLAIMED. IN NO EVENT SHALL Fortylines LLC BE LIABLE FOR ANY
-#   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-#   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-#   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-#   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-#  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-#   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-include $(shell \
+-include $(shell \
 	d=`pwd` ; \
 	config='dws.mk_not_found' ; \
 	while [ $$d != '/' ] ; do \
@@ -35,38 +34,38 @@ include $(shell \
 	done ; \
 	echo $$config)
 
-srcDir		:=	$(srcTop)/drop
+srcDir        ?= .
+installTop    ?= $(VIRTUAL_ENV)
+binDir        ?= $(installTop)/bin
+shareDir      ?= $(installTop)/share
 
 include $(srcDir)/src/prefix.mk
 
-docbook2man	:=	docbook-to-man
-
-scripts	:=	dbldpkg dlogfilt dregress dstamp dws dtimeout
-manpages:=	$(addsuffix .1,$(scripts))
-
-%.book: %
-	python $< --help-book > $@ || rm -f $@
-
-dropShareDir	:=	$(srcDir)/src
-
-include $(srcDir)/src/suffix.mk
-
-dws: dws/__init__.py
-	$(SED) -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
-	chmod 755 $@
+scripts := dbldpkg dlogfilt dregress dstamp dws dtimeout dservices
+manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \
 		$(srcDir)/src/suffix.mk \
 		$(srcDir)/src/configure.sh \
 		$(srcDir)/src/index.xsd
-	$(installDirs)  $(shareDir)/dws
+	$(installDirs) $(shareDir)/dws
 	$(installScripts) $(filter %.sh,$^) $(shareDir)/dws
 	$(installFiles) $(filter %.mk %.xsd,$^) $(shareDir)/dws
 
 install::
-	cd $(srcDir)/src && python setup.py --quiet build -b $(CURDIR)/build \
-            install --prefix=$(DESTDIR)$(PREFIX)
+	cd $(srcDir)/src && python setup.py --quiet build \
+		-b $(CURDIR)/build install --prefix=$(DESTDIR)$(PREFIX)
 
-all::
-	cd $(srcDir)/src && python setup.py --quiet build -b $(CURDIR)/build
+install:: $(wildcard $(srcDir)/share/tero/*.xml)
+	$(installDirs) $(shareDir)/tero
+	$(installFiles) $(filter %.xml, $^) $(shareDir)/tero
 
+doc:
+	$(installDirs) docs
+	cd $(srcDir) && sphinx-build -b html ./docs $(CURDIR)/docs
+
+dws: tero/__init__.py
+	$(SED) -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
+	chmod 755 $@
+
+include $(srcDir)/src/suffix.mk

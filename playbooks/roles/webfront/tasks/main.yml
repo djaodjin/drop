@@ -1,0 +1,5 @@
+---
+
+# Run dservices on remote machine
+
+- command: python dservices.py share/tero/webfront.xml chdir=/tmp/profile-setup

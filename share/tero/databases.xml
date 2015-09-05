@@ -1,0 +1,21 @@
+<?xml version="1.0" ?>
+<projects>
+  <project name="databases">
+    <title>Databases</title>
+    <description>
+Deploy and configure packages for running LDAP and SQL databases.
+    </description>
+    <maintainer>
+      <personname>Sebastien Mirolo</personname>
+      <email>smirolo@djaodjin.com</email>
+    </maintainer>
+    <package name="Fedora">
+     <dep name="postgresql-server">
+       <bin>postgres</bin>
+     </dep>
+     <dep name="postgresql">
+       <bin>psql</bin>
+     </dep>
+    </package>
+  </project>
+</projects>
