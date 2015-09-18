@@ -1,0 +1,15 @@
+---
+- name: Create 'castle-gate' role
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}castle-gate --assume-role-policy-document "file://assume-role-policy.json"
+
+- name: Create 'castle-gate' instance profile
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam create-instance-profile --instance-profile-name {{tag_prefix}}castle-gate-profile
+
+- name: Adding 'castle-gate' role to instance-profile
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam add-role-to-instance-profile --role-name {{tag_prefix}}castle-gate --instance-profile-name {{tag_prefix}}castle-gate-profile

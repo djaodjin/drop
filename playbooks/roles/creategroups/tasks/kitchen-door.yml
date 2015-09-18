@@ -1,0 +1,19 @@
+---
+# This tasks create a security group {{tag_prefix}}kitchen-door
+# 
+- name: Create 'kitchen-door' security group
+  local_action:
+    module: ec2_group
+    name: "{{tag_prefix}}kitchen-door"
+    description: "Monitoring services"
+    region: "{{aws_region}}"
+    rules:
+      - proto: tcp
+        type: ssh
+        from_port: 22
+        to_port: 22
+        cidr_ip: 0.0.0.0/0
+    rules_egress:
+      - proto: all
+        type: all
+        cidr_ip: 0.0.0.0/0

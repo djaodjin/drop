@@ -1,0 +1,7 @@
+---
+# This file just include a files of tasks for creation of each security group
+- include: kitchen-door.yml
+- include: castle-gate.yml
+- include: vault.yml
+- include: courtyard.yml
+- include: watch-tower.yml  

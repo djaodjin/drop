@@ -1,0 +1,48 @@
+---
+
+- name: Create 'watch-tower' security group
+  local_action:
+    module: ec2_group
+    name: "{{tag_prefix}}watch-tower"
+    description: "Email services"
+    region: "{{aws_region}}"
+    rules:
+      - proto: tcp
+        type: ssh
+        from_port: 25
+        to_port: 25
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        type: ssh
+        from_port: 22
+        to_port: 22
+        group_name: "{{tag_prefix}}kitchen-door"
+      - proto: tcp
+        type: ldap 
+        from_port: 636 
+        to_port: 636 
+        group_name: '{{tag_prefix}}castle-gate'
+      - proto: tcp 
+        type: ldap 
+        from_port: 636 
+        to_port: 636 
+        group_name: "{{tag_prefix}}kitchen-door"
+      - proto: tcp 
+        type: ldap 
+        from_port: 636 
+        to_port: 636 
+        group_name: "{{tag_prefix}}vault"
+      - proto: tcp 
+        type: ldap 
+        from_port: 636 
+        to_port: 636 
+        group_name: "{{tag_prefix}}courtyard"
+      - proto: tcp 
+        type: ldap 
+        from_port: 636 
+        to_port: 636 
+        group_name: "{{tag_prefix}}watch-tower"
+    rules_egress:
+      - proto: all
+        type: all
+        cidr_ip: 0.0.0.0/0

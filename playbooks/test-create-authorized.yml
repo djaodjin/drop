@@ -1,0 +1,12 @@
+---
+- name: Creating groups and roles
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  
+
+  roles:
+    - keyimport
+    - creategroups
+    - createiamroles
+
