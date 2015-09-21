@@ -33,8 +33,8 @@ from tero import (__version__, Error, log_info, pub_build, pub_make,
     IndexProjects, DerivedSetsGenerator, BuildGenerator, MakeGenerator,
     Context, Variable, Pathname, stampfile, create_index_pathname)
 import tero.setup # for global variables (postinst)
-from tero.setup import (setupTemplate, modifyIniConfig,
-stageFile, unifiedDiff, writeSettings, prettyPrint)
+from tero.setup import (modifyIniConfig, stageFile, unifiedDiff, writeSettings,
+    prettyPrint)
 
 
 def docModifs(routine, config_paths):

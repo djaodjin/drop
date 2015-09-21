@@ -147,7 +147,7 @@ class PostinstScript(object):
         self.scriptfile.write(' '.join(cmdline) + '\n')
 
 
-class setupTemplate(SetupStep):
+class SetupTemplate(SetupStep):
 
     '''Step responsible to configure part of the system (daemons, jobs,
     utilities) to provide a specifc service.'''
@@ -157,11 +157,11 @@ class setupTemplate(SetupStep):
         Daemons that need to stay alive to provide the service and that
         will need to be restarted when configuration files are modified.
         '''
-        super(setupTemplate, self).__init__(name, files, versions, target)
+        super(SetupTemplate, self).__init__(name, files, versions, target)
         self.daemons = []
 
     def run(self, context):
-        complete = super(setupTemplate, self).run(context)
+        complete = super(SetupTemplate, self).run(context)
         return complete
 
     def preinstall(self):
@@ -442,43 +442,45 @@ def stageDir(pathname, context):
 
 
 def stageFile(pathname, context):
-    '''Prepare a configuration file for modification. It involves making
+    """
+    Prepare a configuration file for modification. It involves making
     a copy of the previous version, then opening a temporary file for edition.
-    '''
+    """
     stage_user = context.value('admin')
     stage_group = context.value('admin')
-    newPathname = context.MOD_SYSCONFDIR + pathname
-    orgPathname = context.TPL_SYSCONFDIR + pathname
+    new_path = context.MOD_SYSCONFDIR + pathname
+    org_path = context.TPL_SYSCONFDIR + pathname
     log_info('stage %s\n  to %s\n  original at %s'
-                  % (pathname, newPathname, orgPathname))
-    if (not os.path.exists(os.path.dirname(newPathname))
-        and len(os.path.dirname(newPathname)) > 0):
-        os.makedirs(os.path.dirname(newPathname))
-    if not os.path.exists(orgPathname) and os.path.exists(pathname):
+                  % (pathname, new_path, org_path))
+    if not os.path.exists(org_path):
         # We copy the original configuration file into the local build
         # directory before modifying it.
         # Note that we only do that the first time through so unless
         # the original (cache) directory is deleted, we donot overwrite
         # the original original files when the script is run a second time.
-        if (not os.path.exists(os.path.dirname(orgPathname))
-            and len(os.path.dirname(orgPathname)) > 0):
-            os.makedirs(os.path.dirname(orgPathname))
-        # Fedora /etc/sshd_config is only accessible by root. We need
-        # sudo access to make a backup copy.
-        shell_command(['install', '-p',
-                              '-o', stage_user,
-                              '-g', stage_group,
-                              pathname, orgPathname], admin=True)
-    return orgPathname, newPathname
+        #
+        try:
+            shell_command([
+                'install', '-D', '-p', '-o', stage_user, '-g', stage_group,
+                pathname, org_path], admin=True)
+        except Error as err:
+            # We sometimes need sudo access to make backup copies of config
+            # files (even ones with no credentials). This is just a convoluted
+            # way to achieve the first copy before modification.
+            pass
+    if (not os.path.exists(os.path.dirname(new_path))
+        and len(os.path.dirname(new_path)) > 0):
+        os.makedirs(os.path.dirname(new_path))
+    return org_path, new_path
 
 
 def unifiedDiff(pathname):
     '''Return a list of lines which is the unified diff between an original
     configuration file and the modified version.
     '''
-    newPathname = CONTEXT.MOD_SYSCONFDIR + pathname
-    orgPathname = CONTEXT.TPL_SYSCONFDIR + pathname
-    cmdline = ' '.join(['diff', '-u', orgPathname, newPathname])
+    new_path = CONTEXT.MOD_SYSCONFDIR + pathname
+    org_path = CONTEXT.TPL_SYSCONFDIR + pathname
+    cmdline = ' '.join(['diff', '-u', org_path, new_path])
     cmd = subprocess.Popen(cmdline,
                            shell=True,
                            stdout=subprocess.PIPE,

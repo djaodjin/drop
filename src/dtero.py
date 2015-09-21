@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+#
 # Copyright (c) 2015, DjaoDjin inc.
 # All rights reserved.
 #
@@ -22,19 +24,8 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from distutils.core import setup
+if __name__ == '__main__':
+    import sys
+    from tero.driver import main
+    main(sys.argv, settings_path=None)
 
-import tero
-
-setup(name='drop',
-    version=tero.__version__,
-    author='DjaoDjin inc.',
-    author_email='support@djaodjin.com',
-    packages=['tero', 'tero.setup'],
-    url='https://github.com/djaodjin/drop/',
-    download_url='https://github.com/djaodjin/drop/tarball/%s' \
-        % tero.__version__,
-    license='BSD',
-    description='DjaoDjin workspace management',
-    long_description=open('../README.md').read(),
-)
