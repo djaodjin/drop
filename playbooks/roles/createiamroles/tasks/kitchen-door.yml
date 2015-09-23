@@ -2,14 +2,14 @@
 - name: Create 'kitchen-door' role
   local_action:
     module: command
-      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}kitchen-door --assume-role-policy-document "file://assume-role-policy.json"
+      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}{{kitchen_door_name}} --assume-role-policy-document "file://assume-role-policy.json"
 
 - name: Create 'Kitchen-door' instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam create-instance-profile --instance-profile-name {{tag_prefix}}kitchen-door-profile
+      aws --region {{aws_region}} iam create-instance-profile --instance-profile-name {{tag_prefix}}{{kitchen_door_name}}-profile
 
 - name: Adding 'kitchen-door' role to instance-profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam add-role-to-instance-profile --role-name {{tag_prefix}}kitchen-door --instance-profile-name {{tag_prefix}}kitchen-door-profile
+      aws --region {{aws_region}} iam add-role-to-instance-profile --role-name {{tag_prefix}}{{kitchen_door_name}} --instance-profile-name {{tag_prefix}}{{kitchen_door_name}}-profile

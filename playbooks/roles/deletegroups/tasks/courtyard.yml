@@ -2,7 +2,7 @@
 - name: Delete 'courtyard' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}courtyard"
+    name: "{{tag_prefix}}{{courtyard_name}}"
     description: "Transient workers"
     region: "{{aws_region}}"
     state: absent

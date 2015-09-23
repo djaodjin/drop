@@ -2,7 +2,7 @@
 - name: Delete 'vault' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}vault"
+    name: "{{tag_prefix}}{{vault_name}}"
     description: "Email services"
     region: "{{aws_region}}"
     state: absent

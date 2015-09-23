@@ -4,7 +4,7 @@
 - name: Create 'kitchen-door' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}kitchen-door"
+    name: "{{tag_prefix}}{{kitchen_door_name}}"
     description: "Monitoring services"
     region: "{{aws_region}}"
     rules:

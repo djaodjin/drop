@@ -2,14 +2,14 @@
 - name: Create 'vault' role
   local_action:
     module: command
-      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}vault --assume-role-policy-document "file://assume-role-policy.json"
+      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}{{vault_name}} --assume-role-policy-document "file://assume-role-policy.json"
 
 - name: Create 'vault' instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam create-instance-profile --instance-profile-name {{tag_prefix}}vault-profile
+      aws --region {{aws_region}} iam create-instance-profile --instance-profile-name {{tag_prefix}}{{vault_name}}-profile
 
 - name: Adding 'vault' role to instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam add-role-to-instance-profile --role-name {{tag_prefix}}vault --instance-profile-name {{tag_prefix}}vault-profile
+      aws --region {{aws_region}} iam add-role-to-instance-profile --role-name {{tag_prefix}}{{vault_name}} --instance-profile-name {{tag_prefix}}{{vault_name}}-profile

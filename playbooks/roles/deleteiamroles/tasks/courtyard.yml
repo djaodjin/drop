@@ -2,15 +2,15 @@
 - name: Remove 'courtyard' role from instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam remove-role-from-instance-profile --instance-profile-name {{tag_prefix}}courtyard-profile --role-name {{tag_prefix}}courtyard
+      aws --region {{aws_region}} iam remove-role-from-instance-profile --instance-profile-name {{tag_prefix}}courtyard-profile --role-name {{tag_prefix}}{{courtyard_name}}
 
 - name: Delete 'courtyard' role
   local_action:
     module: command
-      aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}courtyard
+      aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}{{courtyard_name}}
 
 - name: Delete 'courtyard' Instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}courtyard-profile
+      aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}{{courtyard_name}}-profile
 

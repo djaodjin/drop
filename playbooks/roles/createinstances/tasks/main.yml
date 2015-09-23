@@ -1,0 +1,5 @@
+---
+- include: castle-gate.yml
+- include: vault.yml
+- include: courtyard.yml
+- include: kitchen-door.yml

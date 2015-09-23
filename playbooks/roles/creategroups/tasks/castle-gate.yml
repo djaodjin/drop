@@ -3,7 +3,7 @@
 - name: Create 'castle-gate' security group
   local_action:
      module: ec2_group
-     name: "{{tag_prefix}}castle-gate"
+     name: "{{tag_prefix}}{{castle_gate_name}}"
      description: "Web facing services"
      region: "{{aws_region}}"
      rules:
@@ -21,7 +21,7 @@
          type: ssh
          from_port: 22
          to_port: 22
-         group_name: "{{tag_prefix}}kitchen-door"
+         group_name: "{{tag_prefix}}{{kitchen_door_name}}"
      rules_egress:
        - proto: all
          type: all
