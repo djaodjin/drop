@@ -2,4 +2,5 @@
 
 # Run dservices on remote machine
 
+- include: upload-dservices.yml
 - command: python dservices.py share/tero/databases.xml chdir=/tmp/profile-setup

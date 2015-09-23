@@ -2,11 +2,8 @@
 # This playbook configures machines used for databases
 
 - name: Configure machines used for databases
-  hosts: security_group_vault
+  hosts: databases
   gather_facts: False
-  sudo: yes
-  sudo_user: root
 
   roles:
-    - warmup
     - databases

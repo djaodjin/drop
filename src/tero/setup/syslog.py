@@ -22,19 +22,27 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from distutils.core import setup
+import os
 
-import tero
+from tero import setup
+from tero.setup import stageFile, postinst
 
-setup(name='drop',
-    version=tero.__version__,
-    author='DjaoDjin inc.',
-    author_email='support@djaodjin.com',
-    packages=['tero', 'tero.setup'],
-    url='https://github.com/djaodjin/drop/',
-    download_url='https://github.com/djaodjin/drop/tarball/%s' \
-        % tero.__version__,
-    license='BSD',
-    description='DjaoDjin workspace management',
-    long_description=open('../README.md').read(),
-)
+
+class syslog_ngSetup(setup.SetupTemplate):
+
+    def __init__(self, name, files, **kwargs):
+        super(syslog_ngSetup, self).__init__(name, files, **kwargs)
+        self.daemons = ['syslog-ng']
+
+    def run(self, context):
+        complete = super(syslog_ngSetup, self).run(context)
+        if not complete:
+            # As long as the default setup cannot find all prerequisite
+            # executable, libraries, etc. we cannot update configuration
+            # files here.
+            return complete
+
+        setup.postinst.shellCommand([
+            'systemctl', 'enable', 'syslog-ng.service'])
+
+        return complete

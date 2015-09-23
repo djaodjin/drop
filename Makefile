@@ -39,7 +39,7 @@ installTop    ?= $(VIRTUAL_ENV)
 
 include $(srcTop)/drop/src/prefix.mk
 
-scripts := dbldpkg dlogfilt dregress dstamp dws dtimeout dservices
+scripts := dbldpkg dlogfilt dregress dstamp dws dtimeout dservices dtero
 manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \
@@ -61,6 +61,10 @@ install:: $(wildcard $(srcDir)/share/tero/*.xml)
 doc:
 	$(installDirs) docs
 	cd $(srcDir) && sphinx-build -b html ./docs $(CURDIR)/docs
+
+dtero: dtero.py
+	sed -e "s,settings_path=None,settings_path='$(etcDir)/tero/config'," $< > $@
+	chmod 755 $@
 
 dws: tero/__init__.py
 	$(SED) -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)

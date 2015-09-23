@@ -699,6 +699,7 @@ class IndexProjects(object):
     def __init__(self, context, source=None):
         self.context = context
         self.parser = XMLDbParser(context)
+# XXX testing:        self.parser = YAMLikeParser(context)
         self.source = source
 
     def closure(self, dgen):
@@ -2701,6 +2702,68 @@ class Project(object):
         for prereq in self.prerequisites(tags):
             names += [prereq.name]
         return names
+
+class YAMLikeParser(object):
+    """
+    Parser for YAML-like files used by the ``dws`` script. Bare minimum
+    support for a subset of YAML. Nothing fancy.
+    """
+    def __init__(self, context):
+        self.context = context
+        self.handler = None
+        # stack used to reconstruct the tree.
+        self.nodes = []
+        self.text = ""
+
+    def parse(self, source, handler):
+        """
+        This is the public interface for one pass through the database
+        that generates callbacks on the handler interface.
+        """
+        self.handler = handler
+        print "XXX source: %s => %s" % (source, source.strip().find('\n'))
+        if source.strip().find('\n') >= 0:
+            input_file = cStringIO.StringIO(source)
+        else:
+            input_file = open(source)
+        for line in input_file.readlines():
+            print "%s" % line
+            look = re.match(
+                r'(?P<indent>\s*)(?P<bullet>-\s*)?(?P<key>\S+)\s*:\s*(?P<value>\S.*)?',
+                line)
+            if look:
+                key = look.group('key')
+                value = look.group('value')
+                indent_length = len(look.group('indent'))
+                if self.nodes and indent_length < self.nodes[len(self.nodes)-1]['indent']:
+                    while (len(self.nodes) > 0
+                           and indent_length < self.nodes[len(self.nodes)-1]['indent']):
+                        child = self.nodes.pop()
+                        parent = self.nodes[len(self.nodes)-1]['container']
+                        if isinstance(parent, dict):
+                            parent.update(child)
+                        elif isinstance(parent, list):
+                            parent += [child]
+                        else:
+                            raise ValueError()
+                if not self.nodes or indent_length > self.nodes[len(self.nodes)-1]['indent']:
+                    if look.group('bullet'):
+                        self.nodes += [{
+                            'indent': indent_length, 'container': []}]
+                    if key and value:
+                        self.nodes += [{
+                            'indent': indent_length, 'container': {key: value}}]
+                else:
+                    assert indent_length == self.nodes[len(self.nodes)-1]['indent']
+                    parent = self.nodes[len(self.nodes)-1]['container']
+                    if isinstance(parent, dict):
+                        parent.update({key: value})
+                    elif isinstance(parent, list):
+                        assert look.group('bullet')
+                        parent += [{key: value}]
+                    else:
+                        raise ValueError()
+        input_file.close()
 
 
 class XMLDbParser(xml.sax.ContentHandler):
@@ -5016,7 +5079,7 @@ def pub_build(args, graph=False, clean=False,
         raise Error("Found errors while making " + ' '.join(ERRORS))
     if CUSTOM_STEPS is not None:
         return [setup for setup in dgen.topological()
-            if setup.__class__ in CUSTOM_STEPS]
+            if setup.__class__ in CUSTOM_STEPS.values()]
     return []
 
 
