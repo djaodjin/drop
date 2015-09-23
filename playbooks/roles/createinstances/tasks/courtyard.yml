@@ -1,0 +1,17 @@
+---
+- name: Create worker EC2 instance
+  local_action:
+    module: ec2
+    key_name: "{{key_name}}"
+    group: "{{tag_prefix}}{{courtyard_name}}"
+    instance_type: "{{instance_type}}"
+    image: "{{ami_id}}"
+    region: "{{aws_region}}"
+    volumes:
+      - device_name: /dev/sda1
+        device_type: io1
+        volume_size: 8
+        delete_on_termination: true
+    wait: yes
+  register: workers_ec2
+- debug: msg="{{workers_ec2}}"

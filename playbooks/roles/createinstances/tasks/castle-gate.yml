@@ -1,0 +1,20 @@
+---
+- name: Create front-end web server EC2 instances
+  local_action:
+    module: ec2
+    key_name: "{{key_name}}"
+    group: "{{tag_prefix}}{{castle_gate_name}}"
+    instance_type: "{{instance_type}}"
+    image: "{{ami_id}}"
+    region: "{{aws_region}}"
+    volumes:
+      - device_name: /dev/sda1
+        device_type: gp2
+        volume_size: 8
+        delete_on_termination: true
+    wait: yes
+    instance_tags:
+      prefix: "{{ tag_prefix }}archi"
+  register: front_end_servers
+
+- debug: msg="{{front_end_servers}}"

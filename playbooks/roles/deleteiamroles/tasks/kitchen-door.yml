@@ -1,0 +1,16 @@
+---
+- name: Remove 'kitchen-door' role from instance profile
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam remove-role-from-instance-profile --instance-profile-name {{tag_prefix}}{{kitchen_door_name}}-profile --role-name {{tag_prefix}}{{kitchen_door_name}}
+
+- name: Delete 'kitchen-door' role
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}{{kitchen_door_name}}
+
+- name: Delete 'kitchen-door' Instance profile
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}{{kitchen_door_name}}-profile
+

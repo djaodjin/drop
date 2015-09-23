@@ -1,0 +1,8 @@
+---
+- name: Delete 'kitchen-entrance' security group
+  local_action:
+    module: ec2_group
+    name: "{{tag_prefix}}{{kitchen_door_name}}"
+    description: "Monitoring services"
+    region: "{{aws_region}}"
+    state: absent
