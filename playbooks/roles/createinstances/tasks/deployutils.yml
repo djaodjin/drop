@@ -1,0 +1,29 @@
+---
+# Creation of S3 bucket deployutils
+- name: Create deployutils S3 bucket
+  local_action:
+    module: s3
+    bucket: '{{tag_prefix}}deployutils'
+    mode: create
+    object: '/identities/dbs.internal/etc/pki/tls/certs'
+    region: '{{aws_region}}'
+
+# PUT crt file
+- name: Put cert file
+  local_action:
+    module: s3
+    bucket: '{{tag_prefix}}deployutils'
+    mode: put
+    region: '{{aws_region}}'
+    object: '/identities/dbs.internal/etc/pki/tls/certs/dbs.internal.crt'
+    src: '{{identities_dir}}/etc/pki/tls/certs/dbs.internal.crt'
+
+# PUT crt file
+- name: Put cert file
+  local_action:
+    module: s3
+    bucket: '{{tag_prefix}}deployutils'
+    mode: put
+    region: '{{aws_region}}'
+    object: '/identities/dbs.internal/etc/pki/tls/private/dbs.internal.key'
+    src: '{{identities_dir}}/etc/pki/tls/private/dbs.internal.key'
