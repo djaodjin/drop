@@ -108,16 +108,17 @@ def copy_setup(profiles, host, remote_path, settings=None):
                 # We are setting up a profile which is not in the default set,
                 # so let's copy it to the machine being setup as well.
                 shutil.copy(profile_abs_path, stage_profile_dir)
-
-    if settings:
-        # If there are any variables to set, let's instantiate the template
-        # with the appropriate values.
-        for profile_template in os.listdir(stage_profile_dir):
-            profile_path = os.path.join(stage_profile_dir, profile_template)
-            with open(profile_path, 'r') as profile_file:
-                template_text = profile_file.read()
-            with open(profile_path, 'w') as profile_file:
-                profile_file.write(template_text % settings)
+                if settings:
+                    # If there are any variables to set, let's instantiate
+                    # the template with the appropriate values.
+                    # XXX template vs. direct copy should be decided by
+                    # the profile file, not by the settings parameter.
+                    profile_path = os.path.join(stage_profile_dir,
+                        os.path.basename(profile_abs_path))
+                    with open(profile_path, 'r') as profile_file:
+                        template_text = profile_file.read()
+                    with open(profile_path, 'w') as profile_file:
+                        profile_file.write(template_text % settings)
 
     if fab.env.password:
         # We will need a sudo password to install packages and configure
@@ -159,7 +160,7 @@ def run_dservices(profile_names, host, remote_path, settings=None):
     # on the remote machine.
     defines = []
     if settings:
-        for key, value in settings:
+        for key, value in settings.iteritems():
             defines += ['-D"%s"="%s"' % (key, value)]
     profiles = []
     for profile_name in profile_names:
@@ -184,7 +185,9 @@ def pub_boot(vm_list, image=None, macaddr=None):
 
 
 def pub_deploy(hosts, profiles=[], identities=[], settings={}):
-    '''setup a machine with a specified set of profiles.'''
+    """
+    Setup a machine with a specified set of profiles.
+    """
     remote_paths = []
     for host_path in hosts:
         parts = host_path.split(':')

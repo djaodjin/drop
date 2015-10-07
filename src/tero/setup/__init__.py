@@ -227,8 +227,13 @@ def create_install_script(script_path, context=None):
             script_path, mod_sysconfdir=context.MOD_SYSCONFDIR)
 
 
-def next_token_in_config(remain, sep='='):
+def next_token_in_config(remain,
+                         sep='=', enter_block_sep='{', exit_block_sep='}'):
     sep = sep.strip()
+    if enter_block_sep and exit_block_sep:
+        seps = [sep, enter_block_sep, exit_block_sep]
+    else:
+        seps = [sep]
     token = None
     # Skip whitespaces
     idx = 0
@@ -236,7 +241,7 @@ def next_token_in_config(remain, sep='='):
         idx = idx + 1
     indent = remain[:idx]
     remain = remain[idx:]
-    if len(remain) > 0 and remain[0] in [sep, '{', '}']:
+    if len(remain) > 0 and remain[0] in seps:
         token = remain[0]
         remain = remain[1:]
     else:
@@ -273,7 +278,9 @@ def modifyIniConfig(pathname, settings={}, sep='=', context=None):
     newConfig.close()
 
 
-def modify_config(pathname, settings={}, sep=' = ', context=None):
+def modify_config(pathname, settings={},
+                  sep=' = ', enter_block_sep='{', exit_block_sep='}',
+                  one_per_line=False, context=None):
     # In the directory where the script is executed, the original configuration
     # file is saved into a "org" subdirectory while the updated configuration
     # is temporarly created into a "new" subdirectory before being copied
@@ -291,21 +298,30 @@ def modify_config(pathname, settings={}, sep=' = ', context=None):
         with open(org_config_path) as orgConfig:
             with open(new_config_path, 'w') as newConfig:
                 unchanged = modify_config_file(
-                    newConfig, orgConfig, settings, sep)
+                    newConfig, orgConfig, settings, sep=sep,
+                    enter_block_sep=enter_block_sep,
+                    exit_block_sep=exit_block_sep,
+                    one_per_line=one_per_line)
     else:
         logging.warning('%s does not exists.', org_config_path)
         # Add lines that did not previously appear in the configuration file.
         with open(new_config_path, 'w') as newConfig:
-            writeSettings(newConfig, settings, [], sep)
+            writeSettings(newConfig, settings, [],
+                sep=sep, one_per_line=one_per_line)
     return unchanged
 
 
-def modify_config_file(output_file, input_file, settings={}, sep=' = '):
+def modify_config_file(output_file, input_file, settings={},
+                       sep=' = ', enter_block_sep='{', exit_block_sep='}',
+                       one_per_line=False):
     prefix = ''
     unchanged = {}
     modified = []
     configStack = []
-
+    if enter_block_sep and exit_block_sep:
+        seps = [sep.strip(), enter_block_sep, exit_block_sep]
+    else:
+        seps = [sep.strip()]
     line = input_file.readline()
     while line != '':
         state = 0
@@ -320,7 +336,8 @@ def modify_config_file(output_file, input_file, settings={}, sep=' = '):
             commented = True
             indent = look.group('indent')
             remain = look.group('remain')
-        firstIndent, token, remain = next_token_in_config(remain, sep)
+        firstIndent, token, remain = next_token_in_config(remain, sep=sep,
+            enter_block_sep=enter_block_sep, exit_block_sep=exit_block_sep)
         if commented:
             firstIndent = indent
         if token and re.match(r'^\s*#?\s*\[\S+\]$', line):
@@ -331,15 +348,15 @@ def modify_config_file(output_file, input_file, settings={}, sep=' = '):
             enterBlock = True
             token = None
         while token != None:
-            if token == '{':
+            if enter_block_sep and token == enter_block_sep:
                 enterBlock = True
-            elif token == '}':
+            elif exit_block_sep and token == exit_block_sep:
                 exitBlock = True
             elif token == sep.strip():
                 value = ''
                 if state == 1:
                     state = 2
-            elif not token in [sep.strip(), '{', '}']:
+            elif not token in seps:
                 if state == 0:
                     name = token
                     state = 1
@@ -354,12 +371,13 @@ def modify_config_file(output_file, input_file, settings={}, sep=' = '):
                     # in mail configuration files.
                     if value:
                         value += indent + token
-            indent, token, remain = next_token_in_config(remain, sep)
+            indent, token, remain = next_token_in_config(remain, sep=sep,
+                enter_block_sep=enter_block_sep, exit_block_sep=exit_block_sep)
         if exitBlock:
             if not enterBlock:
                 # Handles "[key]" blocks is different from "{...}" blocks
                 writeSettings(output_file, settings, modified,
-                    sep, firstIndent + '  ', prefix)
+                    sep, firstIndent + '  ', prefix, one_per_line=one_per_line)
             if len(configStack) > 0:
                 prefix, settings, unchanged, present \
                         = configStack.pop()
@@ -396,6 +414,7 @@ def modify_config_file(output_file, input_file, settings={}, sep=' = '):
         elif not enterBlock and not exitBlock:
             if name and value:
                 if name in settings:
+                    print "XXX %s (%s) in %s" % (name, value, settings)
                     if prefix:
                         prefixname = '.'.join([prefix, name])
                     else:
@@ -405,10 +424,14 @@ def modify_config_file(output_file, input_file, settings={}, sep=' = '):
                         # that matches the setting of the variable
                         # and there is no way for the parser to know
                         # if it is an actual comment or commented-out code.
+                        print "XXX %s not in modified" % str(prefixname)
                         modified += [prefixname]
                         if value != settings[name]:
+                            print "XXX %s != settings[name]" % str(value)
                             if isinstance(settings[name], list):
-                                # because of apache NameVirtualHost
+                                # because of apache NameVirtualHost,
+                                # openldap olcAccess.
+                                print "XXX %s is a list" % str(settings[name])
                                 for s in settings[name]:
                                     output_file.write(firstIndent + name
                                       + sep + str(s) + '\n')
@@ -430,7 +453,8 @@ def modify_config_file(output_file, input_file, settings={}, sep=' = '):
                 output_file.write(line)
         line = input_file.readline()
     # Add lines that did not previously appear in the configuration file.
-    writeSettings(output_file, settings, modified, sep)
+    writeSettings(output_file, settings, modified,
+        sep=sep, one_per_line=one_per_line)
     return unchanged
 
 
@@ -492,8 +516,8 @@ def unifiedDiff(pathname):
     return lines
 
 
-def writeSettings(config, settings, outs=[], sep='=', indent='', prefix=None):
-    onePerLine = False
+def writeSettings(config, settings, outs=[], sep='=', indent='', prefix=None,
+                  one_per_line=False):
     keys = settings.keys()
     keys.sort()
     for name in keys:
@@ -505,10 +529,10 @@ def writeSettings(config, settings, outs=[], sep='=', indent='', prefix=None):
             if isinstance(settings[name], dict):
                 config.write(indent + name.replace('_', ' ') + ' {\n')
                 writeSettings(config, settings[name], outs,
-                    sep, indent + '\t', prefixname)
+                    sep, indent + '\t', prefixname, one_per_line=one_per_line)
                 config.write(indent + '}\n')
             elif isinstance(settings[name], list):
-                if onePerLine:
+                if one_per_line:
                     for s in settings[name]:
                         config.write(indent + name + sep + s + '\n')
                 else:

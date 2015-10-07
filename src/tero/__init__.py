@@ -49,7 +49,7 @@ invoking the script.
 
 __version__ = None
 
-import datetime, hashlib, inspect, logging, logging.config, re, optparse
+import datetime, hashlib, inspect, json, logging, logging.config, re, optparse
 import os, shutil, socket, stat, subprocess, sys, tempfile, urllib2, urlparse
 import xml.dom.minidom, xml.sax
 import cStringIO
@@ -4747,6 +4747,8 @@ def build_subcommands_parser(parser, module):
                 short_opts |= set([short_opt])
                 if isinstance(argspec.defaults[idx], list):
                     parser.add_argument(*opts, action='append')
+                elif isinstance(argspec.defaults[idx], dict):
+                    parser.add_argument(*opts, type=json.loads)
                 elif argspec.defaults[idx] is False:
                     parser.add_argument(*opts, action='store_true')
                 else:
