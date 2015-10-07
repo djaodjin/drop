@@ -13,10 +13,10 @@
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
     wait: yes
+    user_data: "{{ lookup('file', 'vault-cloud-init-script.sh') }}"
     instance_tags:
       prefix: "{{ tag_prefix }}archi"
   register: db_server
-- debug: msg=created {{db_server}}
 
 - name: Create Encrypted EBS volume
   local_action:

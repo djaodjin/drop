@@ -13,5 +13,8 @@
         volume_size: 8
         delete_on_termination: true
     wait: yes
+    user_data: "{{ lookup('file', 'kitchen-door-cloud-init-script.sh') }}"
+    instance_tags:
+      prefix: "{{ tag_prefix }}archi"
   register: devel_servers
 - debug: msg="{{devel_servers}}"

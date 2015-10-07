@@ -1,5 +1,6 @@
 ---
-- include: castle-gate.yml
+- include: deployutils.yml
 - include: vault.yml
+- include: castle-gate.yml
 - include: courtyard.yml
 - include: kitchen-door.yml

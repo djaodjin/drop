@@ -1,70 +1,12 @@
+
 ---
-# This playbook deletes the security groups and IAM roles in which
-# the services will be deployed.
-#
-# Requires definition of:
-#  - tag_prefix: prefix for a logical group, ex: dev-, stage-, etc.
-#  - aws_region: Region in which this local group is deployed.
-
-
-- name: Delete IAM roles and security groups
+- name: Deleting groups and roles
   hosts: localhost
   connection: local
   gather_facts: False
-  tasks:
-  - name: Delete 'kitchen-entrance' security group
-    local_action:
-      module: ec2_group
-      name: "{{tag_prefix}}kitchen-entrance"
-      description: "Monitoring services"
-      region: "{{aws_region}}"
-      state: absent
-  - name: Delete 'castle-gate' security group
-    local_action:
-      module: ec2_group
-      name: "{{tag_prefix}}castle-gate"
-      description: "Web facing services"
-      region: "{{aws_region}}"
-      state: absent
-  - name: Delete 'courtyard' security group
-    local_action:
-      module: ec2_group
-      name: "{{tag_prefix}}courtyard"
-      description: "Transient workers"
-      region: "{{aws_region}}"
-      state: absent
-  - name: Delete 'watch-tower' security group
-    local_action:
-      module: ec2_group
-      name: "{{tag_prefix}}watch-tower"
-      description: "Email services"
-      region: "{{aws_region}}"
-      state: absent
+  
 
-  # XXX There is no Ansible module for IAM yet so we resort to execute
-  #     the appropriate commands on the shell.
-  - name: Delete 'watch-tower' IAM role
-    local_action:
-      module: command
-        - aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}watch-tower-profile
-        - aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}watch-tower
-  - name: Delete 'courtyard' IAM role
-    local_action:
-      module: command
-        - aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}courtyard-profile
-        - aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}courtyard
-  - name: Delete 'vault' IAM role
-    local_action:
-      module: command
-        - aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}vault-profile
-        - aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}vault
-  - name: Delete 'castle-gate' IAM role
-    local_action:
-      module: command
-        - aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}castle-gate-profile
-        - aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}castle-gate
-  - name: Delete 'kitchen-door' IAM role
-    local_action:
-      module: command
-        - aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}kitchen-door-profile
-        - aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}kitchen-door
+  roles:
+    - deletegroups
+    - deleteiamroles
+
