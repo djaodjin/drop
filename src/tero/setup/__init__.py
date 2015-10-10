@@ -414,7 +414,6 @@ def modify_config_file(output_file, input_file, settings={},
         elif not enterBlock and not exitBlock:
             if name and value:
                 if name in settings:
-                    print "XXX %s (%s) in %s" % (name, value, settings)
                     if prefix:
                         prefixname = '.'.join([prefix, name])
                     else:
@@ -424,14 +423,11 @@ def modify_config_file(output_file, input_file, settings={},
                         # that matches the setting of the variable
                         # and there is no way for the parser to know
                         # if it is an actual comment or commented-out code.
-                        print "XXX %s not in modified" % str(prefixname)
                         modified += [prefixname]
                         if value != settings[name]:
-                            print "XXX %s != settings[name]" % str(value)
                             if isinstance(settings[name], list):
                                 # because of apache NameVirtualHost,
                                 # openldap olcAccess.
-                                print "XXX %s is a list" % str(settings[name])
                                 for s in settings[name]:
                                     output_file.write(firstIndent + name
                                       + sep + str(s) + '\n')

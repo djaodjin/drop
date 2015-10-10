@@ -103,6 +103,21 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
             })
         self._update_crc32(new_config_path)
 
+        schema_path = os.path.join(context.SYSCONFDIR,
+            'openldap', 'schema', 'openssh-ldap.ldif')
+        _, new_schema_path = stageFile(schema_path, context)
+        with open(new_schema_path, 'w') as schema_file:
+            schema_file.write("""dn: cn=openssh-openldap,cn=schema,cn=config
+objectClass: olcSchemaConfig
+cn: openssh-openldap
+olcAttributeTypes: {0}( 1.3.6.1.4.1.24552.500.1.1.1.13 NAME 'sshPublicKey' DES
+ C 'MANDATORY: OpenSSH Public key' EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.
+ 1.1466.115.121.1.40 )
+olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
+  'MANDATORY: OpenSSH LPK objectclass' SUP top AUXILIARY MUST ( sshPublicKey $
+  uid ) )
+""")
+
         postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
         postinst.shellCommand(['chgrp', 'ldap', os.path.dirname(priv_key)])
         postinst.shellCommand(['chmod', '640', priv_key])
@@ -115,7 +130,11 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
         postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
             '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
         postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
+            '/etc/openldap/schema/nis.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
             '/etc/openldap/schema/inetorgperson.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
+            '/etc/openldap/schema/openssh-ldap.ldif', '-D', '"cn=config"'])
 
         return complete
 

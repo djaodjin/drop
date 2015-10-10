@@ -23,7 +23,7 @@ Deploy and configure packages for running LDAP and SQL databases.
         <bin>sshd</bin>
         <extra name="/etc/ssh/sshd_config">
           <PermitRootLogin>no</PermitRootLogin>
-          <AuthorizedKeysFile>%h/.ssh/authorized_keys</AuthorizedKeysFile>
+          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
           <PasswordAuthentication>no</PasswordAuthentication>
           <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <PermitTunnel>no</PermitTunnel>
