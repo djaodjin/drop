@@ -14,7 +14,7 @@
         volume_size: 8
         delete_on_termination: true
     wait: yes
-    user_data: "{{ lookup('file', 'courtyard-cloud-init-script.sh') }}"
+    user_data: "{{ lookup('template', '../templates/courtyard-cloud-init-script.j2') }}"
     instance_tags:
       prefix: "{{ tag_prefix }}archi"
   register: workers_ec2

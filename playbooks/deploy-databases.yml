@@ -1,9 +1,0 @@
----
-# This playbook configures machines used for databases
-
-- name: Configure machines used for databases
-  hosts: databases
-  gather_facts: False
-
-  roles:
-    - databases
