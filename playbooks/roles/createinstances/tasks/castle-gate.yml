@@ -13,7 +13,7 @@
         volume_size: 8
         delete_on_termination: true
     wait: yes
-    user_data: "{{ lookup('file', 'castle-gate-cloud-init-script.sh') }}"
+    user_data: "{{ lookup('template', '../templates/castle-gate-cloud-init-script.j2') }}"
     instance_tags:
       prefix: "{{ tag_prefix }}archi"
   register: front_end_servers

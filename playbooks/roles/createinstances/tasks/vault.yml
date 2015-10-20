@@ -13,7 +13,7 @@
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
     wait: yes
-    user_data: "{{ lookup('file', 'vault-cloud-init-script.sh') }}"
+    user_data: "{{ lookup('template', '../templates/vault-cloud-init-script.j2') }}"
     instance_tags:
       prefix: "{{ tag_prefix }}archi"
   register: db_server

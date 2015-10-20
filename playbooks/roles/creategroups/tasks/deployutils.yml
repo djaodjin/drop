@@ -6,6 +6,7 @@
     bucket: '{{tag_prefix}}deployutils'
     mode: create
     object: '/identities/dbs.internal/etc/pki/tls/certs'
+#    profile: 'file://s3-policy.json'
     region: '{{aws_region}}'
 
 # PUT crt file
