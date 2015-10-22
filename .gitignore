@@ -1,2 +1,3 @@
 *~
 playbooks/group_vars/all
+playbooks/db-change-record-set.json
