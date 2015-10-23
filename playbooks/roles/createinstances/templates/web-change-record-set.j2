@@ -1,0 +1,18 @@
+{
+	"Comment" : "NewRecorSet",
+	"Changes" : [
+		{
+			"Action": "CREATE",
+			"ResourceRecordSet" : {
+				"Name": "web.djaodjin.internal",
+				"Type": "A",
+				"TTL" : 7200,
+				"ResourceRecords" : [
+					{
+						"Value" : "{{private_ip}}"
+					}
+				]
+			}
+		}
+	]
+}
