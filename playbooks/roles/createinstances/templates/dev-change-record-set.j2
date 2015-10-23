@@ -1,0 +1,18 @@
+{
+	"Comment" : "KitchenDoorDnsRegistration",
+	"Changes" : [
+		{
+			"Action": "CREATE",
+			"ResourceRecordSet" : {
+				"Name": "dev.djaodjin.internal",
+				"Type": "A",
+				"TTL" : 7200,
+				"ResourceRecords" : [
+					{
+						"Value" : "{{private_ip}}"
+					}
+				]
+			}
+		}
+	]
+}

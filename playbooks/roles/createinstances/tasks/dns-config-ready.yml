@@ -1,0 +1,11 @@
+---
+- name: Update vpc attribute dns-support
+  local_action:
+    module: command
+      aws ec2 modify-vpc-attribute --vpc-id "{{vpc_id}}" --enable-dns-support "{\"Value\":true}"
+
+
+- name: Update vpc attribute dns-hostname
+  local_action:
+    module: command
+      aws ec2 modify-vpc-attribute --vpc-id "{{vpc_id}}" --enable-dns-hostnames "{\"Value\":true}"
