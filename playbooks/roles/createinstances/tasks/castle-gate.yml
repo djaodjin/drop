@@ -18,4 +18,20 @@
       prefix: "{{ tag_prefix }}archi"
   register: front_end_servers
 
-- debug: msg="{{front_end_servers}}"
+- name: set private_ip 
+  set_fact: 
+    private_ip: "{{item.private_ip}}"
+  with_items: front_end_servers.instances
+
+
+- name: Update template file
+  local_action: 
+    module: copy
+    content: "{{ lookup('template', '../templates/web-change-record-set.j2')}}"
+    dest: ./web-change-record-set.json
+    
+
+- name: Registration of castle-gate(web) in DNS
+  local_action:
+    module: command
+      aws route53 change-resource-record-sets --hosted-zone-id "{{hosted_zone_id}}" --change-batch file://web-change-record-set.json
