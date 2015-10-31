@@ -1,0 +1,195 @@
+<?xml version="1.0" ?>
+<projects>
+  <project name="backstage">
+    <title>configuration of the development forum</title>
+    <description>
+Maintenance scripts for the team communication, build, and source repositories
+servers.
+    </description>
+    <maintainer>
+      <personname>Sebastien Mirolo</personname>
+      <email>smirolo@djaodjin.com</email>
+    </maintainer>
+    <package name="Fedora">
+      <!-- Access control -->
+     <dep name="iptables">
+       <bin>iptables</bin>
+       <port>22</port>
+     </dep>
+     <dep name="authconfig">
+       <bin>authconfig</bin>
+     </dep>
+     <dep name="sssd">
+       <bin>sssd</bin>
+     </dep>
+     <dep name="openssh-ldap">
+       <lib>.*/(openssh)/ssh-ldap-helper</lib>
+     </dep>
+     <dep name="openssh-server">
+       <bin>sshd</bin>
+       <extra name="/etc/ssh/sshd_config">
+         <PermitRootLogin>no</PermitRootLogin>
+         <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
+         <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
+         <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
+         <PasswordAuthentication>no</PasswordAuthentication>
+         <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+         <PermitTunnel>no</PermitTunnel>
+         <X11Forwarding>no</X11Forwarding>
+         <StrictModes>yes</StrictModes>
+         <IgnoreRhosts>yes</IgnoreRhosts>
+         <HostbasedAuthentication>no</HostbasedAuthentication>
+         <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+         <PubkeyAuthentication>yes</PubkeyAuthentication>
+       </extra>
+     </dep>
+     <dep name="openldap-clients">
+       <bin>ldapsearch</bin>
+     </dep>
+      <!-- monitoring -->
+      <dep name="syslog-ng">
+        <bin>syslog-ng</bin>
+      </dep>
+      <dep name="syslog-ng-libdbi">
+        <lib>dbi</lib>
+      </dep>
+      <dep name="fail2ban">
+        <bin>fail2ban-client</bin>
+      </dep>
+      <dep name="monit">
+        <bin>monit</bin>
+      </dep>
+      <!-- reverse proxy -->
+      <dep name="nginx">
+        <bin>nginx</bin>
+        <extra name="site-config/%(domainName)s.conf">
+          <domainName>%(domainName)s</domainName>
+          <port>80</port>
+        </extra>
+      </dep>
+      <!-- source repositories -->
+      <dep name="gitosis">
+        <bin>gitosis-init</bin>
+      </dep>
+      <dep name="semilla">
+        <bin>semilla</bin>
+        <cgi-bin>%(domainName)s</cgi-bin>
+        <extra name="/etc/semilla/%(domainName)s.conf"></extra>
+      </dep>
+      <!-- build bot -->
+      <dep name="jetty">
+        <bin>jetty</bin>
+      </dep>
+      <dep name="jenkins">
+        <share>.*/jenkins.war</share>
+      </dep>
+    </package>
+  </project>
+  <project name="openldap-clients">
+    <package name="Fedora">
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc22/x86_64/openldap-2.4.40-12.fc22.x86_64.rpm</url>
+        <sha1>7bc6011eb4e178da51d1a399f612b16355291248</sha1>
+      </fetch>
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc22/x86_64/openldap-clients-2.4.40-12.fc22.x86_64.rpm</url>
+        <sha1>216d8c9b36d6fea98717c6da29160cd4da4bcd34</sha1>
+      </fetch>
+    </package>
+  </project>
+  <project name="semilla">
+    <description>
+      CGI for presenting documents, source code and build results
+    </description>
+    <maintainer>
+      <personname>Sebastien Mirolo</personname>
+      <email>smirolo@fortylines.com</email>
+    </maintainer>
+    <package name="Fedora">
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/semilla-0.4-0.x86_64.rpm</url>
+        <size>1114016</size>
+        <sha1>ad0d14427b46942909eee7e77dad702ab6503851</sha1>
+      </fetch>
+      <dep name="git-all">
+        <bin>git</bin>
+      </dep>
+      <dep name="cryptopp">
+        <lib>cryptopp.so</lib>
+      </dep>
+      <dep name="boost">
+        <lib>boost_date_time.so</lib>
+        <lib>boost_filesystem.so</lib>
+        <lib>boost_program_options.so</lib>
+        <lib>boost_random.so</lib>
+        <lib>boost_regex.so</lib>
+        <lib>boost_system.so</lib>
+      </dep>
+      <dep name="poco-net">
+        <lib>PocoNet.so</lib>
+      </dep>
+    </package>
+  </project>
+  <project name="jenkins">
+    <description>
+      Jenkins build bot
+    </description>
+    <package name="Fedora">
+      <fetch>
+        <url>http://mirrors.jenkins-ci.org/war-stable/1.625.1/jenkins.war</url>
+        <size>62885582</size>
+        <sha1>c96d44d4914a154c562f21cd20abdd675ac7f5f3</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/ansicolor/0.4.2/ansicolor.hpi</url>
+        <size>129542</size>
+        <sha1>76fae28c2dbd3e7bdda0ad765ebfddee9585fe77</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/git/2.4.0/git.hpi</url>
+        <size>1386437</size>
+        <sha1>5f6fcb3b43f25aef661c78585f2e9796f18b0a4a</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/email-ext/2.40.5/email-ext.hpi</url>
+        <size>6227335</size>
+        <sha1>087f68a4849369741f4544715e78c05bfef4583d</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/violations/0.7.11/violations.hpi</url>
+        <size>990106</size>
+        <sha1>52e5f3b13e940c7998c4829c1f2713907657b2f8</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/violation-columns/1.6/violation-columns.hpi</url>
+        <size>3212582</size>
+        <sha1>f4b77a384885da77364482dadc686e057fc464b7</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/cobertura/1.9.7/cobertura.hpi</url>
+        <size>2380785</size>
+        <sha1>44dde3935b9af1e5d1015ce363227d4f03537dbf</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/project-stats-plugin/0.4/project-stats-plugin.hpi</url>
+        <size>18022</size>
+        <sha1>98891dd96b6c67f427d753e7fc93e88cb1ddec0b</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/regression-report-plugin/1.4/regression-report-plugin.hpi</url>
+        <size>17245</size>
+        <sha1>f48065a4b13b1bb09d2079f7f4d419fc63cd7102</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/dashboard-view/2.9.6/dashboard-view.hpi</url>
+        <size>600660</size>
+        <sha1>78ab362d84b35bd48d164a59b8629a16b05433d8</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/pam-auth/1.2/pam-auth.hpi</url>
+        <size>1027799</size>
+        <sha1>004672542d6277e98a428f37b8ed2f38e30ebc37</sha1>
+      </fetch>
+    </package>
+  </project>
+</projects>
