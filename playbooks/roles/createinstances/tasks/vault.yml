@@ -27,7 +27,7 @@
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
     volume_size: 20
-    volume_type: gp2
+    volume_type: standard
 
 - name: set private_ip 
   set_fact: 
