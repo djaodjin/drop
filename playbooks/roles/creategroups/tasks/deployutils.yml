@@ -17,7 +17,7 @@
     mode: put
     region: '{{aws_region}}'
     object: '/identities/dbs.internal/etc/pki/tls/certs/dbs.internal.crt'
-    src: '{{identities_dir}}/etc/pki/tls/certs/dbs.internal.crt'
+    src: '{{identities_dir}}/dbs.internal/etc/pki/tls/certs/dbs.internal.crt'
 
 # PUT crt file
 - name: Put cert file
@@ -27,4 +27,4 @@
     mode: put
     region: '{{aws_region}}'
     object: '/identities/dbs.internal/etc/pki/tls/private/dbs.internal.key'
-    src: '{{identities_dir}}/etc/pki/tls/private/dbs.internal.key'
+    src: '{{identities_dir}}/dbs.internal/etc/pki/tls/private/dbs.internal.key'

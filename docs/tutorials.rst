@@ -35,27 +35,53 @@ infrastructure such as AWS region, AWS credentials, etc.
 
     # Logical grouping
     tag_prefix: *All resource names will be prefixed by tag_prefix*
+    castle_gate_name: *Name of the security group for http front machines*
+    courtyard_name: *Name of the security group for the worker machines*
+    kitchen_door_name: *Name of the security group for backstage machines*
+    vault_name: *Name of the security group for the databases machines*
+    watch_tower_name: *Name of the security group for the smtp front machines*
 
     # Directories on local machine
     identities_dir: *Where keys and certificates could be found*
+
+    # URLs to fetch code repositories
+    remote_src_top: *Root of where git repositories are found*
 
     $ cat $VIRTUAL_ENV/etc/ansible/hosts
     [local]
     localhost ansible_python_interpreter=*VIRTUAL_ENV*/bin/python
 
+Here are the identities file we need to deploy to the instance profiles
+
+    *identities_dir*/dbs.internal/
+        etc/pki/tls/certs/dbs.internal.crt
+        etc/pki/tls/private/dbs.internal.key
+    *identities_dir*/web.internal/
+        etc/pki/tls/certs/dbs.internal.crt
+        etc/pki/tls/certs/*example.com*.crt
+        etc/pki/tls/certs/*wildcard-example.com*.crt
+        etc/pki/tls/private/*example.com*.key
+        etc/pki/tls/certs/*wildcard-example.com*.key
+
+In development, we will generate throw away, self-signed, certificates
+for all identities:
+
+    $ openssl req -new -sha256 -newkey rsa:2048 -nodes \
+        -keyout *example.com*.key -out *example.com*.csr
+    $ openssl x509 -req -days 365 -in *example.com*.csr \
+        -signkey *example.com*.key -out *example.com*.crt
+
 It is now time to run the playbooks! Our playbooks are organized
 in `provisioning, deploying and decommisioning groups<https://djaodjin.com/blog/organizing-ansible-playbooks.blog>`_.
 We run them in order:
 
-    # Provisioning
+    # Provisioning the S3 bucket, EC2 security groups and IAM roles
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-authorized.yml
+
+    # Deploying EC2 instances
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-instances.yml
-
-    # Deploying
-    $ ansible-playbook -i ../vendor/ec2.py deploy-kitchen-door.yml
-    $ ansible-playbook -i ../vendor/ec2.py deploy-watch-tower.yml
 
     # Decommisioning
     $ ansible-playbook -i ../vendor/ec2.py aws-delete-instances.yml
