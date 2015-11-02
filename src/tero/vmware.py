@@ -185,7 +185,10 @@ def duplicate(src_name, dest, vm_mac=None):
         os.chdir(dest)
         # Base and target have different names, we need to do some magic here.
         for pathname in os.listdir('.'):
-            if pathname.endswith('.vmx'):
+            if pathname.endswith('.log'):
+                # Otherwise the IP address from the base image is cached.
+                os.remove(pathname)
+            elif pathname.endswith('.vmx'):
                 os.chmod(pathname, 0755)
             elif (pathname.startswith(src_name + '-s')
                   or pathname.endswith('.nvram')
@@ -195,7 +198,6 @@ def duplicate(src_name, dest, vm_mac=None):
                   or pathname.endswith('.vmxf')
                   or pathname.endswith('.plist')):
                 os.chmod(pathname, 0644)
-            #chmod 644 *.log
             if  src_name != dest_name:
                 if (pathname == src_name + '.vmdk'
                     or pathname.endswith('.vmx')
