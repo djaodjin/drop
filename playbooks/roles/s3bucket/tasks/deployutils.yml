@@ -20,10 +20,10 @@
 - name: Put cert file
   local_action:
     module: command
-      aws s3api put-object --bucket "{{tag_prefix}}deployutils" --key 'identities/dbs.internal/etc/pki/tls/certs/dbs.internal.crt' --body '{{identities_dir}}/etc/pki/tls/certs/dbs.internal.crt' --server-side-encryption "AES256"
+      aws s3api put-object --bucket "{{tag_prefix}}deployutils" --key 'identities/dbs.internal/etc/pki/tls/certs/dbs.internal.crt' --body '{{identities_dir}}/dbs.internal/etc/pki/tls/certs/dbs.internal.crt' --server-side-encryption "AES256"
 
 # PUT crt file
 - name: Put private cert file
   local_action:
     module: command
-      aws s3api put-object --bucket "{{tag_prefix}}deployutils" --key 'identities/dbs.internal/etc/pki/tls/private/dbs.internal.key' --body '{{identities_dir}}/etc/pki/tls/private/dbs.internal.key' --server-side-encryption "AES256"
+      aws s3api put-object --bucket "{{tag_prefix}}deployutils" --key 'identities/dbs.internal/etc/pki/tls/private/dbs.internal.key' --body '{{identities_dir}}/dbs.internal/etc/pki/tls/private/dbs.internal.key' --server-side-encryption "AES256"

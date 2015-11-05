@@ -4,6 +4,7 @@
   local_action:
     module: ec2_group
     name: "{{tag_prefix}}{{watch_tower_name}}"
+    vpc_id: "{{vpc_id}}"
     description: "Email services"
     region: "{{aws_region}}"
     rules:
@@ -42,7 +43,6 @@
         from_port: 636 
         to_port: 636 
         group_name: "{{tag_prefix}}{{watch_tower_name}}"
-    rules_egress:
       - proto: all
         type: all
         cidr_ip: 0.0.0.0/0
