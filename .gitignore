@@ -1,3 +1,4 @@
 *~
 playbooks/group_vars/all
 playbooks/db-change-record-set.json
+playbooks/s3-policy.json

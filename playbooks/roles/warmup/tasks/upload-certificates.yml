@@ -1,5 +1,0 @@
-# Upload certificate used to start a TLS connection to the LDAP server
-
-- name: Upload LDAP certificate to the remote machine
-  sudo: yes
-  copy: src={{identities_dir}}/ldap.crt dest=/etc/pki/tls/certs/ldap.crt

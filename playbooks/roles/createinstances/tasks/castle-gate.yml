@@ -9,7 +9,7 @@
     region: "{{aws_region}}"
     volumes:
       - device_name: /dev/sda1
-        device_type: gp2
+        device_type: standard
         volume_size: 8
         delete_on_termination: true
     wait: yes
