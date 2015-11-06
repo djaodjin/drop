@@ -9,7 +9,8 @@
     region: "{{aws_region}}"
     volumes:
       - device_name: /dev/sda1
-        device_type: io1
+#        device_type: io1
+        device_type: standard
         iops: 100
         volume_size: 8
         delete_on_termination: true
