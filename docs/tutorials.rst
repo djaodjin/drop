@@ -6,7 +6,7 @@ First we must install the minimal prerequisites
     $ virtualenv deploy
     $ source deploy/bin/activate
     $ pip install awscli boto ansible
-    Successfully installed ... awscli-1.8.2 boto-2.38.0 ansible-1.9.3 ...
+    Successfully installed ... awscli-1.8.2 boto-2.38.0 ansible-1.9.4 ...
     # We also need some of the extra modules (ex: cloudtrail)
     $ git clone https://github.com/ansible/ansible-modules-extras.git
     $ cp -r ansible-modules-extras/cloud/amazon \
@@ -25,6 +25,7 @@ infrastructure such as AWS region, AWS credentials, etc.
     $ mkdir -p group_vars
     $ cat group_vars/all
     # Variables to connect to AWS
+    aws_account: *AWS accountID (used in S3 bucket policies)*
     aws_region: *AWS region where resources are allocated*
 
     # Variables to create EC2 instances

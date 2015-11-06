@@ -1,6 +1,6 @@
 ---
 - include: kitchen-door.yml
 - include: castle-gate.yml
-- include: vault.yml
 - include: courtyard.yml
 - include: watch-tower.yml
+- include: vault.yml

@@ -17,7 +17,27 @@
          from_port: 5432
          to_port: 5432
          group_name: "{{tag_prefix}}{{castle_gate_name}}"
+       - proto: tcp
+         type: ldap
+         from_port: 636
+         to_port: 636
+         group_name: '{{tag_prefix}}{{castle_gate_name}}'
+       - proto: tcp
+         type: ldap
+         from_port: 636
+         to_port: 636
+         group_name: "{{tag_prefix}}{{kitchen_door_name}}"
+       - proto: tcp
+         type: ldap
+         from_port: 636
+         to_port: 636
+         group_name: "{{tag_prefix}}{{courtyard_name}}"
+       - proto: tcp
+         type: ldap
+         from_port: 636
+         to_port: 636
+         group_name: "{{tag_prefix}}{{watch_tower_name}}"
+     rules_egress:
        - proto: all
          type: all
          cidr_ip: 0.0.0.0/0
-

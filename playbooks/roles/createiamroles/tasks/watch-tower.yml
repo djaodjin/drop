@@ -2,7 +2,7 @@
 - name: Create 'watch-tower' role
   local_action:
     module: command
-      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}{{watch_tower_name}} --assume-role-policy-document "file://assume-role-policy.json"
+      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}{{watch_tower_name}} --assume-role-policy-document "file://roles/createiamroles/files/assume-role-policy.json"
 
 - name: Create 'watch-tower' instance profile
   local_action:

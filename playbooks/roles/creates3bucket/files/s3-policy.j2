@@ -25,11 +25,7 @@
          "Effect":"Deny",
          "Principal":{
            "AWS" : [
-              "arn:aws:iam::{{aws_account}}:role/{{tag_prefix}}{{castle_gate_name}}",
-              "arn:aws:iam::{{aws_account}}:role/{{tag_prefix}}{{vault_name}}",
-              "arn:aws:iam::{{aws_account}}:role/{{tag_prefix}}{{courtyard_name}}",
-              "arn:aws:iam::{{aws_account}}:role/{{tag_prefix}}{{kitchen_door_name}}",
-              "arn:aws:iam::{{aws_account}}:role/{{tag_prefix}}{{watch_tower_name}}"
+              "arn:aws:iam::{{aws_account}}:user/{{deployuser}}"
            ]
          },
          "Action":"s3:PutObject",
