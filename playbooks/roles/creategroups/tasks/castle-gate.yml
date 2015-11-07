@@ -4,6 +4,7 @@
   local_action:
      module: ec2_group
      name: "{{tag_prefix}}{{castle_gate_name}}"
+     vpc_id: "{{vpc_id}}"
      description: "Web facing services"
      region: "{{aws_region}}"
      rules:
@@ -22,7 +23,6 @@
          from_port: 22
          to_port: 22
          group_name: "{{tag_prefix}}{{kitchen_door_name}}"
-     rules_egress:
        - proto: all
          type: all
          cidr_ip: 0.0.0.0/0
