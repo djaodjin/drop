@@ -23,7 +23,6 @@
          from_port: 22
          to_port: 22
          group_name: "{{tag_prefix}}{{kitchen_door_name}}"
-     rules_egress:
        - proto: all
          type: all
          cidr_ip: 0.0.0.0/0
