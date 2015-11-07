@@ -15,23 +15,19 @@
     wait: yes
     user_data: "{{ lookup('template', '../templates/castle-gate-cloud-init-script.j2') }}"
     instance_tags:
-      prefix: "{{ tag_prefix }}archi"
-  register: front_end_servers
+      prefix: "{{tag_prefix}}archi"
+      profile: "web"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "web"
+    exact_count: 1
+  register: web_servers
 
-- name: set private_ip 
-  set_fact: 
-    private_ip: "{{item.private_ip}}"
-  with_items: front_end_servers.instances
-
-
-- name: Update template file
-  local_action: 
-    module: copy
-    content: "{{ lookup('template', '../templates/web-change-record-set.j2')}}"
-    dest: ./web-change-record-set.json
-    
-
-- name: Registration of castle-gate(web) in DNS
-  local_action:
-    module: command
-      aws route53 change-resource-record-sets --hosted-zone-id "{{hosted_zone_id}}" --change-batch file://web-change-record-set.json
+- route53:
+    command: create
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "web.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{web_servers.instances[0].private_ip}}"
+    overwrite: yes

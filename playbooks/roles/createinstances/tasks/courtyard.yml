@@ -7,33 +7,13 @@
     instance_type: "{{instance_type}}"
     image: "{{ami_id}}"
     region: "{{aws_region}}"
-    volumes:
-      - device_name: /dev/sda1
-#        device_type: io1
-        device_type: standard
-        iops: 100
-        volume_size: 8
-        delete_on_termination: true
     wait: yes
     user_data: "{{ lookup('template', '../templates/courtyard-cloud-init-script.j2') }}"
     instance_tags:
-      prefix: "{{ tag_prefix }}archi"
+      prefix: "{{tag_prefix}}archi"
+      profile: "worker"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "worker"
+    exact_count: 1
   register: workers
-
-- name: set private_ip 
-  set_fact: 
-    private_ip: "{{item.private_ip}}"
-  with_items: workers.instances
-
-
-- name: Update template file
-  local_action: 
-    module: copy
-    content: "{{ lookup('template', '../templates/worker-change-record-set.j2')}}"
-    dest: ./worker-change-record-set.json
-    
-
-- name: Registration of courtyard in DNS
-  local_action:
-    module: command
-      aws route53 change-resource-record-sets --hosted-zone-id "{{hosted_zone_id}}" --change-batch file://worker-change-record-set.json

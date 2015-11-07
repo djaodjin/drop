@@ -15,23 +15,19 @@
     wait: yes
     user_data: "{{ lookup('template', '../templates/kitchen-door-cloud-init-script.j2') }}"
     instance_tags:
-      prefix: "{{ tag_prefix }}archi"
-  register: devel_servers
+      prefix: "{{tag_prefix}}archi"
+      profile: "dev"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "dev"
+    exact_count: 1
+  register: dev_servers
 
-- name: set private_ip 
-  set_fact: 
-    private_ip: "{{item.private_ip}}"
-  with_items: devel_servers.instances
-
-
-- name: Update template file
-  local_action: 
-    module: copy
-    content: "{{ lookup('template', '../templates/dev-change-record-set.j2')}}"
-    dest: ./dev-change-record-set.json
-    
-
-- name: Registration of kitchen-door in DNS
-  local_action:
-    module: command
-      aws route53 change-resource-record-sets --hosted-zone-id "{{hosted_zone_id}}" --change-batch file://dev-change-record-set.json
+- route53:
+    command: create
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "dev.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{dev_servers.instances[0].private_ip}}"
+    overwrite: yes

@@ -1,15 +1,34 @@
 ---
-- name: Get instance id
-  local_action:
-    module: shell /python/ansible/bin/list_instances -r ap-southeast-2 -H ID,T:Name -t | grep Front | awk '{print $1}'
-    register: instance_id
 
+# XXX We need a ``value`` parameter which will require us
+# to get the dynamic record.
 
-- name: Terminate {{ec2_id}} instance in {{aws_region}}
+#- route53:
+#    command: delete
+#    zone: "{{tag_prefix}}ec2.internal."
+#    record: "web.{{tag_prefix}}ec2.internal."
+#    private_zone: yes
+#    type: A
+
+#- route53:
+#    command: delete
+#    zone: "{{tag_prefix}}ec2.internal."
+#    record: "dbs.{{tag_prefix}}ec2.internal."
+#    private_zone: yes
+#    type: A
+
+#- route53:
+#    command: delete
+#    zone: "{{tag_prefix}}ec2.internal."
+#    record: "dev.{{tag_prefix}}ec2.internal."
+#    private_zone: yes
+#    type: A
+
+- name: Terminate EC2 instances using count_tag with exact_count of zero.
   local_action:
     module: ec2
-    region: '{{aws_region}}'
+    region: "{{aws_region}}"
+    image: "{{ami_id}}"
     count_tag:
-      prefix: "{{ tag_prefix}}archi"
-    state: 'running'
-
+      prefix: "{{tag_prefix}}archi"
+    exact_count: 0

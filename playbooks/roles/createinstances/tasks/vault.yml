@@ -2,6 +2,7 @@
 # References:
 #  - http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSVolumeTypes.html
 #  - http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSEncryption.html#EBSEncryption_supported_instances
+
 - name: Create databases EC2 instances
   local_action:
     module: ec2
@@ -15,34 +16,30 @@
     wait: yes
     user_data: "{{ lookup('template', '../templates/vault-cloud-init-script.j2') }}"
     instance_tags:
-      prefix: "{{ tag_prefix }}archi"
-  register: db_server
+      prefix: "{{tag_prefix}}archi"
+      profile: "dbs"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "dbs"
+    exact_count: 1
+  register: dbs_server
 
 - name: Create Encrypted EBS volume
   local_action:
     module: ec2_vol
     device_name: /dev/sdf
     encrypted: yes
-    instance: "{{db_server.instance_ids}}"
+    instance: "{{dbs_server.instance_ids}}"
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
     volume_size: 20
     volume_type: standard
 
-- name: set private_ip 
-  set_fact: 
-    private_ip: "{{item.private_ip}}"
-  with_items: db_server.instances
-
-
-- name: Update template file
-  local_action: 
-    module: copy
-    content: "{{ lookup('template', '../templates/db-change-record-set.j2')}}"
-    dest: ./db-change-record-set.json
-    
-
-- name: Registration of vault in DNS
-  local_action:
-    module: command
-      aws route53 change-resource-record-sets --hosted-zone-id "{{hosted_zone_id}}" --change-batch file://db-change-record-set.json
+- route53:
+    command: create
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "dbs.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{dbs_server.instances[0].private_ip}}"
+    overwrite: yes

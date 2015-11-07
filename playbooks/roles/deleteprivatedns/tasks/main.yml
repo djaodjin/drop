@@ -1,0 +1,11 @@
+# Delete the hosted zone for internal DNS records
+# XXX Ansbile 2.0 will support this with module route53_zone
+
+- include_vars: group_vars/dynamic
+
+- name: Delete hosted zone for internal DNS
+  local_action:
+    module: command
+      aws --region {{aws_region}} route53 delete-hosted-zone --id "{{hosted_zone_id}}"
+  ignore_errors: True
+

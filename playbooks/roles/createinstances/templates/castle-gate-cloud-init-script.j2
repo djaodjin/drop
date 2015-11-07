@@ -14,8 +14,8 @@ pip install awscli
 mkdir /tmp/ansible/ && cd /tmp/ansible/ && git clone {{remote_src_top}}/drop.git
 
 # Upload ldap public certificates
-aws s3 cp s3://{{tag_prefix}}deployutils/identities/dbs.internal/etc/pki/tls/certs/dbs.internal.crt /etc/pki/tls/certs/dbs.internal.crt
+aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal / --recursive
 
 # Run dservices scripts
 sudo chmod -R 755 /tmp/ansible/drop/
-sudo /tmp/ansible/drop/src/dservices.py /tmp/ansible/drop/share/tero/webfront.xml
+sudo /tmp/ansible/drop/src/dservices.py -DdomainName={{domain_name}} /tmp/ansible/drop/share/tero/webfront.xml

@@ -3,17 +3,19 @@
   local_action:
     module: command
       aws --region {{aws_region}} iam remove-role-from-instance-profile --instance-profile-name {{tag_prefix}}{{castle_gate_name}}-profile --role-name {{tag_prefix}}{{castle_gate_name}}
+  ignore_errors: True
 
 - name: Delete 'castle-gate' role
   local_action:
     module: command
       aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}{{castle_gate_name}}
+  ignore_errors: True
 
 - name: Delete 'castle-gate' instance profile
   local_action:
     module: command
       aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}{{castle_gate_name}}-profile
-
+  ignore_errors: True
 
 
 

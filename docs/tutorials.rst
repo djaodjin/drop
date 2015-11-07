@@ -34,13 +34,14 @@ infrastructure such as AWS region, AWS credentials, etc.
     instance_type: *EC2 instance type (t2.micro, etc.)*
     ami_id: *Image on which an EC2 instance is based.*
 
-    # Logical grouping
+    # Application variables
     tag_prefix: *All resource names will be prefixed by tag_prefix*
     castle_gate_name: *Name of the security group for http front machines*
     courtyard_name: *Name of the security group for the worker machines*
     kitchen_door_name: *Name of the security group for backstage machines*
     vault_name: *Name of the security group for the databases machines*
     watch_tower_name: *Name of the security group for the smtp front machines*
+    domain_name: *Domain name for your organization, ex: example.com*
 
     # Directories on local machine
     identities_dir: *Where keys and certificates could be found*

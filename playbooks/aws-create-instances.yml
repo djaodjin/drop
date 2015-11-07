@@ -3,5 +3,5 @@
   connection: local
   gather_facts: False
 
-  roles: 
+  roles:
    - createinstances

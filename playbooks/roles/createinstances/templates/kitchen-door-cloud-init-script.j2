@@ -1,20 +1,16 @@
 #!/bin/bash
 
-# Install git package in instance
-yum -y install git
+# Install packages to bootstrap configuration of instance
+yum -y install git python-pip
 
-#Install pip package
-yum -y install python-pip
+# Download and prepare the configuration tool called dservices
+mkdir -p /tmp/ansible/reps
+virtualenv /tmp/ansible
+git clone {{remote_src_top}}/drop.git /tmp/ansible/reps/drop
+/tmp/ansible/bin/pip install awscli
 
-#Install awcli
-pip install awscli
+# Download identities used by the instance
+/tmp/ansible/bin/aws s3 cp s3://{{tag_prefix}}deployutils/identities/dev.internal / --recursive
 
-# Clone drop github repository in /tmp/ansible/
-mkdir /tmp/ansible/ && cd /tmp/ansible/ && git clone {{remote_src_top}}/drop.git
-
-# Upload ldap certificates
-aws s3 cp s3://{{tag_prefix}}deployutils/identities/dbs.internal/etc/pki/tls/certs/dbs.internal.crt /etc/pki/tls/certs/dbs.internal.crt
-
-# Run dservices scripts
-sudo chmod -R 755 /tmp/ansible/drop/
-#sudo /tmp/ansible/drop/src/dservices.py /tmp/ansible/drop/share/tero/databases.xml
+# Run configuration tool with appropriate profile
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py /tmp/ansible/reps/drop/share/tero/backstage.xml
