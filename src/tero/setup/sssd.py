@@ -120,7 +120,4 @@ ldap_group_member = memberUid
             '--update', '--enablesssd', '--enablesssdauth'])
         postinst.shellCommand(['setsebool',
             '-P', 'authlogin_nsswitch_use_ldap', '1'])
-        postinst.shellCommand([
-            'systemctl', 'enable', 'sssd.service'])
-
         return complete

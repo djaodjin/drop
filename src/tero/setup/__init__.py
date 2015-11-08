@@ -94,6 +94,14 @@ class debianInstallScript(installScript):
 
 class redhatInstallScript(installScript):
 
+    jetty_webapps_dir = '/var/lib/jetty/webapps'
+    jenkins_plugins_home = '/usr/share/jetty/.jenkins/plugins'
+
+    def __init__(self, script_path, mod_sysconfdir=None):
+        super(redhatInstallScript, self).__init__(
+            script_path, mod_sysconfdir=mod_sysconfdir)
+        self.jenkins_plugins_install = False
+
     def prerequisites(self, prereqs):
         self.script.write('yum -y install %s\n' % ' '.join(prereqs))
 
@@ -102,6 +110,20 @@ class redhatInstallScript(installScript):
         if packagename.endswith('.tar.bz2'):
             super(redhatInstallScript, self).install(
                 packagename, force, postinst_script)
+        elif packagename.endswith('.war'):
+            self.script.write(
+                '/usr/bin/install -p -m 644 %s %s\n'
+                % (packagename, self.jetty_webapps_dir))
+        elif packagename.endswith('.hpi') or packagename.endswith('.jpi'):
+            if not self.jenkins_plugins_install:
+                self.script.write('/usr/bin/install -d %s'
+                    % self.jenkins_plugins_home)
+                self.jenkins_plugins_install = True
+            install_plugin_name = os.path.splitext(
+                os.path.basename(packagename))[0] + '.jpi'
+            self.script.write(
+            '/usr/bin/install -p -m 644 %s %s/%s\n'
+                % (packagename, self.jenkins_plugins_home, install_plugin_name))
         else:
             # --nodeps because rpm is stupid and can't figure out that
             # the vcd package provides the libvcd.so required by the executable.
@@ -131,20 +153,34 @@ class PostinstScript(object):
             self.shellCommand(
                 [os.path.join(self.sysconfdir, 'init.d', service), 'restart'])
         elif self.dist in YUM_DISTRIBS:
-            # self.shellCommand(['service', service, 'enable'])
             self.shellCommand(['service', service, 'restart'])
-
+            self.shellCommand(['systemctl', 'enable', '%s.service' % service])
 
     def shellCommand(self, cmdline, comment=None):
+        # Insure the postinst script file is open for writing commands into it.
         if not self.scriptfile:
             if (os.path.dirname(self.postinst_path)
                 and not os.path.exists(os.path.dirname(self.postinst_path))):
                 os.makedirs(os.path.dirname(self.postinst_path))
             self.scriptfile = open(self.postinst_path, 'wt')
             self.scriptfile.write('#!/bin/sh\n\nset -e\nset -x\n\n')
+        # Write comment and actual command
         if comment:
             self.scriptfile.write('# ' + comment + '\n')
         self.scriptfile.write(' '.join(cmdline) + '\n')
+
+    def install_selinux_module(self, module_te, comment=None):
+        module_mod = os.path.splitext(
+            os.path.basename(module_te))[0] + '.mod'
+        module_pp = os.path.splitext(
+            os.path.basename(module_te))[0] + '.pp'
+        self.shellCommand(
+            ['checkmodule', '-M', '-m', '-o', module_mod, module_te],
+            comment=comment)
+        self.shellCommand(
+            ['semodule_package', '-m', module_mod, '-o', module_pp])
+        self.shellCommand(
+            ['semodule', '-i', module_pp])
 
 
 class SetupTemplate(SetupStep):

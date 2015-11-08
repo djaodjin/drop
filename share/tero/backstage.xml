@@ -23,7 +23,7 @@ servers.
        <bin>sssd</bin>
      </dep>
      <dep name="openssh-ldap">
-       <lib>.*/(openssh)/ssh-ldap-helper</lib>
+       <libexec>.*/(openssh)/ssh-ldap-helper</libexec>
      </dep>
      <dep name="openssh-server">
        <bin>sshd</bin>
@@ -77,11 +77,8 @@ servers.
         <extra name="/etc/semilla/%(domainName)s.conf"></extra>
       </dep>
       <!-- build bot -->
-      <dep name="jetty">
-        <bin>jetty</bin>
-      </dep>
       <dep name="jenkins">
-        <share>.*/jenkins.war</share>
+        <share>jetty.sh</share>
       </dep>
     </package>
   </project>
@@ -190,6 +187,16 @@ servers.
         <size>1027799</size>
         <sha1>004672542d6277e98a428f37b8ed2f38e30ebc37</sha1>
       </fetch>
+      <dep name="jetty">
+        <share>jetty.sh</share>
+      </dep>
+      <!-- used to install jenkins.te -->
+      <dep name="checkpolicy">
+        <bin>checkmodule</bin>
+      </dep>
+      <dep name="policycoreutils-python">
+        <bin>semodule_package</bin>
+      </dep>
     </package>
   </project>
 </projects>

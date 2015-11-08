@@ -1918,12 +1918,17 @@ class DpkgInstallStep(InstallStep):
     ''' Install a prerequisite to a project through dpkg (Debian, Ubuntu).'''
 
     def __init__(self, project_name, filenames, target=None):
-        InstallStep.__init__(self, project_name, managed=filenames,
+        managed = []
+        for filename in filenames:
+            if filename.endswith('.deb'):
+                managed += [filename]
+        InstallStep.__init__(self, project_name, managed=managed,
                              priority=Step.install_native)
 
     def run(self, context):
-        shell_command(['dpkg', '-i', ' '.join(self.managed)],
-            admin=True, noexecute=context.nonative)
+        if self.managed:
+            shell_command(['dpkg', '-i', ' '.join(self.managed)],
+                admin=True, noexecute=context.nonative)
         self.updated = True
 
 
@@ -2103,7 +2108,11 @@ class RpmInstallStep(InstallStep):
     ''' Install a prerequisite to a project through rpm (Redhat-based).'''
 
     def __init__(self, project_name, filenames, target=None):
-        InstallStep.__init__(self, project_name, managed=filenames,
+        managed = []
+        for filename in filenames:
+            if filename.endswith('.rpm'):
+                managed += [filename]
+        InstallStep.__init__(self, project_name, managed=managed,
                              priority=Step.install_native)
 
     def run(self, context):
@@ -3437,7 +3446,7 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
     # through /usr/lib on Ubuntu does not show any libraries ending with
     # a '_version' suffix so we will remove it from the regular expression.
     suffix = '(-.+)?(\\' + lib_static_suffix() \
-        + '|\\' + lib_dyn_suffix() + r'(\.\d+)?)'
+        + '|\\' + lib_dyn_suffix() + r'((\.\d+)*))'
     if not variant and CONTEXT.host() in APT_DISTRIBS:
         # Ubuntu 12.04+: host libraries are not always installed
         # in /usr/lib. Sometimes they end-up in /usr/lib/x86_64-linux-gnu

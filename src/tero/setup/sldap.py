@@ -124,8 +124,6 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
         postinst.shellCommand(['chgrp', 'ldap', priv_key])
 
         self.create_syslogng_conf(context)
-        postinst.shellCommand([
-            'systemctl', 'enable', 'slapd.service'])
 
         postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
             '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])

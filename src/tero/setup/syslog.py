@@ -30,6 +30,22 @@ from tero.setup import stageFile, postinst
 
 class syslog_ngSetup(setup.SetupTemplate):
 
+    syslog_te_config_template = """module syslog-ng 1.0;
+
+require {
+	type syslogd_t;
+	type device_t;
+	class sock_file { getattr unlink };
+	class lnk_file unlink;
+}
+
+#============= syslogd_t ==============
+
+allow syslogd_t device_t:lnk_file unlink;
+allow syslogd_t device_t:sock_file getattr;
+allow syslogd_t device_t:sock_file unlink;
+"""
+
     def __init__(self, name, files, **kwargs):
         super(syslog_ngSetup, self).__init__(name, files, **kwargs)
         self.daemons = ['syslog-ng']
@@ -42,7 +58,15 @@ class syslog_ngSetup(setup.SetupTemplate):
             # files here.
             return complete
 
-        setup.postinst.shellCommand([
-            'systemctl', 'enable', 'syslog-ng.service'])
+        setup.postinst.shellCommand(
+            ['rm', '-f', '/etc/systemd/system/syslog.service'])
+
+        # Configure SELinux to run syslog-ng
+        syslog_te = os.path.join(
+            os.path.dirname(setup.postinst.postinst_path), 'syslog-ng.te')
+        with open(syslog_te, 'w') as syslog_te_file:
+            syslog_te_file.write(self.syslog_te_config_template)
+        setup.postinst.install_selinux_module(syslog_te,
+            comment="Configure SELinux to run syslog-ng.")
 
         return complete

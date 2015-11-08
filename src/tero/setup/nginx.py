@@ -293,7 +293,6 @@ server {
             dhparam_path, '4096'])
         setup.postinst.shellCommand([
             'setsebool', '-P', 'httpd_can_network_connect', '1'])
-        setup.postinst.shellCommand(['systemctl', 'enable', 'nginx.service'])
         return complete
 
 
