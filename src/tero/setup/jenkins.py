@@ -396,15 +396,16 @@ allow httpd_t unreserved_port_t:tcp_socket name_bind;
 
 
         # Configure jetty/jenkins (environment variables and security context)
-        setup.modify_config(
-            os.path.join(context.SYSCONFDIR, 'default', 'jenkins'),
+        jenkins_default_path = os.path.join(
+            context.SYSCONFDIR, 'default', 'jenkins')
+        setup.modify_config(jenkins_default_path,
             settings={
-                'JENKINS_HOME': self.jenkins_home
+                'JENKINS_HOME': self.jenkins_home,
                 'HUDSON_HOME': self.jenkins_home
             }, sep='=', context=context)
-        modifyIniConfig('/usr/lib/systemd/system/jetty.service',
+        setup.modifyIniConfig('/usr/lib/systemd/system/jetty.service',
             settings={'Service':
-                {'EnvironmentFILE':'"-%s"' % self.jenkins_home}},
+                {'EnvironmentFile': '-%s' % jenkins_default_path}},
             context=context)
         org_context_conf, new_context_conf = setup.stageFile(
             os.path.join(self.jetty_home, 'webapps', 'jenkins.xml'),

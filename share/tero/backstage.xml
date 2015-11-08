@@ -65,6 +65,16 @@ servers.
         <extra name="site-config/%(domainName)s.conf">
           <domainName>%(domainName)s</domainName>
           <port>80</port>
+          <webapp>
+            <path>/</path>
+            <port>8000</port>
+            <app_name>semilla</app_name>
+          </webapp>
+          <webapp>
+            <app_name>jenkins</app_name>
+            <path>/jenkins</path>
+            <port>8080</port>
+          </webapp>
         </extra>
       </dep>
       <!-- source repositories -->

@@ -303,15 +303,38 @@ def modifyIniConfig(pathname, settings={}, sep='=', context=None):
           ...
     '''
     logging.info('configure ' + pathname + "...\n")
-    raise Error('not yet implemented')
     org_config_path, new_config_path = stageFile(pathname, context)
-    newConfig = open(new_config_path, 'w')
     if os.path.exists(org_config_path):
-        line = orgConfig.readline()
-        while line != '':
-            look = re.match(r'^(\s*)#(.*)', line)
-            line = orgConfig.readline()
-    newConfig.close()
+        with open(new_config_path, 'w') as new_conf:
+            with open(org_config_path) as org_conf:
+                block = None
+                line = org_conf.readline()
+                while line != '':
+                    if line.strip(' \n'):
+                        look = re.match(r'\[(\S+)\]', line)
+                        if look:
+                            # We found a block
+                            if block:
+                                for key, val in block.iteritems():
+                                    new_conf.write(
+                                        '%(key)s%(sep)s%(val)s\n' % {
+                                            'key': key, 'sep': sep, 'val': val})
+                            new_conf.write('\n')
+                            block = settings.get(look.group(1), None)
+                        else:
+                            look = re.match(r'^(\S+)%s(\S+)(#.*)' % sep, line)
+                            if look:
+                                key = look.group(1)
+                                org_val = look.group(2)
+                                new_val = block.get(key, None)
+                                if new_val:
+                                    del block[key]
+                                    line = ('%(key)s%(sep)s%(val)s%(comment)s\n'
+                                        % {'key': key, 'sep': sep,
+                                           'val': new_val,
+                                           'comment': look.group(3)})
+                        new_conf.write(line)
+                    line = org_conf.readline()
 
 
 def modify_config(pathname, settings={},

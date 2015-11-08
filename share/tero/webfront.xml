@@ -66,6 +66,11 @@ Maintenance scripts for the front-end reverse proxy.
         <extra name="site-config/%(domainName)s.conf">
           <domainName>%(domainName)s</domainName>
           <port>443</port>
+          <webapp>
+            <path>/</path>
+            <port>8000</port>
+            <app_name>app</app_name>
+          </webapp>
         </extra>
       </dep>
     </package>

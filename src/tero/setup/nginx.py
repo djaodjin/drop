@@ -25,7 +25,7 @@
 import os, re
 from string import Template
 
-from tero import APT_DISTRIBS, YUM_DISTRIBS, CONTEXT, setup
+from tero import APT_DISTRIBS, YUM_DISTRIBS, CONTEXT, setup, log_info
 from tero.setup import modify_config
 
 
@@ -37,10 +37,7 @@ class nginxSetup(setup.SetupTemplate):
 # We assume all traffic to it is somewhat legitimate. As a result,
 # we do not have an actual domain name, nor block bots.
 
-upstream proxy_%(app_name)s {
-        server  127.0.0.1:8000;
-}
-
+%(webapps)s
 server {
         listen          80 default_server;
         server_name     _;
@@ -49,16 +46,7 @@ server {
         error_log  /var/log/nginx/%(domain)s-error.log;
 
         root %(document_root)s;
-
-        location / {
-            try_files /%(app_name)s$uri/index.html /%(app_name)s$uri.html /%(app_name)s$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
-        }
-
-        location @forward_to_%(app_name)s {
-            include       /etc/nginx/proxy_params;
-            proxy_pass    http://proxy_%(app_name)s;
-        }
-
+        %(forwards)s
         error_page 500 502 503 504 /500.html;
         location = /50x.html {
             root %(document_root)s;
@@ -68,10 +56,7 @@ server {
 
     https_config_template = """# whitelabel for %(app_name)s
 
-upstream proxy_%(app_name)s {
-        server  127.0.0.1:8000;
-}
-
+%(webapps)s
 server {
         listen          80;
         server_name     %(domain)s *.%(domain)s;
@@ -150,16 +135,7 @@ server {
 
         # path for static files
         root %(document_root)s;
-
-        location / {
-            try_files /%(app_name)s$uri/index.html /%(app_name)s$uri.html /%(app_name)s$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
-        }
-
-        location @forward_to_%(app_name)s {
-            include       /etc/nginx/proxy_params;
-            proxy_pass    http://proxy_%(app_name)s;
-        }
-
+        %(forwards)s
         error_page 500 502 503 504 /500.html;
         location = /50x.html {
             root %(document_root)s;
@@ -199,16 +175,7 @@ server {
 
         # path for static files
         root %(document_root)s;
-
-        location / {
-            try_files /%(app_name)s$uri/index.html /%(app_name)s$uri.html /%(app_name)s$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
-        }
-
-        location @forward_to_%(app_name)s {
-            include       /etc/nginx/proxy_params;
-            proxy_pass    http://proxy_%(app_name)s;
-        }
-
+        %(forwards)s
         error_page 500 502 503 504 /500.html;
         location = /50x.html {
             root %(document_root)s;
@@ -224,6 +191,23 @@ server {
 
             # proxy_redirect default;
             proxy_redirect off;
+"""
+
+    webapp_template = """upstream proxy_%(app_name)s {
+        server  127.0.0.1:%(port)s;
+}
+
+"""
+
+    forward_template = """
+        location %(path)s {
+            try_files /%(app_name)s$uri/index.html /%(app_name)s$uri.html /%(app_name)s$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
+        }
+
+        location @forward_to_%(app_name)s {
+            include       /etc/nginx/proxy_params;
+            proxy_pass    http://proxy_%(app_name)s;
+        }
 """
 
     def __init__(self, name, files, **kwargs):
@@ -250,18 +234,26 @@ server {
 
         remove_default_server = False
         for name, vals in self.files.iteritems():
+            webapps = ""
+            forwards = ""
             if name.startswith('site-config'):
                 domain = None
                 for elem in vals:
                     settings = elem[0]
                     if 'domainName' in settings:
                         domain = settings['domainName']
+                    if 'webapp' in settings:
+                        for webapp in settings['webapp']:
+                            webapps += self.webapp_template % webapp
+                            forwards += self.forward_template % webapp
                     port = settings.get('port', '80')
                 if port == '443':
-                    self.site_conf(domain, context, self.https_config_template)
+                    conf_template = self.https_config_template
                 else:
-                    self.site_conf(domain, context, self.http_config_template)
+                    conf_template = self.http_config_template
                     remove_default_server = True
+                self.site_conf(domain, context, conf_template,
+                        webapps=webapps, forwards=forwards)
 
         # Remove default server otherwise our config for intermediate nodes
         # with no domain names will be overridden.
@@ -296,7 +288,8 @@ server {
         return complete
 
 
-    def site_conf(self, domain, context, config_template):
+    def site_conf(self, domain, context, config_template,
+                  webapps="", forwards=""):
         """
         Generate a configuration file for the site.
         """
@@ -323,5 +316,7 @@ server {
                 'document_root': document_root,
                 'key_path': key_path,
                 'cert_path': cert_path,
+                'webapps': webapps,
+                'forwards': forwards,
                 'wildcard_key_path': wildcard_key_path,
                 'wildcard_cert_path': wildcard_cert_path})
