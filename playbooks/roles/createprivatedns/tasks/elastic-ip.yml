@@ -1,0 +1,18 @@
+---
+- name: Djaodjin public elastic ip creation
+  local_action:
+     module: command
+       aws ec2 allocate-address --domain vpc
+  register: elasticip
+
+- set_fact:
+    elastic_ip: "{{ elasticip.stdout }}"
+
+
+- name: Copy elastic ip address in group_vars/dynamic with echo >>
+  local_action: shell echo '\nwb_elastic_ip':' {{elastic_ip.PublicIp}}' >> group_vars/dynamic
+
+#- local_action:
+#    module: copy
+#    content: "elastic_ip: {{elastic_ip.PublicIp}}"
+#    dest: group_vars/dynamic
