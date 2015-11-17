@@ -242,8 +242,11 @@ server {
                     settings = elem[0]
                     if 'domainName' in settings:
                         domain = settings['domainName']
-                    if 'webapp' in settings:
-                        for webapp in settings['webapp']:
+                    webapp_settings = settings.get('webapp', None)
+                    if webapp_settings:
+                        if not isinstance(webapp_settings, list):
+                            webapp_settings = [webapp_settings]
+                        for webapp in webapp_settings:
                             webapps += self.webapp_template % webapp
                             forwards += self.forward_template % webapp
                     port = settings.get('port', '80')
