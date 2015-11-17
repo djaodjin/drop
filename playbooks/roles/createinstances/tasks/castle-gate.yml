@@ -23,6 +23,11 @@
     exact_count: 1
   register: web_servers
 
+- name: Association of elastic ip address to web-front
+  local_action:
+     module: command
+       aws ec2 associate-address --instance-id "{{ web_servers.instances[0].id }}" --public-ip "{{wb_elastic_ip}}"
+
 - route53:
     command: create
     zone: "{{tag_prefix}}ec2.internal."

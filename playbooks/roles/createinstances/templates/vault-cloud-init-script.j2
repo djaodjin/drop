@@ -18,3 +18,12 @@ aws s3 cp s3://{{tag_prefix}}deployutils/identities/dbs.internal / --recursive
 # Run dservices scripts
 sudo chmod -R 755 /tmp/ansible/drop/
 sudo /tmp/ansible/drop/src/dservices.py /tmp/ansible/drop/share/tero/databases.xml
+
+echo "###### Copy /var content in encrypted vol and mount encrypted vol to /var"
+
+cd var
+cp -ax * /dev/sdf
+cd /
+mv var var.old
+umount /dev/sdf 
+mount /dev/sdf /var
