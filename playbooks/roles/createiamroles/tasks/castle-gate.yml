@@ -1,8 +1,21 @@
 ---
+#- name: Generate policy file
+#  local_action:
+#    module: copy
+#    content: "{{ lookup('template', '../files/assume-role-policy2.j2')}}"
+#    dest: roles/createiamroles/files/assume-role-policy2.json
+
+
 - name: Create 'castle-gate' role
   local_action:
     module: command
       aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}{{castle_gate_name}} --assume-role-policy-document "file://roles/createiamroles/files/assume-role-policy.json"
+
+
+#- name: Adding policy file in role
+#  local_action:
+#    module: command
+#      iam put-role-policy --role-name "{{tag_prefix}}{{castle_gate_name}}" --policy-name "{{tag_prefix}}{{castle_gate_name}}-policy" --policy-document "file://roles/createiamroles/files/assume-role-policy2.json"
 
 - name: Create 'castle-gate' instance profile
   local_action:

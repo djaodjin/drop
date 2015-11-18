@@ -5,6 +5,8 @@
     key_name: "{{key_name}}"
     group: "{{tag_prefix}}{{castle_gate_name}}"
     instance_type: "{{instance_type}}"
+    assign_public_ip: no
+    instance_profile_name: "{{tag_prefix}}{{castle_gate_name}}-profile"
     image: "{{ami_id}}"
     region: "{{aws_region}}"
     volumes:
