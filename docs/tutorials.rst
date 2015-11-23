@@ -35,6 +35,7 @@ infrastructure such as AWS region, AWS credentials, etc.
     ami_id: *Image on which an EC2 instance is based.*
 
     # Application variables
+    ssh_port: *Public port on which SSH daemon listens*
     tag_prefix: *All resource names will be prefixed by tag_prefix*
     castle_gate_name: *Name of the security group for http front machines*
     courtyard_name: *Name of the security group for the worker machines*

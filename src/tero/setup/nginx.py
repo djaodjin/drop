@@ -205,8 +205,8 @@ server {
         }
 
         location @forward_to_%(app_name)s {
-            include       /etc/nginx/proxy_params;
             proxy_pass    http://proxy_%(app_name)s;
+            include       /etc/nginx/proxy_params;
         }
 """
 

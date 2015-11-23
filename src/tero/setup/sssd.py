@@ -110,7 +110,7 @@ ldap_sudo_smart_refresh_interval=3600
 # Enable group mapping otherwise only the user's primary group will map
 # correctly. Without this defined group membership won't work
 ldap_group_object_class = posixGroup
-ldap_group_search_base = ou=group,dc=%(domainNat)s,dc=%(domainTop)s
+ldap_group_search_base = ou=groups,dc=%(domainNat)s,dc=%(domainTop)s
 ldap_group_name = cn
 ldap_group_member = memberUid
 """ % names)

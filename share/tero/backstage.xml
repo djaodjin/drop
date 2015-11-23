@@ -67,7 +67,7 @@ servers.
           <port>80</port>
           <webapp>
             <path>/</path>
-            <port>8000</port>
+            <port>8040</port>
             <app_name>semilla</app_name>
           </webapp>
           <webapp>
@@ -135,6 +135,9 @@ servers.
       <dep name="poco-net">
         <lib>PocoNet.so</lib>
       </dep>
+      <dep name="poco-util">
+        <lib>PocoUtil.so</lib>
+      </dep>
     </package>
   </project>
   <project name="jenkins">
@@ -153,9 +156,24 @@ servers.
         <sha1>76fae28c2dbd3e7bdda0ad765ebfddee9585fe77</sha1>
       </fetch>
       <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/git-client/1.18.0/git-client.hpi</url>
+        <size>3471225</size>
+        <sha1>6af1ed89bcc25bd96398fc0268279092d9df5666</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/scm-api/0.2/scm-api.hpi</url>
+        <size>75264</size>
+        <sha1>cc98487e2daaf7484a2028f62828bf6f9ef986ce</sha1>
+      </fetch>
+      <fetch>
         <url>https://updates.jenkins-ci.org/download/plugins/git/2.4.0/git.hpi</url>
         <size>1386437</size>
         <sha1>5f6fcb3b43f25aef661c78585f2e9796f18b0a4a</sha1>
+      </fetch>
+      <fetch>
+        <url>https://updates.jenkins-ci.org/download/plugins/token-macro/1.10/token-macro.hpi</url>
+        <size>24523</size>
+        <sha1>ff86c407c184cce1eaa35f499fc16a7a724a96e2</sha1>
       </fetch>
       <fetch>
         <url>https://updates.jenkins-ci.org/download/plugins/email-ext/2.40.5/email-ext.hpi</url>
