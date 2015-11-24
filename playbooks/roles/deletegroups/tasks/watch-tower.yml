@@ -1,8 +1,0 @@
----
-- name: Delete 'watch-tower' security group
-  local_action:
-    module: ec2_group
-    name: "{{tag_prefix}}{{watch_tower_name}}"
-    description: "Email services"
-    region: "{{aws_region}}"
-    state: absent

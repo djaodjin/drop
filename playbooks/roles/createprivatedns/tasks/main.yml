@@ -1,32 +1,10 @@
-# Create an hosted zone for internal DNS records to find specific EC2 instances
-# XXX Ansbile 2.0 will support this with module route53_zone
+---
 
-- include: dns-config-ready.yml
+- include: route53.yml
+- include: elastic-ip.yml
 
-- name: Generate unique caller reference
-  local_action: shell date '+%F.%H:%M:%S'
-  register: generated_date
-
-- set_fact: caller_reference="{{generated_date.stdout}}"
-
-- name: Create an hosted zone for internal DNS
-  local_action:
-    module: command
-      aws --region {{aws_region}} route53 create-hosted-zone --name "{{tag_prefix}}ec2.internal." --vpc "VPCRegion={{aws_region}},VPCId={{vpc_id}}" --caller-reference "{{caller_reference}}" --hosted-zone-config 'Comment="Internal DNS"'
-  register: hosted_zone_output
-
-# Implementation note:
-# If ``- set_fact: hosted_zone={{hosted_zone_output.stdout | from_json}}``
-# is used instead of the following code, the dict output is automatically
-# converted back to a string stored into ``hosted_zone``.
-- set_fact:
-    hosted_zone: "{{hosted_zone_output.stdout | from_json}}"
-- set_fact:
-    hosted_zone_id: "{{hosted_zone.Location.split('/')[-1]}}"
-
+# Write all dynamic settings that need to be shared amongst playbooks.
 - local_action:
     module: copy
-    content: "hosted_zone_id: {{hosted_zone_id}}"
+    content: "hosted_zone_id: {{hosted_zone_id}}\nweb_elastic_ip: {{elastic_ip.PublicIp}}\n"
     dest: group_vars/dynamic
-
-- include: elastic-ip.yml

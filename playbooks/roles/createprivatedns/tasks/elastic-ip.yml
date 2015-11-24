@@ -1,5 +1,8 @@
 ---
-- name: Djaodjin public elastic ip creation
+# XXX use action: ec2_eip instead? What about "vpc" params?
+# http://docs.ansible.com/ansible/ec2_eip_module.html
+
+- name: Allocate an elastic IP for the web front
   local_action:
      module: command
        aws ec2 allocate-address --domain vpc
@@ -7,12 +10,3 @@
 
 - set_fact:
     elastic_ip: "{{ elasticip.stdout }}"
-
-
-- name: Copy elastic ip address in group_vars/dynamic with echo >>
-  local_action: shell echo '\nwb_elastic_ip':' {{elastic_ip.PublicIp}}' >> group_vars/dynamic
-
-#- local_action:
-#    module: copy
-#    content: "elastic_ip: {{elastic_ip.PublicIp}}"
-#    dest: group_vars/dynamic

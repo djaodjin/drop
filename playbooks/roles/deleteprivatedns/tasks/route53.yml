@@ -1,0 +1,77 @@
+# Delete the hosted zone for internal DNS records
+# XXX Ansbile 2.0 will support this with module route53_zone
+
+- name: Prepare to dis-associate route53 for web front machines
+  local_action:
+    module: route53
+    command: get
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "web.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+  register: web
+  ignore_errors: True
+
+- name: Dis-associate route53 for web front machines
+  local_action:
+    module: route53
+    command: delete
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "web.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    value: "{{web.set.value}}"
+    type: A
+  when: web|success and web.set
+  ignore_errors: True
+
+- name: Prepare to dis-associate route53 for dev machines
+  local_action:
+    module: route53
+    command: get
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "dev.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+  register: dev
+  ignore_errors: True
+
+- name: Dis-associate route53 for dev machines
+  local_action:
+    module: route53
+    command: delete
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "dev.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    value: "{{dev.set.value}}"
+    type: A
+  when: dev|success and dev.set
+  ignore_errors: True
+
+- name: Prepare to dis-associate route53 for dbs machines
+  local_action:
+    module: route53
+    command: get
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "dbs.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+  register: dbs
+  ignore_errors: True
+
+- name: Dis-associate route53 for dbs machines
+  local_action:
+    module: route53
+    command: delete
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "dbs.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    value: "{{dbs.set.value}}"
+    type: A
+  when: dbs|success and dbs.set
+  ignore_errors: True
+
+- name: Delete hosted zone for internal DNS
+  local_action:
+    module: command
+      aws --region {{aws_region}} route53 delete-hosted-zone --id "{{hosted_zone_id}}"
+  ignore_errors: True
