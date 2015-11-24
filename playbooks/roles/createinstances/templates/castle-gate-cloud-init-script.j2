@@ -4,6 +4,9 @@
 # Install git package in instance
 yum -y install git
 
+# Install wget package
+yum -y install wget
+
 #Install pip package
 yum -y install python-pip
 
@@ -14,8 +17,26 @@ pip install awscli
 mkdir /tmp/ansible/ && cd /tmp/ansible/ && git clone {{remote_src_top}}/drop.git
 
 # Upload ldap public certificates
-aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal / --recursive
+echo "aws s3 cp ==============="
+sudo aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal/etc/pki/tls/certs/dbs.internal.crt /etc/pki/tls/certs/
+sudo aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal/etc/pki/tls/certs/djaodjin.com.crt /etc/pki/tls/certs/
+sudo aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal/etc/pki/tls/certs/wildcard-djaodjin.com.crt /etc/pki/tls/certs/
+
+
+sudo aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal/etc/pki/tls/private/djaodjin.com.key /etc/pki/tls/private/
+sudo aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal/etc/pki/tls/private/wildcard-djaodjin.com.key /etc/pki/tls/private/
+echo "========================="
 
 # Run dservices scripts
+echo "dsevices ================"
 sudo chmod -R 755 /tmp/ansible/drop/
 sudo /tmp/ansible/drop/src/dservices.py -DdomainName={{domain_name}} /tmp/ansible/drop/share/tero/webfront.xml
+echo "========================="
+
+
+mkdir -p /var/www/djaodjin/bin
+cd /var/www/djaodjin/bin
+sudo cp /tmp/ansible/drop/src/tero/__init__.py dws
+chmod 755 dws
+sudo ./dws build git@devel.djaodjin.com:tests/client-test.git/djaodjin.xml
+
