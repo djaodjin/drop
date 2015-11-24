@@ -5,6 +5,7 @@
     key_name: "{{key_name}}"
     group: "{{tag_prefix}}{{courtyard_name}}"
     instance_type: "{{instance_type}}"
+    instance_profile_name: "{{tag_prefix}}{{courtyard_name}}-profile"
     image: "{{ami_id}}"
     region: "{{aws_region}}"
     wait: yes
