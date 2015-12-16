@@ -98,7 +98,7 @@ server {
         ssl_certificate_key  %(key_path)s;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
         ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+        ssl_dhparam %(dhparam_path)s;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout  5m;
@@ -121,7 +121,7 @@ server {
         ssl_session_timeout  5m;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
         ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+        ssl_dhparam %(dhparam_path)s;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;
 
@@ -155,7 +155,7 @@ server {
         ssl_certificate_key  %(key_path)s;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
         ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+        ssl_dhparam %(dhparam_path)s;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout  5m;
@@ -280,8 +280,7 @@ server {
                         if remove == 0:
                             new_nginx_conf_file.write(line)
 
-        certs_top = os.path.join(
-            context.SYSCONFDIR, 'ssl', 'certs')
+        certs_top = os.path.join(context.SYSCONFDIR, 'pki', 'tls', 'certs')
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         setup.postinst.shellCommand([
             '[', '-f', dhparam_path, ']', '||', 'openssl', 'dhparam', '-out',
@@ -310,6 +309,7 @@ server {
         cert_path = os.path.join(certs_top, '%s.crt' % domain)
         wildcard_key_path = os.path.join(key_top, 'wildcard-%s.key' % domain)
         wildcard_cert_path = os.path.join(certs_top, 'wildcard-%s.crt' % domain)
+        dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         org_site_conf, new_site_conf = setup.stageFile(self.conf_path(
             domain, context.host(), context.SYSCONFDIR), context=context)
         with open(new_site_conf, 'w') as site_conf_file:
@@ -319,6 +319,7 @@ server {
                 'document_root': document_root,
                 'key_path': key_path,
                 'cert_path': cert_path,
+                'dhparam_path': dhparam_path,
                 'webapps': webapps,
                 'forwards': forwards,
                 'wildcard_key_path': wildcard_key_path,

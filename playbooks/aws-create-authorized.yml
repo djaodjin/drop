@@ -15,4 +15,5 @@
     - createiamroles
     - creates3bucket
     - createprivatedns
-
+    - createelasticip
+    - uploadidentities

@@ -10,3 +10,6 @@
 
 - set_fact:
     elastic_ip: "{{ elasticip.stdout }}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^web_elastic_ip:' line='web_elastic_ip: {{elastic_ip.PublicIp}}'"
+

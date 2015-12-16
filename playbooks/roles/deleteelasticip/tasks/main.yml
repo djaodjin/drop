@@ -1,4 +1,5 @@
 ---
+- include_vars: group_vars/dynamic
 
 - name: Release elastic IP for the web front
   ec2_eip: state='present' public_id="{{web_elastic_ip}}"

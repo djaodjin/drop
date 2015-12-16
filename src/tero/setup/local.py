@@ -265,13 +265,11 @@ def prepareLocalSystem(context, project_name, profiles):
     if (len(os.path.dirname(indexFile)) > 0 and
         not os.path.exists(os.path.dirname(indexFile))):
         os.makedirs(os.path.dirname(indexFile))
-    # XXX we used to replace %()s by actual value in profile template.
-    with open(tplIndexFile) as profile:
-        profile_text = profile.read()
-    for name, value in context.environ.iteritems():
-        profile_text = profile_text.replace('%%(%s)s' % name, str(value))
-    with open(indexFile, 'w') as confIndex:
-        confIndex.write(profile_text)
+    # matching code in driver.py ``copy_setup``
+    with open(tplIndexFile, 'r') as profile_file:
+        template_text = profile_file.read()
+    with open(indexFile, 'w') as profile_file:
+        profile_file.write(template_text % context.environ)
     sys.stdout.write('deploying profile %s ...\n' % indexFile)
 
     import imp

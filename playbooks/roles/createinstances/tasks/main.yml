@@ -5,3 +5,4 @@
 - include: kitchen-door.yml
 - include: castle-gate.yml
 - include: courtyard.yml
+- include: associate-elastic-ip.yml

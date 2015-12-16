@@ -15,10 +15,14 @@
             ]
          },
          "Action": [
+           "s3:ListBucket",
            "s3:GetObjectAcl",
            "s3:GetObject"
          ],
-         "Resource": "arn:aws:s3:::{{tag_prefix}}deployutils/*"
+         "Resource": [
+           "arn:aws:s3:::{{tag_prefix}}deployutils",
+           "arn:aws:s3:::{{tag_prefix}}deployutils/*"
+           ]
       },
       {
          "Sid":"DenyUnEncryptedObjectUploads",
