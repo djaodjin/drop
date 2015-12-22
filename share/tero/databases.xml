@@ -48,6 +48,14 @@ Deploy and configure packages for running LDAP and SQL databases.
       <dep name="syslog-ng-libdbi">
         <lib>dbi</lib>
       </dep>
+      <!-- We need both executables (checkmodule and semodule_package)
+           to update the syslog SELinux policy -->
+      <dep name="checkpolicy">
+        <bin>checkmodule</bin>
+      </dep>
+      <dep name="policycoreutils-python">
+        <bin>semodule_package</bin>
+      </dep>
       <dep name="fail2ban">
         <bin>fail2ban-client</bin>
       </dep>
@@ -63,24 +71,30 @@ Deploy and configure packages for running LDAP and SQL databases.
   <project name="openldap-servers">
     <package name="Fedora">
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc22/x86_64/openldap-2.4.40-12.fc22.x86_64.rpm</url>
-        <sha1>7bc6011eb4e178da51d1a399f612b16355291248</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>e16090329f89360dc14b75e198b67786e8eac39c</sha1>
       </fetch>
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc22/x86_64/openldap-servers-2.4.40-12.fc22.x86_64.rpm</url>
-        <sha1>25da15475204025a365e128fb177d91b5102f1e8</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-servers-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>f6d6ac22ecf55da76aafb68cb92c1d503706ef4f</sha1>
       </fetch>
+      <dep name="libdb-utils">
+        <lib>libdb</lib>
+      </dep>
+      <dep name="libtool-ltdl">
+        <lib>libltdl</lib>
+      </dep>
     </package>
   </project>
   <project name="openldap-clients">
     <package name="Fedora">
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc22/x86_64/openldap-2.4.40-12.fc22.x86_64.rpm</url>
-        <sha1>7bc6011eb4e178da51d1a399f612b16355291248</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>e16090329f89360dc14b75e198b67786e8eac39c</sha1>
       </fetch>
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc22/x86_64/openldap-clients-2.4.40-12.fc22.x86_64.rpm</url>
-        <sha1>216d8c9b36d6fea98717c6da29160cd4da4bcd34</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-clients-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>9ae4deb88c3e7a3f619a84b088d87a4b0adb8268</sha1>
       </fetch>
     </package>
   </project>

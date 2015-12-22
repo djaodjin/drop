@@ -31,7 +31,6 @@ class openldap_serversSetup(SetupTemplate):
 
     def __init__(self, name, files, **kwargs):
         super(openldap_serversSetup, self).__init__(name, files, **kwargs)
-        self.daemons = ['slapd']
 
     def create_syslogng_conf(self, context):
         _, conf_path = stageFile(os.path.join(context.SYSCONFDIR,
@@ -125,14 +124,17 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
 
         self.create_syslogng_conf(context)
 
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/nis.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/inetorgperson.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/openssh-ldap.ldif', '-D', '"cn=config"'])
+        # We need to start the server before adding the schemas.
+        postinst.shellCommand(['service', 'slapd', 'restart'])
+        postinst.shellCommand(['systemctl','enable', 'slapd.service'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+            '-f', '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+            '-f', '/etc/openldap/schema/nis.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+          '-f', '/etc/openldap/schema/inetorgperson.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+          '-f', '/etc/openldap/schema/openssh-ldap.ldif', '-D', '"cn=config"'])
 
         return complete
 

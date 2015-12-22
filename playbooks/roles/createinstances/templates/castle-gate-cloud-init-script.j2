@@ -2,7 +2,7 @@
 # webfront instance configuration
 
 # Install git and package in instance
-yum -y install git python-pip
+yum -y install git python-virtualenv python-pip
 
 # Install awcli and Download keys, certificates, etc.
 pip install awscli
@@ -10,6 +10,16 @@ aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal / --recursive
 
 # Clone drop github repository in /tmp/ansible and
 # Run dservices scripts
-mkdir -p /tmp/ansible && cd /tmp/ansible && git clone {{remote_src_top}}/drop.git
-virtualenv --system-site-packages /tmp/ansible
+mkdir -p /tmp/ansible && cd /tmp/ansible && git clone {{remote_dservices_repo}}
+virtualenv-2.7 --system-site-packages /tmp/ansible
 /tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py -DdomainName={{domain_name}} /tmp/ansible/drop/share/tero/webfront.xml
+
+# Install the web application
+mkdir -p /var/www/{{webapp}}/bin
+cp /tmp/ansible/drop/src/tero/__init__.py /var/www/{{webapp}}/bin/dws
+chmod 755 /var/www/{{webapp}}/bin/dws
+cd /var/www && {{webapp}}/bin/dws build {{remote_src_top}}tests/client-test.git/{{webapp}}.xml
+cd /etc/systemd/system && ln -s /var/www/{{webapp}}/etc/systemd/system/{{webapp}}.service
+chown nginx:nginx /var/www/{{webapp}}/var/run
+# XXX systemctl enable {{webapp}}.service
+systemctl start {{webapp}}.service

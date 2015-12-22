@@ -40,7 +40,8 @@ class postgresql_serverSetup(SetupTemplate):
             # files here.
             return complete
 
-        postinst.shellCommand(['/usr/bin/postgresql-setup', 'initdb'])
+        postinst.shellCommand(['[ -d /var/lib/pgsql/data/base ] ||',
+            '/usr/bin/postgresql-setup', 'initdb'])
 
         return complete
 

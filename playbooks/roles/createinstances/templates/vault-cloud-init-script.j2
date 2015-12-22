@@ -1,29 +1,33 @@
 #!/bin/bash
+#
+# databases machine
 
-# Install git package in instance
-yum -y install git
+set -e
 
-#Install pip package
-yum -y install python-pip
+if [ ! -d /mnt/encvol ] ; then
+    # Mount encrypted volume as /var after copying previous content over.
+    mkfs.ext4 -m 0 /dev/xvdf
+    mkdir -p /mnt/encvol
+    mount /dev/xvdf /mnt/encvol
+    cd /var && cp -ax * /mnt/encvol
+    cd /
+    umount /dev/xvdf
+    mv /var /var.old
+    mkdir -p /var
+    mount /dev/xvdf /var
+fi
 
-#Install awcli
+# Install git and package in instance
+yum -y install git python-virtualenv python-pip
+
+# Install awcli and Download keys, certificates, etc.
 pip install awscli
+aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal / --recursive
 
-# Clone drop github repository in /tmp/ansible/
-mkdir /tmp/ansible/ && cd /tmp/ansible/ && git clone {{remote_src_top}}/drop.git
-
-# Upload ldap certificates
-aws s3 cp s3://{{tag_prefix}}deployutils/identities/dbs.internal / --recursive
-
+# Clone drop github repository in /tmp/ansible and
 # Run dservices scripts
-sudo chmod -R 755 /tmp/ansible/drop/
-sudo /tmp/ansible/drop/src/dservices.py /tmp/ansible/drop/share/tero/databases.xml
-
-echo "###### Copy /var content in encrypted vol and mount encrypted vol to /var"
-
-cd var
-cp -ax * /dev/sdf
-cd /
-mv var var.old
-umount /dev/sdf 
-mount /dev/sdf /var
+# (XXX Use repo on GitHub because we don't want to install gitosis keys.)
+#   - defines ``domainName`` such that sssd is configured properly.
+mkdir -p /tmp/ansible && cd /tmp/ansible && git clone {{remote_dservices_repo}}
+virtualenv-2.7 --system-site-packages /tmp/ansible
+/tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py -DldapPasswordHash="{{ldapPasswordHash}}" -DdomainName={{domain_name}} /tmp/ansible/drop/share/tero/databases.xml

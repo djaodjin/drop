@@ -68,7 +68,7 @@ Maintenance scripts for the front-end reverse proxy.
           <port>443</port>
           <webapp>
             <path>/</path>
-            <port>8000</port>
+            <port>8020</port>
             <app_name>app</app_name>
           </webapp>
         </extra>

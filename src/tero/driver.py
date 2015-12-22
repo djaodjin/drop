@@ -110,12 +110,6 @@ def copy_setup(profiles, host, remote_path, settings=None):
                 # We are setting up a profile which is not in the default set,
                 # so let's copy it to the machine being setup as well.
                 shutil.copy(profile_abs_path, stage_profile_dir)
-                profile_path = os.path.join(stage_profile_dir,
-                    os.path.basename(profile_abs_path))
-                with open(profile_path, 'r') as profile_file:
-                    template_text = profile_file.read()
-                with open(profile_path, 'w') as profile_file:
-                    profile_file.write(template_text % settings)
 
     if fab.env.password:
         # We will need a sudo password to install packages and configure
