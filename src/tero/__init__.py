@@ -2087,6 +2087,7 @@ class PipInstallStep(InstallStep):
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
         shell_command([pip, '--log-file', context.log_path('pip.log'),
+            '--cache-dir', context.obj_dir('.cache'),
             'install'] + self.managed, admin=admin)
         self.updated = True
 
