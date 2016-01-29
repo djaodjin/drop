@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -2021,8 +2021,12 @@ class MacPortInstallStep(InstallStep):
 class NpmInstallStep(InstallStep):
     ''' Install a prerequisite to a project through npm (Node.js manager).'''
 
-    def __init__(self, project_name, target=None):
-        InstallStep.__init__(self, project_name, [project_name],
+    def __init__(self, project_name, versions=None, target=None):
+        install_name = project_name
+        if (versions and 'includes' in versions
+            and len(versions['includes']) > 0):
+            install_name = '%s@%s' % (project_name, versions['includes'][0])
+        InstallStep.__init__(self, project_name, [install_name],
                              priority=Step.install_npm)
 
     def _manager(self):
