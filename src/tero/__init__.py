@@ -3983,7 +3983,7 @@ def create_managed(project_name, versions=None, target=None):
     elif target and target.startswith('gems'):
         install_step = GemInstallStep(project_name, versions, target)
     elif target and target.startswith('nodejs'):
-        install_step = NpmInstallStep(project_name, target)
+        install_step = NpmInstallStep(project_name, versions, target)
     elif CONTEXT.host() in APT_DISTRIBS:
         install_step = AptInstallStep(project_name, target)
     elif CONTEXT.host() in PORT_DISTRIBS:
