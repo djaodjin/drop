@@ -920,22 +920,25 @@ class DependencyGenerator(Unserializer):
             # Of course it created problems, yet we want to check existance
             # as late as possible so there was no way to decide
             # at this point.
-            versions = None
-            if setup_name in self.vertices:
-                versions = self.vertices[setup_name].versions
-            install_step = create_managed(
-                managed_name, versions=versions, target=target)
+            install_step = create_managed(managed_name, target=target)
         if not install_step:
             # Remove special case install_step is None; replace it with
             # a placeholder instance that will throw an exception
             # when the *run* method is called.
             install_step = InstallStep(project_name, target=target)
         if install_step:
+            # We collected all bins/libs/includes in a SetupStep.
+            # They need to be transfered to the InstallStep.
+            setup_step = self.vertices[setup_name]
+            install_step.add_prerequisites(setup_step)
             self.vertices[install_name] = install_step
             self.connect_to(setup_name, install_step)
         return install_step
 
     def add_setup(self, target, deps):
+        """
+        Add a step that will check all required prerequisites are present.
+        """
         targets = []
         for dep in deps:
             target_name = dep.target
@@ -952,6 +955,11 @@ class DependencyGenerator(Unserializer):
                 self.vertices[setup.name] = setup
             else:
                 self.vertices[setup.name].add_prerequisites(setup)
+                # Add prerequisites test not already present in install step.
+                managed_name = dep.name.split(os.sep)[-1]
+                install_name = InstallStep.genid(managed_name)
+                if install_name in self.vertices:
+                    self.vertices[install_name].add_prerequisites(setup)
             targets += [self.vertices[setup.name]]
         return targets
 
@@ -1056,13 +1064,6 @@ class DependencyGenerator(Unserializer):
         '''Returns a topological ordering of projects selected.'''
         ordered = []
         remains = []
-        for name in self.packages:
-            # We have to wait until here to create the install steps. Before
-            # then, we do not know if they will be required nor if prerequisites
-            # are repository projects in the index file or not.
-            install_step = self.add_install(name)
-            if install_step and not install_step.name in self.vertices:
-                remains += [install_step]
         for step in self.vertices:
             remains += [self.vertices[step]]
         next_remains = []
@@ -1142,10 +1143,8 @@ class BuildGenerator(DependencyGenerator):
                 prereqs = targets
                 if update_s:
                     prereqs = [update_s] + targets
-                self.add_config_make(variant,
-                                   project.repository.configure,
-                                   project.repository.make,
-                                   prereqs)
+                self.add_config_make(variant, project.repository.configure,
+                    project.repository.make, prereqs)
             elif dist in project.packages:
                 self.packages |= set([name])
                 targets = self.add_setup(variant.target,
@@ -1291,7 +1290,7 @@ class MakeDepGenerator(MakeGenerator):
             if not setup.name in self.vertices:
                 self.vertices[setup.name] = setup
             else:
-                setup = self.vertices[setup.name].add_prerequisites(setup)
+                self.vertices[setup.name].add_prerequisites(setup)
             targets += [self.vertices[setup.name]]
         return targets
 
@@ -1770,7 +1769,7 @@ class TargetStep(Step):
 
     def __init__(self, prefix, project_name, target=None):
         self.target = target
-        Step.__init__(self, prefix, project_name)
+        super(TargetStep, self).__init__(prefix, project_name)
         self.name = self.__class__.genid(project_name, target)
 
     @property
@@ -1787,7 +1786,8 @@ class ConfigureStep(TargetStep):
     etc.'''
 
     def __init__(self, project_name, envvars, target=None):
-        TargetStep.__init__(self, Step.configure, project_name, target)
+        super(ConfigureStep, self).__init__(
+            Step.configure, project_name, target)
         self.envvars = envvars
 
     def associate(self, target):
@@ -1797,26 +1797,103 @@ class ConfigureStep(TargetStep):
         self.updated = config_var(context, self.envvars)
 
 
-class InstallStep(Step):
-    '''The *install* step in the development cycle installs prerequisites
-    to a project.'''
+class SetupStep(TargetStep):
+    '''The *setup* step in the development cycle installs third-party
+    prerequisites. This steps gathers all the <dep> statements referring
+    to a specific prerequisite.'''
 
-    def __init__(self, project_name, managed=None, target=None,
-                 priority=Step.install):
-        Step.__init__(self, priority, project_name)
-        if managed and len(managed) == 0:
-            self.managed = [project_name]
-        else:
-            self.managed = managed
-        self.target = target
+    def __init__(self, project_name, files, versions=None, target=None):
+        """
+        files is a dictionnary.
 
-    def insert(self, install_step):
-        if install_step.managed:
-            self.managed += install_step.managed
+        We keep a reference to the project because we want to decide
+        to add native installer/made package/patch right after run.
+        """
+        super(SetupStep, self).__init__(Step.setup, project_name, target)
+        if not versions:
+            versions = {'includes': [], 'excludes': []}
+        self.managed = {project_name: {
+            'files': files,
+            'includes': versions.get('includes', []),
+            'excludes': versions.get('excludes', [])}}
+        self.updated = False
+        self.incompletes = []
+
+    def add_prerequisites(self, setup):
+        """
+        We only add prerequisites from *dep* which are not already present
+        in *self*. This is important because *find_prerequisites* will
+        initialize tuples (name_pat, absolute_path).
+        """
+        for dep_name, dep_items in setup.managed.iteritems():
+            if dep_name in self.managed:
+                for dirname in dep_items['files']:
+                    if not dirname in self.managed[dep_name]['files']:
+                        self.managed[dep_name]['files'].update({
+                            dirname: dep_items['files'][dirname]})
+                    else:
+                        for prereq_1 in dep_items['files'][dirname]:
+                            found = False
+                            for prereq_2 in self.managed[dep_name]['files']:
+                                if prereq_2[0] == prereq_1[0]:
+                                    found = True
+                                    break
+                            if not found:
+                                self.managed[dep_name]['files'][dirname] \
+                                    += [prereq_1]
+                self.managed[dep_name]['excludes'] += dep_items['excludes']
+                self.managed[dep_name]['includes'] += dep_items['includes']
+            else:
+                self.managed.update({dep_name: dep_items})
 
     def run(self, context):
+        self.incompletes = []
+        for dep_name, dep_items in self.managed.iteritems():
+            versions = {'includes': dep_items['includes'],
+                'excludes': dep_items['excludes']}
+            self.managed[dep_name]['files'], complete = find_prerequisites(
+                dep_items['files'], versions, self.target)
+            if complete:
+                self.managed[dep_name]['files'], complete = link_prerequisites(
+                    dep_items['files'], versions, self.target)
+            else:
+                self.incompletes += [dep_name]
+        self.updated = True
+        return len(self.incompletes) == 0
+
+
+class InstallStep(SetupStep):
+    """
+    Base class to install prerequisites through package managers, either
+    native (apt-get, yum) or language specific (pip, gem, nodejs).
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(InstallStep, self).__init__(project_name, {},
+            versions=versions, target=target)
+        if alt_names and len(alt_names) > 0:
+            self.alt_names = {project_name: alt_names}
+        else:
+            self.alt_names = {}
+        self.priority = Step.install
+
+    def insert(self, install_step):
+        self.add_prerequisites(install_step)
+        self.alt_names.update(install_step.alt_names)
+
+    def run(self, context):
+        super(InstallStep, self).run(context)
+        self.updated = False
+        if len(self.incompletes) > 0:
+            installs = []
+            for install_name in self.incompletes:
+                installs += self.alt_names.get(install_name, [install_name])
+            self.install(installs, context)
+            self.updated = True
+
+    def install(self, managed, context):
         raise Error("Does not know how to install '%s' on %s for %s"
-                    % (str(self.managed), context.host(), self.name))
+                    % (managed, context.host(), self.name))
 
     def info(self):
         raise Error(
@@ -1827,15 +1904,14 @@ class InstallStep(Step):
 class AptInstallStep(InstallStep):
     ''' Install a prerequisite to a project through apt (Debian, Ubuntu).'''
 
-    def __init__(self, project_name, target=None):
-        managed = [project_name]
-        packages = managed
-        if target and target.startswith('python'):
-            packages = [target + '-' + man for man in managed]
-        InstallStep.__init__(self, project_name, packages,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(AptInstallStep, self).__init__(project_name, alt_names=alt_names,
+            versions=versions, target=target)
+        self.priority = Step.install_native
 
-    def run(self, context):
+    @staticmethod
+    def install(managed, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
         # configuration of packages do not pop up in the middle
         # of installation. We are going to update the configuration
@@ -1844,9 +1920,8 @@ class AptInstallStep(InstallStep):
         # tried to do when we did not get priviledge access.
         shell_command(['sh', '-c', '"/usr/bin/apt-get update'\
 ' && DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install %s"'
-                       % ' '.join(self.managed)],
+                       % ' '.join(managed)],
                       admin=True, noexecute=context.nonative)
-        self.updated = True
 
     def info(self):
         info = []
@@ -1875,15 +1950,18 @@ class AptInstallStep(InstallStep):
 class DarwinInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pkg (Darwin, OSX).'''
 
-    def __init__(self, project_name, filenames, target=None):
-        InstallStep.__init__(self, project_name, managed=filenames,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(DarwinInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_native
 
-    def run(self, context):
+    @staticmethod
+    def install(managed, context):
         '''Mount *image*, a pathnme to a .dmg file and use the Apple installer
         to install the *pkg*, a .pkg package onto the platform through the Apple
         installer.'''
-        for filename in self.managed:
+        for filename in managed:
             try:
                 volume = None
                 if filename.endswith('.dmg'):
@@ -1911,47 +1989,52 @@ class DarwinInstallStep(InstallStep):
                     shell_command(['hdiutil', 'detach', volume])
             except:
                 raise Error('failure to install darwin package ' + filename)
-        self.updated = True
 
 
 class DpkgInstallStep(InstallStep):
     ''' Install a prerequisite to a project through dpkg (Debian, Ubuntu).'''
 
-    def __init__(self, project_name, filenames, target=None):
-        managed = []
-        for filename in filenames:
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        filenames = []
+        for filename in alt_names:
             if filename.endswith('.deb'):
-                managed += [filename]
-        InstallStep.__init__(self, project_name, managed=managed,
-                             priority=Step.install_native)
+                filenames += [filename]
+        super(DpkgInstallStep, self).__init__(project_name,
+            alt_names=filenames, versions=versions, target=target)
+        self.priority = Step.install_native
 
-    def run(self, context):
-        if self.managed:
-            shell_command(['dpkg', '-i', ' '.join(self.managed)],
+    @staticmethod
+    def install(managed, context):
+        if managed:
+            shell_command(['dpkg', '-i', ' '.join(managed)],
                 admin=True, noexecute=context.nonative)
-        self.updated = True
 
 
 class GemInstallStep(InstallStep):
-    '''Install a prerequisite to a project through gem (Ruby).'''
-
-    def __init__(self, project_name, versions=None, target=None):
-        install_name = project_name
-        if (versions and 'includes' in versions
-            and len(versions['includes']) > 0):
-            install_name = '%s==%s' % (project_name, versions['includes'][0])
-        InstallStep.__init__(self, project_name, [install_name],
-                             priority=Step.install_gem)
+    """
+    Install a prerequisite to a project through gem (Ruby).
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(GemInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_gem
 
     def collect(self, context):
         """Collect prerequisites from Gemfile"""
         sys.stdout.write('''XXX collect from Gemfile NotYetImplemented!\n''')
 
-    def run(self, context):
-        shell_command(
-            [find_gem(context), 'install'] + self.managed,
-            admin=True, noexecute=context.nonative)
-        self.updated = True
+    def install(self, managed, context):
+        packages = []
+        for dep_name in managed:
+            include_versions = self.managed[dep_name].get('includes', [])
+            if len(include_versions) > 0:
+                packages += ['%s==%s' % (dep_name, include_versions[0])]
+            else:
+                packages += [dep_name]
+        shell_command([find_gem(context), 'install'] + packages,
+            noexecute=context.nonative)
 
     def info(self):
         info = []
@@ -1970,42 +2053,16 @@ class GemInstallStep(InstallStep):
 class MacPortInstallStep(InstallStep):
     ''' Install a prerequisite to a project through Macports.'''
 
-    def __init__(self, project_name, target=None):
-        managed = [project_name]
-        packages = managed
-        if target:
-            look = re.match(r'python(\d(\.\d)?)?', target)
-        else:
-            look = re.match(r'python(\d(\.\d)?)?-(.*)', project_name)
-            if look:
-                managed = [look.group(3)]
-        if look:
-            if look.group(1):
-                prefix = 'py%s-' % look.group(1).replace('.', '')
-            else:
-                prefix = 'py27-'
-            packages = []
-            for man in managed:
-                packages += [prefix + man]
-        darwin_names = {
-            # translation of package names. It is simpler than
-            # creating an <alternates> node even if it look more hacky.
-            'libicu-dev': 'icu'}
-        pre_packages = packages
-        packages = []
-        for package in pre_packages:
-            if package in darwin_names:
-                packages += [darwin_names[package]]
-            else:
-                packages += [package]
-        InstallStep.__init__(self, project_name, packages,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(MacPortInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_native
 
-
-    def run(self, context):
-        shell_command(['/opt/local/bin/port', 'install'] + self.managed,
+    @staticmethod
+    def install(managed, context):
+        shell_command(['/opt/local/bin/port', 'install'] + managed,
             admin=True, noexecute=context.nonative)
-        self.updated = True
 
     def info(self):
         info = []
@@ -2019,15 +2076,14 @@ class MacPortInstallStep(InstallStep):
 
 
 class NpmInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through npm (Node.js manager).'''
-
-    def __init__(self, project_name, versions=None, target=None):
-        install_name = project_name
-        if (versions and 'includes' in versions
-            and len(versions['includes']) > 0):
-            install_name = '%s@%s' % (project_name, versions['includes'][0])
-        InstallStep.__init__(self, project_name, [install_name],
-                             priority=Step.install_npm)
+    """
+    Install a prerequisite to a project through npm (Node.js manager).
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(NpmInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_npm
 
     def _manager(self):
         # nodejs is not available as a package on Fedora 17 or rather,
@@ -2035,11 +2091,18 @@ class NpmInstallStep(InstallStep):
         find_npm(CONTEXT)
         return os.path.join(CONTEXT.value('buildTop'), 'bin', 'npm')
 
-    def run(self, context):
+    def install(self, managed, context):
+        packages = []
+        for dep_name in managed:
+            include_versions = self.managed[dep_name].get('includes', [])
+            if len(include_versions) > 0:
+                packages += ['%s@%s' % (dep_name, include_versions[0])]
+            else:
+                packages += [dep_name]
         shell_command([self._manager(), 'install', '-g',
                 '--cache', os.path.join(context.value('installTop'), '.npm'),
                 '--tmp', os.path.join(context.value('installTop'), 'tmp'),
-                '--prefix', context.value('installTop')] + self.managed)
+                '--prefix', context.value('installTop')] + packages)
         self.updated = True
 
     def info(self):
@@ -2054,15 +2117,14 @@ class NpmInstallStep(InstallStep):
 
 
 class PipInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through pip (Python eggs).'''
-
-    def __init__(self, project_name, versions=None, target=None):
-        install_name = project_name
-        if (versions and 'includes' in versions
-            and len(versions['includes']) > 0):
-            install_name = '%s==%s' % (project_name, versions['includes'][0])
-        InstallStep.__init__(self, project_name, [install_name],
-                             priority=Step.install_pip)
+    """
+    Install a prerequisite to a project through pip.
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(PipInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_pip
 
     def collect(self, context):
         """Collect prerequisites from requirements.txt"""
@@ -2078,9 +2140,17 @@ class PipInstallStep(InstallStep):
 </dep>
 ''' % (prerequisite, prerequisite))
 
-    def run(self, context):
+    @staticmethod
+    def install(self, managed, context):
+        packages = []
+        for dep_name in managed:
+            include_versions = self.managed[dep_name].get('includes', [])
+            if len(include_versions) > 0:
+                packages += ['%s==%s' % (dep_name, include_versions[0])]
+            else:
+                packages += [dep_name]
         # In most cases, when installing through pip, we should be running
-        # under virtualenv. This is only true for development machines though.
+        # under virtualenv.
         pip = find_pip(context)
         site_packages = None
         pip_version = subprocess.check_output([pip, '-V'])
@@ -2092,8 +2162,7 @@ class PipInstallStep(InstallStep):
             admin = True
         shell_command([pip, '--log-file', context.log_path('pip.log'),
             '--cache-dir', context.obj_dir('.cache'),
-            'install'] + self.managed, admin=admin)
-        self.updated = True
+            'install'] + packages, admin=admin, noexecute=context.nonative)
 
     def info(self):
         info = []
@@ -2110,54 +2179,38 @@ class PipInstallStep(InstallStep):
 
 
 class RpmInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through rpm (Redhat-based).'''
-
-    def __init__(self, project_name, filenames, target=None):
-        managed = []
-        for filename in filenames:
+    """
+    Install a prerequisite to a project through rpm (Redhat-based).
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        filenames = []
+        for filename in alt_names:
             if filename.endswith('.rpm'):
-                managed += [filename]
-        InstallStep.__init__(self, project_name, managed=managed,
-                             priority=Step.install_native)
+                filenames += [filename]
+        super(RpmInstallStep, self).__init__(project_name,
+            alt_names=filenames, versions=versions, target=target)
+        self.priority = Step.install_native
 
-    def run(self, context):
-        if self.managed:
-            # --nodeps because rpm looks stupid and can't figure out that
-            # the vcd package provides the libvcd.so required by the executable.
-            shell_command(
-                ['rpm', '-i', '--force', ' '.join(self.managed), '--nodeps'],
-                admin=True, noexecute=context.nonative)
-            self.updated = True
+    @staticmethod
+    def install(managed, context):
+        # --nodeps because rpm looks stupid and can't figure out that
+        # the vcd package provides the libvcd.so required by the executable.
+        shell_command(['rpm', '-i', '--force', ' '.join(managed), '--nodeps'],
+            admin=True, noexecute=context.nonative)
 
 
 class YumInstallStep(InstallStep):
     ''' Install a prerequisite to a project through yum (Redhat-based).'''
 
-    def __init__(self, project_name, target=None):
-        managed = [project_name]
-        packages = managed
-        if target:
-            if target.startswith('python'):
-                packages = []
-                for man in managed:
-                    packages += [target + '-' + man]
-        fedora_names = {
-            'libbz2-dev': 'bzip2-devel',
-            'python-all-dev': 'python-devel',
-            'zlib1g-dev': 'zlib-devel'}
-        pre_packages = packages
-        packages = []
-        for package in pre_packages:
-            if package in fedora_names:
-                packages += [fedora_names[package]]
-            elif package.endswith('-dev'):
-                packages += [package + 'el']
-            else:
-                packages += [package]
-        InstallStep.__init__(self, project_name, packages,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(YumInstallStep, self).__init__(project_name, alt_names=alt_names,
+            versions=versions, target=target)
+        self.priority = Step.install_native
 
-    def run(self, context):
+    @staticmethod
+    def install(managed, context):
         # XXX Might not be the best place to do this,
         # yet CentOS does not include basic tools such as fail2ban.
         if context.host() == 'CentOS' and not os.path.exists(
@@ -2165,7 +2218,7 @@ class YumInstallStep(InstallStep):
             shell_command(['rpm', '-Uvh',
 'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
             admin=True, noexecute=context.nonative)
-        cmdline = ['yum', '-y', 'install'] + self.managed
+        cmdline = ['yum', '-y', 'install'] + managed
         log_info('update, then run: %s' % ' '.join(cmdline))
         shell_command(['yum', '-y', 'update'],
             admin=True, noexecute=context.nonative)
@@ -2178,7 +2231,6 @@ class YumInstallStep(InstallStep):
                 unmanaged = look.group(1).split(' ')
                 if len(unmanaged) > 0:
                     raise Error("yum cannot install " + ' '.join(unmanaged))
-        self.updated = True
 
     def info(self):
         info = []
@@ -2269,59 +2321,6 @@ class ShellStep(BuildStep):
                           + context.search_path('bin'))
             os.remove(script.name)
             self.updated = True
-
-
-class SetupStep(TargetStep):
-    '''The *setup* step in the development cycle installs third-party
-    prerequisites. This steps gathers all the <dep> statements referring
-    to a specific prerequisite.'''
-
-    def __init__(self, project_name, files, versions=None, target=None):
-        '''We keep a reference to the project because we want to decide
-        to add native installer/made package/patch right after run'''
-        TargetStep.__init__(self, Step.setup, project_name, target)
-        self.files = files
-        self.updated = False
-        if versions:
-            self.versions = versions
-        else:
-            self.versions = {'includes': [], 'excludes': []}
-
-    def add_prerequisites(self, setup):
-        """
-        We only add prerequisites from *dep* which are not already present
-        in *self*. This is important because *find_prerequisites* will
-        initialize tuples (name_pat, absolute_path).
-        """
-        files = {}
-        for dirname in setup.files:
-            if not dirname in self.files:
-                self.files[dirname] = setup.files[dirname]
-                files[dirname] = setup.files[dirname]
-            else:
-                for prereq_1 in setup.files[dirname]:
-                    found = False
-                    for prereq_2 in self.files[dirname]:
-                        if prereq_2[0] == prereq_1[0]:
-                            found = True
-                            break
-                    if not found:
-                        self.files[dirname] += [prereq_1]
-                        if not dirname in files:
-                            files[dirname] = []
-                        files[dirname] += [prereq_1]
-        self.versions['excludes'] += setup.versions['excludes']
-        self.versions['includes'] += setup.versions['includes']
-        return SetupStep(self.project, files, self.versions, self.target)
-
-    def run(self, context):
-        self.files, complete = find_prerequisites(
-            self.files, self.versions, self.target)
-        if complete:
-            self.files, complete = link_prerequisites(
-                self.files, self.versions, self.target)
-        self.updated = True
-        return complete
 
 
 class UpdateStep(Step):
@@ -2998,6 +2997,15 @@ def create_index_pathname(db_index_pathname, db_pathnames):
     db_index.close()
 
 
+def found_bin_suffix(candidate, variant=None):
+    if candidate is None:
+        return 'no'
+    numbers = bin_version_candidates(candidate, variant=variant)
+    if len(numbers) > 0:
+        return str(numbers[0])
+    return 'yes'
+
+
 def find_bin(names, search_path, build_top, versions=None, variant=None):
     '''Search for a list of binaries that can be executed from $PATH.
 
@@ -3040,29 +3048,29 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
     droots = search_path
     complete = True
     for name_pat, absolute_path in names:
-        if absolute_path != None and os.path.exists(absolute_path):
+        if absolute_path is not None and os.path.exists(absolute_path):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((name_pat, absolute_path))
             continue
         link_name, suffix = link_build_name(name_pat, 'bin', variant)
+        if variant:
+            log_interactive(variant + '/')
+        log_interactive(name_pat + '... ')
+        candidate = None
         if os.path.islink(link_name):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
             # recomputing of things that hardly change.
-            results.append((name_pat,
-                            os.path.realpath(os.path.join(link_name, suffix))))
+            candidate = os.path.realpath(os.path.join(link_name, suffix))
+            results.append((name_pat, candidate))
+            log_info(found_bin_suffix(candidate, variant=variant))
             continue
-        if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
-        found = False
         if name_pat.endswith('.app'):
             binpath = os.path.join('/Applications', name_pat)
             if os.path.isdir(binpath):
-                found = True
+                candidate = binpath
                 log_info('yes')
-                results.append((name_pat, binpath))
         else:
             for path in droots:
                 for binname in find_first_files(path, name_pat):
@@ -3071,30 +3079,7 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
                         and os.access(binpath, os.X_OK)):
                         # We found an executable with the appropriate name,
                         # let's find out if we can retrieve a version number.
-                        numbers = []
-                        if not (variant and len(variant) > 0):
-                            # When looking for a specific *variant*, we do not
-                            # try to execute executables as they are surely
-                            # not meant to be run on the native system.
-                            # We run the help flag before --version, -V
-                            # because bzip2 would wait on stdin for data
-                            # otherwise.
-                            # XXX semilla --help is broken :(
-                            for flag in ['--version', '-V']:
-                                numbers = []
-                                cmdline = [binpath, flag]
-                                try:
-                                    output = subprocess.check_output(
-                                        cmdline, stderr=subprocess.STDOUT)
-                                    for line in output.splitlines():
-                                        numbers += version_candidates(line)
-                                except subprocess.CalledProcessError:
-                                    # When the command returns with an error
-                                    # code, we assume we passed an incorrect
-                                    # flag to retrieve the version number.
-                                    numbers = []
-                                if len(numbers) > 0:
-                                    break
+                        numbers = bin_version_candidates(binpath, variant)
                         # At this point *numbers* contains a list that can
                         # interpreted as versions. Hopefully, there is only
                         # one candidate.
@@ -3111,21 +3096,21 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
                                         excluded = True
                                         break
                             if not excluded:
+                                candidate = binpath
                                 version = numbers[0]
                                 log_info(str(version))
-                                results.append((name_pat, binpath))
+                                break
                             else:
                                 log_info('excluded (' +str(numbers[0])+ ')')
                         else:
+                            candidate = binpath
                             log_info('yes')
-                            results.append((name_pat, binpath))
-                        found = True
-                        break
-                if found:
+                            break
+                if candidate is not None:
                     break
-        if not found:
+        results.append((name_pat, candidate))
+        if candidate is None:
             log_info('no')
-            results.append((name_pat, None))
             complete = False
     return results, version, complete
 
@@ -3421,6 +3406,16 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
     return results, version, complete
 
 
+def found_lib_suffix(candidate, pat):
+    if candidate is None:
+        return 'no'
+    look = re.match('.*%s(.+)' % pat, candidate)
+    if look:
+        suffix = look.group(1)
+        return suffix
+    return 'yes (no suffix?)'
+
+
 def find_lib(names, search_path, build_top, versions=None, variant=None):
     '''Search for a list of libraries that can be found from $PATH
        where bin was replaced by lib.
@@ -3486,23 +3481,23 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
             lib_priority_suffix = lib_dyn_suffix()
             link_pats = [lib_base_pat + '.so',
                          lib_base_pat + lib_static_suffix()]
-        found = False
+        candidate = None
         for link_pat in link_pats:
             link_name, link_suffix = link_build_name(link_pat, 'lib', variant)
             if os.path.islink(link_name):
                 # If we already have a symbolic link in the libBuildDir,
                 # we will assume it is the one to use in order to cut off
                 # recomputing of things that hardly change.
-                results.append((name_pat, os.path.realpath(os.path.join(
-                                link_name, link_suffix))))
-                found = True
+                candidate = os.path.realpath(
+                    os.path.join(link_name, link_suffix))
+                results.append((name_pat, candidate))
                 break
-        if found:
-            continue
         if variant:
             log_interactive(variant + '/')
         log_interactive(name_pat + '... ')
-        found = False
+        if candidate is not None:
+            log_info(found_lib_suffix(candidate, pat=lib_base_pat))
+            continue
         for lib_sys_dir in droots:
             libs = []
             if '.*' in name_pat:
@@ -3567,18 +3562,10 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
             if len(libs) > 0:
                 candidate = libs[0][0]
                 version = libs[0][1]
-                look = re.match('.*%s(.+)' % lib_base_pat, candidate)
-                if look:
-                    suffix = look.group(1)
-                    log_info(suffix)
-                else:
-                    log_info('yes (no suffix?)')
-                results.append((name_pat, candidate))
-                found = True
                 break
-        if not found:
-            log_info('no')
-            results.append((name_pat, None))
+        results.append((name_pat, candidate))
+        log_info(found_lib_suffix(candidate, pat=lib_base_pat))
+        if candidate is None:
             complete = False
     return results, version, complete
 
@@ -3979,17 +3966,20 @@ def create_managed(project_name, versions=None, target=None):
     on the native package manager for python with C bindings.'''
     install_step = None
     if target and target.startswith('python'):
-        install_step = PipInstallStep(project_name, versions, target)
+        install_step = PipInstallStep(
+            project_name, versions=versions, target=target)
     elif target and target.startswith('gems'):
-        install_step = GemInstallStep(project_name, versions, target)
+        install_step = GemInstallStep(
+            project_name, versions=versions, target=target)
     elif target and target.startswith('nodejs'):
-        install_step = NpmInstallStep(project_name, versions, target)
+        install_step = NpmInstallStep(
+            project_name, versions=versions, target=target)
     elif CONTEXT.host() in APT_DISTRIBS:
-        install_step = AptInstallStep(project_name, target)
+        install_step = AptInstallStep(project_name, target=target)
     elif CONTEXT.host() in PORT_DISTRIBS:
-        install_step = MacPortInstallStep(project_name, target)
+        install_step = MacPortInstallStep(project_name, target=target)
     elif CONTEXT.host() in YUM_DISTRIBS:
-        install_step = YumInstallStep(project_name, target)
+        install_step = YumInstallStep(project_name, target=target)
     else:
         install_step = None
     return install_step
@@ -3997,11 +3987,11 @@ def create_managed(project_name, versions=None, target=None):
 
 def create_package_file(project_name, filenames):
     if CONTEXT.host() in APT_DISTRIBS:
-        install_step = DpkgInstallStep(project_name, filenames)
+        install_step = DpkgInstallStep(project_name, alt_names=filenames)
     elif CONTEXT.host() in PORT_DISTRIBS:
-        install_step = DarwinInstallStep(project_name, filenames)
+        install_step = DarwinInstallStep(project_name, alt_names=filenames)
     elif CONTEXT.host() in YUM_DISTRIBS:
-        install_step = RpmInstallStep(project_name, filenames)
+        install_step = RpmInstallStep(project_name, alt_names=filenames)
     else:
         install_step = None
     return install_step
@@ -4051,9 +4041,9 @@ def install(packages, dbindex):
                 managed += [name]
 
         if len(managed) > 0:
-            step = create_managed(managed[0], versions=None, target=None)
+            step = create_managed(managed[0])
             for package in managed[1:]:
-                step.insert(create_managed(package, versions=None, target=None))
+                step.insert(create_managed(package))
             step.run(CONTEXT)
 
     if package_files:
@@ -4702,6 +4692,35 @@ def version_candidates(line):
         else:
             part = ''
     return candidates
+
+
+def bin_version_candidates(binpath, variant=None):
+    if variant is None or len(variant) == 0:
+        # When looking for a specific *variant*, we do not
+        # try to execute executables as they are surely
+        # not meant to be run on the native system.
+        return []
+    numbers = []
+    # We run the help flag before --version, -V
+    # because bzip2 would wait on stdin for data
+    # otherwise.
+    # XXX semilla --help is broken :(
+    for flag in ['--version', '-V']:
+        numbers = []
+        cmdline = [binpath, flag]
+        try:
+            output = subprocess.check_output(
+                cmdline, stderr=subprocess.STDOUT)
+            for line in output.splitlines():
+                numbers += version_candidates(line)
+        except subprocess.CalledProcessError:
+            # When the command returns with an error
+            # code, we assume we passed an incorrect
+            # flag to retrieve the version number.
+            numbers = []
+        if len(numbers) > 0:
+            break
+    return numbers
 
 
 def version_compare(left, right):
