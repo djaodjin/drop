@@ -1834,7 +1834,8 @@ class SetupStep(TargetStep):
                     else:
                         for prereq_1 in dep_items['files'][dirname]:
                             found = False
-                            for prereq_2 in self.managed[dep_name]['files']:
+                            for prereq_2 in \
+                                self.managed[dep_name]['files'][dirname]:
                                 if prereq_2[0] == prereq_1[0]:
                                     found = True
                                     break
