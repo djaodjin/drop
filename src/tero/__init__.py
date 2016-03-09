@@ -2140,7 +2140,6 @@ class PipInstallStep(InstallStep):
 </dep>
 ''' % (prerequisite, prerequisite))
 
-    @staticmethod
     def install(self, managed, context):
         packages = []
         for dep_name in managed:
