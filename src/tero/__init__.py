@@ -2031,10 +2031,11 @@ class GemInstallStep(InstallStep):
         for dep_name in managed:
             include_versions = self.managed[dep_name].get('includes', [])
             if len(include_versions) > 0:
-                packages += ['%s==%s' % (dep_name, include_versions[0])]
+                packages += ['%s:%s' % (dep_name, include_versions[0])]
             else:
                 packages += [dep_name]
-        shell_command([find_gem(context), 'install'] + packages,
+        shell_command([find_gem(context), 'install'] + packages + [
+            '--install-dir', os.path.join(context.value('shareDir'), 'gems')],
             noexecute=context.nonative)
 
     def info(self):
@@ -3671,7 +3672,8 @@ def find_boot_bin(name, package=None, context=None, dbindex=None):
         executables, version, complete = find_bin([[name, None]],
             context.search_path('bin'), context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
-            install([package], dbindex)
+            validate_controls(
+                BuildGenerator(['dws'], [], force_update=True), dbindex)
             executables, version, complete = find_bin([[name, None]],
                 context.search_path('bin'), context.value('buildTop'))
         name, absolute_path = executables.pop()
@@ -3689,16 +3691,33 @@ def find_gem(context):
 
 
 def find_git(context):
-    if not os.path.lexists(
-        os.path.join(context.value('buildTop'), 'bin', 'git')):
-        files = {'bin': [('git', None)]}
-        if context.host() in APT_DISTRIBS:
-            files.update({'share': [('git-core', None)]})
-        else:
-            files.update({'libexec': [('git-core', None)]})
-        setup = SetupStep('git-all', files=files)
-        setup.run(context)
-    return 'git'
+    executable = os.path.join(context.bin_build_dir(), 'git')
+    if not os.path.lexists(executable):
+        dbindex = IndexProjects(context,
+        '''<?xml version="1.0" ?>
+<projects>
+  <project name="dws">
+    <repository>
+      <dep name="git">
+        <bin>git</bin>
+        <share>(git-core)/templates</share>
+      </dep>
+    </repository>
+  </project>
+</projects>
+''')
+        executables, _, complete = find_bin([('git', None)],
+            context.search_path('bin'), context.value('buildTop'))
+        if len(executables) == 0 or not executables[0][1]:
+            validate_controls(
+                BuildGenerator(['dws'], [], force_update=True), dbindex)
+            executables, version, complete = find_bin([('git', None)],
+                context.search_path('bin'), context.value('buildTop'))
+        name, absolute_path = executables.pop()
+        link_pat_path('git', absolute_path, 'bin')
+        executable = os.path.join(context.bin_build_dir(), name)
+    return executable
+
 
 def find_npm(context):
     version = '0.10.35'
