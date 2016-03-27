@@ -1063,10 +1063,20 @@ class DependencyGenerator(Unserializer):
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
         ordered = []
-        remains = []
-        for step in self.vertices:
-            remains += [self.vertices[step]]
+        # We first force all install steps using a package manager
+        # to be grouped up front by package manager. This way a single
+        # command can be executed to install all of them at once.
         next_remains = []
+        remains = self.vertices.values()
+        for priority in (Step.install_native, Step.install_pip,
+                         Step.install_gem, Step.install_npm):
+            for step in remains:
+                if step.priority == priority:
+                    ordered += [step]
+                else:
+                    next_remains += [step]
+            remains = next_remains
+            next_remains = []
         if False:
             log_info('!!!remains:')
             for step in remains:
@@ -1077,11 +1087,12 @@ class DependencyGenerator(Unserializer):
                          % (step.name, str(is_vert),
                             str([pre.name for pre in step.prerequisites])))
         loop_cnt = 0
+        next_remains = []
         while len(remains) > 0:
             loop_cnt = loop_cnt + 1
             for step in remains:
                 ready = True
-                insert_point = 0
+                min_insert_point = 0
                 for prereq in step.prerequisites:
                     index = 0
                     found = False
@@ -1093,18 +1104,18 @@ class DependencyGenerator(Unserializer):
                     if not found:
                         ready = False
                         break
-                    else:
-                        if index > insert_point:
-                            insert_point = index
+                    elif index > min_insert_point:
+                        min_insert_point = index
                 if ready:
-                    for ordered_step in ordered[insert_point:]:
-                        if ordered_step.priority > step.priority:
+                    insert_point = len(ordered)
+                    for ordered_step in reversed(ordered[min_insert_point:]):
+                        if ordered_step.priority < step.priority:
                             break
                         if(hasattr(ordered_step, 'target')
                            and hasattr(step, 'target')
                            and str(ordered_step.target) > str(step.target)):
                             break
-                        insert_point = insert_point + 1
+                        insert_point = insert_point - 1
                     ordered.insert(insert_point, step)
                 else:
                     next_remains += [step]
@@ -1115,7 +1126,8 @@ class DependencyGenerator(Unserializer):
         if False:
             log_info("!!! => ordered:")
             for ordered_step in ordered:
-                log_info(" " + ordered_step.name)
+                log_info("%s -> %s" % (ordered_step.name,
+                    [step.name for step in ordered_step.prerequisites]))
         return ordered
 
 
@@ -2034,9 +2046,14 @@ class GemInstallStep(InstallStep):
                 packages += ['%s:%s' % (dep_name, include_versions[0])]
             else:
                 packages += [dep_name]
+        admin = False
+        noexecute = False
+        site_packages = os.path.join(context.value('shareDir'), 'gems')
+        if os.stat(site_packages).st_uid != os.getuid():
+            admin = True
+            noexecute = context.nonative
         shell_command([find_gem(context), 'install'] + packages + [
-            '--install-dir', os.path.join(context.value('shareDir'), 'gems')],
-            noexecute=context.nonative)
+            '--install-dir', site_packages], admin=admin, noexecute=noexecute)
 
     def info(self):
         info = []
@@ -2159,11 +2176,13 @@ class PipInstallStep(InstallStep):
         if look:
             site_packages = look.group(1)
         admin = False
+        noexecute = False
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
+            noexecute = context.nonative
         shell_command([pip, '--log-file', context.log_path('pip.log'),
             '--cache-dir', context.obj_dir('.cache'),
-            'install'] + packages, admin=admin, noexecute=context.nonative)
+            'install'] + packages, admin=admin, noexecute=noexecute)
 
     def info(self):
         info = []
@@ -4518,7 +4537,10 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
     env = os.environ.copy()
     if search_path:
         env['PATH'] = ':'.join(search_path)
-    log_info(' '.join(cmdline))
+    if not (noexecute or DO_NOT_EXECUTE):
+        log_info(' '.join(cmdline))
+    else:
+        log_info("(noexecute) %s" % ' '.join(cmdline))
     if not (noexecute or DO_NOT_EXECUTE):
         prev_euid = None
         prev_egid = None
