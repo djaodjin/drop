@@ -233,7 +233,7 @@ server {
             return complete
 
         remove_default_server = False
-        for name, vals in self.managed['iptables']['files'].iteritems():
+        for name, vals in self.managed['nginx']['files'].iteritems():
             webapps = ""
             forwards = ""
             if name.startswith('site-config'):
