@@ -24,7 +24,7 @@ Maintenance scripts for the front-end reverse proxy.
        <bin>sssd</bin>
      </dep>
      <dep name="openssh-ldap">
-       <lib>.*/(openssh)/ssh-ldap-helper</lib>
+       <libexec>.*/(openssh)/ssh-ldap-helper</libexec>
      </dep>
      <dep name="openssh-server">
        <bin>sshd</bin>

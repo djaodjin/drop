@@ -51,7 +51,7 @@ class cronSetup(SetupTemplate):
             # files here.
             return complete
 
-        for key, vals in self.files.iteritems():
+        for key, vals in self.managed['iptables']['files'].iteritems():
             if key.startswith('/etc/cron.d'):
                 for cmds in vals:
                     lines = cmds[0]

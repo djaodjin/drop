@@ -51,7 +51,7 @@ class iptablesSetup(setup.SetupTemplate):
             return complete
         ports = []
         forwards = []
-        for key, val in self.files.iteritems():
+        for key, val in self.managed['iptables']['files'].iteritems():
             if key == 'port':
                 for port, _ in val:
                     ports += [int(port)]

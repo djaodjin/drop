@@ -71,7 +71,7 @@ class postgresqlSetup(SetupTemplate):
             # files here.
             return complete
 
-        for name, vals in self.files.iteritems():
+        for name, vals in self.managed['iptables']['files'].iteritems():
             if name == 'databases':
                 db_name = None
                 for elem in vals:

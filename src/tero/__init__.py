@@ -926,10 +926,11 @@ class DependencyGenerator(Unserializer):
             # when the *run* method is called.
             install_step = InstallStep(project_name, target=target)
         if install_step:
-            # We collected all bins/libs/includes in a SetupStep.
-            # They need to be transfered to the InstallStep.
-            setup_step = self.vertices[setup_name]
-            install_step.add_prerequisites(setup_step)
+            if setup_name in self.vertices:
+                # We collected all bins/libs/includes in a SetupStep.
+                # They need to be transfered to the InstallStep.
+                setup_step = self.vertices[setup_name]
+                install_step.add_prerequisites(setup_step)
             self.vertices[install_name] = install_step
             self.connect_to(setup_name, install_step)
         return install_step
@@ -1966,7 +1967,7 @@ class DarwinInstallStep(InstallStep):
                  versions=None, target=None):
         super(DarwinInstallStep, self).__init__(project_name,
             alt_names=alt_names, versions=versions, target=target)
-        self.priority = Step.install_native
+        self.priority = Step.install
 
     @staticmethod
     def install(managed, context):
@@ -2014,7 +2015,7 @@ class DpkgInstallStep(InstallStep):
                 filenames += [filename]
         super(DpkgInstallStep, self).__init__(project_name,
             alt_names=filenames, versions=versions, target=target)
-        self.priority = Step.install_native
+        self.priority = Step.install
 
     @staticmethod
     def install(managed, context):
@@ -2209,7 +2210,7 @@ class RpmInstallStep(InstallStep):
                 filenames += [filename]
         super(RpmInstallStep, self).__init__(project_name,
             alt_names=filenames, versions=versions, target=target)
-        self.priority = Step.install_native
+        self.priority = Step.install
 
     @staticmethod
     def install(managed, context):

@@ -56,7 +56,7 @@ class openssh_serverSetup(SetupTemplate):
             new_banner.write(
                 'This server is private property. Authorized use only.\n')
         settings = {'Banner': banner}
-        for key, vals in self.files.iteritems():
+        for key, vals in self.managed['iptables']['files'].iteritems():
             if key == self.sshd_conf:
                 settings.update(vals[0][0])
         modify_config(self.sshd_conf,
