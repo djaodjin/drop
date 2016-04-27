@@ -63,15 +63,15 @@ infrastructure such as AWS region, AWS credentials, etc.
     vault_name: *Security group for the databases machines*
     watch_tower_name: *Security group for the smtp servers*
     domain_name: *Domain name for your organization*
+    webapp: *name of the web application to deploy*
+    ldapPasswordHash: *hash of the root password for LDAP*
 
     # Directories on local machine
     identities_dir: *Where keys and certificates could be found*
 
     # URLs to fetch code repositories
     remote_src_top: *Root of where git repositories are found*
-    remote_dservices_repo: https://github.com/djaodjin/drop.git
-    webapp: *Name of the web application to start*
-    ldapPasswordHash: *Hash of the root password for the LDAP server*
+    remote_dservices_repo: *where the deployment scripts can be found*
 
     $ cat $VIRTUAL_ENV/etc/ansible/hosts
     [local]
@@ -79,15 +79,22 @@ infrastructure such as AWS region, AWS credentials, etc.
 
 Here are the identities file we need to deploy to the instance profiles
 
-    *identities_dir*/dbs.internal/
+    *identities_dir*/identities/dbs.internal/
         etc/pki/tls/certs/dbs.internal.crt
         etc/pki/tls/private/dbs.internal.key
-    *identities_dir*/web.internal/
+    *identities_dir*/identities/web.internal/
         etc/pki/tls/certs/dbs.internal.crt
         etc/pki/tls/certs/*example.com*.crt
         etc/pki/tls/certs/*wildcard-example.com*.crt
         etc/pki/tls/private/*example.com*.key
         etc/pki/tls/certs/*wildcard-example.com*.key
+        etc/pki/tls/certs/dhparam.pem (optional to speed-up deployment)
+        home/fedora/.ssh/config
+        home/fedora/.ssh/*remote_src_top*_rsa
+        home/fedora/.ssh/*remote_src_top*_rsa.pub
+    *identities_dir*/*webapp*/
+        credentials
+        site.conf
 
 In development, we will generate throw away, self-signed, certificates
 for all identities:

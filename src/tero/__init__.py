@@ -268,7 +268,7 @@ class Context(object):
                    'dws occasionally emails build reports (see --mailto\n'
 '                       command line option). This is the address that will\n'\
 '                       be shown in the *From* field.',
-               'default':os.environ['LOGNAME'] + '@localhost'})}
+               'default': runuser() + '@localhost'})}
         self.build_top_relative_cwd = None
         self.config_filename = None
 
@@ -460,8 +460,7 @@ class Context(object):
         # -- Read the environment variables set in the config file.
         home_dir = os.environ['HOME']
         if 'SUDO_USER' in os.environ:
-            home_dir = home_dir.replace(os.environ['SUDO_USER'],
-                                      os.environ['LOGNAME'])
+            home_dir = home_dir.replace(os.environ['SUDO_USER'], runuser())
         user_default_config = os.path.join(home_dir, '.dws')
         if os.path.exists(user_default_config):
             self.load_context(user_default_config)
@@ -3002,6 +3001,25 @@ def stampfile(filename):
     return mark(os.path.basename(filename), CONTEXT.value('buildstamp'))
 
 
+def config_var(context, variables):
+    '''Look up the workspace configuration file the workspace make fragment
+    for definition of variables *variables*, instances of classes derived from
+    Variable (ex. Pathname, Single).
+    If those do not exist, prompt the user for input.'''
+    found = False
+    for key, val in variables.iteritems():
+        # apply constrains where necessary
+        val.constrain(context.environ)
+        if not key in context.environ:
+            # If we do not add variable to the context, they won't
+            # be saved in the workspace make fragment
+            context.environ[key] = val
+            found |= val.configure(context)
+    if found:
+        context.save()
+    return found
+
+
 def create_index_pathname(db_index_pathname, db_pathnames):
     '''create a global dependency database (i.e. project index file) out of
     a set local dependency index files.'''
@@ -3024,6 +3042,36 @@ def found_bin_suffix(candidate, variant=None):
     if len(numbers) > 0:
         return str(numbers[0])
     return 'yes'
+
+
+def cwd_projects(reps, recurse=False):
+    '''returns a list of projects based on the current directory
+    and/or a list passed as argument.'''
+    if len(reps) == 0:
+        # We try to derive project names from the current directory whever
+        # it is a subdirectory of buildTop or srcTop.
+        cwd = os.path.realpath(os.getcwd())
+        build_top = os.path.realpath(CONTEXT.value('buildTop'))
+        src_top = os.path.realpath(CONTEXT.value('srcTop'))
+        project_name = None
+        src_dir = src_top
+        src_prefix = os.path.commonprefix([cwd, src_top])
+        build_prefix = os.path.commonprefix([cwd, build_top])
+        if src_prefix == src_top:
+            src_dir = cwd
+            project_name = src_dir[len(src_top) + 1:]
+        elif build_prefix == build_top:
+            src_dir = cwd.replace(build_top, src_top)
+            project_name = src_dir[len(src_top) + 1:]
+        if project_name:
+            reps = [project_name]
+        else:
+            for repdir in find_files(src_dir, Repository.dirPats):
+                reps += [os.path.dirname(
+                        repdir.replace(src_top + os.sep, ''))]
+    if recurse:
+        raise NotImplementedError()
+    return reps
 
 
 def find_bin(names, search_path, build_top, versions=None, variant=None):
@@ -3841,54 +3889,6 @@ def name_pat_regex(name_pat):
         pat = '.*' + os.sep + pat
     return re.compile(pat + '$')
 
-def config_var(context, variables):
-    '''Look up the workspace configuration file the workspace make fragment
-    for definition of variables *variables*, instances of classes derived from
-    Variable (ex. Pathname, Single).
-    If those do not exist, prompt the user for input.'''
-    found = False
-    for key, val in variables.iteritems():
-        # apply constrains where necessary
-        val.constrain(context.environ)
-        if not key in context.environ:
-            # If we do not add variable to the context, they won't
-            # be saved in the workspace make fragment
-            context.environ[key] = val
-            found |= val.configure(context)
-    if found:
-        context.save()
-    return found
-
-
-def cwd_projects(reps, recurse=False):
-    '''returns a list of projects based on the current directory
-    and/or a list passed as argument.'''
-    if len(reps) == 0:
-        # We try to derive project names from the current directory whever
-        # it is a subdirectory of buildTop or srcTop.
-        cwd = os.path.realpath(os.getcwd())
-        build_top = os.path.realpath(CONTEXT.value('buildTop'))
-        src_top = os.path.realpath(CONTEXT.value('srcTop'))
-        project_name = None
-        src_dir = src_top
-        src_prefix = os.path.commonprefix([cwd, src_top])
-        build_prefix = os.path.commonprefix([cwd, build_top])
-        if src_prefix == src_top:
-            src_dir = cwd
-            project_name = src_dir[len(src_top) + 1:]
-        elif build_prefix == build_top:
-            src_dir = cwd.replace(build_top, src_top)
-            project_name = src_dir[len(src_top) + 1:]
-        if project_name:
-            reps = [project_name]
-        else:
-            for repdir in find_files(src_dir, Repository.dirPats):
-                reps += [os.path.dirname(
-                        repdir.replace(src_top + os.sep, ''))]
-    if recurse:
-        raise NotImplementedError()
-    return reps
-
 
 def ordered_prerequisites(roots, index):
     '''returns the dependencies in topological order for a set of project
@@ -4360,8 +4360,14 @@ def localize_context(context, name, target):
         name = local_context.value(dir_name + 'Dir')
     # \todo save local context only when necessary
     local_context.save()
-
     return local_context
+
+def runuser():
+    output = subprocess.check_output('logname')
+    look = re.match('^[a-zA-Z0-9_\-]+$', output)
+    if not look:
+        raise Error("``logname`` command output fails regular expression.")
+    return output
 
 def merge_unique(left, right):
     '''Merge a list of additions into a previously existing list.

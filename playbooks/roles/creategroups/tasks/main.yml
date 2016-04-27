@@ -22,18 +22,15 @@
     region: "{{aws_region}}"
     rules:
       - proto: tcp
-        type: ssh
         from_port: "{{ssh_port}}"
         to_port: "{{ssh_port}}"
         cidr_ip: 0.0.0.0/0
       - proto: tcp
-        type: ssh
         from_port: 2222
         to_port: 2222
         group_name: '{{tag_prefix}}{{castle_gate_name}}'
     rules_egress:
       - proto: all
-        type: all
         cidr_ip: 0.0.0.0/0
 
 - name: Update 'castle-gate' security group
@@ -45,23 +42,19 @@
      region: "{{aws_region}}"
      rules:
        - proto: tcp
-         type: http
          from_port: 80
          to_port: 80
          cidr_ip: 0.0.0.0/0
        - proto: tcp
-         type: http
          from_port: 443
          to_port: 443
          cidr_ip: 0.0.0.0/0
        - proto: tcp
-         type: ssh
          from_port: 22
          to_port: 22
          group_name: "{{tag_prefix}}{{kitchen_door_name}}"
      rules_egress:
        - proto: all
-         type: all
          cidr_ip: 0.0.0.0/0
 
 - name: Create 'watch-tower' security group
@@ -73,18 +66,15 @@
     region: "{{aws_region}}"
     rules:
       - proto: tcp
-        type: ssh
         from_port: 25
         to_port: 25
         cidr_ip: 0.0.0.0/0
       - proto: tcp
-        type: ssh
         from_port: 22
         to_port: 22
         group_name: "{{tag_prefix}}{{kitchen_door_name}}"
     rules_egress:
       - proto: all
-        type: all
         cidr_ip: 0.0.0.0/0
 
 - name: Create 'courtyard' security group
@@ -96,18 +86,15 @@
       region: "{{aws_region}}"
       rules:
         - proto: tcp
-          type: ssh
           from_port: 22
           to_port: 22
           group_name: "{{tag_prefix}}{{kitchen_door_name}}"
         - proto: tcp
-          type: http
           from_port: 80
           to_port: 80
           group_name: "{{tag_prefix}}{{castle_gate_name}}"
       rules_egress:
         - proto: all
-          type: all
           cidr_ip: 0.0.0.0/0
 
 - name: Create 'vault' security group
@@ -119,7 +106,6 @@
      region: "{{aws_region}}"
      rules:
        - proto: tcp
-         type: ssh
          from_port: 22
          to_port: 22
          group_name: "{{tag_prefix}}{{kitchen_door_name}}"
@@ -128,26 +114,21 @@
          to_port: 5432
          group_name: "{{tag_prefix}}{{castle_gate_name}}"
        - proto: tcp
-         type: ldap
          from_port: 636
          to_port: 636
          group_name: '{{tag_prefix}}{{castle_gate_name}}'
        - proto: tcp
-         type: ldap
          from_port: 636
          to_port: 636
          group_name: "{{tag_prefix}}{{kitchen_door_name}}"
        - proto: tcp
-         type: ldap
          from_port: 636
          to_port: 636
          group_name: "{{tag_prefix}}{{courtyard_name}}"
        - proto: tcp
-         type: ldap
          from_port: 636
          to_port: 636
          group_name: "{{tag_prefix}}{{watch_tower_name}}"
      rules_egress:
        - proto: all
-         type: all
          cidr_ip: 0.0.0.0/0

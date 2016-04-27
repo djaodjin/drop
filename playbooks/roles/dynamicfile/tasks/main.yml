@@ -1,0 +1,8 @@
+---
+
+- name: Create an empty group_vars/dynamic file if not exists
+  local_action:
+    module: copy
+    content: ""
+    dest: group_vars/dynamic
+    force: no
