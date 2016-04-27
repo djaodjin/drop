@@ -6,49 +6,72 @@ First we must install the minimal prerequisites
     $ virtualenv deploy
     $ source deploy/bin/activate
     $ pip install awscli boto ansible
-    Successfully installed ... awscli-1.8.2 boto-2.38.0 ansible-1.9.4 ...
-    # We also need some of the extra modules (ex: cloudtrail)
+    Successfully installed ... awscli-1.10.22 boto-2.39.0 ansible-2.0.2.0 ...
+
+(Optional) If you are using Ansible before version 2.0, you will also need to
+install some extra modules (ex: cloudtrail)
+
     $ git clone https://github.com/ansible/ansible-modules-extras.git
     $ cp -r ansible-modules-extras/cloud/amazon \
         $VIRTUAL_ENV/lib/python2.7/site-packages/ansible/modules/extras/cloud
-
 
 If you do not have a key pair that you will use to connect to the EC2 instances
 allocated by the playbooks, now is a good time to create one
 
     $ ssh-keygen -q -f ~/.ssh/*key_name* -b 2048 -t rsa
 
+If it the first time you install the awscli on your machine, you will want
+to also setup the ~/.aws/config and ~/.aws/credentials file.
+
+    $ cat ~/.aws/credentials
+    [default]
+    aws_access_key_id = *from AWS*
+    aws_secret_access_key = *from AWS*
+
+    $ cat ~/.aws/config
+    [default]
+    region = *region we run commands against*
+
+Let's clone the drop repository to a known place on our local machine.
+
+    $ mkdir -p deploy/reps
+    $ cd deploy/reps
+    $ git clone https://github.com/djaodjin/drop.git
+
 Then we create configuration files with specific information about our
 infrastructure such as AWS region, AWS credentials, etc.
 
-    $ cd playbooks
-    $ mkdir -p group_vars
-    $ cat group_vars/all
+    $ cd drop
+    $ mkdir -p playbooks/group_vars
+    $ cat playbooks/group_vars/all
     # Variables to connect to AWS
     aws_account: *AWS accountID (used in S3 bucket policies)*
     aws_region: *AWS region where resources are allocated*
 
     # Variables to create EC2 instances
     key_name: *Key used to first ssh into an instance*
-    aws_zone: *EBS volumes and EC2 instances must be in the same zone.*
+    aws_zone: *EBS/EC2 must be in the same zone.*
     instance_type: *EC2 instance type (t2.micro, etc.)*
     ami_id: *Image on which an EC2 instance is based.*
 
     # Application variables
     ssh_port: *Public port on which SSH daemon listens*
-    tag_prefix: *All resource names will be prefixed by tag_prefix*
-    castle_gate_name: *Name of the security group for http front machines*
-    courtyard_name: *Name of the security group for the worker machines*
-    kitchen_door_name: *Name of the security group for backstage machines*
-    vault_name: *Name of the security group for the databases machines*
-    watch_tower_name: *Name of the security group for the smtp front machines*
-    domain_name: *Domain name for your organization, ex: example.com*
+    tag_prefix: *All resources will be prefixed by tag_prefix*
+    castle_gate_name: *Security group for http servers*
+    courtyard_name: *Security group for the worker machines*
+    kitchen_door_name: *Security group for backstage servers*
+    vault_name: *Security group for the databases machines*
+    watch_tower_name: *Security group for the smtp servers*
+    domain_name: *Domain name for your organization*
 
     # Directories on local machine
     identities_dir: *Where keys and certificates could be found*
 
     # URLs to fetch code repositories
     remote_src_top: *Root of where git repositories are found*
+    remote_dservices_repo: https://github.com/djaodjin/drop.git
+    webapp: *Name of the web application to start*
+    ldapPasswordHash: *Hash of the root password for the LDAP server*
 
     $ cat $VIRTUAL_ENV/etc/ansible/hosts
     [local]
@@ -78,7 +101,7 @@ It is now time to run the playbooks! Our playbooks are organized
 in `provisioning, deploying and decommisioning groups<https://djaodjin.com/blog/organizing-ansible-playbooks.blog>`_.
 We run them in order:
 
-    # Provisioning the S3 bucket, EC2 security groups and IAM roles
+    # Provisioning the S3 bucket, VPC, EC2 security groups and IAM roles
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-authorized.yml
 
