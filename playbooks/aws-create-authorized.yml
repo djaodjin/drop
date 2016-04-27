@@ -10,7 +10,9 @@
   vars:
      deployuser: "{{ lookup('env','LOGNAME') }}"
   roles:
+    - dynamicfile
     - keyimport
+    - createvpc
     - creategroups
     - createiamroles
     - creates3bucket

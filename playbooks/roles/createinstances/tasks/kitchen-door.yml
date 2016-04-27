@@ -23,6 +23,8 @@
     exact_count: 1
   register: dev_servers
 
+- debug: msg="Connect to the kitchen-door with ssh -i ~/.ssh/{{key_name}} -p {{ssh_port}} fedora@{{dev_servers.instances[0].public_ip}}"
+
 - route53:
     command: create
     zone: "{{tag_prefix}}ec2.internal."

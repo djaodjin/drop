@@ -1,16 +1,15 @@
 #!/bin/bash
+# webfront instance configuration
 
-# Install packages to bootstrap configuration of instance
-yum -y install git python-pip python-virtualenv
+# Install git and package in instance
+yum -y install git python-virtualenv python-pip
 
-# Download and prepare the configuration tool called dservices
-mkdir -p /tmp/ansible/reps
-virtualenv-2.7 /tmp/ansible
-git clone {{remote_src_top}}/drop.git /tmp/ansible/reps/drop
-/tmp/ansible/bin/pip install awscli
+# Install awcli and Download keys, certificates, etc.
+pip install awscli
+aws s3 cp s3://{{tag_prefix}}deployutils/identities/dev.internal / --recursive
 
-# Download identities used by the instance
-/tmp/ansible/bin/aws s3 cp s3://{{tag_prefix}}deployutils/identities/dev.internal / --recursive
-
-# Run configuration tool with appropriate profile
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DdomainName={{domain_name}} /tmp/ansible/reps/drop/share/tero/backstage.xml
+# Clone drop github repository in /tmp/ansible and
+# Run dservices scripts
+mkdir -p /tmp/ansible && cd /tmp/ansible && git clone {{remote_dservices_repo}}
+virtualenv-2.7 --system-site-packages /tmp/ansible
+/tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py -DdomainName={{domain_name}} /tmp/ansible/drop/share/tero/backstage.xml

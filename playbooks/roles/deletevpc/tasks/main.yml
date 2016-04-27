@@ -1,0 +1,10 @@
+---
+# Delete the EC2 VPC
+
+- name: Delete EC2 VPC
+  local_action:
+     module: ec2_vpc
+     state: absent
+     cidr_block: 10.0.0.0/16
+     resource_tags: { "Environment":"{{tag_prefix}}" }
+     region: "{{aws_region}}"

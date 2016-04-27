@@ -1,0 +1,17 @@
+---
+# Create the EC2 VPC security groups will be created into.
+
+- name: Create EC2 VPC
+  local_action:
+     module: ec2_vpc
+     state: present
+     cidr_block: 10.0.0.0/16
+     resource_tags: { "Name":"{{tag_prefix}}-vpc" }
+     region: "{{aws_region}}"
+     wait: yes
+  register: vpc_data
+
+- set_fact:
+    vpc_id: "{{vpc_data.vpc_id}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^vpc_id:' line='vpc_id: {{vpc_id}}'"
