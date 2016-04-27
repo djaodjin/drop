@@ -1,6 +1,4 @@
-# XXX Until Ansible v2 is widely available:
-# We run all native Ansible commands before awscli commands because those
-# later could fail if the resources do not exist.
+# Release all resources acquired by running aws-create-authorized.yml
 
 - name: Deleting groups and roles
   hosts: localhost
@@ -8,7 +6,8 @@
   gather_facts: False
   roles:
     - deletegroups
-    - deletes3bucket
     - deleteiamroles
     - deleteprivatedns
-
+    - deletevpc
+    - deleteelasticip
+    - deletes3bucket

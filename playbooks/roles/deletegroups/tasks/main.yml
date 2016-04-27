@@ -2,6 +2,8 @@
 # First we need to break the dependency circles otherwise EC2 will prevent
 # us from deleting the groups.
 
+- include_vars: group_vars/dynamic
+
 - name: Update 'castle-gate' security group
   local_action:
      module: ec2_group
