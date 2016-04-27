@@ -70,7 +70,7 @@ class postgresqlSetup(SetupTemplate):
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
-        files = self.managed['postgresql_server']['files']
+        files = self.managed['postgresql-server']['files']
         for name, vals in files.iteritems():
             if name == 'databases':
                 db_name = None
