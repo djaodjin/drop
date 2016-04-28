@@ -4364,7 +4364,7 @@ def localize_context(context, name, target):
     return local_context
 
 def runuser():
-    output = subprocess.check_output('logname')
+    output = subprocess.check_output('/usr/bin/logname')
     look = re.match('^[a-zA-Z0-9_\-]+$', output)
     if not look:
         raise Error("``logname`` command output fails regular expression.")
