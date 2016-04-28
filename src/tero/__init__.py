@@ -4364,11 +4364,14 @@ def localize_context(context, name, target):
     return local_context
 
 def runuser():
-    output = subprocess.check_output('/usr/bin/logname')
-    look = re.match('^[a-zA-Z0-9_\-]+$', output)
-    if not look:
-        raise Error("``logname`` command output fails regular expression.")
-    return output
+    try:
+        logname = subprocess.check_output('/usr/bin/logname')
+        look = re.match('^[a-zA-Z0-9_\-]+$', logname)
+        if not look:
+            raise Error("``logname`` command output fails regular expression.")
+    except subprocess.CalledProcessError:
+        logname = os.environ['LOGNAME']
+    return logname
 
 def merge_unique(left, right):
     '''Merge a list of additions into a previously existing list.
