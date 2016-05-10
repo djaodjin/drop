@@ -3,7 +3,6 @@
 # that could not be set on create because of the order in which groups
 # are created.
 
-
 - name: Create 'castle-gate' security group
   local_action:
      module: ec2_group

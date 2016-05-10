@@ -183,6 +183,39 @@ server {
 }
 """
 
+    https_default_template = """# All default https request end here.
+
+server {
+        listen       443;
+        server_name  _;
+
+        access_log /var/log/nginx/%(domain)s-access.log main;
+        error_log  /var/log/nginx/%(domain)s-error.log;
+
+        ssl                  on;
+        ssl_certificate      %(wildcard_cert_path)s;
+        ssl_certificate_key  %(wildcard_key_path)s;
+        ssl_session_timeout  5m;
+        ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+        ssl_dhparam %(dhparam_path)s;
+        ssl_prefer_server_ciphers on;
+        ssl_session_cache shared:SSL:10m;
+
+        client_max_body_size 4G;
+        keepalive_timeout 5;
+
+        # path for static files
+        root %(document_root)s;
+        %(forwards)s
+        error_page 500 502 503 504 /500.html;
+        location = /50x.html {
+            root %(document_root)s;
+        }
+
+}
+"""
+
     proxy_params_template = """
             proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
             proxy_set_header Host               $host;
@@ -232,6 +265,8 @@ server {
             # files here.
             return complete
 
+        webapps = ""
+        forwards = ""
         remove_default_server = False
         for name, vals in self.managed['nginx']['files'].iteritems():
             webapps = ""
@@ -257,6 +292,11 @@ server {
                     remove_default_server = True
                 self.site_conf(domain, context, conf_template,
                         webapps=webapps, forwards=forwards)
+
+        # Forward all other https to last webapp configured.
+        # This is useful for testing staged servers.
+        self.site_conf(domain, context, self.https_default_template,
+                       webapps=webapps, forwards=forwards)
 
         # Remove default server otherwise our config for intermediate nodes
         # with no domain names will be overridden.

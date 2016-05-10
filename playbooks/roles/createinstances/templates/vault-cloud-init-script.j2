@@ -22,7 +22,7 @@ yum -y install git python-virtualenv python-pip
 
 # Install awcli and Download keys, certificates, etc.
 pip install awscli
-aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal / --recursive
+aws s3 cp s3://{{deployutils_bucket}}/identities/web.internal / --recursive
 
 # Clone drop github repository in /tmp/ansible and
 # Run dservices scripts

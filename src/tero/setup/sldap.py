@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -57,11 +57,11 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
-        domain = 'dbs.internal'
+        ldapHost = context.value('ldapHost')
         company_domain = context.value('domainName')
         password_hash = context.value('ldapPasswordHash')
         priv_key = os.path.join(context.SYSCONFDIR,
-            'pki', 'tls', 'private', '%s.key' % domain)
+            'pki', 'tls', 'private', '%s.key' % ldapHost)
         config_path = os.path.join(context.SYSCONFDIR,
             'openldap', 'slapd.d', 'cn=config.ldif')
         _, new_config_path = stageFile(config_path, context)
@@ -71,7 +71,7 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
                 'olcTLSCACertificatePath': os.path.join(
                     context.SYSCONFDIR, 'pki', 'tls', 'certs'),
                 'olcTLSCertificateFile': os.path.join(context.SYSCONFDIR,
-                    'pki', 'tls', 'certs', '%s.crt' % domain),
+                    'pki', 'tls', 'certs', '%s.crt' % ldapHost),
                 'olcTLSCertificateKeyFile': priv_key
             })
         self._update_crc32(new_config_path)
@@ -155,13 +155,13 @@ class openldap_clientsSetup(SetupTemplate):
             # files here.
             return complete
 
-        domain = 'dbs.internal'
+        ldapHost = context.value('ldapHost')
         modify_config(os.path.join(context.SYSCONFDIR,
             'openldap', 'ldap.conf'), sep=' ', context=context,
             settings={
                 'TLS_CACERT': os.path.join(
                     context.SYSCONFDIR, 'pki', 'tls', 'certs',
-                    '%s.crt' % domain),
+                    '%s.crt' % ldapHost),
                 'TLS_REQCERT': 'demand'})
 
         return complete

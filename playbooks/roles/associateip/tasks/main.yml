@@ -3,6 +3,6 @@
 - name: Association of elastic ip address to web-front
   local_action:
      module: ec2_eip
-     device_id: "{{web_servers.instances[0].id}}"
+     device_id: "{{web_device_id}}"
      public_ip: "{{web_elastic_ip}}"
      region: "{{aws_region}}"

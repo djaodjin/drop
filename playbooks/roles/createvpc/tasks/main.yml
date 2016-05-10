@@ -5,8 +5,8 @@
   local_action:
      module: ec2_vpc
      state: present
-     cidr_block: 10.0.0.0/16
-     resource_tags: { "Name":"{{tag_prefix}}-vpc" }
+     cidr_block: {{vpc_cidr}}
+     resource_tags: { "Name":"{{tag_prefix}}vpc" }
      region: "{{aws_region}}"
      wait: yes
   register: vpc_data
@@ -14,4 +14,26 @@
 - set_fact:
     vpc_id: "{{vpc_data.vpc_id}}"
 
+- name: Create subnet for database servers
+  ec2_vpc_subnet:
+    state: present
+    region: "{{aws_region}}"
+    vpc_id: {{vpc_id}}
+    cidr: {{dbs_subnet_cidr}}
+    resource_tags:
+      Name: Database Subnet
+  register: database_subnet
+
+- name: Create subnet for web servers
+  ec2_vpc_subnet:
+    state: present
+    region: "{{aws_region}}"
+    vpc_id: {{vpc_id}}
+    cidr: {{web_subnet_cidr}}
+    resource_tags:
+      Name: Web Subnet
+  register: web_subnet
+
 - lineinfile: "dest=group_vars/dynamic regexp='^vpc_id:' line='vpc_id: {{vpc_id}}'"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^web_subnet_id:' line='web_subnet_id: {{web_subnet.subnet_id}}'"

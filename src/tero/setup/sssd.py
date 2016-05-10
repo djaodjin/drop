@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -44,12 +44,12 @@ class sssdSetup(SetupTemplate):
             # files here.
             return complete
 
-        ldapDomain = 'dbs.internal'
+        ldapHost = context.value('ldapHost')
         ldapCertPath = os.path.join(context.SYSCONFDIR,
-            'pki', 'tls', 'certs', '%s.crt' % ldapDomain)
+            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         domain_parts = tuple(context.value('domainName').split('.'))
         names = {
-            'ldapDomain': ldapDomain,
+            'ldapHost': ldapHost,
             'domainNat': domain_parts[0],
             'domainTop': domain_parts[1],
             'ldapCertPath': ldapCertPath
@@ -96,8 +96,8 @@ ldap_group_member = uniquemember
 id_provider = ldap
 ldap_id_use_start_tls = False
 chpass_provider = ldap
-ldap_uri = ldaps://%(ldapDomain)s/
-ldap_chpass_uri = ldaps://%(ldapDomain)s/
+ldap_uri = ldaps://%(ldapHost)s/
+ldap_chpass_uri = ldaps://%(ldapHost)s/
 # Allow offline logins by locally storing password hashes (default: false).
 cache_credentials = True
 ldap_tls_cacert = %(ldapCertPath)s

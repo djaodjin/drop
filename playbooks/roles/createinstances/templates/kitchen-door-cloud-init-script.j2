@@ -1,12 +1,12 @@
 #!/bin/bash
-# webfront instance configuration
+# backstage instance configuration
 
 # Install git and package in instance
 yum -y install git python-virtualenv python-pip
 
 # Install awcli and Download keys, certificates, etc.
 pip install awscli
-aws s3 cp s3://{{tag_prefix}}deployutils/identities/dev.internal / --recursive
+aws s3 cp s3://{{deployutils_bucket}}/identities/dev.internal / --recursive
 
 # Clone drop github repository in /tmp/ansible and
 # Run dservices scripts

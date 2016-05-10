@@ -6,13 +6,13 @@ yum -y install git python-virtualenv python-pip
 
 # Install awcli and Download keys, certificates, etc.
 pip install awscli
-aws s3 cp s3://{{tag_prefix}}deployutils/identities/web.internal / --recursive
+aws s3 cp s3://{{deployutils_bucket}}/identities/web.internal / --recursive
 
 # Clone drop github repository in /tmp/ansible and
 # Run dservices scripts
 mkdir -p /tmp/ansible && cd /tmp/ansible && git clone {{remote_dservices_repo}}
 virtualenv-2.7 --system-site-packages /tmp/ansible
-/tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py -DdomainName={{domain_name}} /tmp/ansible/drop/share/tero/webfront.xml
+/tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} /tmp/ansible/drop/share/tero/webfront.xml
 
 # Install the web application
 mkdir -p /var/www/{{webapp}}/bin

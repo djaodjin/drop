@@ -9,5 +9,3 @@
     - deleteiamroles
     - deleteprivatedns
     - deletevpc
-    - deleteelasticip
-    - deletes3bucket

@@ -3,7 +3,7 @@
 - name: Create deployutils, S3 bucket that holds identities files
   local_action:
     module: s3
-    bucket: "{{tag_prefix}}deployutils"
+    bucket: "{{deployutils_bucket}}"
     mode: create
     region: "{{aws_region}}"
 
@@ -16,5 +16,4 @@
 - name: Put S3 bucket policy file
   local_action:
     module: command
-      aws s3api put-bucket-policy --policy "file://s3-policy.json" --bucket "{{tag_prefix}}deployutils"
-
+      aws s3api put-bucket-policy --policy "file://s3-policy.json" --bucket "{{deployutils_bucket}}"

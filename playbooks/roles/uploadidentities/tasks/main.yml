@@ -3,4 +3,4 @@
 - name: Upload identifies files to S3
   local_action:
     module: command
-      aws s3 cp  "{{identities_dir}}" "s3://{{tag_prefix}}deployutils" --recursive --sse
+      aws s3 cp  "{{identities_dir}}" "s3://{{deployutils_bucket}}" --recursive --sse

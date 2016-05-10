@@ -1,0 +1,9 @@
+# Associate resources to the production infrastructure.
+
+- name: Associate resources to production
+  hosts: localhost
+  connection: local
+  gather_facts: False
+
+  roles:
+   - associateip

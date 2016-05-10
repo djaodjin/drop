@@ -48,6 +48,9 @@ infrastructure such as AWS region, AWS credentials, etc.
     aws_account: *AWS accountID (used in S3 bucket policies)*
     aws_region: *AWS region where resources are allocated*
 
+    # Variables to create long-term S3 buckets
+    deployutils_bucket: *Where configuration files are stored.*
+
     # Variables to create EC2 instances
     key_name: *Key used to first ssh into an instance*
     aws_zone: *EBS/EC2 must be in the same zone.*
@@ -56,22 +59,25 @@ infrastructure such as AWS region, AWS credentials, etc.
 
     # Application variables
     ssh_port: *Public port on which SSH daemon listens*
+    vpc_cidr: *network addresses for vpc*
+    dbs_subnet_cidr: *subset of network addresses dedicated to databases*
+    web_subnet_cidr: *subset of network addresses dedicated to web servers*
     tag_prefix: *All resources will be prefixed by tag_prefix*
     castle_gate_name: *Security group for http servers*
     courtyard_name: *Security group for the worker machines*
     kitchen_door_name: *Security group for backstage servers*
     vault_name: *Security group for the databases machines*
     watch_tower_name: *Security group for the smtp servers*
-    domain_name: *Domain name for your organization*
-    webapp: *name of the web application to deploy*
-    ldapPasswordHash: *hash of the root password for LDAP*
 
     # Directories on local machine
     identities_dir: *Where keys and certificates could be found*
 
-    # URLs to fetch code repositories
+    # Credentials and configuration that must be available to setup scripts
     remote_src_top: *Root of where git repositories are found*
     remote_dservices_repo: *where the deployment scripts can be found*
+    domain_name: *Domain name for your organization*
+    webapp: *name of the web application to deploy*
+    ldapPasswordHash: *hash of the root password for LDAP*
 
     $ cat $VIRTUAL_ENV/etc/ansible/hosts
     [local]
@@ -108,16 +114,31 @@ It is now time to run the playbooks! Our playbooks are organized
 in `provisioning, deploying and decommisioning groups<https://djaodjin.com/blog/organizing-ansible-playbooks.blog>`_.
 We run them in order:
 
-    # Provisioning the S3 bucket, VPC, EC2 security groups and IAM roles
+# Create AWS resources (S3 bucket, Elastic IP) which are in use for the whole
+# time of the project.
+#
+# This script is intended to be run only once at the beginning of the project.
+
+    # Provisioning S3 bucket and Elastic IP (once globally)
+    $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
+        aws-create-forever.yml
+
+    # Provisioning VPC, EC2 security groups and IAM roles (once per stagging)
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-authorized.yml
 
-    # Deploying EC2 instances
+    # Deploying EC2 instances (as many times as necessary)
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-instances.yml
+
+    # Associate resources to production (once per release)
+    $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
+        aws-associate-production.yml
 
     # Decommisioning
     $ ansible-playbook -i ../vendor/ec2.py aws-delete-instances.yml
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
          aws-delete-authorized.yml
+    $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
+         aws-delete-eow.yml
 

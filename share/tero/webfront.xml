@@ -9,6 +9,12 @@ Maintenance scripts for the front-end reverse proxy.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
+    <variable name="ldapHost">
+      <description>
+Name of the machine hosting the LDAP server.
+      </description>
+      <default>dbs.ec2.internal</default>
+    </variable>
     <package name="Fedora">
       <!-- Access control -->
      <dep name="iptables">

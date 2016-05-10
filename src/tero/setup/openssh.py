@@ -1,4 +1,4 @@
-# Copyright (c) 2014, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -62,19 +62,19 @@ class openssh_serverSetup(SetupTemplate):
         modify_config(self.sshd_conf,
             settings=settings, sep=' ', context=context)
 
-        ldapDomain = 'dbs.internal'
+        ldapHost = context.value('ldapHost')
         domain_parts = tuple(context.value('domainName').split('.'))
         ldapCertPath = os.path.join(context.SYSCONFDIR,
-            'pki', 'tls', 'certs', '%s.crt' % ldapDomain)
+            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {
-            'ldapDomain': ldapDomain,
+            'ldapHost': ldapHost,
             'domainNat': domain_parts[0],
             'domainTop': domain_parts[1],
             'ldapCertPath': ldapCertPath
         }
         modify_config(self.ldap_conf,
             settings={
-                'URI': 'ldaps://%(ldapDomain)s' % names,
+                'URI': 'ldaps://%(ldapHost)s' % names,
                 'BASE': 'ou=people,dc=%(domainNat)s,dc=%(domainTop)s' % names,
                 'TLS_CACERT': ldapCertPath,
                 'TLS_REQCERT': 'demand',
