@@ -1,6 +1,6 @@
 ---
 
-- name: Create 'castle-gate' role
+- name: Find 'castle-gate' security group id
   local_action:
     module: command
       aws --region {{aws_region}} ec2 describe-security-groups --filters Name=group-name,Values='{{tag_prefix}}{{castle_gate_name}}' --query 'SecurityGroups[*].{name:GroupName,id:GroupId}'

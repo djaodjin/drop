@@ -265,8 +265,8 @@ server {
             # files here.
             return complete
 
-        webapps = ""
-        forwards = ""
+        last_webapps = ""
+        last_forwards = ""
         remove_default_server = False
         for name, vals in self.managed['nginx']['files'].iteritems():
             webapps = ""
@@ -292,11 +292,15 @@ server {
                     remove_default_server = True
                 self.site_conf(domain, context, conf_template,
                         webapps=webapps, forwards=forwards)
+                if webapps:
+                    last_webapps = webapps
+                if forwards:
+                    last_forwards = forwards
 
         # Forward all other https to last webapp configured.
         # This is useful for testing staged servers.
-        self.site_conf(domain, context, self.https_default_template,
-                       webapps=webapps, forwards=forwards)
+        self.site_conf("stage", context, self.https_default_template,
+                       webapps=last_webapps, forwards=last_forwards)
 
         # Remove default server otherwise our config for intermediate nodes
         # with no domain names will be overridden.
