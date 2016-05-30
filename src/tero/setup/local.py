@@ -24,7 +24,7 @@
 
 '''Entry Point to setting-up a local machine.'''
 
-import datetime, os, re, socket, shutil, sys, subprocess
+import datetime, getpass, os, re, socket, shutil, sys, subprocess
 
 import tero # for global variables (CONTEXT, etc.)
 from tero import (__version__, Error, log_info, pub_build, pub_make,
@@ -359,7 +359,7 @@ def main(args):
     if not 'admin' in tero.CONTEXT.environ:
         tero.CONTEXT.environ['admin'] = Variable('admin',
             {'description': 'Login for the administrator account',
-             'default': os.getenv("LOGNAME")})
+             'default': getpass.getuser()})
 
     distHost = tero.CONTEXT.host() # calls HostPlatform.configure()
     dist_codename = tero.CONTEXT.environ['distHost'].dist_codename

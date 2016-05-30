@@ -49,8 +49,9 @@ invoking the script.
 
 __version__ = None
 
-import datetime, hashlib, inspect, json, logging, logging.config, re, optparse
-import os, shutil, socket, stat, subprocess, sys, tempfile, urllib2, urlparse
+import datetime, getpass, hashlib, inspect, json, logging, logging.config
+import re, optparse, os, shutil, socket, stat, subprocess, sys, tempfile
+import urllib2, urlparse
 import xml.dom.minidom, xml.sax
 import cStringIO
 
@@ -4363,15 +4364,10 @@ def localize_context(context, name, target):
     local_context.save()
     return local_context
 
+
 def runuser():
-    try:
-        logname = subprocess.check_output('/usr/bin/logname')
-        look = re.match('^[a-zA-Z0-9_\-]+$', logname)
-        if not look:
-            raise Error("``logname`` command output fails regular expression.")
-    except subprocess.CalledProcessError:
-        logname = os.environ['LOGNAME']
-    return logname
+    return getpass.getuser()
+
 
 def merge_unique(left, right):
     '''Merge a list of additions into a previously existing list.
