@@ -84,6 +84,11 @@ Deploy and configure packages for running LDAP and SQL databases.
       <dep name="libtool-ltdl">
         <lib>libltdl</lib>
       </dep>
+      <dep name="openssl">
+        <!-- (optional)
+             Install openssl in order to create dummy certificates -->
+        <bin>openssl</bin>
+      </dep>
     </package>
   </project>
   <project name="openldap-clients">

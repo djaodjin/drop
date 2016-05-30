@@ -169,7 +169,29 @@ class PostinstScript(object):
             self.scriptfile.write('# ' + comment + '\n')
         self.scriptfile.write(' '.join(cmdline) + '\n')
 
+    def create_certificate(self, certificate_name, comment=None):
+        """
+        Shell commands to create a key pair.
+        """
+        priv_key = '/etc/pki/tls/private/%s.key' % certificate_name
+        sign_request = '/etc/pki/tls/certs/%s.csr' % certificate_name
+        pub_cert = '/etc/pki/tls/certs/%s.crt' % certificate_name
+        self.shellCommand(['if [ ! -f %s ]' % priv_key])
+        self.shellCommand(['echo', '-e',
+            "US\nCalifornia\nSan Francisco\nExample inc.\n"\
+                "\nlocalhost\nsupport@example.com\n\n\n", '|',
+            'openssl', 'req', '-new', '-sha256',
+            '-newkey', 'rsa:2048', '-nodes', '-keyout', priv_key,
+            '-out', sign_request],
+            comment=comment)
+        self.shellCommand(['openssl', 'x509', '-req', '-days', '365',
+            '-in', sign_request, '-signkey', priv_key, '-out', pub_cert])
+        self.shellCommand(['fi'])
+
     def install_selinux_module(self, module_te, comment=None):
+        """
+        Shell commands to install a SELinux module.
+        """
         module_mod = os.path.splitext(
             os.path.basename(module_te))[0] + '.mod'
         module_pp = os.path.splitext(
@@ -181,6 +203,8 @@ class PostinstScript(object):
             ['semodule_package', '-m', module_mod, '-o', module_pp])
         self.shellCommand(
             ['semodule', '-i', module_pp])
+
+
 
 
 class SetupTemplate(SetupStep):

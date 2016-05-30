@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -70,7 +70,7 @@ class postgresqlSetup(SetupTemplate):
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
-        files = self.managed['postgresql-server']['files']
+        files = self.managed.get('postgresql', {}).get('files', {})
         for name, vals in files.iteritems():
             if name == 'databases':
                 db_name = None

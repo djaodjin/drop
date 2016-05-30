@@ -77,19 +77,19 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
         self._update_crc32(new_config_path)
 
         domain_parts = tuple(company_domain.split('.'))
-        config_path = os.path.join(context.SYSCONFDIR,
+        db_config_path = os.path.join(context.SYSCONFDIR,
             'openldap', 'slapd.d', 'cn=config', 'olcDatabase={0}config.ldif')
-        _, new_config_path = stageFile(config_path, context)
-        modify_config(config_path,
+        _, new_config_path = stageFile(db_config_path, context)
+        modify_config(db_config_path,
             sep=': ', enter_block_sep=None, exit_block_sep=None,
             one_per_line=True, context=context, settings={
-               'olcRootPW': '{SSHA}%s' % password_hash
+               'olcRootPW': '%s' % password_hash
             })
         self._update_crc32(new_config_path)
-        config_path = os.path.join(context.SYSCONFDIR,
-            'openldap', 'slapd.d', 'cn=config', 'olcDatabase={2}mdb.ldif')
-        _, new_config_path = stageFile(config_path, context)
-        modify_config(config_path,
+        db_hdb_path = os.path.join(context.SYSCONFDIR,
+            'openldap', 'slapd.d', 'cn=config', 'olcDatabase={2}hdb.ldif')
+        _, new_config_path = stageFile(db_hdb_path, context)
+        modify_config(db_hdb_path,
             sep=': ', enter_block_sep=None, exit_block_sep=None,
             one_per_line=True, context=context, settings={
                'olcSuffix': 'dc=%s,dc=%s' % domain_parts,
@@ -117,10 +117,16 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
   uid ) )
 """)
 
+        postinst.create_certificate(ldapHost)
         postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
         postinst.shellCommand(['chgrp', 'ldap', os.path.dirname(priv_key)])
         postinst.shellCommand(['chmod', '640', priv_key])
         postinst.shellCommand(['chgrp', 'ldap', priv_key])
+        postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
+        postinst.shellCommand(['chown', 'ldap:ldap',
+            config_path, db_config_path, db_hdb_path])
+        postinst.shellCommand(['chmod', '600',
+            config_path, db_config_path, db_hdb_path])
 
         self.create_syslogng_conf(context)
 

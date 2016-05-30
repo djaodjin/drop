@@ -49,6 +49,8 @@ class openssh_serverSetup(SetupTemplate):
 
     def run(self, context):
         complete = super(openssh_serverSetup, self).run(context)
+        ldapHost = context.value('ldapHost')
+        domain_parts = tuple(context.value('domainName').split('.'))
         banner = os.path.join(context.SYSCONFDIR, 'issue.net')
         _, new_banner_path = stageFile(
             banner, context=context)
@@ -62,8 +64,6 @@ class openssh_serverSetup(SetupTemplate):
         modify_config(self.sshd_conf,
             settings=settings, sep=' ', context=context)
 
-        ldapHost = context.value('ldapHost')
-        domain_parts = tuple(context.value('domainName').split('.'))
         ldapCertPath = os.path.join(context.SYSCONFDIR,
             'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {

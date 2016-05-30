@@ -45,9 +45,9 @@ class sssdSetup(SetupTemplate):
             return complete
 
         ldapHost = context.value('ldapHost')
+        domain_parts = tuple(context.value('domainName').split('.'))
         ldapCertPath = os.path.join(context.SYSCONFDIR,
             'pki', 'tls', 'certs', '%s.crt' % ldapHost)
-        domain_parts = tuple(context.value('domainName').split('.'))
         names = {
             'ldapHost': ldapHost,
             'domainNat': domain_parts[0],
