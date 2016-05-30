@@ -1,0 +1,22 @@
+# Create and EC2 instance, configure it with the packages required
+# to run a databases server and make an AMI out of it.
+
+- include_vars: group_vars/dynamic
+
+- name: Create EC2 instance to setup databases
+  local_action:
+    module: ec2
+    key_name: "{{key_name}}"
+    group: "{{courtyard}}"
+    vpc_subnet_id: "{{web_subnet_id}}"
+    instance_profile_name: "{{courtyard}}-profile"
+    instance_type: "{{instance_type}}"
+    image: "{{ami_id}}"
+    region: "{{aws_region}}"
+    zone: "{{aws_zone}}"
+    assign_public_ip: yes
+    wait: yes
+    user_data: "{{ lookup('template', '../templates/dbs-cloud-init-script.j2') }}"
+  register: dbs_base
+
+- lineinfile: "dest=group_vars/dynamic regexp='^dbs_base_device_id:' line='dbs_base_device_id: {{dbs_base.instances[0].id}}'"

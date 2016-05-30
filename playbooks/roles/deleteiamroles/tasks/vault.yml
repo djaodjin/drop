@@ -2,17 +2,17 @@
 - name: Remove 'vault' role from instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam remove-role-from-instance-profile --instance-profile-name {{tag_prefix}}{{vault_name}}-profile --role-name {{tag_prefix}}{{vault_name}}
+      aws --region {{aws_region}} iam remove-role-from-instance-profile --instance-profile-name {{vault}}-profile --role-name {{vault}}
   ignore_errors: True
 
 - name: Delete 'vault' role
   local_action:
     module: command
-      aws --region {{aws_region}} iam delete-role --role-name {{tag_prefix}}{{vault_name}}
+      aws --region {{aws_region}} iam delete-role --role-name {{vault}}
   ignore_errors: True
 
 - name: Delete 'vault' Instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{tag_prefix}}{{vault_name}}-profile
+      aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{vault}}-profile
   ignore_errors: True

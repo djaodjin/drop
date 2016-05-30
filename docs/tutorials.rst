@@ -63,11 +63,6 @@ infrastructure such as AWS region, AWS credentials, etc.
     dbs_subnet_cidr: *subset of network addresses dedicated to databases*
     web_subnet_cidr: *subset of network addresses dedicated to web servers*
     tag_prefix: *All resources will be prefixed by tag_prefix*
-    castle_gate_name: *Security group for http servers*
-    courtyard_name: *Security group for the worker machines*
-    kitchen_door_name: *Security group for backstage servers*
-    vault_name: *Security group for the databases machines*
-    watch_tower_name: *Security group for the smtp servers*
 
     # Directories on local machine
     identities_dir: *Where keys and certificates could be found*
@@ -126,6 +121,10 @@ We run them in order:
     # Provisioning VPC, EC2 security groups and IAM roles (once per stagging)
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-authorized.yml
+
+    # Create AMIs (once per system upgrade)
+    $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
+        aws-create-images.yml
 
     # Deploying EC2 instances (as many times as necessary)
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \

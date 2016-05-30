@@ -1,9 +1,10 @@
 ---
+- include_vars: group_vars/dynamic
 
 - name: Find 'castle-gate' security group id
   local_action:
     module: command
-      aws --region {{aws_region}} ec2 describe-security-groups --filters Name=group-name,Values='{{tag_prefix}}{{castle_gate_name}}' --query 'SecurityGroups[*].{name:GroupName,id:GroupId}'
+      aws --region {{aws_region}} ec2 describe-security-groups --filters Name=group-name,Values='{{castle_gate}}' --query 'SecurityGroups[*].{name:GroupName,id:GroupId}'
   register: castle_gate_sg_cmd
 
 - set_fact: castle_gate_security_groups="{{castle_gate_sg_cmd.stdout | from_json}}"
@@ -13,12 +14,12 @@
 - name: Create front-end web server EC2 instances
   local_action:
     module: ec2
-    group: "{{tag_prefix}}{{castle_gate_name}}"
+    group: "{{castle_gate}}"
     vpc_subnet_id: "{{web_subnet_id}}"
     assign_public_ip: yes
     key_name: "{{key_name}}"
     instance_type: "{{instance_type}}"
-    instance_profile_name: "{{tag_prefix}}{{castle_gate_name}}-profile"
+    instance_profile_name: "{{castle_gate}}-profile"
     image: "{{ami_id}}"
     region: "{{aws_region}}"
     volumes:
@@ -27,7 +28,7 @@
         volume_size: 8
         delete_on_termination: true
     wait: yes
-    user_data: "{{ lookup('template', '../templates/castle-gate-cloud-init-script.j2') }}"
+    user_data: "{{ lookup('template', '../templates/web-cloud-init-script.j2') }}"
     instance_tags:
       prefix: "{{tag_prefix}}archi"
       profile: "web"

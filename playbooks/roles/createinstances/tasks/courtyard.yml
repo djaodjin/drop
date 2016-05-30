@@ -3,9 +3,9 @@
   local_action:
     module: ec2
     key_name: "{{key_name}}"
-    group: "{{tag_prefix}}{{courtyard_name}}"
+    group: "{{courtyard}}"
     instance_type: "{{instance_type}}"
-    instance_profile_name: "{{tag_prefix}}{{courtyard_name}}-profile"
+    instance_profile_name: "{{courtyard}}-profile"
     image: "{{ami_id}}"
     region: "{{aws_region}}"
     wait: yes

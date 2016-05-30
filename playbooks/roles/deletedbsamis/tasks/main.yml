@@ -1,0 +1,12 @@
+# De-register the AMI for databases and delete underlying storage
+
+- include_vars: group_vars/dynamic
+
+- name: Delete AMI for databases
+  local_action:
+    module: ec2_ami
+    region: "{{aws_region}}"
+    image_id: "{{dbs_ami_id}}"
+    state: absent
+    delete_snapshot: yes
+    wait: yes

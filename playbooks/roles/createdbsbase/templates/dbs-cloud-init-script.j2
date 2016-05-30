@@ -1,0 +1,14 @@
+#!/bin/bash
+#
+# databases machine
+
+set -e
+
+# Install necessary packages to bootstrap configuration
+yum -y install git python-virtualenv python-pip
+pip install awscli
+
+# Clone configuration scripts repository and setup the machine.
+mkdir -p /tmp/ansible/reps && cd /tmp/ansible/reps && git clone {{remote_dservices_repo}}
+virtualenv-2.7 --system-site-packages /tmp/ansible
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=localhost -DdomainName=localhost.local -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/tero/databases.xml

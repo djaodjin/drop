@@ -3,18 +3,21 @@
 #  - http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSVolumeTypes.html
 #  - http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSEncryption.html#EBSEncryption_supported_instances
 
+- include_vars: group_vars/dynamic
+
 - name: Create databases EC2 instances
   local_action:
     module: ec2
-    key_name: "{{key_name}}"
-    group: "{{tag_prefix}}{{vault_name}}"
-    instance_profile_name: "{{tag_prefix}}{{vault_name}}-profile"
-    instance_type: m3.medium
-    image: "{{ami_id}}"
     region: "{{aws_region}}"
+    vpc_subnet_id: "{{dbs_subnet_id}}"
+    key_name: "{{dbs_key}}"
+    group: "{{vault}}"
+    instance_profile_name: "{{vault}}-profile"
+    instance_type: m3.medium
+    image: "{{dbs_ami_id}}"
     zone: "{{aws_zone}}"
     wait: yes
-    user_data: "{{ lookup('template', '../templates/vault-cloud-init-script.j2') }}"
+    user_data: "{{ lookup('template', '../templates/dbs-cloud-init-script.j2') }}"
     instance_tags:
       prefix: "{{tag_prefix}}archi"
       profile: "dbs"

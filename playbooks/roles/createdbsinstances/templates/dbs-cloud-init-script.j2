@@ -1,0 +1,23 @@
+#!/bin/bash
+#
+# databases machine
+
+set -e
+
+if [ ! -d /mnt/encvol ] ; then
+    # Mount encrypted volume as /var after copying previous content over.
+    mkfs.ext4 -m 0 /dev/xvdf
+    mkdir -p /mnt/encvol
+    mount /dev/xvdf /mnt/encvol
+    cd /var && cp -ax * /mnt/encvol
+    cd /
+    umount /dev/xvdf
+    mv /var /var.old
+    mkdir -p /var
+    mount /dev/xvdf /var
+fi
+
+# Install identities
+aws s3 cp s3://{{deployutils_bucket}}/identities/dbs.internal / --recursive
+
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/tero/databases.xml

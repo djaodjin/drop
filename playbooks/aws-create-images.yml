@@ -1,0 +1,12 @@
+- name: Create AWS AMIs
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars:
+   - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
+
+  roles:
+   - createdbsbase
+   # XXX Wait until could-init has completed before creating AMI.
+   - createdbsami
+   - deletedbsbase

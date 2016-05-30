@@ -7,7 +7,7 @@
 - name: Update 'castle-gate' security group
   local_action:
      module: ec2_group
-     name: "{{tag_prefix}}{{castle_gate_name}}"
+     name: "{{castle_gate}}"
      vpc_id: "{{vpc_id}}"
      description: "Web facing services"
      region: "{{aws_region}}"
@@ -16,7 +16,7 @@
 - name: Delete 'vault' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}{{vault_name}}"
+    name: "{{vault}}"
     description: "Email services"
     region: "{{aws_region}}"
     state: absent
@@ -24,7 +24,7 @@
 - name: Delete 'watch-tower' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}{{watch_tower_name}}"
+    name: "{{watch_tower}}"
     description: "Email services"
     region: "{{aws_region}}"
     state: absent
@@ -32,7 +32,7 @@
 - name: Delete 'courtyard' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}{{courtyard_name}}"
+    name: "{{courtyard}}"
     description: "Transient workers"
     region: "{{aws_region}}"
     state: absent
@@ -40,7 +40,7 @@
 - name: Delete 'kitchen-door' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}{{kitchen_door_name}}"
+    name: "{{kitchen_door}}"
     description: "Monitoring services"
     region: "{{aws_region}}"
     state: absent
@@ -48,7 +48,7 @@
 - name: Delete 'castle-gate' security group
   local_action:
     module: ec2_group
-    name: "{{tag_prefix}}{{castle_gate_name}}"
+    name: "{{castle_gate}}"
     description: "Web facing services"
     region: "{{aws_region}}"
     state: absent

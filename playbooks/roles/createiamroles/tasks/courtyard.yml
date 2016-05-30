@@ -2,14 +2,14 @@
 - name: Create 'courtyard' role
   local_action:
     module: command
-      aws --region {{aws_region}} iam create-role --role-name {{tag_prefix}}{{courtyard_name}} --assume-role-policy-document "file://roles/createiamroles/files/assume-role-policy.json"
+      aws --region {{aws_region}} iam create-role --role-name {{courtyard}} --assume-role-policy-document "file://roles/createiamroles/files/assume-role-policy.json"
 
 - name: Create 'courtyard' instance profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam create-instance-profile --instance-profile-name {{tag_prefix}}{{courtyard_name}}-profile
+      aws --region {{aws_region}} iam create-instance-profile --instance-profile-name {{courtyard}}-profile
 
 - name: Adding 'courtyard' role to instance-profile
   local_action:
     module: command
-      aws --region {{aws_region}} iam add-role-to-instance-profile --role-name {{tag_prefix}}{{courtyard_name}} --instance-profile-name {{tag_prefix}}{{courtyard_name}}-profile
+      aws --region {{aws_region}} iam add-role-to-instance-profile --role-name {{courtyard}} --instance-profile-name {{courtyard}}-profile

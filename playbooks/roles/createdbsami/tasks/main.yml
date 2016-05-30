@@ -1,0 +1,17 @@
+# Create the AMI after the base EC2 instance was configured.
+
+- include_vars: group_vars/dynamic
+
+- name: Create AMI for databases
+  local_action:
+    module: ec2_ami
+    region: "{{aws_region}}"
+    instance_id: "{{dbs_base_device_id}}"
+    name: "dbs"
+    description: "LDAP and SQL Databases"
+    wait: yes
+  register: dbs_ami
+
+- debug: msg="{{dbs_ami}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^dbs_ami_id:' line='dbs_ami_id: {{dbs_ami.image_id}}'"
