@@ -94,7 +94,7 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
             one_per_line=True, context=context, settings={
                'olcSuffix': 'dc=%s,dc=%s' % domain_parts,
                'olcRootDN': 'cn=Manager,dc=%s,dc=%s' % domain_parts,
-               'olcRootPW': '{SSHA}%s' % password_hash,
+               'olcRootPW': '%s' % password_hash,
                'olcAccess': [
                    '{0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage by * break',
                    '{0}to attrs=userPassword by self write by dn.base="cn=Manager,dc=%s,dc=%s" write by anonymous auth by * none' % domain_parts,

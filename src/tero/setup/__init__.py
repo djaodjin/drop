@@ -140,13 +140,15 @@ class PostinstScript(object):
         self.sysconfdir = '/etc'
         self.scriptfile = None
         if self.dist in APT_DISTRIBS:
+            self.postinst_run_path = 'debian/postinst'
             self.postinst_path = os.path.join(
-                mod_sysconfdir, 'debian', 'postinst')
+                mod_sysconfdir, self.postinst_run_path)
         elif self.dist in YUM_DISTRIBS:
             # On Fedora, use %pre and %post in the spec file
             # http://fedoraproject.org/wiki/Packaging:ScriptletSnippets
+            self.postinst_run_path = '/usr/share/%s/postinst' % project_name
             self.postinst_path = os.path.join(
-               mod_sysconfdir, 'usr', 'share', project_name, 'postinst')
+                mod_sysconfdir, self.postinst_run_path[1:])
 
     def serviceRestart(self, service):
         if self.dist in APT_DISTRIBS:
@@ -176,10 +178,10 @@ class PostinstScript(object):
         priv_key = '/etc/pki/tls/private/%s.key' % certificate_name
         sign_request = '/etc/pki/tls/certs/%s.csr' % certificate_name
         pub_cert = '/etc/pki/tls/certs/%s.crt' % certificate_name
-        self.shellCommand(['if [ ! -f %s ]' % priv_key])
+        self.shellCommand(['if [ ! -f %s ] ; then' % priv_key])
         self.shellCommand(['echo', '-e',
-            "US\nCalifornia\nSan Francisco\nExample inc.\n"\
-                "\nlocalhost\nsupport@example.com\n\n\n", '|',
+            '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
+                '\nlocalhost\nsupport@example.com\n\n\n"', '|',
             'openssl', 'req', '-new', '-sha256',
             '-newkey', 'rsa:2048', '-nodes', '-keyout', priv_key,
             '-out', sign_request],

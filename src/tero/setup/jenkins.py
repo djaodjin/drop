@@ -426,7 +426,7 @@ allow httpd_t unreserved_port_t:tcp_socket name_bind;
 
         # Configure SELinux to allow jetty/jenkins jobs.
         jenkins_te = os.path.join(
-            os.path.dirname(setup.postinst.postinst_path), 'jenkins.te')
+            os.path.dirname(setup.postinst.postinst_run_path), 'jenkins.te')
         with open(jenkins_te, 'w') as jenkins_te_file:
             jenkins_te_file.write(self.jenkins_te_config_template)
         setup.postinst.install_selinux_module(jenkins_te,
