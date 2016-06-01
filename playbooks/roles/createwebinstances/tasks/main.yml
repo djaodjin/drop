@@ -49,6 +49,6 @@
 
 - debug: msg="{{web_servers.instances[0]}}"
 
-- lineinfile: "dest=group_vars/dynamic regexp='^domain_name:' line='domain_name: {{web_servers.instances[0].public_dns}}'"
+- lineinfile: "dest=group_vars/dynamic regexp='^domain_name:' line='domain_name: {{web_servers.instances[0].public_dns_name}}'"
 
 - lineinfile: "dest=group_vars/dynamic regexp='^web_device_id:' line='web_device_id: {{web_servers.instances[0].id}}'"

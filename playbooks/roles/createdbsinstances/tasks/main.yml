@@ -27,16 +27,13 @@
     exact_count: 1
   register: dbs_server
 
-- name: Create Encrypted EBS volume
+- name: Create databases EC2 instances
   local_action:
-    module: ec2_vol
-    device_name: /dev/sdf
-    encrypted: yes
-    instance: "{{dbs_server.instance_ids}}"
-    region: "{{aws_region}}"
-    zone: "{{aws_zone}}"
-    volume_size: 20
-    volume_type: standard
+    module: ec2
+    instance: "{{ item.id }}"
+    name: "{{dbs_volume_id}}"
+    device_name: /dev/xvdf
+  with_items: dbs_server.instances
 
 - route53:
     command: create

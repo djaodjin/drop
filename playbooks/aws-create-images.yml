@@ -8,5 +8,6 @@
   roles:
    - createdbsbase
    # XXX Wait until could-init has completed before creating AMI.
-   - createdbsami
-   - deletedbsbase
+   # http://docs.ansible.com/ansible/wait_for_module.html
+#   - createdbsami
+#   - deletedbsbase

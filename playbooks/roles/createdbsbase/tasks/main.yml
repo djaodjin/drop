@@ -1,5 +1,14 @@
-# Create and EC2 instance, configure it with the packages required
+# Create an EC2 instance, configure it with the packages required
 # to run a databases server and make an AMI out of it.
+#
+# The databases server will be hosted in a private subnet with no Internet
+# connectivity. We configure the databases server and load the initial
+# data onto an attached EBS volume here.
+# Later on, in the ``createdbsinstances``, the AMI and EBS volume will be
+# used to boot the databases server into the private subnet.
+
+# We cannot attach EBS encrypted volumes to all types of instances. As well
+# we must wait until the instance is running before attaching an EBS volume.
 
 - include_vars: group_vars/dynamic
 
@@ -10,13 +19,27 @@
     group: "{{courtyard}}"
     vpc_subnet_id: "{{web_subnet_id}}"
     instance_profile_name: "{{courtyard}}-profile"
-    instance_type: "{{instance_type}}"
+    instance_type: m3.medium
     image: "{{ami_id}}"
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
     assign_public_ip: yes
-    wait: yes
     user_data: "{{ lookup('template', '../templates/dbs-cloud-init-script.j2') }}"
+    wait: yes
   register: dbs_base
 
+- name: Create encrypted EBS volume to store databases
+  local_action:
+    module: ec2_vol
+    device_name: /dev/sdf
+    encrypted: yes
+    instance: "{{dbs_base.instance_ids}}"
+    region: "{{aws_region}}"
+    zone: "{{aws_zone}}"
+    volume_size: 20
+    volume_type: standard
+  register: dbs_volume
+
 - lineinfile: "dest=group_vars/dynamic regexp='^dbs_base_device_id:' line='dbs_base_device_id: {{dbs_base.instances[0].id}}'"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^dbs_volume_id:' line='dbs_volume_id: {{dbs_volume.volume_id}}'"

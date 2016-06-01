@@ -8,7 +8,7 @@
     - kitchen_door: "{{kitchen_door_name | default(tag_prefix+'kitchen-door')}}"
     - vault: "{{vault_name | default(tag_prefix+'vault')}}"
     - watch_tower: "{{watch_tower_name | default(tag_prefix+'watch-tower')}}"
-    - dbs_key: "{{dbs_key_name | default(key_name)"
+    - dbs_key: "{{dbs_key_name | default(key_name)}}"
   roles:
     - createdbsinstances
     - createwebinstances
