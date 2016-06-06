@@ -333,7 +333,8 @@ class Context(object):
             log_info('no workspace configuration file could be ' \
                + 'found from ' + os.getcwd() \
                + ' all the way up to /. A new one, called ' + self.config_name\
-               + ', will be created in *buildTop* after that path is set.')
+               + ', will be created in *buildTop* after that path is set.',
+            context=self)
             self.config_filename = os.path.join(self.value('buildTop'),
                                                 self.config_name)
             self.save()
@@ -1385,8 +1386,8 @@ class Variable(object):
             self.value = os.environ[self.name]
         if self.value != None:
             return False
-        log_info('\n' + self.name + ':')
-        log_info(self.descr)
+        log_info('\n' + self.name + ':', context=context)
+        log_info(self.descr, context=context)
         if USE_DEFAULT_ANSWER:
             self.value = self.default
         else:
@@ -1394,7 +1395,7 @@ class Variable(object):
             if self.default:
                 default_prompt = " [" + self.default + "]"
             self.value = prompt("Enter a string %s: " % default_prompt)
-        log_info("%s set to %s" % (self.name, str(self.value)))
+        log_info("%s set to %s" % (self.name, str(self.value)), context=context)
         return True
 
 class HostPlatform(Variable):
@@ -1477,7 +1478,7 @@ class Pathname(Variable):
         if self.name == 'logDir':
             global LOGGER_BUFFERING_COUNT
             LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT + 1
-        log_info('\n%s:\n%s' % (self.name, self.descr))
+        log_info('\n%s:\n%s' % (self.name, self.descr), context=context)
         if (not default
             or (not ((':' in default) or default.startswith(os.sep)))):
             # If there are no default values or the default is not
@@ -1530,13 +1531,13 @@ class Pathname(Variable):
         self.value = dirname
         if not ':' in dirname:
             if not os.path.exists(self.value):
-                log_info(self.value + ' does not exist.')
+                log_info(self.value + ' does not exist.', context=context)
                 # We should not assume the pathname is a directory,
                 # hence we do not issue a os.makedirs(self.value)
         # Now it should be safe to write to the logfile.
         if self.name == 'logDir':
             LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
-        log_info('%s set to %s' % (self.name, self.value))
+        log_info('%s set to %s' % (self.name, self.value), context=context)
         return True
 
 
@@ -1574,7 +1575,8 @@ class Multiple(Variable):
         if len(self.value) > 0:
             descr += " (constrained: " + ", ".join(self.value) + ")"
         self.value = select_multiple(descr, choices)
-        log_info('%s set to %s', (self.name, ', '.join(self.value)))
+        log_info('%s set to %s', (self.name, ', '.join(self.value)),
+            context=context)
         self.choices = []
         return True
 
@@ -1611,7 +1613,7 @@ class Single(Variable):
         if self.value:
             return False
         self.value = select_one(self.descr, self.choices)
-        log_info('%s set to%s' % (self.name, self.value))
+        log_info('%s set to%s' % (self.name, self.value), context=context)
         return True
 
     def constrain(self, variables):
@@ -1986,7 +1988,7 @@ class DarwinInstallStep(InstallStep):
                 if target != 'CurrentUserHomeDirectory':
                     message = 'ATTENTION: You need administrator privileges '\
                       + 'on the local machine to execute the following cmmand\n'
-                    log_info(message)
+                    log_info(message, context=context)
                     admin = True
                 else:
                     admin = False
@@ -2240,7 +2242,7 @@ class YumInstallStep(InstallStep):
 'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
             admin=True, noexecute=context.nonative)
         cmdline = ['yum', '-y', 'install'] + managed
-        log_info('update, then run: %s' % ' '.join(cmdline))
+        log_info('update, then run: %s' % ' '.join(cmdline), context=context)
         shell_command(['yum', '-y', 'update'],
             admin=True, noexecute=context.nonative)
         filtered = shell_command(cmdline,
@@ -2402,7 +2404,7 @@ class Repository(object):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
             if len(patches) > 0:
-                log_info('######## patching ' + name + '...')
+                log_info('######## patching ' + name + '...', context=context)
                 prev = os.getcwd()
                 os.chdir(context.src_dir(name))
                 shell_command(
@@ -2456,7 +2458,7 @@ class GitRepository(Repository):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
             if len(patches) > 0:
-                log_info('######## patching ' + name + '...')
+                log_info('######## patching ' + name + '...', context=context)
                 os.chdir(context.src_dir(name))
                 shell_command([find_git(context), 'am', '-3', '-k',
                     os.path.join(context.patch_dir(name), '*.patch')])
@@ -2507,14 +2509,14 @@ class GitRepository(Repository):
             shell_command([git_executable, 'checkout', 'master'])
             # 'pull' does fetch and rebase all in one.
             cmdline = ' '.join([git_executable, 'pull'])
-            log_info(cmdline)
+            log_info(cmdline, context=context)
             cmd = subprocess.Popen(cmdline,
                                    shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
             line = cmd.stdout.readline()
             while line != '':
-                log_info(line.strip())
+                log_info(line.strip(), context=context)
                 look = re.match(r'^[Uu]pdating', line)
                 if look:
                     updated = True
@@ -2538,7 +2540,7 @@ class GitRepository(Repository):
             cmd = [git_executable, 'log', '-1', '--pretty=oneline']
             os.chdir(local)
             logline = subprocess.check_output(cmd)
-            log_info(logline)
+            log_info(logline, context=context)
             self.rev = logline.split(' ')[0]
         os.chdir(cwd)
         return updated
@@ -3203,16 +3205,16 @@ def find_cache(context, names):
                         sha1sum = hashlib.sha1(local_file.read()).hexdigest()
                     if sha1sum == expected:
                         # checksum are matching
-                        log_info("matched (sha1)")
+                        log_info("matched (sha1)", context=context)
                     else:
-                        log_info("corrupted? (sha1)")
+                        log_info("corrupted? (sha1)", context=context)
                 else:
-                    log_info("yes")
+                    log_info("yes", context=context)
             else:
-                log_info("yes")
+                log_info("yes", context=context)
         else:
             results[pathname] = names[pathname]
-            log_info("no")
+            log_info("no", context=context)
     return results
 
 
@@ -3962,7 +3964,7 @@ def fetch(context, filenames,
             localname = context.local_dir(remotename)
             if not os.path.exists(os.path.dirname(localname)):
                 os.makedirs(os.path.dirname(localname))
-            log_info('fetching ' + remotename + '...')
+            log_info('fetching ' + remotename + '...', context=context)
             remote = urllib2.urlopen(urllib2.Request(remotename))
             local = open(localname, 'w')
             local.write(remote.read())
@@ -4916,13 +4918,15 @@ def prompt(message):
     return raw_input("")
 
 
-def log_init():
+def log_init(context=None):
+    if context is None:
+        context = CONTEXT
     global LOGGER
     if not LOGGER:
-        if os.path.exists(CONTEXT.logname()):
+        if os.path.exists(context.logname()):
             # We would rather not append to the previous logfile
             # but rather create a new one.
-            os.remove(CONTEXT.logname())
+            os.remove(context.logname())
         logging.config.dictConfig({
         'version': 1,
         'disable_existing_loggers': False,
@@ -4936,13 +4940,13 @@ def log_init():
             'logfile':{
                 'level': 'INFO',
                 'class':'logging.handlers.WatchedFileHandler',
-                'filename': CONTEXT.logname(),
+                'filename': context.logname(),
                 'formatter': 'simple'
             },
             'logbuild':{
                 'level': 'INFO',
                 'class':'logging.handlers.WatchedFileHandler',
-                'filename': CONTEXT.logbuildname(),
+                'filename': context.logbuildname(),
                 'formatter': 'simple'
             },
          },
@@ -5003,7 +5007,7 @@ def log_interactive(message):
         LOGGER_BUFFER.write(message)
 
 
-def log_info(message, *args, **kwargs):
+def log_info(message, context=None, *args, **kwargs):
     '''Write a info message onto stdout and into the log file'''
     sys.stdout.write(message + '\n')
     if not NO_LOG:
@@ -5014,7 +5018,7 @@ def log_info(message, *args, **kwargs):
             LOGGER_BUFFER.write((message + '\n' % args) % kwargs)
         else:
             if not LOGGER:
-                log_init()
+                log_init(context=context)
             if LOGGER_BUFFER:
                 LOGGER_BUFFER.write((message + '\n' % args) % kwargs)
                 for line in LOGGER_BUFFER.getvalue().splitlines():

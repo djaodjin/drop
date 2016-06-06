@@ -7,7 +7,7 @@
     module: ec2_ami
     region: "{{aws_region}}"
     instance_id: "{{dbs_base_device_id}}"
-    name: "dbs"
+    name: "dbs-{{dbs_base_device_id}}"
     description: "LDAP and SQL Databases"
     wait: yes
   register: dbs_ami

@@ -29,8 +29,46 @@ from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 
 class openldap_serversSetup(SetupTemplate):
 
+    backup_script = [
+        "slapcat -v -l /var/backups/people.ldif",
+        "chmod 600 /var/backups/people.ldif"]
+
     def __init__(self, name, files, **kwargs):
         super(openldap_serversSetup, self).__init__(name, files, **kwargs)
+
+    def create_cron_conf(self, context):
+        """
+        Create a cron job to backup the database to a flat text file.
+        """
+        _, new_conf_path = stageFile(os.path.join(
+            context.SYSCONFDIR, 'cron.daily', 'ldap_backup'), context)
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write("""#!/bin/sh
+
+%(backup_script)s
+"""  % {'backup_script': '\n'.join(self.backup_script)})
+
+    def create_logrotate_conf(self, context):
+        """
+        Rotate flat file backups.
+        """
+        _, new_conf_path = stageFile(os.path.join(
+            context.SYSCONFDIR, 'logrotate.d', 'ldap_backup'), context)
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write("""/var/backups/people.ldif
+{
+    create 0600 root root
+    daily
+    rotate 7
+    missingok
+    notifempty
+    compress
+    sharedscripts
+    postrotate
+        %(backup_script)s
+    endscript
+}
+""" % {'backup_script': '\n        '.join(self.backup_script)})
 
     def create_syslogng_conf(self, context):
         _, conf_path = stageFile(os.path.join(context.SYSCONFDIR,
@@ -117,6 +155,9 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
   uid ) )
 """)
 
+        self.create_cron_conf(context)
+        self.create_syslogng_conf(context)
+
         postinst.create_certificate(ldapHost)
         postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
         postinst.shellCommand(['chgrp', 'ldap', os.path.dirname(priv_key)])
@@ -127,8 +168,6 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
             config_path, db_config_path, db_hdb_path])
         postinst.shellCommand(['chmod', '600',
             config_path, db_config_path, db_hdb_path])
-
-        self.create_syslogng_conf(context)
 
         # We need to start the server before adding the schemas.
         postinst.shellCommand(['service', 'slapd', 'restart'])

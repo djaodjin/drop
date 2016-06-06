@@ -12,6 +12,7 @@ Deploy and configure packages for running LDAP and SQL databases.
     <package name="Fedora">
       <dep name="postgresql-server">
         <bin>postgres</bin>
+        <listen_addresses>private-ip.local, localhost</listen_addresses>
       </dep>
       <dep name="iptables">
         <bin>iptables</bin>

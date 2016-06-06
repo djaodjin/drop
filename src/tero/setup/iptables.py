@@ -132,7 +132,10 @@ COMMIT
 
 /sbin/iptables-restore < /etc/sysconfig/iptables
 /sbin/ip6tables-restore < /etc/sysconfig/ip6tables
-""")
+
+IPADDR=`hostname -I`
+sed -i "/^.*  *%(domain)s/{h;s/.* /${IPADDR}/};\${x;/^\$/{s//${IPADDR} %(domain)s/;H};x}" /etc/hosts
+""" % {'domain': 'private-ip.local'})
         os.chmod(new_ifup_local,stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR
             |stat.S_IRGRP|stat.S_IXGRP|stat.S_IROTH|stat.S_IXOTH)
         setup.postinst.shellCommand(['/usr/sbin/ifup-local'])

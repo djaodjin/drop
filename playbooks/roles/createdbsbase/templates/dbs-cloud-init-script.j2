@@ -27,4 +27,7 @@ aws s3 cp s3://{{deployutils_bucket}}/identities/dbs.internal / --recursive
 # Clone configuration scripts repository and setup the machine.
 mkdir -p /tmp/ansible/reps && cd /tmp/ansible/reps && git clone {{remote_dservices_repo}}
 virtualenv-2.7 --system-site-packages /tmp/ansible
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DSYSCONFDIR=/var -DldapHost=localhost -DdomainName=localhost.local -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/tero/databases.xml
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=localhost -DdomainName={{domain_name}} -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/tero/databases.xml
+
+# Restore database from flat files
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/drestore.py --domainName={{domain_name}} /var/backups/*
