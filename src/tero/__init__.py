@@ -237,7 +237,7 @@ class Context(object):
                   'Url to the remote index file with projects dependencies\n'\
 '                       information',
               'base':'remoteSiteTop',
-              'default':'reps/dws.git/dws.xml'}),
+              'default':'reps/drop.git/dws.xml'}),
                         'darwinTargetVolume': Single('darwinTargetVolume',
               {'description':
                     'Destination of installed packages on a Darwin local\n'\
@@ -3731,12 +3731,12 @@ def find_boot_bin(name, package=None, context=None, dbindex=None):
             dbindex = IndexProjects(context,
                           '''<?xml version="1.0" ?>
 <projects>
-  <project name="dws">
-    <repository>
+  <project name="find-boot-bin">
+    <package>
       <dep name="%s">
         <bin>%s</bin>
       </dep>
-    </repository>
+    </package>
   </project>
 </projects>
 ''' % (package, name))
@@ -3744,7 +3744,8 @@ def find_boot_bin(name, package=None, context=None, dbindex=None):
             context.search_path('bin'), context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
             validate_controls(
-                BuildGenerator(['dws'], [], force_update=True), dbindex)
+                BuildGenerator(
+                    ['find-boot-bin'], [], force_update=True), dbindex)
             executables, version, complete = find_bin([[name, None]],
                 context.search_path('bin'), context.value('buildTop'))
         name, absolute_path = executables.pop()
