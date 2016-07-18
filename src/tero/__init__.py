@@ -575,7 +575,7 @@ class Context(object):
         # The problem is that we need to make sure remoteSiteTop is defined
         # before calling *local_dir*, otherwise the resulting indexFile value
         # will be different from the place the remoteIndex is fetched to.
-        self.environ['remoteSiteTop'].value = host_prefix + site_base
+        self.environ['remoteSiteTop'] = host_prefix + site_base
 
     def save(self):
         '''Write the config back to a file.'''
