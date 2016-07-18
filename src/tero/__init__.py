@@ -220,11 +220,6 @@ class Context(object):
 ' created',
               'base':'siteTop',
               'default':'log'}),
-                         'indexFile': Pathname('indexFile',
-             {'description':'Index file with projects dependencies information',
-              'base':'siteTop',
-              'default':os.path.join('resources',
-                                     os.path.basename(sys.argv[0]) + '.xml')}),
                          'remoteSiteTop': remote_site_top,
                          'remoteSrcTop': Pathname('remoteSrcTop',
              {'description':
@@ -352,19 +347,23 @@ class Context(object):
         return os.getcwd()[len(prefix) + 1:]
 
     def db_pathname(self):
-        '''Absolute pathname to the project index file.'''
-        if not str(self.environ['indexFile']):
+        """
+        Absolute pathname to the project index file.
+        """
+        # We always derive ``indexFile`` from ``remoteIndex`` such that we can
+        # run two ``dws build`` with a different project index file in the same
+        # directory.
+        if not hasattr(self, '_indexFile'):
             filtered = filter_rep_ext(self.value('remoteIndex'))
             if filtered != self.value('remoteIndex'):
                 prefix = self.value('remoteSrcTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
-                self.environ['indexFile'].default = \
+                self._indexFile = \
                     self.src_dir(os.path.normpath(filtered).replace(prefix, ''))
             else:
-                self.environ['indexFile'].default = \
-                    self.local_dir(self.value('remoteIndex'))
-        return self.value('indexFile')
+                self._indexFile = self.local_dir(self.value('remoteIndex'))
+        return self._indexFile
 
     def host(self):
         '''Returns the distribution of the local system
@@ -412,9 +411,12 @@ class Context(object):
                 if look != None:
                     if look.group(1) == 'siteTop':
                         site_top_found = True
-                    if (look.group(1) in self.environ
-                        and isinstance(self.environ[look.group(1)], Variable)):
-                        self.environ[look.group(1)].value = look.group(2)
+                    if look.group(1) in self.environ:
+                        # If variable was already resolved to a string, we won't
+                        # override the value. That makes it possible to override
+                        # the ``remoteIndex`` on the command line.
+                        if isinstance(self.environ[look.group(1)], Variable):
+                            self.environ[look.group(1)].value = look.group(2)
                     else:
                         self.environ[look.group(1)] = look.group(2)
                 line = config_file.readline()
@@ -566,7 +568,7 @@ class Context(object):
                 site_base = os.path.realpath(site_base)
             else:
                 site_base = os.getcwd()
-        self.environ['remoteIndex'].value = remote_path
+        self.environ['remoteIndex'] = remote_path
         self.environ['remoteSrcTop'].default = host_prefix + src_base
         # Note: We used to set the context[].default field which had for side
         # effect to print the value the first time the variable was used.
@@ -2582,7 +2584,7 @@ class RsyncRepository(Repository):
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will
         # trigger a potentially unnecessary prompt for remote_cache_path.
-        if not ':' in self.url and context:
+        if not ':' in self.url and not self.url.startswith(os.sep) and context:
             self.url = context.remote_src_path(self.url)
         fetch(context, {self.url: ''}, force=True)
         return True
@@ -3930,12 +3932,11 @@ def fetch(context, filenames,
             # Absolute path to access a file on the remote machine.
             remote_path = ''
             if name:
-                if name.startswith('http') or ':' in name:
+                if (name.startswith('http')
+                    or ':' in name or name.startswith('/')):
                     remote_path = name
                 elif ':' in remote_site_top:
                     remote_path = remote_site_top + name
-                elif name.startswith('/'):
-                    remote_path = name
                 else:
                     remote_path = os.path.join(remote_site_top, name)
             pathnames[remote_path] = filenames[name]
@@ -5268,11 +5269,10 @@ def pub_configure(args):
     symbolic links such that the project can be made
     later on.
     '''
-    CONTEXT.environ['indexFile'].value = CONTEXT.src_dir(
-        os.path.join(CONTEXT.cwd_project(), CONTEXT.indexName))
+    dbindex = IndexProjects(CONTEXT, CONTEXT.src_dir(
+        os.path.join(CONTEXT.cwd_project(), CONTEXT.indexName)))
     project_name = CONTEXT.cwd_project()
     dgen = MakeGenerator([project_name], [])
-    dbindex = IndexProjects(CONTEXT, CONTEXT.value('indexFile'))
     dbindex.parse(dgen)
     prerequisites = set([])
     for vertex in dgen.vertices:
