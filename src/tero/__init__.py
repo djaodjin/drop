@@ -5129,10 +5129,12 @@ def pub_build(args, graph=False, clean=False,
         os.chdir(build_top)
         LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
 
-    if (not novirtualenv
-        and not os.path.isfile(os.path.join(install_top, 'bin', 'pip'))):
+    pip_executable = os.path.join(install_top, 'bin', 'pip')
+    if (not novirtualenv and not os.path.isfile(pip_executable)):
         shell_command([
             find_virtualenv(CONTEXT), '--system-site-packages', site_top])
+        # Force upgrade of setuptools otherwise html5lib install complains.
+        shell_command([pip_executable, 'install', 'setuptools', '--upgrade'])
 
     rgen = DerivedSetsGenerator()
     # If we do not force the update of the index file, the dependency
