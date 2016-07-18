@@ -3932,11 +3932,12 @@ def fetch(context, filenames,
             # Absolute path to access a file on the remote machine.
             remote_path = ''
             if name:
-                if (name.startswith('http')
-                    or ':' in name or name.startswith('/')):
+                if name.startswith('http') or ':' in name:
                     remote_path = name
                 elif ':' in remote_site_top:
                     remote_path = remote_site_top + name
+                elif name.startswith('/'):
+                    remote_path = name
                 else:
                     remote_path = os.path.join(remote_site_top, name)
             pathnames[remote_path] = filenames[name]
