@@ -1,5 +1,6 @@
 ---
 
+- include_vars: group_vars/dynamic
 - include: route53.yml
 
 # Write all dynamic settings that need to be shared amongst playbooks.

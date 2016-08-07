@@ -1,5 +1,7 @@
 ---
 
+- include_vars: group_vars/dynamic
+
 - name: Association of elastic ip address to web-front
   local_action:
      module: ec2_eip

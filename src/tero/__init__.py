@@ -462,12 +462,13 @@ class Context(object):
                 # self.build_top_relative_cwd = look.group(1)
                 pass
         # -- Read the environment variables set in the config file.
-        home_dir = os.environ['HOME']
-        if 'SUDO_USER' in os.environ:
-            home_dir = home_dir.replace(os.environ['SUDO_USER'], runuser())
-        user_default_config = os.path.join(home_dir, '.dws')
-        if os.path.exists(user_default_config):
-            self.load_context(user_default_config)
+        if 'HOME' in os.environ:
+            home_dir = os.environ['HOME']
+            if 'SUDO_USER' in os.environ:
+                home_dir = home_dir.replace(os.environ['SUDO_USER'], runuser())
+            user_default_config = os.path.join(home_dir, '.dws')
+            if os.path.exists(user_default_config):
+                self.load_context(user_default_config)
         site_top_found = self.load_context(self.config_filename)
         if not site_top_found and not self.environ['siteTop'].value:
             # By default we set *siteTop* to be the directory
