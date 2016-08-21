@@ -39,7 +39,8 @@ installTop    ?= $(VIRTUAL_ENV)
 
 include $(srcTop)/drop/src/prefix.mk
 
-scripts := dbldpkg dlogfilt dregress dstamp dws dtimeout dservices dtero
+scripts := dbldpkg dcopylogs dlogfilt dregress dservices dstamp \
+    dtero dtimeout dws
 manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \
