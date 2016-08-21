@@ -178,7 +178,7 @@ install::
 \tfi
 
 include %(share_dir)s/dws/suffix.mk
-''' % {'share_dir': context.share_dir})
+''' % {'share_dir': context.value('shareDir')})
 
     for pathname in ['/var/spool/cron/crontabs']:
         if not os.access(pathname, os.W_OK):

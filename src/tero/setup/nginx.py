@@ -59,7 +59,7 @@ server {
 %(webapps)s
 server {
         listen          80;
-        server_name     %(domain)s *.%(domain)s;
+        server_name     ~^((?<subdomain>\w+)\.)?%(domain)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
@@ -80,7 +80,7 @@ server {
         root %(document_root)s;
 
         location / {
-            try_files /%(app_name)s$uri/index.html /%(app_name)s$uri.html /%(app_name)s$uri $uri/index.html $uri.html $uri @https-rewrite;
+            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @https-rewrite;
         }
 
         location @https-rewrite {
@@ -110,7 +110,7 @@ server {
 
 server {
         listen       443;
-        server_name  *.%(domain)s;
+        server_name  ~^(?<subdomain>\w+)\.%(domain)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
@@ -135,7 +135,16 @@ server {
 
         # path for static files
         root %(document_root)s;
-        %(forwards)s
+
+        location %(path)s {
+            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
+        }
+
+        location @forward_to_%(app_name)s {
+            proxy_pass    http://proxy_%(app_name)s;
+            include       /etc/nginx/proxy_params;
+        }
+
         error_page 500 502 503 504 /500.html;
         location = /50x.html {
             root %(document_root)s;
