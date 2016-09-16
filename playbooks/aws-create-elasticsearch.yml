@@ -1,0 +1,7 @@
+- name: Create ElasticSearch domain
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  roles:
+    - createesdomain
+

@@ -1,0 +1,4 @@
+- name: Delete 'ElasticSearch' domain
+  local_action:
+    module: command
+      aws --region {{aws_region}} es delete-elasticsearch-domain --domain-name {{es.domain}}
