@@ -74,6 +74,37 @@ infrastructure such as AWS region, AWS credentials, etc.
     webapp: *name of the web application to deploy*
     ldapPasswordHash: *hash of the root password for LDAP*
 
+    # Variables for elastic search
+    # See http://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/es-createupdatedomains.html#es-createdomains for available values
+    es:
+      domain: *domain name*
+      # see https://aws.amazon.com/elasticsearch-service/faqs/ for available versions
+      # to date, available versions are 2.3 and 1.5
+      version: *elastic search version*
+      cluster_config:
+        InstanceType: * instance type, eg. t2.micro.elasticsearch*
+        InstanceCount: * instance count, eg. 1 *
+        DedicatedMasterEnabled: * if using dedicated master, eg. false*
+        DedicatedMasterType: * if dedicated master enabled. the instance type.*
+        DedicatedMasterCount: * if dedicated master is enabled, the count. *
+      ebs_options:
+        EBSEnabled: * eg. true *
+        VolumeType: * eg. gp2 *
+        VolumeSize: * size in gb. eg 10*
+
+      # see http://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/es-createupdatedomains.html#es-createdomain-configure-access-policies-cli
+      # for configuration options.
+      # below is an example for creating an access policy for a specific ip address
+      access_policies:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "es:*"
+            Principal: "*"
+            Effect: "Allow"
+            Condition: {"IpAddress":{"aws:SourceIp":["* ip address *"]}}
+
+
+
     $ cat $VIRTUAL_ENV/etc/ansible/hosts
     [local]
     localhost ansible_python_interpreter=*VIRTUAL_ENV*/bin/python
