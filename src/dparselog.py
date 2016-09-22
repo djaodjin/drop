@@ -112,6 +112,11 @@ class NginxLogParser(object):
 
         return parsed
 
+class JsonEventParser(object):
+    def parse(self, to_parse):
+        event = json.loads(to_parse)
+        return event
+
 
 class GunicornLogParser(object):
 
@@ -196,7 +201,7 @@ def error_event(fname, key, reason, extra=None):
 def generate_events(stream, key):
 
     fname = os.path.basename(key)
-    match = re.match(r'(?P<host>\S+)-(?P<logname>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8}).*\.gz', fname)
+    match = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8}).*\.gz', fname)
     if not match:
         print 'not a log file? %s' % fname
 
@@ -216,6 +221,7 @@ def generate_events(stream, key):
         log_type = None
 
     log_date = datetime.strptime(match.group('log_date'), '%Y%m%d')
+    log_name = match.group('log_name')
 
     index = 'logs-%s' % (match.group('log_date'))
     doc_type = 'log'
@@ -223,7 +229,10 @@ def generate_events(stream, key):
     if log_folder == 'nginx':
         parser = NginxLogParser()
     elif log_folder == 'gunicorn':
-        parser = GunicornLogParser()
+        if log_name == 'events':
+            parser = JsonEventParser()
+        else:
+            parser = GunicornLogParser()
     else:
         print 'unknown log folder!', log_folder
         yield error_event(fname, key, 'could not find parser for log folder',
@@ -271,6 +280,7 @@ def generate_events(stream, key):
         event.update({
             's3_key' : key,
             's3_bucket' : 'djaodjin',
+            'log_name': log_name,
         })
         if log_type is not None:
             event['log_type'] = log_type
