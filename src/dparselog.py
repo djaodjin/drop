@@ -193,7 +193,7 @@ def error_event(fname, key, reason, extra=None):
         '_source': body,
     }
 
-def generate_events(root, key):
+def generate_events(stream, key):
 
     fname = os.path.basename(key)
     match = re.match(r'(?P<host>\S+)-(?P<logname>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8}).*\.gz', fname)
@@ -203,7 +203,6 @@ def generate_events(root, key):
         yield error_event(fname, key, 'log filename didnt match regexp')
         return
 
-    full_path = os.path.join( root, key)
     log_folder = os.path.basename(os.path.dirname(key))
     if log_folder == 'nginx':
         log_type = 'webfront'
@@ -234,57 +233,56 @@ def generate_events(root, key):
 
     error_count = 0
     ok_count = 0
-    with gzip.open(full_path) as f:
-        for i, line in enumerate(f):
-            line = line.decode('ascii',errors='replace')
+    for i,line in stream:
+        line = line.decode('ascii',errors='replace')
 
-            total_count = ok_count + error_count
-            if total_count > 100 and (float(error_count)/total_count) > 0.8:
-                print 'too many errors. bailing', full_path
-                yield error_event(fname, key, 'bailing because of too many errors.',
-                                  {'log_date': log_date,
-                                   'line': line})
-                return
+        total_count = ok_count + error_count
+        if total_count > 100 and (float(error_count)/total_count) > 0.8:
+            print 'too many errors. bailing', key
+            yield error_event(fname, key, 'bailing because of too many errors.',
+                              {'log_date': log_date,
+                               'line': line})
+            return
 
-            try:
-                event = parser.parse(line)
-            except Exception, e:
-                print e, line
-                yield error_event(fname, key, 'could not parse log line',
-                                  {'line': line,
-                                   'exception_message': e.message,
-                                   'log_date': log_date,
-                                   'exception_type': type(e).__name__})
+        try:
+            event = parser.parse(line)
+        except Exception, e:
+            print e, line
+            yield error_event(fname, key, 'could not parse log line',
+                              {'line': line,
+                               'exception_message': e.message,
+                               'log_date': log_date,
+                               'exception_type': type(e).__name__})
 
-                continue
+            continue
 
-            if event is None:
-                print 'parse error', log_folder, repr(line)
-                yield error_event(fname, key, 'could not parse log line',
-                                  {'line': line,
-                                   'log_date': log_date,})
-                error_count += 1
-                continue
-            else:
-                ok_count += 1
+        if event is None:
+            print 'parse error', log_folder, repr(line)
+            yield error_event(fname, key, 'could not parse log line',
+                              {'line': line,
+                               'log_date': log_date,})
+            error_count += 1
+            continue
+        else:
+            ok_count += 1
 
-            _id = '%s:%d' % (key,i)
+        _id = '%s:%d' % (key,i)
 
-            event.update({
-                's3_key' : key,
-                's3_bucket' : 'djaodjin',
-            })
-            if log_type is not None:
-                event['log_type'] = log_type
+        event.update({
+            's3_key' : key,
+            's3_bucket' : 'djaodjin',
+        })
+        if log_type is not None:
+            event['log_type'] = log_type
 
-            event.update(match.groupdict())
+        event.update(match.groupdict())
 
-            yield {
-                '_id': _id,
-                '_index': index,
-                '_type': doc_type,
-                '_source': event
-            }
+        yield {
+            '_id': _id,
+            '_index': index,
+            '_type': doc_type,
+            '_source': event
+        }
 
 def sanitize_filename(fname):
     fname  = fname.replace(os.path.sep, '_')
@@ -311,7 +309,7 @@ if __name__ == '__main__':
 
     try:
         with gzip.open(outname,'wb') as f:
-            for event in generate_events(root, key):
+            for event in generate_events(enumerate(f), key):
                 # the elasticsearch serializer does have a
                 # a dumps method, but we don't use it
                 # because it turns off json.dumps' ensure_ascii
