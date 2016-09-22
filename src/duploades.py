@@ -5,6 +5,12 @@ import elasticsearch.helpers
 import json
 import gzip
 import urllib3
+import boto
+import tempfile
+import dparselog
+from datetime import datetime
+import sqlite3
+import os.path
 
 def events(fname):
     with gzip.open(fname) as f:
@@ -126,5 +132,72 @@ def run():
             completed.add(fname)
 
 
+DB_NAME = 'elastsearch_uploads.sqlite3'
+
+def backfill():
+    with open('/var/tmp/djaodjin-logs/loglist.txt') as f:
+        finished_keys = list(x[:-1] for x in f)
+
+    conn = sqlite3.connect(DB_NAME)
+    conn.isolation_level = None
+    c = conn.cursor()
+    for k in finished_keys:
+        c.execute('INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', (datetime.now().isoformat(),
+                                                                          k,
+                                                                          True))
+
+def createdb():
+    dbconn = sqlite3.connect(DB_NAME)
+    # auto commit
+    dbconn.isolation_level = None
+    db = dbconn.
+
+    db.execute('''CREATE TABLE IF NOT EXISTS UPLOAD
+             (dt text, key text primary key, line integer, finished integer)''')
+def sync():
+
+    dbconn = sqlite3.connect(DB_NAME)
+    # auto commit
+    dbconn.isolation_level = None
+    db = dbconn.cursor()
+
+    es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
+
+    s3_bucket='djaodjin'
+    prefix='private/'
+
+    conn = boto.connect_s3()
+    bucket = conn.get_bucket(s3_bucket)
+
+    for key in bucket.list(prefix=prefix):
+        db.execute('select finished from UPLOAD where key=?', (key.key,))
+        row = db.fetchone()
+        finished = (row and row[0])
+        if not finished:
+            print 'uploading %s...' % key.key,
+            with tempfile.TemporaryFile() as f:
+                key.get_contents_to_file(f)
+                f.seek(0)
+
+                gzfile = gzip.GzipFile(fileobj=f, mode='rb')
+                gzip_stream = enumerate(gzfile)
+
+                events_stream = dparselog.generate_events(gzip_stream, key.key)
+                elasticsearch.helpers.bulk(es, events_stream , request_timeout=500)
+
+            row_data = (datetime.now().isoformat(),
+                        key.key,
+                        True)
+            db.execute('INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
+            print 'done'
+        else:
+            print 'skipping %s' % key.key
+
+
+if __name__ == '__main__':
+    if not os.path.exists(DB_NAME):
+        raise Exception('no db') 
+
+    sync()
 
 
