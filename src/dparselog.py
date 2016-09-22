@@ -178,16 +178,17 @@ gunicorn_test_string = '''108.252.136.229 - - [09/Aug/2016:10:15:32 -0700] "GET 
 nginx_test_string = '''183.129.160.229 - - [20/Aug/2016:03:34:59 +0000] "GET / HTTP/1.1" 444 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.11; rv:47.0) Gecko/20100101 Firefox/47.0" "-"'''
 
 def error_event(fname, key, reason, extra=None):
+    now = datetime.now()
     body = {
         'reason': reason,
-        'log-filename': fname,
-        'log-key': key,
-        'dt': datetime.now()
+        's3_key': key,
+        's3_bucket' : 'djaodjin',
+        'parse_time': now,
     }
     if extra:
         body.update(extra)
     return {
-        '_index': 'parse-errors',
+        '_index': 'parse-errors-%s' % datetime.strftime(now, '%Y%m%d'),
         '_type': 'parse-error',
         '_source': body,
     }
@@ -195,7 +196,7 @@ def error_event(fname, key, reason, extra=None):
 def generate_events(root, key):
 
     fname = os.path.basename(key)
-    match = re.match(r'(?P<host>\S+)-(?P<logname>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[^.]+).*\.gz', fname)
+    match = re.match(r'(?P<host>\S+)-(?P<logname>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8}).*\.gz', fname)
     if not match:
         print 'not a log file? %s' % fname
 
@@ -215,6 +216,8 @@ def generate_events(root, key):
     else:
         log_type = None
 
+    log_date = datetime.strptime(match.group('log_date'), '%Y%m%d')
+
     index = 'logs-%s' % (match.group('log_date'))
     doc_type = 'log'
 
@@ -225,17 +228,22 @@ def generate_events(root, key):
     else:
         print 'unknown log folder!', log_folder
         yield error_event(fname, key, 'could not find parser for log folder',
-                          {'log-folder': log_folder})
+                          {'log_folder': log_folder,
+                           'log_date': log_date})
         return
 
     error_count = 0
     ok_count = 0
     with gzip.open(full_path) as f:
         for i, line in enumerate(f):
+            line = line.decode('ascii',errors='replace')
+
             total_count = ok_count + error_count
             if total_count > 100 and (float(error_count)/total_count) > 0.8:
                 print 'too many errors. bailing', full_path
-                yield error_event(fname, key, 'bailing because of too many errors.' )
+                yield error_event(fname, key, 'bailing because of too many errors.',
+                                  {'log_date': log_date,
+                                   'line': line})
                 return
 
             try:
@@ -245,6 +253,7 @@ def generate_events(root, key):
                 yield error_event(fname, key, 'could not parse log line',
                                   {'line': line,
                                    'exception_message': e.message,
+                                   'log_date': log_date,
                                    'exception_type': type(e).__name__})
 
                 continue
@@ -252,7 +261,8 @@ def generate_events(root, key):
             if event is None:
                 print 'parse error', log_folder, repr(line)
                 yield error_event(fname, key, 'could not parse log line',
-                                  {'line': line})
+                                  {'line': line,
+                                   'log_date': log_date,})
                 error_count += 1
                 continue
             else:
@@ -302,7 +312,8 @@ if __name__ == '__main__':
     try:
         with gzip.open(outname,'wb') as f:
             for event in generate_events(root, key):
-                f.write(serializer.dumps(event))
+                s = json.dumps(event, default=serializer.default)
+                f.write(s)
                 f.write('\n')
 
     except Exception as e:
