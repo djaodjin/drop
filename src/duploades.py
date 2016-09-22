@@ -150,10 +150,11 @@ def createdb():
     dbconn = sqlite3.connect(DB_NAME)
     # auto commit
     dbconn.isolation_level = None
-    db = dbconn.
+    db = dbconn.cursor()
 
     db.execute('''CREATE TABLE IF NOT EXISTS UPLOAD
              (dt text, key text primary key, line integer, finished integer)''')
+
 def sync():
 
     dbconn = sqlite3.connect(DB_NAME)
