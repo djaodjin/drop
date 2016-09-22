@@ -17,12 +17,7 @@ def events(fname):
         for line in f:
             yield json.loads(line)
     
-completed = set()
-def run():
-    root = '/var/tmp/djaodjin-logs/tmp'
-    fs = os.listdir(root)
-    es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
-
+def create_index_templates(es):
     # make sure an index template exists so that new indexes that are
     # created automatically have the correct type mappings.
     # http://www.elastic.co/guide/en/elasticsearch/reference/current/indices-templates.html
@@ -114,6 +109,15 @@ def run():
                                 } 
                             })
 
+
+completed = set()
+def run():
+    root = '/var/tmp/djaodjin-logs/tmp'
+    fs = os.listdir(root)
+    es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
+    create_index_templates(es)
+
+
     # enable gzip compression
     # https://github.com/elastic/elasticsearch-py/issues/252
     connection = es.transport.get_connection()
@@ -163,6 +167,7 @@ def sync():
     db = dbconn.cursor()
 
     es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
+    create_index_templates(es)
 
     s3_bucket='djaodjin'
     prefix='private/'
