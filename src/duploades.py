@@ -156,21 +156,31 @@ def create_tables(db):
     db.execute('''CREATE TABLE IF NOT EXISTS UPLOAD
              (dt text, key text primary key, line integer, finished integer)''')
 
-def sync(db, es):
+def sync(db, es,s3keys=None,force=False):
 
 
     create_index_templates(es)
+    conn = boto.connect_s3()
 
     s3_bucket='djaodjin'
-    prefix='private/'
-
-    conn = boto.connect_s3()
     bucket = conn.get_bucket(s3_bucket)
+    if s3keys:
+        s3keys = (bucket.get_key(k) for k in s3keys)
+    else:
+        prefix='private/'
+        s3keys = bucket.list(prefix=prefix)
 
-    for key in bucket.list(prefix=prefix):
-        db.execute('select finished from UPLOAD where key=?', (key.key,))
-        row = db.fetchone()
-        finished = (row and row[0])
+
+
+    for key in s3keys:
+
+        if force:
+            finished = False
+        else:
+            db.execute('select finished from UPLOAD where key=?', (key.key,))
+            row = db.fetchone()
+            finished = (row and row[0])
+
         if not finished:
             print 'uploading %s...' % key.key
             with tempfile.TemporaryFile() as f:
@@ -204,21 +214,37 @@ if __name__ == '__main__':
                         help='''The elasticsearch host in the form <host>:<port> or <host> which assumes port 80.
 If no host is given, then defaults to localhost:9200''')
 
+    parser.add_argument('s3keys', nargs='*',
+                        help='list of s3 keys to upload')
+    parser.add_argument('--force',action='store_true',
+                        help="upload keys even if we've already uploaded them before")
+    parser.add_argument('--no-db',action='store_true',
+                        help="don't store or read from a db to keep track of progress")
+
     args = parser.parse_args()
 
     if not args.create_db and not os.path.exists(args.db):
 
         raise Exception('Progress database not found. Create first with --create-db')
 
-    dbconn = sqlite3.connect(args.db)
-    # auto commit
-    dbconn.isolation_level = None
-    db = dbconn.cursor()
+    if args.no_db:
+        # cheat and use an inmemory db
+        dbconn = sqlite3.connect(":memory:")
+        # auto commit
+        dbconn.isolation_level = None
+        db = dbconn.cursor()
 
-    if args.create_db:
         create_tables(db)
-        print 'db created at %s' % args.db
-        sys.exit(0)
+    else:
+        dbconn = sqlite3.connect(args.db)
+        # auto commit
+        dbconn.isolation_level = None
+        db = dbconn.cursor()
+
+        if args.create_db:
+            create_tables(db)
+            print 'db created at %s' % args.db
+            sys.exit(0)
 
     host_parts = args.elasticsearch_host.split(':')
 
@@ -227,6 +253,5 @@ If no host is given, then defaults to localhost:9200''')
 
     es = Elasticsearch([{'host': es_host, 'port': es_port}])
 
-    sync(db,es)
-
+    sync(db, es, s3keys=args.s3keys, force=args.force)
 
