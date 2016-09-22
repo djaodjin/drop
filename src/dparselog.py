@@ -312,6 +312,13 @@ if __name__ == '__main__':
     try:
         with gzip.open(outname,'wb') as f:
             for event in generate_events(root, key):
+                # the elasticsearch serializer does have a
+                # a dumps method, but we don't use it
+                # because it turns off json.dumps' ensure_ascii
+                # we want to enforce ascii because it's
+                # not actually specified what encoding the
+                # log file is in. We were also getting
+                # invalid utf-8 sequences.
                 s = json.dumps(event, default=serializer.default)
                 f.write(s)
                 f.write('\n')
