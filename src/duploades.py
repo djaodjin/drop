@@ -11,6 +11,8 @@ import dparselog
 from datetime import datetime
 import sqlite3
 import os.path
+import argparse
+import sys
 
 def events(fname):
     with gzip.open(fname) as f:
@@ -150,23 +152,13 @@ def backfill():
                                                                           k,
                                                                           True))
 
-def createdb():
-    dbconn = sqlite3.connect(DB_NAME)
-    # auto commit
-    dbconn.isolation_level = None
-    db = dbconn.cursor()
-
+def create_tables(db):
     db.execute('''CREATE TABLE IF NOT EXISTS UPLOAD
              (dt text, key text primary key, line integer, finished integer)''')
 
-def sync():
+def sync(db, es):
 
-    dbconn = sqlite3.connect(DB_NAME)
-    # auto commit
-    dbconn.isolation_level = None
-    db = dbconn.cursor()
 
-    es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
     create_index_templates(es)
 
     s3_bucket='djaodjin'
@@ -180,7 +172,7 @@ def sync():
         row = db.fetchone()
         finished = (row and row[0])
         if not finished:
-            print 'uploading %s...' % key.key,
+            print 'uploading %s...' % key.key
             with tempfile.TemporaryFile() as f:
                 key.get_contents_to_file(f)
                 f.seek(0)
@@ -195,15 +187,46 @@ def sync():
                         key.key,
                         True)
             db.execute('INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
-            print 'done'
+            print 'done %s' % key.key
         else:
             print 'skipping %s' % key.key
 
 
 if __name__ == '__main__':
-    if not os.path.exists(DB_NAME):
-        raise Exception('no db') 
 
-    sync()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--db',
+                        help='Name of the sqlite3 file to store progress. Assumes the tables have been created correctly',
+                        default='elasticsearch_uploads.sqlite3')
+    parser.add_argument('--create-db', action='store_true',
+                        help='Creates a db file with the correct tables and exits.')
+    parser.add_argument('--elasticsearch-host', default='localhost:9200',
+                        help='''The elasticsearch host in the form <host>:<port> or <host> which assumes port 80.
+If no host is given, then defaults to localhost:9200''')
+
+    args = parser.parse_args()
+
+    if not args.create_db and not os.path.exists(args.db):
+
+        raise Exception('Progress database not found. Create first with --create-db')
+
+    dbconn = sqlite3.connect(args.db)
+    # auto commit
+    dbconn.isolation_level = None
+    db = dbconn.cursor()
+
+    if args.create_db:
+        create_tables(db)
+        print 'db created at %s' % args.db
+        sys.exit(0)
+
+    host_parts = args.elasticsearch_host.split(':')
+
+    es_host = host_parts[0]
+    es_port = host_parts[1] if len(host_parts) > 1 else 80
+
+    es = Elasticsearch([{'host': es_host, 'port': es_port}])
+
+    sync(db,es)
 
 
