@@ -253,7 +253,7 @@ If no host is given, then defaults to localhost:9200 or uses the information der
                         help="upload keys even if we've already uploaded them before")
     parser.add_argument('--no-db',action='store_true',
                         help="don't store or read from a db to keep track of progress")
-    parser.add_argument('--no-reconfigure',action='store true',
+    parser.add_argument('--no-reconfigure',action='store_true',
                         help="By default, the cluster is reconfigured before loading data and restored afterwards")
     parser.add_argument('--elasticsearch-domain',
                         help='The elasticsearch domain to use. This overrides the default host of localhost:9200, but not an explicitly set --elasticsearch-host. This is also used to reconfigure the cluster before and after loading data.')
@@ -291,7 +291,7 @@ If no host is given, then defaults to localhost:9200 or uses the information der
     if args.elasticsearch_domain:
         es_client = boto3.client('es')
 
-        full_config = es_client.describe_elasticsearch_domain(DomainName=elastsearch_domain)
+        full_config = es_client.describe_elasticsearch_domain(DomainName=args.elasticsearch_domain)
         es_host = full_config['DomainStatus']['Endpoint']
         es_port = 80
 
@@ -304,7 +304,7 @@ If no host is given, then defaults to localhost:9200 or uses the information der
             smaller_config = deepcopy(old_config)
             smaller_config['ElasticsearchClusterConfig']['InstanceType'] = 't2.micro.elasticsearch'
 
-    if args.elastsearch_host:
+    if args.elasticsearch_host:
         host_parts = args.elasticsearch_host.split(':')
 
         es_host = host_parts[0]
