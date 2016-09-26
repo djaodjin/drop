@@ -6,6 +6,7 @@ import json
 import gzip
 import urllib3
 import boto
+import boto3
 import tempfile
 import dparselog
 from datetime import datetime
@@ -13,6 +14,9 @@ import sqlite3
 import os.path
 import argparse
 import sys
+from copy import deepcopy
+import time
+from pprint import pprint
 
 def events(fname):
     with gzip.open(fname) as f:
@@ -202,6 +206,35 @@ def sync(db, es,s3keys=None,force=False):
             print 'skipping %s' % key.key
 
 
+def normalized_config(full_config):
+    status = full_config['DomainStatus']
+    necessary_keys = ['DomainName', 'ElasticsearchClusterConfig', 'EBSOptions', 'SnapshotOptions', 'AdvancedOptions', 'AccessPolicies']
+    config = { k: status[k] for k in necessary_keys}
+
+    return config
+
+
+def set_config_and_wait(es_client, config):
+    print 'updating Elasticsearch config to:'
+    pprint(config)
+    print
+
+    es_client.update_elasticsearch_domain_config(**config)
+
+    while True:
+        full_config = es_client.describe_elasticsearch_domain(DomainName=config['DomainName'])
+        is_processing = full_config['DomainStatus']['Processing']
+        is_config_updated = (normalized_config(full_config) == config)
+        print 'waiting for config change to complete...'
+
+        if not is_processing and is_config_updated:
+            break
+
+        time.sleep(15)
+
+    print 'done configuring.'
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
@@ -210,9 +243,9 @@ if __name__ == '__main__':
                         default='elasticsearch_uploads.sqlite3')
     parser.add_argument('--create-db', action='store_true',
                         help='Creates a db file with the correct tables and exits.')
-    parser.add_argument('--elasticsearch-host', default='localhost:9200',
+    parser.add_argument('--elasticsearch-host',
                         help='''The elasticsearch host in the form <host>:<port> or <host> which assumes port 80.
-If no host is given, then defaults to localhost:9200''')
+If no host is given, then defaults to localhost:9200 or uses the information derived from the --elasticsearch-domain''')
 
     parser.add_argument('s3keys', nargs='*',
                         help='list of s3 keys to upload')
@@ -220,6 +253,10 @@ If no host is given, then defaults to localhost:9200''')
                         help="upload keys even if we've already uploaded them before")
     parser.add_argument('--no-db',action='store_true',
                         help="don't store or read from a db to keep track of progress")
+    parser.add_argument('--no-reconfigure',action='store true',
+                        help="By default, the cluster is reconfigured before loading data and restored afterwards")
+    parser.add_argument('--elasticsearch-domain',
+                        help='The elasticsearch domain to use. This overrides the default host of localhost:9200, but not an explicitly set --elasticsearch-host. This is also used to reconfigure the cluster before and after loading data.')
 
     args = parser.parse_args()
 
@@ -246,12 +283,47 @@ If no host is given, then defaults to localhost:9200''')
             print 'db created at %s' % args.db
             sys.exit(0)
 
-    host_parts = args.elasticsearch_host.split(':')
+    es_client = None
+    beefier_config = None
+    smaller_config = None
+    es_host = None
+    es_port = None
+    if args.elasticsearch_domain:
+        es_client = boto3.client('es')
 
-    es_host = host_parts[0]
-    es_port = host_parts[1] if len(host_parts) > 1 else 80
+        full_config = es_client.describe_elasticsearch_domain(DomainName=elastsearch_domain)
+        es_host = full_config['DomainStatus']['Endpoint']
+        es_port = 80
+
+        if not args.no_reconfigure:
+            old_config = normalized_config(full_config)
+
+            beefier_config = deepcopy(old_config)
+            beefier_config['ElasticsearchClusterConfig']['InstanceType'] = 'm3.medium.elasticsearch'
+
+            smaller_config = deepcopy(old_config)
+            smaller_config['ElasticsearchClusterConfig']['InstanceType'] = 't2.micro.elasticsearch'
+
+    if args.elastsearch_host:
+        host_parts = args.elasticsearch_host.split(':')
+
+        es_host = host_parts[0]
+        es_port = host_parts[1] if len(host_parts) > 1 else 80
+
+    elif es_host is None and es_port is None:
+        es_host = 'localhost'
+        es_port = '9200'
 
     es = Elasticsearch([{'host': es_host, 'port': es_port}])
 
-    sync(db, es, s3keys=args.s3keys, force=args.force)
+    try:
+        if beefier_config:
+            set_config_and_wait(es_client, beefier_config)
+
+        sync(db, es, s3keys=args.s3keys, force=args.force)
+    finally:
+        if smaller_config:
+            set_config_and_wait(es_client, smaller_config)
+
+
 
