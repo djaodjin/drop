@@ -5,7 +5,7 @@ First we must install the minimal prerequisites
 
     $ virtualenv deploy
     $ source deploy/bin/activate
-    $ pip install awscli boto ansible
+    $ pip install awscli boto ansible boto3
     Successfully installed ... awscli-1.10.22 boto-2.39.0 ansible-2.0.2.0 ...
 
 (Optional) If you are using Ansible before version 2.0, you will also need to
