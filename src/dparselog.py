@@ -125,8 +125,12 @@ class GunicornLogParser(object):
 
         var_regex = r'%\([^)]+\)s'
         ip_num_regex  =  r'[0-9]{1,3}'
+
+        one_ip_regex = '\\.'.join([ip_num_regex] * 4)
+        two_ip_regex = r'%s, %s' % ( one_ip_regex, one_ip_regex)
+        x_forwarded_for_regex = r'(?:%s|%s)' % (one_ip_regex, two_ip_regex)
         regexps = {
-            '%({X-Forwarded-For}i)s': '\\.'.join([ip_num_regex] * 4),
+            '%({X-Forwarded-For}i)s': x_forwarded_for_regex,
             '%(l)s': r'-',
             '%(u)s': r'-',
             '%(t)s': r'\[[^\]]+]',
@@ -164,6 +168,9 @@ class GunicornLogParser(object):
 
         request_regex = r'(?P<http_method>[A-Z]+) (?P<http_path>.*) HTTP/1.[01]'
         request_match = re.match(request_regex, parsed['request'])
+
+        forwarded_for_ips = parsed['http_x_forwarded_for'].split(', ')
+        parsed['http_x_forwarded_for_ips'] = forwarded_for_ips
 
         if request_match:
             parsed.update(request_match.groupdict())
