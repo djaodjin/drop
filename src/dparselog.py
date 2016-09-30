@@ -77,11 +77,11 @@ class NginxLogParser(object):
             '$remote_addr'          : '\\.'.join([ip_num_regex] * 4),
             '$remote_user'          : r'-',
             '$time_local'           : r'[^\[\]]+',
-            '$request'              : r'[A-Z]+ .* HTTP/1.[01]', # r'(?P<http_method>[A-Z]+) (?P<http_path>.*) HTTP/1.1',
+            '$request'              : r'[^"]*',
             '$status'               : r'[0-9]{3}',
             '$body_bytes_sent'      : r'[0-9]+',
             '$http_referer'         : r'[^"]+',
-            '$http_user_agent'      : r'[^"]+',
+            '$http_user_agent'      : r'[^"]*',
             '$http_x_forwarded_for' : r'[^"]+',
         }
         self.format_vars  =  re.findall(var_regex, format_string)
@@ -179,8 +179,8 @@ class GunicornLogParser(object):
         return parsed
 
 
-gunicorn_test_string = '''108.252.136.229 - - [09/Aug/2016:10:15:32 -0700] "GET / HTTP/1.0" 500 3840 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36"'''
-nginx_test_string = '''183.129.160.229 - - [20/Aug/2016:03:34:59 +0000] "GET / HTTP/1.1" 444 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.11; rv:47.0) Gecko/20100101 Firefox/47.0" "-"'''
+gunicorn_test_string = '''108.252.136.229 - - [09/Aug/2016:10:15:32 -0700] "GET / HTTP/1.0" 500 3840 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36"\n'''
+nginx_test_string = '''183.129.160.229 - - [20/Aug/2016:03:34:59 +0000] "GET / HTTP/1.1" 444 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.11; rv:47.0) Gecko/20100101 Firefox/47.0" "-"\n'''
 
 def error_event(fname, key, reason, extra=None):
     now = datetime.now()
