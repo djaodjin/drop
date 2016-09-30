@@ -195,13 +195,18 @@ def sync(db, es,s3keys=None,force=False):
                 gzip_stream = enumerate(gzfile)
 
                 events_stream = dparselog.generate_events(gzip_stream, key.key)
-                elasticsearch.helpers.bulk(es, events_stream , request_timeout=500)
 
-            row_data = (datetime.now().isoformat(),
-                        key.key,
-                        True)
-            db.execute('INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
-            print 'done %s' % key.key
+                (successes, errors) = elasticsearch.helpers.bulk(es, events_stream , request_timeout=500, raise_on_error=False, raise_on_exception=False)
+
+            print 'successes:', successes
+            print 'errors:', errors
+
+            if not errors:
+                row_data = (datetime.now().isoformat(),
+                            key.key,
+                            True)
+                db.execute('INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
+                print 'done %s' % key.key
         else:
             print 'skipping %s' % key.key
 
