@@ -153,6 +153,10 @@ We run them in order:
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-authorized.yml
 
+    # Provisioning elasticsearch domain
+    $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
+        aws-create-elasticsearch.yml
+
     # Create AMIs (once per system upgrade)
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-images.yml
