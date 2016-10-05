@@ -290,6 +290,10 @@ If no host is given, then defaults to localhost:9200 or uses the information der
         es_port = '9200'
 
     es = Elasticsearch([{'host': es_host, 'port': es_port}])
+    # enable gzip compression
+    # https://github.com/elastic/elasticsearch-py/issues/252
+    connection = es.transport.get_connection()
+    connection.headers.update(urllib3.make_headers(accept_encoding=True))
 
     try:
         if beefier_config:
