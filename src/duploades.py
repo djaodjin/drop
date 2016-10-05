@@ -160,23 +160,21 @@ def create_tables(db):
     db.execute('''CREATE TABLE IF NOT EXISTS UPLOAD
              (dt text, key text primary key, line integer, finished integer)''')
 
-def sync(db, es,s3keys=None,force=False):
+def sync(db, es,s3_bucket=None, s3_prefix=None,s3_keys=None,force=False):
 
 
     create_index_templates(es)
     conn = boto.connect_s3()
 
-    s3_bucket='djaodjin'
     bucket = conn.get_bucket(s3_bucket)
-    if s3keys:
-        s3keys = (bucket.get_key(k) for k in s3keys)
+    if s3_keys:
+        s3_keys = (bucket.get_key(k) for k in s3_keys)
     else:
-        prefix='private/'
-        s3keys = bucket.list(prefix=prefix)
+        s3_keys = bucket.list(prefix=s3_prefix)
 
 
 
-    for key in s3keys:
+    for key in s3_keys:
 
         if force:
             finished = False
@@ -252,7 +250,11 @@ if __name__ == '__main__':
                         help='''The elasticsearch host in the form <host>:<port> or <host> which assumes port 80.
 If no host is given, then defaults to localhost:9200 or uses the information derived from the --elasticsearch-domain''')
 
-    parser.add_argument('s3keys', nargs='*',
+    parser.add_argument('--s3-bucket',
+                        help='''S3 bucket to use for finding logs.''')
+    parser.add_argument('--s3-prefix',
+                        help='''S3 prefix to use when searching for logs.''')
+    parser.add_argument('s3_keys', nargs='*',
                         help='list of s3 keys to upload')
     parser.add_argument('--force',action='store_true',
                         help="upload keys even if we've already uploaded them before")
@@ -325,7 +327,7 @@ If no host is given, then defaults to localhost:9200 or uses the information der
         if beefier_config:
             set_config_and_wait(es_client, beefier_config)
 
-        sync(db, es, s3keys=args.s3keys, force=args.force)
+        sync(db, es, s3_bucket=args.s3_bucket, s3_prefix=args.s3_prefix, s3_keys=args.s3_keys, force=args.force)
     finally:
         if smaller_config:
             set_config_and_wait(es_client, smaller_config)
