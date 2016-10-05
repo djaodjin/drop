@@ -1,10 +1,7 @@
-import re
-import itertools
 from elasticsearch import Elasticsearch
 import elasticsearch.helpers
 import json
 import gzip
-import urllib3
 import boto
 import boto3
 import tempfile
@@ -16,13 +13,14 @@ import argparse
 import sys
 from copy import deepcopy
 import time
+import urllib3
 from pprint import pprint
 
 def events(fname):
     with gzip.open(fname) as f:
         for line in f:
             yield json.loads(line)
-    
+
 def create_index_templates(es):
     # make sure an index template exists so that new indexes that are
     # created automatically have the correct type mappings.
@@ -65,10 +63,10 @@ def create_index_templates(es):
                                             },
                                         }
                                     }
-                                } 
+                                }
                             })
 
-    
+
 
     es.indices.put_template(name='errors_template',
                             body={
@@ -112,55 +110,16 @@ def create_index_templates(es):
                                             },
                                         }
                                     }
-                                } 
+                                }
                             })
 
-
-completed = set()
-def run():
-    root = '/var/tmp/djaodjin-logs/tmp'
-    fs = os.listdir(root)
-    es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
-    create_index_templates(es)
-
-
-    # enable gzip compression
-    # https://github.com/elastic/elasticsearch-py/issues/252
-    connection = es.transport.get_connection()
-    connection.headers.update(urllib3.make_headers(accept_encoding=True))
-
-
-    for fname in fs:
-        fname = '%s/%s' % (root, fname)
-        if fname.endswith('.gz'):
-            if  fname in completed:
-                print 'already done'
-                continue
-            print 'uploading %s' % fname
-            elasticsearch.helpers.bulk(es, events(fname), request_timeout=500)
-            
-            completed.add(fname)
-
-
 DB_NAME = 'elastsearch_uploads.sqlite3'
-
-def backfill():
-    with open('/var/tmp/djaodjin-logs/loglist.txt') as f:
-        finished_keys = list(x[:-1] for x in f)
-
-    conn = sqlite3.connect(DB_NAME)
-    conn.isolation_level = None
-    c = conn.cursor()
-    for k in finished_keys:
-        c.execute('INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', (datetime.now().isoformat(),
-                                                                          k,
-                                                                          True))
 
 def create_tables(db):
     db.execute('''CREATE TABLE IF NOT EXISTS UPLOAD
              (dt text, key text primary key, line integer, finished integer)''')
 
-def sync(db, es,s3_bucket=None, s3_prefix=None,s3_keys=None,force=False):
+def sync(db, es, s3_bucket=None, s3_prefix=None, s3_keys=None, force=False):
 
 
     create_index_templates(es)
@@ -194,7 +153,11 @@ def sync(db, es,s3_bucket=None, s3_prefix=None,s3_keys=None,force=False):
 
                 events_stream = dparselog.generate_events(gzip_stream, key.key)
 
-                (successes, errors) = elasticsearch.helpers.bulk(es, events_stream , request_timeout=500, raise_on_error=False, raise_on_exception=False)
+                (successes, errors) = elasticsearch.helpers.bulk(es,
+                                                                 events_stream,
+                                                                 request_timeout=500,
+                                                                 raise_on_error=False,
+                                                                 raise_on_exception=False)
 
             print 'successes:', successes
             print 'errors:', errors
@@ -211,8 +174,13 @@ def sync(db, es,s3_bucket=None, s3_prefix=None,s3_keys=None,force=False):
 
 def normalized_config(full_config):
     status = full_config['DomainStatus']
-    necessary_keys = ['DomainName', 'ElasticsearchClusterConfig', 'EBSOptions', 'SnapshotOptions', 'AdvancedOptions', 'AccessPolicies']
-    config = { k: status[k] for k in necessary_keys}
+    necessary_keys = ['DomainName',
+                      'ElasticsearchClusterConfig',
+                      'EBSOptions',
+                      'SnapshotOptions',
+                      'AdvancedOptions',
+                      'AccessPolicies']
+    config = {k: status[k] for k in necessary_keys}
 
     return config
 
@@ -238,7 +206,7 @@ def set_config_and_wait(es_client, config):
     print 'done configuring.'
 
 
-if __name__ == '__main__':
+def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--db',
@@ -256,11 +224,11 @@ If no host is given, then defaults to localhost:9200 or uses the information der
                         help='''S3 prefix to use when searching for logs.''')
     parser.add_argument('s3_keys', nargs='*',
                         help='list of s3 keys to upload')
-    parser.add_argument('--force',action='store_true',
+    parser.add_argument('--force', action='store_true',
                         help="upload keys even if we've already uploaded them before")
-    parser.add_argument('--no-db',action='store_true',
+    parser.add_argument('--no-db', action='store_true',
                         help="don't store or read from a db to keep track of progress")
-    parser.add_argument('--no-reconfigure',action='store_true',
+    parser.add_argument('--no-reconfigure', action='store_true',
                         help="By default, the cluster is reconfigured before loading data and restored afterwards")
     parser.add_argument('--elasticsearch-domain',
                         help='The elasticsearch domain to use. This overrides the default host of localhost:9200, but not an explicitly set --elasticsearch-host. This is also used to reconfigure the cluster before and after loading data.')
@@ -300,7 +268,7 @@ If no host is given, then defaults to localhost:9200 or uses the information der
 
         full_config = es_client.describe_elasticsearch_domain(DomainName=args.elasticsearch_domain)
         es_host = full_config['DomainStatus']['Endpoint']
-        es_port = 80
+        es_port = '80'
 
         if not args.no_reconfigure:
             old_config = normalized_config(full_config)
@@ -327,10 +295,17 @@ If no host is given, then defaults to localhost:9200 or uses the information der
         if beefier_config:
             set_config_and_wait(es_client, beefier_config)
 
-        sync(db, es, s3_bucket=args.s3_bucket, s3_prefix=args.s3_prefix, s3_keys=args.s3_keys, force=args.force)
+        sync(db,
+             es,
+             s3_bucket=args.s3_bucket,
+             s3_prefix=args.s3_prefix,
+             s3_keys=args.s3_keys,
+             force=args.force)
     finally:
         if smaller_config:
             set_config_and_wait(es_client, smaller_config)
 
 
 
+if __name__ == '__main__':
+    main()
