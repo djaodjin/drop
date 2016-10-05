@@ -46,8 +46,8 @@ First, you must setup permissions correctly.
     "Version": "2012-10-17"
    }
 
-Once you the permissions are setup, create a sqlite database to keep track
-of which s3 logs you've already uploaded
+Once the permissions are setup, create a sqlite database to keep track
+of which s3 logs you've already uploaded.
 
     $ *VIRTUAL_ENV*/bin/python *drop*/src/duploades.py --create-db *db-path*
 
