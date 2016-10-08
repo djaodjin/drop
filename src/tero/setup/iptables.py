@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -63,7 +63,7 @@ class iptablesSetup(setup.SetupTemplate):
         # We completely overwrite the iptables configuration for both
         # ipv4 and ipv6. We own it.
         _, new_conf_path = setup.stageFile(
-            self.conf_path(context.host(), sysconfdir=context.SYSCONFDIR),
+            self.conf_path(context.host(), sysconfdir=context.value('etcDir')),
             context=context)
         with open(new_conf_path, 'w') as conf:
             if forwards:
@@ -99,7 +99,7 @@ COMMIT
             % port for port in ports])
         _, new_conf_path = setup.stageFile(
             self.conf_path(context.host(),
-                ip_type=self.IPV6, sysconfdir=context.SYSCONFDIR),
+                ip_type=self.IPV6, sysconfdir=context.value('etcDir')),
             context=context)
         with open(new_conf_path, 'w') as conf:
             conf.write("""

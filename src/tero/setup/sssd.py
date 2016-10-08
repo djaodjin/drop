@@ -30,7 +30,7 @@ from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 
 class sssdSetup(SetupTemplate):
 
-    sssd_conf = os.path.join(CONTEXT.SYSCONFDIR, 'sssd', 'sssd.conf')
+    sssd_conf = os.path.join(CONTEXT.value('etcDir'), 'sssd', 'sssd.conf')
 
     def __init__(self, name, files, **kwargs):
         super(sssdSetup, self).__init__(name, files, **kwargs)
@@ -46,7 +46,7 @@ class sssdSetup(SetupTemplate):
 
         ldapHost = context.value('ldapHost')
         domain_parts = tuple(context.value('domainName').split('.'))
-        ldapCertPath = os.path.join(context.SYSCONFDIR,
+        ldapCertPath = os.path.join(context.value('etcDir'),
             'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {
             'ldapHost': ldapHost,

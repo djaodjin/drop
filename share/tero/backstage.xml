@@ -10,6 +10,9 @@ servers.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
+    <variable name="domainName">
+      <description>Domain name for the machine being configured.</description>
+    </variable>
     <package name="Fedora">
       <!-- Access control -->
      <dep name="iptables">

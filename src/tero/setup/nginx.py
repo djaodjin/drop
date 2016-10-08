@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -315,7 +315,7 @@ server {
         # with no domain names will be overridden.
         if remove_default_server:
             org_nginx_conf, new_nginx_conf = setup.stageFile(os.path.join(
-                context.SYSCONFDIR, 'nginx', 'nginx.conf'), context=context)
+                context.value('etcDir'), 'nginx', 'nginx.conf'), context=context)
             with open(org_nginx_conf) as org_nginx_conf_file:
                 with open(new_nginx_conf, 'w') as new_nginx_conf_file:
                     remove = 0
@@ -333,7 +333,7 @@ server {
                         if remove == 0:
                             new_nginx_conf_file.write(line)
 
-        certs_top = os.path.join(context.SYSCONFDIR, 'pki', 'tls', 'certs')
+        certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         setup.postinst.shellCommand([
             '[', '-f', dhparam_path, ']', '||', 'openssl', 'dhparam', '-out',
@@ -352,19 +352,19 @@ server {
         document_root = os.path.join(
             os.sep, 'var', 'www', app_name, 'reps', app_name, 'htdocs')
         org_proxy_params, new_proxy_params = setup.stageFile(os.path.join(
-            context.SYSCONFDIR, 'nginx', 'proxy_params'), context=context)
+            context.value('etcDir'), 'nginx', 'proxy_params'), context=context)
         with open(new_proxy_params, 'w') as proxy_params_file:
             proxy_params_file.write(self.proxy_params_template)
 
-        certs_top = os.path.join(context.SYSCONFDIR, 'pki', 'tls', 'certs')
-        key_top = os.path.join(context.SYSCONFDIR, 'pki', 'tls', 'private')
+        certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
+        key_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'private')
         key_path = os.path.join(key_top, '%s.key' % domain)
         cert_path = os.path.join(certs_top, '%s.crt' % domain)
         wildcard_key_path = os.path.join(key_top, 'wildcard-%s.key' % domain)
         wildcard_cert_path = os.path.join(certs_top, 'wildcard-%s.crt' % domain)
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         org_site_conf, new_site_conf = setup.stageFile(self.conf_path(
-            domain, context.host(), context.SYSCONFDIR), context=context)
+            domain, context.host(), context.value('etcDir')), context=context)
         with open(new_site_conf, 'w') as site_conf_file:
             site_conf_file.write(config_template % {
                 'app_name': app_name,

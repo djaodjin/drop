@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -65,7 +65,8 @@ allow syslogd_t device_t:sock_file unlink;
         syslog_te = os.path.join(
             os.path.dirname(setup.postinst.postinst_run_path), 'syslog-ng.te')
 
-        with open(context.MOD_SYSCONFDIR + syslog_te, 'w') as syslog_te_file:
+        _, syslog_te_path = stageFile(syslog_te)
+        with open(syslog_te_path, 'w') as syslog_te_file:
             syslog_te_file.write(self.syslog_te_config_template)
         setup.postinst.install_selinux_module(syslog_te,
             comment="Configure SELinux to run syslog-ng.")

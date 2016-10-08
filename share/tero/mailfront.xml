@@ -9,6 +9,9 @@ maintenance scripts for authentication and communication services
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
+    <variable name="domainName">
+      <description>Domain name for the machine being configured.</description>
+    </variable>
     <package name="Fedora">
       <!-- Some active security against spammers -->
       <dep name="fail2ban">

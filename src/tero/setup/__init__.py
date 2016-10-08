@@ -1,4 +1,4 @@
-# Copyright (c) 2014, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -283,10 +283,10 @@ def after_daemon_start(daemon, cmdline):
 def create_install_script(script_path, context=None):
     if context.host() in APT_DISTRIBS:
         return debianInstallScript(
-            script_path, mod_sysconfdir=context.MOD_SYSCONFDIR)
+            script_path, mod_sysconfdir=context.modEtcDir)
     elif context.host() in YUM_DISTRIBS:
         return redhatInstallScript(
-            script_path, mod_sysconfdir=context.MOD_SYSCONFDIR)
+            script_path, mod_sysconfdir=context.modEtcDir)
 
 
 def next_token_in_config(remain,
@@ -540,7 +540,7 @@ def modify_config_file(output_file, input_file, settings={},
 
 
 def stageDir(pathname, context):
-    newDir = context.MOD_SYSCONFDIR + pathname
+    newDir = context.modEtcDir + pathname
     if not os.path.exists(newDir):
         os.makedirs(newDir)
     return newDir
@@ -553,8 +553,8 @@ def stageFile(pathname, context):
     """
     stage_user = context.value('admin')
     stage_group = context.value('admin')
-    new_path = context.MOD_SYSCONFDIR + pathname
-    org_path = context.TPL_SYSCONFDIR + pathname
+    new_path = context.modEtcDir + pathname
+    org_path = context.tplEtcDir + pathname
     log_info('stage %s\n  to %s\n  original at %s'
                   % (pathname, new_path, org_path))
     if not os.path.exists(org_path):
@@ -583,8 +583,8 @@ def unifiedDiff(pathname):
     '''Return a list of lines which is the unified diff between an original
     configuration file and the modified version.
     '''
-    new_path = CONTEXT.MOD_SYSCONFDIR + pathname
-    org_path = CONTEXT.TPL_SYSCONFDIR + pathname
+    new_path = CONTEXT.modEtcDir + pathname
+    org_path = CONTEXT.tplEtcDir + pathname
     cmdline = ' '.join(['diff', '-u', org_path, new_path])
     cmd = subprocess.Popen(cmdline,
                            shell=True,

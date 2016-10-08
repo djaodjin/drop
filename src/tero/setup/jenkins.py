@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -397,7 +397,7 @@ allow httpd_t unreserved_port_t:tcp_socket name_bind;
 
         # Configure jetty/jenkins (environment variables and security context)
         jenkins_default_path = os.path.join(
-            context.SYSCONFDIR, 'default', 'jenkins')
+            context.value('etcDir'), 'default', 'jenkins')
         setup.modify_config(jenkins_default_path,
             settings={
                 'JENKINS_HOME': self.jenkins_home,

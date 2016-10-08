@@ -9,6 +9,12 @@ Deploy and configure packages for running LDAP and SQL databases.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
+    <variable name="dbUser">
+      <description>User to access databases.</description>
+    </variable>
+    <variable name="dbPassword">
+      <description>Password for user to access databases.</description>
+    </variable>
     <package name="Fedora">
       <dep name="postgresql-server">
         <bin>postgres</bin>

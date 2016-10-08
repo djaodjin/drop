@@ -46,13 +46,13 @@ def create_install_script(project_name, context, install_top):
     # a simple archive of the configuration files and postinst script.
     prev = os.getcwd()
     share_dir = os.path.join(install_top, 'share')
-    project_name = os.path.basename(context.MOD_SYSCONFDIR)
-    package_dir = context.obj_dir(os.path.basename(context.MOD_SYSCONFDIR))
+    project_name = os.path.basename(context.value('modEtcDir'))
+    package_dir = context.obj_dir(os.path.basename(context.value('modEtcDir')))
     if not os.path.exists(package_dir):
         os.makedirs(package_dir)
     make_simple_archive = True
     if make_simple_archive:
-        os.chdir(context.MOD_SYSCONFDIR)
+        os.chdir(context.value('modEtcDir'))
         package_path = os.path.join(package_dir,
             project_name + '-' + str(__version__) + '.tar.bz2')
         archived = []
@@ -143,7 +143,7 @@ def create_postinst(start_timestamp, setups, context=None):
         context = tero.CONTEXT
 
     # \todo how to do this better?
-    with open(os.path.join(context.MOD_SYSCONFDIR, 'Makefile'), 'w') as mkfile:
+    with open(os.path.join(context.value('modEtcDir'), 'Makefile'), 'w') as mkfile:
         mkfile.write('''
 # With dws, this Makefile will be invoked through
 #     make -f *buildTop*/dws.mk *srcDir*/Makefile
@@ -212,7 +212,7 @@ def prepare_local_system(context, project_name, profiles):
     reconfigured later by installing a native package (i.e. rpm or deb).
     """
     tero.setup.postinst = tero.setup.PostinstScript(
-        project_name, context.host(), context.MOD_SYSCONFDIR)
+        project_name, context.host(), context.value('modEtcDir'))
 
     # XXX Implement this or deprecated?
     # Since they contain sensitive information, credentials file
@@ -227,9 +227,9 @@ def prepare_local_system(context, project_name, profiles):
     # Write the profile file that contains information to turn
     # an ISO stock image into a specified server machine.
     tpl_index_file = os.path.join(
-        tero.CONTEXT.MOD_SYSCONFDIR, '%s-tpl.xml' % project_name)
+        tero.CONTEXT.value('modEtcDir'), '%s-tpl.xml' % project_name)
     create_index_pathname(tpl_index_file, profiles)
-    index_path = os.path.join(context.MOD_SYSCONFDIR, '%s.xml' % project_name)
+    index_path = os.path.join(context.value('modEtcDir'), '%s.xml' % project_name)
     if (len(os.path.dirname(index_path)) > 0 and
         not os.path.exists(os.path.dirname(index_path))):
         os.makedirs(os.path.dirname(index_path))
@@ -263,56 +263,7 @@ def prepare_local_system(context, project_name, profiles):
     # Some magic to recompute paths correctly from ``index_path``.
     site_top = os.path.dirname(os.path.dirname(os.path.dirname(index_path)))
     index_path = index_path.replace(site_top, site_top + '/.')
-    print "XXX index_path=%s" % index_path
     return pub_build([index_path])
-
-
-def add_context_variables(context):
-    """
-    Add configuration variables necessary to run setup scripts.
-    """
-    if not 'admin' in context.environ:
-        context.environ['admin'] = Variable('admin',
-            {'description': 'Login for the administrator account',
-             'default': getpass.getuser()})
-
-    dist_host = context.host() # calls HostPlatform.configure()
-    dist_codename = context.environ['distHost'].dist_codename
-
-    # Derive necessary variables if they haven't been initialized yet.
-    if not 'DB_USER' in context.environ:
-        context.environ['DB_USER'] = Variable('DB_USER',
-        {'description': 'User to access databases.',
-         'default': 'app'})
-    if not 'DB_PASSWORD' in context.environ:
-        context.environ['DB_PASSWORD'] = Variable('DB_PASSWORD',
-        {'description': 'Password for user to access databases.',
-         'default': 'djaoapp'})
-    if not 'domainName' in context.environ:
-        context.environ['domainName'] = Variable('domainName',
-        {'description': 'Domain Name for the machine being configured.',
-         'default': socket.gethostname()})
-    if not 'PROJECT_NAME' in context.environ:
-        context.environ['PROJECT_NAME'] = Variable('PROJECT_NAME',
-        {'description': 'Project under which system modifications are stored.',
-         'default': socket.gethostname().replace('.', '-')})
-    if not 'SYSCONFDIR' in context.environ:
-        context.environ['SYSCONFDIR'] = Pathname('SYSCONFDIR',
-        {'description': 'system configuration directory.',
-         'default': '/etc'})
-    if not 'MOD_SYSCONFDIR' in context.environ:
-        context.environ['MOD_SYSCONFDIR'] = Pathname('MOD_SYSCONFDIR',
-        {'description':
-         'directory where modified system configuration file are generated.',
-         'base':'srcTop',
-         'default': socket.gethostname().replace('.', '-')})
-    if not 'TPL_SYSCONFDIR' in context.environ:
-        context.environ['TPL_SYSCONFDIR'] = Pathname('TPL_SYSCONFDIR',
-        {'description':
-         'directory root that contains the orignal system configuration files.',
-         'base':'srcTop',
-         'default': os.path.join(
-             'share', 'tero', dist_codename if dist_codename else dist_host)})
 
 
 def main(args):
@@ -378,7 +329,6 @@ def main(args):
     # Add necessary variables in context, then parse a list of variable
     # definitions with format key=value from the command line and append
     # them to the context.
-    add_context_variables(tero.CONTEXT)
     for define in options.defines:
         key, value = define.split('=')
         tero.CONTEXT.environ[key] = value
@@ -409,7 +359,7 @@ def main(args):
     os.chdir(prev)
     try:
         with open(os.path.join(
-                tero.CONTEXT.MOD_SYSCONFDIR, 'config.book'), 'w') as book:
+                tero.CONTEXT.value('modEtcDir'), 'config.book'), 'w') as book:
             book.write('''<?xml version="1.0"?>
 <section xmlns="http://docbook.org/ns/docbook"
      xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -420,7 +370,8 @@ def main(args):
   <section>
 <programlisting>''')
             cmd = subprocess.Popen(' '.join(['diff', '-rNu',
-                tero.CONTEXT.TPL_SYSCONFDIR, tero.CONTEXT.MOD_SYSCONFDIR]),
+                tero.CONTEXT.value('tplEtcDir'),
+                tero.CONTEXT.value('modEtcDir')]),
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT)

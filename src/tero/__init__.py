@@ -186,6 +186,8 @@ class Context(object):
 '                       control lives on the local machine.',
                'base': 'siteTop',
                'default':'reps'})
+        dist = HostPlatform('-')
+        dist.configure(None)
         self.environ = {'buildTop': build_top,
                         'srcTop' : src_top,
                         'patchTop': Pathname('patchTop',
@@ -264,7 +266,21 @@ class Context(object):
                    'dws occasionally emails build reports (see --mailto\n'
 '                       command line option). This is the address that will\n'\
 '                       be shown in the *From* field.',
-               'default': runuser() + '@localhost'})}
+               'default': runuser() + '@localhost'}),
+       # Variables where modified and original sysconfig files are stored.
+                        'modEtcDir': Pathname('modEtcDir',
+             {'description':
+'directory where modified system configuration file are generated.',
+              'base':'srcTop',
+              'default': socket.gethostname().replace('.', '-')}),
+                        'tplEtcDir': Pathname('tplEtcDir',
+            {'description':
+'directory root that contains the orignal system configuration files.',
+             'base':'srcTop',
+             'default': os.path.join(
+                 'share', 'tero', dist.dist_codename if dist.dist_codename
+                 else dist.value)})
+        }
         self.build_top_relative_cwd = None
         self.config_filename = None
 
@@ -5941,6 +5957,7 @@ def main(args):
     '''Main Entry Point'''
 
     exit_code = 0
+    start_timestamp = datetime.datetime.now()
     try:
         import __main__
         import argparse
@@ -5967,6 +5984,8 @@ def main(args):
 ' from the current directory.')
         parser.add_argument('--default', dest='default', action='store_true',
             help='Use default answer for every interactive prompt.')
+        parser.add_argument('-D', dest='defines', action='append', default=[],
+            help='Add a (key,value) definition to use in templates.')
         parser.add_argument('--exclude', dest='exclude_pats', action='append',
             help='The specified command will not be applied to projects'\
 ' matching the name pattern.')
@@ -6037,6 +6056,10 @@ def main(args):
             CONTEXT.environ['installTop'] = os.path.abspath(options.installTop)
         if options.patchTop:
             CONTEXT.environ['patchTop'] = os.path.abspath(options.patchTop)
+
+        for define in options.defines:
+            key, value = define.split('=')
+            CONTEXT.environ[key] = value
 
         global INDEX
         INDEX = IndexProjects(CONTEXT)

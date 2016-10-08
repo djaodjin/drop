@@ -48,7 +48,7 @@ class postgresql_serverSetup(SetupTemplate):
         Create a cron job to backup the database to a flat text file.
         """
         _, new_conf_path = stageFile(os.path.join(
-            context.SYSCONFDIR, 'cron.daily', 'pg_backup'), context)
+            context.value('etcDir'), 'cron.daily', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write("""#!/bin/sh
 
@@ -60,7 +60,7 @@ class postgresql_serverSetup(SetupTemplate):
         Rotate flat file backups.
         """
         _, new_conf_path = stageFile(os.path.join(
-            context.SYSCONFDIR, 'logrotate.d', 'pg_backup'), context)
+            context.value('etcDir'), 'logrotate.d', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write("""/var/backups/*.sql
 {
@@ -85,7 +85,7 @@ class postgresql_serverSetup(SetupTemplate):
             # files here.
             return complete
 
-        pg_user = context.value('DB_USER')
+        pg_user = context.value('dbUser')
         vpc_cidr = context.value('vpc_cidr')
         postgresql_conf = '/var/lib/pgsql/data/postgresql.conf'
         pg_ident_conf = '/var/lib/pgsql/data/pg_ident.conf'
@@ -205,8 +205,9 @@ class postgresqlSetup(SetupTemplate):
                     settings = elem[0]
                     if 'db_name' in settings:
                         db_name = settings['db_name']
-                self.create_database(
-                    db_name, context.DB_USER, context.DB_PASSWORD, context)
+                self.create_database(db_name,
+                    context.value('dbUser'), context..value('dbPassword'),
+                    context)
         return complete
 
 

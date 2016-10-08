@@ -39,8 +39,8 @@ class openssh_serverSetup(SetupTemplate):
        security unless users are also denied shell access, as they can
        always install their own forwarders.'''
 
-    ldap_conf = os.path.join(CONTEXT.SYSCONFDIR, 'ssh', 'ldap.conf')
-    sshd_conf = os.path.join(CONTEXT.SYSCONFDIR, 'ssh', 'sshd_config')
+    ldap_conf = os.path.join(CONTEXT.value('etcDir'), 'ssh', 'ldap.conf')
+    sshd_conf = os.path.join(CONTEXT.value('etcDir'), 'ssh', 'sshd_config')
 
     def __init__(self, name, files, **kwargs):
         super(openssh_serverSetup, self).__init__(name, files, **kwargs)
@@ -51,7 +51,7 @@ class openssh_serverSetup(SetupTemplate):
         complete = super(openssh_serverSetup, self).run(context)
         ldapHost = context.value('ldapHost')
         domain_parts = tuple(context.value('domainName').split('.'))
-        banner = os.path.join(context.SYSCONFDIR, 'issue.net')
+        banner = os.path.join(context.value('etcDir'), 'issue.net')
         _, new_banner_path = stageFile(
             banner, context=context)
         with open(new_banner_path, 'w') as new_banner:
@@ -64,7 +64,7 @@ class openssh_serverSetup(SetupTemplate):
         modify_config(self.sshd_conf,
             settings=settings, sep=' ', context=context)
 
-        ldapCertPath = os.path.join(context.SYSCONFDIR,
+        ldapCertPath = os.path.join(context.value('etcDir'),
             'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {
             'ldapHost': ldapHost,
