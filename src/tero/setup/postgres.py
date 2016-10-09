@@ -206,7 +206,7 @@ class postgresqlSetup(SetupTemplate):
                     if 'db_name' in settings:
                         db_name = settings['db_name']
                 self.create_database(db_name,
-                    context.value('dbUser'), context..value('dbPassword'),
+                    context.value('dbUser'), context.value('dbPassword'),
                     context)
         return complete
 

@@ -827,7 +827,8 @@ class Unserializer(PdbHandler):
 
 
 class DependencyGenerator(Unserializer):
-    '''*DependencyGenerator* implements a breath-first search of the project
+    """
+    *DependencyGenerator* implements a breath-first search of the project
     dependencies index with a specific twist.
     At each iteration, if all prerequisites for a project can be found
     on the local system, the dependency edge is cut from the next iteration.
@@ -839,7 +840,7 @@ class DependencyGenerator(Unserializer):
     distribution package.
     *DependencyGenerator.end_parse*() is at the heart of the workspace
     bootstrapping and other "recurse" features.
-    '''
+    """
 
     def __init__(self, repositories, packages, exclude_pats=None,
                  custom_steps=None, force_update=False):
@@ -1200,9 +1201,9 @@ class MakeGenerator(DependencyGenerator):
 
     def __init__(self, repositories, packages,
                  exclude_pats=None, custom_steps=None):
-        DependencyGenerator.__init__(
-            self, repositories, packages,
-            exclude_pats, custom_steps, force_update=True)
+        super(MakeGenerator, self).__init__(repositories, packages,
+            exclude_pats=exclude_pats, custom_steps=custom_steps,
+            force_update=True)
         self.stop_make_after_error = True
 
     def contextual_targets(self, variant):
@@ -1301,31 +1302,6 @@ class MakeGenerator(DependencyGenerator):
             if not project.name in roots:
                 results += [project]
         return results
-
-
-class MakeDepGenerator(MakeGenerator):
-    '''Generate the set of prerequisite projects regardless of the executables,
-    libraries, etc. which are already installed.'''
-
-    def add_install(self, project_name, target=None):
-        # We use a special "no-op" add_install in the MakeDepGenerator because
-        # we are not interested in prerequisites past the repository projects
-        # and their direct dependencies.
-        return InstallStep(project_name)
-
-    def add_setup(self, target, deps):
-        targets = []
-        for dep in deps:
-            target_name = dep.target
-            if not dep.target:
-                target_name = target
-            setup = SetupStep(dep.name, dep.files, dep.versions, target_name)
-            if not setup.name in self.vertices:
-                self.vertices[setup.name] = setup
-            else:
-                self.vertices[setup.name].add_prerequisites(setup)
-            targets += [self.vertices[setup.name]]
-        return targets
 
 
 class DerivedSetsGenerator(PdbHandler):
@@ -1851,7 +1827,7 @@ class SetupStep(TargetStep):
             'includes': versions.get('includes', []),
             'excludes': versions.get('excludes', [])}}
         self.updated = False
-        self.incompletes = []
+        self.incompletes = None
 
     def add_prerequisites(self, setup):
         """
@@ -1901,6 +1877,11 @@ class InstallStep(SetupStep):
     """
     Base class to install prerequisites through package managers, either
     native (apt-get, yum) or language specific (pip, gem, nodejs).
+
+    ``InstallStep`` derives from ``SetupStep`` such that we are able
+    to check prerequisites and create a list of incomplete packages
+    to actually install through the native package manager. (see: ``run``)
+    This works in concert with the ``DependencyGenerator.add_install`` method.
     """
     def __init__(self, project_name, alt_names=None,
                  versions=None, target=None):
@@ -1916,19 +1897,32 @@ class InstallStep(SetupStep):
         self.add_prerequisites(install_step)
         self.alt_names.update(install_step.alt_names)
 
+    def get_installs(self):
+        if self.incompletes is not None:
+            packages = self.incompletes
+        else:
+            packages = self.managed.keys()
+        installs = []
+        for install_name in packages:
+            installs += self.alt_names.get(install_name, [install_name])
+        return installs
+
     def run(self, context):
         super(InstallStep, self).run(context)
         self.updated = False
-        if len(self.incompletes) > 0:
-            installs = []
-            for install_name in self.incompletes:
-                installs += self.alt_names.get(install_name, [install_name])
+        installs = self.get_installs()
+        if len(installs) > 0:
             self.install(installs, context)
             self.updated = True
 
-    def install(self, managed, context):
+    def install_commands(managed, context):
         raise Error("Does not know how to install '%s' on %s for %s"
                     % (managed, context.host(), self.name))
+
+    def install(self, managed, context):
+        for cmdline, admin, noexecute in self.install_commands(
+                managed, context):
+            shell_command(cmdline, admin=admin, noexecute=noexecute)
 
     def info(self):
         raise Error(
@@ -1946,17 +1940,17 @@ class AptInstallStep(InstallStep):
         self.priority = Step.install_native
 
     @staticmethod
-    def install(managed, context):
+    def install_commands(managed, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
         # configuration of packages do not pop up in the middle
         # of installation. We are going to update the configuration
         # in /etc afterwards anyway.
         # Emit only one shell command so that we can find out what the script
         # tried to do when we did not get priviledge access.
-        shell_command(['sh', '-c', '"/usr/bin/apt-get update'\
+        admin = True
+        return [(['sh', '-c', '"/usr/bin/apt-get update'\
 ' && DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install %s"'
-                       % ' '.join(managed)],
-                      admin=True, noexecute=context.nonative)
+                       % ' '.join(managed)], admin, context.nonative)]
 
     def info(self):
         info = []
@@ -1992,38 +1986,45 @@ class DarwinInstallStep(InstallStep):
         self.priority = Step.install
 
     @staticmethod
-    def install(managed, context):
-        '''Mount *image*, a pathnme to a .dmg file and use the Apple installer
+    def install_commands(managed, context):
+        """
+        Mount *image*, a pathnme to a .dmg file and use the Apple installer
         to install the *pkg*, a .pkg package onto the platform through the Apple
-        installer.'''
+        installer.
+        """
+        admin = False
+        if len(managed) > 0:
+            target = context.value('darwinTargetVolume')
+            if target != 'CurrentUserHomeDirectory':
+                message = 'ATTENTION: You need administrator privileges '\
+                  + 'on the local machine to execute the following cmmand\n'
+                log_info(message, context=context)
+                admin = True
+        cmds = []
+        noexecute = False
         for filename in managed:
-            try:
-                volume = None
-                if filename.endswith('.dmg'):
-                    base, ext = os.path.splitext(filename)
-                    volume = os.path.join('/Volumes', os.path.basename(base))
-                    shell_command(['hdiutil', 'attach', filename])
-                target = context.value('darwinTargetVolume')
-                if target != 'CurrentUserHomeDirectory':
-                    message = 'ATTENTION: You need administrator privileges '\
-                      + 'on the local machine to execute the following cmmand\n'
-                    log_info(message, context=context)
-                    admin = True
-                else:
-                    admin = False
-                pkg = filename
-                if not filename.endswith('.pkg'):
-                    pkgs = find_files(volume, r'\.pkg')
-                    if len(pkgs) != 1:
-                        raise RuntimeError(
-                            'ambiguous: not exactly one .pkg to install')
-                    pkg = pkgs[0]
-                shell_command(['installer', '-pkg', os.path.join(volume, pkg),
-                              '-target "' + target + '"'], admin)
-                if filename.endswith('.dmg'):
-                    shell_command(['hdiutil', 'detach', volume])
-            except:
-                raise Error('failure to install darwin package ' + filename)
+            volume = None
+            if filename.endswith('.dmg'):
+                base, ext = os.path.splitext(filename)
+                volume = os.path.join('/Volumes', os.path.basename(base))
+                cmdline = ['hdiutil', 'attach', filename]
+                cmds += [(cmdline, False, noexecute)]
+                shell_command(cmdline)
+            pkg = filename
+            if not filename.endswith('.pkg'):
+                pkgs = find_files(volume, r'\.pkg')
+                if len(pkgs) != 1:
+                    raise RuntimeError(
+                        'ambiguous: not exactly one .pkg to install')
+                pkg = pkgs[0]
+            cmdline = ['installer', '-pkg', os.path.join(volume, pkg),
+                          '-target "' + target + '"']
+            cmds += [(cmdline, admin, context.nonative)]
+            if filename.endswith('.dmg'):
+                cmdline = ['hdiutil', 'detach', volume]
+                cmds += [(cmdline, False, noexecute)]
+                shell_command(cmdline)
+        return cmds
 
 
 class DpkgInstallStep(InstallStep):
@@ -2040,10 +2041,12 @@ class DpkgInstallStep(InstallStep):
         self.priority = Step.install
 
     @staticmethod
-    def install(managed, context):
+    def install_commands(managed, context):
         if managed:
-            shell_command(['dpkg', '-i', ' '.join(managed)],
-                admin=True, noexecute=context.nonative)
+            admin = True
+            noexecute = context.nonative
+            return [(['dpkg', '-i', ' '.join(managed)], admin, noexecute)]
+        return []
 
 
 class GemInstallStep(InstallStep):
@@ -2060,7 +2063,7 @@ class GemInstallStep(InstallStep):
         """Collect prerequisites from Gemfile"""
         sys.stdout.write('''XXX collect from Gemfile NotYetImplemented!\n''')
 
-    def install(self, managed, context):
+    def install_commands(self, managed, context):
         packages = []
         for dep_name in managed:
             include_versions = self.managed[dep_name].get('includes', [])
@@ -2074,8 +2077,10 @@ class GemInstallStep(InstallStep):
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
             noexecute = context.nonative
-        shell_command([find_gem(context), 'install'] + packages + [
-            '--install-dir', site_packages], admin=admin, noexecute=noexecute)
+        if packages:
+            return [([find_gem(context), 'install'] + packages + [
+                '--install-dir', site_packages], admin, noexecute)]
+        return []
 
     def info(self):
         info = []
@@ -2101,9 +2106,13 @@ class MacPortInstallStep(InstallStep):
         self.priority = Step.install_native
 
     @staticmethod
-    def install(managed, context):
-        shell_command(['/opt/local/bin/port', 'install'] + managed,
-            admin=True, noexecute=context.nonative)
+    def install_commands(managed, context):
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [(['/opt/local/bin/port', 'install'] + managed,
+                admin, noexecute)]
+        return []
 
     def info(self):
         info = []
@@ -2132,7 +2141,7 @@ class NpmInstallStep(InstallStep):
         find_npm(CONTEXT)
         return os.path.join(CONTEXT.value('buildTop'), 'bin', 'npm')
 
-    def install(self, managed, context):
+    def install_commands(self, managed, context):
         packages = []
         for dep_name in managed:
             include_versions = self.managed[dep_name].get('includes', [])
@@ -2140,11 +2149,15 @@ class NpmInstallStep(InstallStep):
                 packages += ['%s@%s' % (dep_name, include_versions[0])]
             else:
                 packages += [dep_name]
-        shell_command([self._manager(), 'install', '-g',
+        if packages:
+            admin = False
+            noexecute = False
+            return [([self._manager(), 'install', '-g',
                 '--cache', os.path.join(context.value('installTop'), '.npm'),
                 '--tmp', os.path.join(context.value('installTop'), 'tmp'),
-                '--prefix', context.value('installTop')] + packages)
-        self.updated = True
+                '--prefix', context.value('installTop')] + packages,
+                admin, noexecute)]
+        return []
 
     def info(self):
         info = []
@@ -2181,7 +2194,7 @@ class PipInstallStep(InstallStep):
 </dep>
 ''' % (prerequisite, prerequisite))
 
-    def install(self, managed, context):
+    def install_commands(self, managed, context):
         packages = []
         for dep_name in managed:
             include_versions = self.managed[dep_name].get('includes', [])
@@ -2202,9 +2215,11 @@ class PipInstallStep(InstallStep):
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
             noexecute = context.nonative
-        shell_command([pip, '--log-file', context.log_path('pip.log'),
+        if packages:
+            return [([pip, '--log-file', context.log_path('pip.log'),
             '--cache-dir', context.obj_dir('.cache'),
-            'install'] + packages, admin=admin, noexecute=noexecute)
+            'install'] + packages, admin, noexecute)]
+        return []
 
     def info(self):
         info = []
@@ -2235,11 +2250,15 @@ class RpmInstallStep(InstallStep):
         self.priority = Step.install
 
     @staticmethod
-    def install(managed, context):
+    def install_commands(managed, context):
         # --nodeps because rpm looks stupid and can't figure out that
         # the vcd package provides the libvcd.so required by the executable.
-        shell_command(['rpm', '-i', '--force', ' '.join(managed), '--nodeps'],
-            admin=True, noexecute=context.nonative)
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [(['rpm', '-i', '--force', ' '.join(managed), '--nodeps'],
+                admin, noexecute)]
+        return []
 
 
 class YumInstallStep(InstallStep):
@@ -2252,27 +2271,39 @@ class YumInstallStep(InstallStep):
         self.priority = Step.install_native
 
     @staticmethod
+    def install_commands(managed, context):
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [
+                (['yum', '-y', 'update'], admin, noexecute),
+                (['yum', '-y', 'install'] + managed, admin, noexecute)]
+        return []
+
+    @staticmethod
     def install(managed, context):
-        # XXX Might not be the best place to do this,
-        # yet CentOS does not include basic tools such as fail2ban.
-        if context.host() == 'CentOS' and not os.path.exists(
-            '/etc/yum.repos.d/epel.repo'):
-            shell_command(['rpm', '-Uvh',
+        if managed:
+            # XXX Might not be the best place to do this,
+            # yet CentOS does not include basic tools such as fail2ban.
+            if context.host() == 'CentOS' and not os.path.exists(
+                '/etc/yum.repos.d/epel.repo'):
+                shell_command(['rpm', '-Uvh',
 'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
-            admin=True, noexecute=context.nonative)
-        cmdline = ['yum', '-y', 'install'] + managed
-        log_info('update, then run: %s' % ' '.join(cmdline), context=context)
-        shell_command(['yum', '-y', 'update'],
-            admin=True, noexecute=context.nonative)
-        filtered = shell_command(cmdline,
-            admin=True, noexecute=context.nonative,
-            pat='No package (.*) available')
-        if len(filtered) > 0:
-            look = re.match('No package (.*) available', filtered[0])
-            if look:
-                unmanaged = look.group(1).split(' ')
-                if len(unmanaged) > 0:
-                    raise Error("yum cannot install " + ' '.join(unmanaged))
+                admin=True, noexecute=context.nonative)
+            update_cmd, install_cmd = self.install_commands(managed, context)
+            log_info('update, then run: %s' % ' '.join(install_cmd[0]),
+                context=context)
+            shell_command(update_cmd[0],
+                admin=update_cmd[1], noexecute=update_cmd[2])
+            filtered = shell_command(install_cmd[0],
+                admin=install_cmd[1], noexecute=install_cmd[2],
+                pat='No package (.*) available')
+            if len(filtered) > 0:
+                look = re.match('No package (.*) available', filtered[0])
+                if look:
+                    unmanaged = look.group(1).split(' ')
+                    if len(unmanaged) > 0:
+                        raise Error("yum cannot install " + ' '.join(unmanaged))
 
     def info(self):
         info = []
@@ -3231,6 +3262,11 @@ def find_cache(context, names):
                     log_info("yes", context=context)
             else:
                 log_info("yes", context=context)
+        elif os.path.isdir(local_name):
+            # We assume existing directories are up-to-date.
+            # If we don't we will try to execute a rsync in an environment
+            # where we might not have credentials to the data repo (ex. Docker).
+            log_info("yes", context=context)
         else:
             results[pathname] = names[pathname]
             log_info("no", context=context)
@@ -3914,17 +3950,42 @@ def name_pat_regex(name_pat):
     return re.compile(pat + '$')
 
 
-def ordered_prerequisites(roots, index):
-    '''returns the dependencies in topological order for a set of project
-    names in *roots*.'''
-    dgen = MakeDepGenerator(roots, [], exclude_pats=EXCLUDE_PATS)
-    steps = index.closure(dgen)
-    results = []
-    for step in steps:
-        # XXX this is an ugly little hack!
-        if isinstance(step, InstallStep) or isinstance(step, BuildStep):
-            results += [step.qualified_project_name()]
-    return results
+def ordered_prerequisites(dgen, dbindex, graph=False):
+    """
+    Returns the dependencies in topological order, globbed by type,
+    for a set of projects.
+    """
+    dbindex.validate()
+
+    # Add deep dependencies
+    vertices = dbindex.closure(dgen)
+    if graph:
+        gph_filename = os.path.splitext(CONTEXT.logname())[0] + '.dot'
+        gph_file = open(gph_filename, 'w')
+        gph_file.write("digraph structural {\n")
+        for vertex in vertices:
+            for project in vertex.prerequisites:
+                gph_file.write(
+                    "\t%s -> %s;\n" % (vertex.name, project.name))
+        gph_file.write("}\n")
+        gph_file.close()
+    globbed = []
+    while len(vertices) > 0:
+        first = vertices.pop(0)
+        glob = [first]
+        while len(vertices) > 0:
+            vertex = vertices.pop(0)
+            if(vertex.__class__ != first.__class__
+               or (hasattr(vertex, 'target') and hasattr(first, 'target')
+                   and vertex.target != first.target)):
+                vertices.insert(0, vertex)
+                break
+            if 'insert' in dir(first):
+                first.insert(vertex)
+            else:
+                glob += [vertex]
+        globbed += glob
+    return globbed
 
 
 def fetch(context, filenames,
@@ -4671,64 +4732,39 @@ def validate_controls(dgen, dbindex, graph=False,
     in *srcTop* and an associated dictionary of Project instances.
     By iterating through the list, it is possible to 'make'
     each prerequisite project in order.'''
-    dbindex.validate()
-
     global ERRORS
-    # Add deep dependencies
-    vertices = dbindex.closure(dgen)
-    if graph:
-        gph_filename = os.path.splitext(CONTEXT.logname())[0] + '.dot'
-        gph_file = open(gph_filename, 'w')
-        gph_file.write("digraph structural {\n")
-        for vertex in vertices:
-            for project in vertex.prerequisites:
-                gph_file.write(
-                    "\t%s -> %s;\n" % (vertex.name, project.name))
-        gph_file.write("}\n")
-        gph_file.close()
-    while len(vertices) > 0:
-        first = vertices.pop(0)
-        glob = [first]
-        while len(vertices) > 0:
-            vertex = vertices.pop(0)
-            if(vertex.__class__ != first.__class__
-               or (hasattr(vertex, 'target') and hasattr(first, 'target')
-                   and vertex.target != first.target)):
-                vertices.insert(0, vertex)
-                break
-            if 'insert' in dir(first):
-                first.insert(vertex)
-            else:
-                glob += [vertex]
-        # \todo "make recurse" should update only projects which are missing
-        # from *srcTop* and leave other projects in whatever state they are in.
-        # This is different from "build" which should update all projects.
-        if first.priority in priorities:
-            for vertex in glob:
-                errcode = 0
-                elapsed = 0
-                prev_cwd = os.getcwd()
-                log_header(vertex.title)
-                start = datetime.datetime.now()
-                try:
-                    vertex.run(CONTEXT)
+
+    glob = ordered_prerequisites(dgen, dbindex, graph=graph)
+
+    # \todo "make recurse" should update only projects which are missing
+    # from *srcTop* and leave other projects in whatever state they are in.
+    # This is different from "build" which should update all projects.
+    for vertex in glob:
+        if vertex.priority in priorities:
+            errcode = 0
+            elapsed = 0
+            prev_cwd = os.getcwd()
+            log_header(vertex.title)
+            start = datetime.datetime.now()
+            try:
+                vertex.run(CONTEXT)
+                finish = datetime.datetime.now()
+                elapsed = elapsed_duration(start, finish)
+            except Error, err:
+                if True:
+                    import traceback
+                    traceback.print_exc()
+                errcode = err.code
+                ERRORS += [str(vertex)]
+                if dgen.stop_make_after_error:
                     finish = datetime.datetime.now()
                     elapsed = elapsed_duration(start, finish)
-                except Error, err:
-                    if True:
-                        import traceback
-                        traceback.print_exc()
-                    errcode = err.code
-                    ERRORS += [str(vertex)]
-                    if dgen.stop_make_after_error:
-                        finish = datetime.datetime.now()
-                        elapsed = elapsed_duration(start, finish)
-                        log_footer(vertex.title, elapsed, errcode)
-                        raise err
-                    else:
-                        log_error(str(err))
-                log_footer(vertex.title, elapsed, errcode)
-                os.chdir(prev_cwd)
+                    log_footer(vertex.title, elapsed, errcode)
+                    raise err
+                else:
+                    log_error(str(err))
+            log_footer(vertex.title, elapsed, errcode)
+            os.chdir(prev_cwd)
 
     nb_updated_projects = len(UpdateStep.updated_sources)
     if nb_updated_projects > 0:
@@ -5328,7 +5364,7 @@ def pub_context(args):
     sys.stdout.write(pathname)
 
 
-def pub_deps(args):
+def pub_deps(args, native=True):
     ''' Prints the dependency graph for a project.
     '''
     top = os.path.realpath(os.getcwd())
@@ -5344,7 +5380,16 @@ def pub_deps(args):
         rgen = DerivedSetsGenerator()
         INDEX.parse(rgen)
         roots = rgen.roots
-    sys.stdout.write(' '.join(ordered_prerequisites(roots, INDEX)) + '\n')
+    dgen = BuildGenerator(roots, [], exclude_pats=EXCLUDE_PATS)
+    builds = []
+    for step in ordered_prerequisites(dgen, INDEX):
+        if isinstance(step, InstallStep):
+            cmds = step.install_commands(step.get_installs(), CONTEXT)
+            for cmd, admin, noexecute in cmds:
+                sys.stdout.write("%s\n" % ' '.join(cmd))
+        elif isinstance(step, BuildStep):
+            builds += [step.qualified_project_name()]
+    sys.stdout.write("build: %s\n" % ' '.join(builds))
 
 
 def pub_export(args):
