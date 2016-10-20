@@ -1229,6 +1229,12 @@ class BuildGenerator(DependencyGenerator):
         return (False, targets)
 
 
+class PubDepsGenerator(BuildGenerator):
+
+    def add_update(self, project_name, update, update_rep=True):
+        return None
+
+
 class MakeGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''
@@ -3315,8 +3321,10 @@ def find_cache(context, names):
 
 
 def find_files(base, name_pat, recurse=True):
-    '''Search the directory tree rooted at *base* for files matching *name_pat*
-       and returns a list of absolute pathnames to those files.'''
+    """
+    Search the directory tree rooted at *base* for files matching *name_pat*
+    and returns a list of absolute pathnames to those files.
+    """
     result = []
     try:
         if os.path.exists(base):
@@ -3807,7 +3815,7 @@ def find_share(names, search_path, build_top, versions=None, variant=None):
     return find_data('share', names, search_path, build_top, versions, variant)
 
 
-def find_boot_bin(name, package=None, context=None, dbindex=None):
+def find_boot_bin(name_pat, package=None, context=None, dbindex=None):
     '''This script needs a few tools to be installed to bootstrap itself,
     most noticeably the initial source control tool used to checkout
     the projects dependencies index file.'''
@@ -3817,6 +3825,7 @@ def find_boot_bin(name, package=None, context=None, dbindex=None):
             CONTEXT = Context()
             CONTEXT.locate()
         context = CONTEXT
+    name, _ = regex_as_name(name_pat)
     executable = os.path.join(context.bin_build_dir(), name)
     if not os.path.exists(executable):
         # We do not use *validate_controls* here because dws in not
@@ -3838,14 +3847,14 @@ def find_boot_bin(name, package=None, context=None, dbindex=None):
     </package>
   </project>
 </projects>
-''' % (package, name))
-        executables, version, complete = find_bin([[name, None]],
+''' % (package, name_pat))
+        executables, version, complete = find_bin([[name_pat, None]],
             context.search_path('bin'), context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
             validate_controls(
                 BuildGenerator(
                     ['find-boot-bin'], [], force_update=True), dbindex)
-            executables, version, complete = find_bin([[name, None]],
+            executables, version, complete = find_bin([[name_pat, None]],
                 context.search_path('bin'), context.value('buildTop'))
         name, absolute_path = executables.pop()
         link_pat_path(name, absolute_path, 'bin')
@@ -3947,7 +3956,7 @@ def find_rsync(host, context=None, relative=True, admin=False,
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
     through a project.'''
-    rsync = find_boot_bin('rsync', context=context)
+    rsync = find_boot_bin(u'rsync', context=context)
 
     # We are accessing the remote machine through a mounted
     # drive or through ssh.
@@ -4393,11 +4402,10 @@ def link_context(path, link_name):
     if not os.path.exists(link_name) and os.path.exists(path):
         os.symlink(path, link_name)
 
-def link_build_name(name_pat, subdir, target=None):
-    # We normalize the library link name such as to make use of the default
-    # definitions of .LIBPATTERNS and search paths in make. It also avoids
-    # having to prefix and suffix library names in Makefile with complex
-    # variable substitution logic.
+def regex_as_name(name_pat):
+    """
+    Extract the normalized name used for creating links in *buildTop*.
+    """
     suffix = ''
     regex = name_pat_regex(name_pat)
     if regex.groups == 0:
@@ -4411,6 +4419,14 @@ def link_build_name(name_pat, subdir, target=None):
             name = name.split('|')[0]
         # XXX +1 ')', +2 '/'
         suffix = name_pat[re.search(r'\((.+)\)', name_pat).end(1) + 2:]
+    return name, suffix
+
+def link_build_name(name_pat, subdir, target=None):
+    # We normalize the library link name such as to make use of the default
+    # definitions of .LIBPATTERNS and search paths in make. It also avoids
+    # having to prefix and suffix library names in Makefile with complex
+    # variable substitution logic.
+    name, suffix = regex_as_name(name_pat)
     subpath = subdir
     if target:
         subpath = os.path.join(target, subdir)
@@ -5402,9 +5418,13 @@ def pub_context(args):
     sys.stdout.write(pathname)
 
 
-def pub_deps(args, native=True):
-    ''' Prints the dependency graph for a project.
-    '''
+def pub_deps(args, native=False):
+    """
+    Prints the statement used to install native and language packaged
+    prerequisites.
+    --native   Display only the prerequisites installed through
+               the native package manager.
+    """
     top = os.path.realpath(os.getcwd())
     if ((str(CONTEXT.environ['buildTop'])
          and top.startswith(os.path.realpath(CONTEXT.value('buildTop')))
@@ -5418,16 +5438,18 @@ def pub_deps(args, native=True):
         rgen = DerivedSetsGenerator()
         INDEX.parse(rgen)
         roots = rgen.roots
-    dgen = BuildGenerator(roots, [], exclude_pats=EXCLUDE_PATS)
+    dgen = PubDepsGenerator(roots, [], exclude_pats=EXCLUDE_PATS)
     builds = []
     for step in ordered_prerequisites(dgen, INDEX):
         if isinstance(step, InstallStep):
-            cmds = step.install_commands(step.get_installs(), CONTEXT)
-            for cmd, admin, noexecute in cmds:
-                sys.stdout.write("%s\n" % ' '.join(cmd))
+            if not native or step.priority == Step.install_native:
+                cmds = step.install_commands(step.get_installs(), CONTEXT)
+                for cmd, admin, noexecute in cmds:
+                    sys.stdout.write("%s\n" % ' '.join(cmd))
         elif isinstance(step, BuildStep):
             builds += [step.qualified_project_name()]
-    sys.stdout.write("build: %s\n" % ' '.join(builds))
+    if not native:
+        sys.stdout.write("build: %s\n" % ' '.join(builds))
 
 
 def pub_export(args):
