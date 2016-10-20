@@ -3937,7 +3937,7 @@ def find_pip(context):
     pip_package = None
     if context.host() in YUM_DISTRIBS:
         pip_package = 'python-pip'
-    find_boot_bin('(pip).*', package=pip_package, context=context)
+    find_boot_bin(u'(pip).*', package=pip_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'pip')
 
 
