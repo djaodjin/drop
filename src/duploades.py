@@ -310,6 +310,25 @@ If no host is given, then defaults to localhost:9200 or uses the information der
             set_config_and_wait(es_client, smaller_config)
 
 
+def upload_all():
+    create_index_templates(es)
+    import os
+
+    dir = '/var/tmp/djaodjin-logs/tmp'
+    fnames = os.listdir(dir)
+    for fname in fnames:
+        events_stream = events('/var/tmp/djaodjin-logs/tmp/%s' % fname)
+
+
+        (successes, errors) = elasticsearch.helpers.bulk(es,
+                                                         events_stream,
+                                                         request_timeout=500,
+                                                         raise_on_error=False,
+                                                         raise_on_exception=False)
+
+        print 'successes:', successes
+        print 'errors:', errors
+
 
 if __name__ == '__main__':
     main()
