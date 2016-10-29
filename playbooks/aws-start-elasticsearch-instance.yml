@@ -1,0 +1,7 @@
+- name: Starting elastic search instance
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  roles:
+    - startelasticsearchinstance
+
