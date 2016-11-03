@@ -1,0 +1,7 @@
+- name: Stopping elastic search instance
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  roles:
+    - stopelasticsearchinstance
+
