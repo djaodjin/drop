@@ -1,0 +1,24 @@
+
+- ec2_remote_facts:
+    filters:
+      "tag:Name": elasticsearch
+  register: elasticsearch_instance
+
+- name: Running ec2 instance
+  local_action:
+    module: ec2
+    instance_ids:
+      - "{{elasticsearch_instance.instances[0].id}}"
+    state: running
+    wait: True
+    region: "{{aws_region}}"
+  register: instances
+
+- route53:
+    command: create
+    zone: "ec2.internal."
+    record: "elasticsearch.ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{instances.instances[0].private_ip}}"
+    overwrite: yes
