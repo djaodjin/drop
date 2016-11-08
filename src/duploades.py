@@ -1,3 +1,33 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2016, DjaoDjin inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"""
+Command-line tool to populate an Elastic Search index.
+"""
+
 from elasticsearch import Elasticsearch
 import elasticsearch.helpers
 import json
@@ -113,11 +143,11 @@ def create_index_templates(es):
                                 }
                             })
 
-DB_NAME = 'elastsearch_uploads.sqlite3'
 
 def create_tables(db):
     db.execute('''CREATE TABLE IF NOT EXISTS UPLOAD
              (dt text, key text primary key, line integer, finished integer)''')
+
 
 def sync(db, es, s3_bucket=None, s3_prefix=None, s3_keys=None, force=False):
 
@@ -143,7 +173,7 @@ def sync(db, es, s3_bucket=None, s3_prefix=None, s3_keys=None, force=False):
             finished = (row and row[0])
 
         if not finished:
-            print 'uploading %s...' % key.key
+            sys.stdout.write('uploading %s...\n' % key.key)
             with tempfile.TemporaryFile() as f:
                 key.get_contents_to_file(f)
                 f.seek(0)
@@ -153,23 +183,22 @@ def sync(db, es, s3_bucket=None, s3_prefix=None, s3_keys=None, force=False):
 
                 events_stream = dparselog.generate_events(gzip_stream, key.key)
 
-                (successes, errors) = elasticsearch.helpers.bulk(es,
-                                                                 events_stream,
-                                                                 request_timeout=500,
-                                                                 raise_on_error=False,
-                                                                 raise_on_exception=False)
+                (successes, errors) = elasticsearch.helpers.bulk(
+                    es, events_stream,
+                    request_timeout=500,
+                    raise_on_error=False,
+                    raise_on_exception=False)
 
-            print 'successes:', successes
-            print 'errors:', errors
+            sys.stdout.write('successes: %s\n' % str(successes))
+            sys.stdout.write('errors: %s\n' % str(errors))
 
             if not errors:
-                row_data = (datetime.now().isoformat(),
-                            key.key,
-                            True)
-                db.execute('INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
-                print 'done %s' % key.key
+                row_data = (datetime.now().isoformat(), key.key, True)
+                db.execute(
+'INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
+                sys.stdout.write('done %s\n' % key.key)
         else:
-            print 'skipping %s' % key.key
+            sys.stdout.write('skipping %s\n' % key.key)
 
 
 def normalized_config(full_config):
@@ -186,58 +215,70 @@ def normalized_config(full_config):
 
 
 def set_config_and_wait(es_client, config):
-    print 'updating Elasticsearch config to:'
+    """
+    Change configuration of AWS-hosted ES cluster
+    """
+    sys.stdout.write('updating Elasticsearch config to:\n')
     pprint(config)
-    print
+    sys.stdout.write('\n')
 
     es_client.update_elasticsearch_domain_config(**config)
 
     while True:
-        full_config = es_client.describe_elasticsearch_domain(DomainName=config['DomainName'])
+        full_config = es_client.describe_elasticsearch_domain(
+            DomainName=config['DomainName'])
         is_processing = full_config['DomainStatus']['Processing']
         is_config_updated = (normalized_config(full_config) == config)
-        print 'waiting for config change to complete...'
+        sys.stdout.write('waiting for config change to complete...\n')
 
         if not is_processing and is_config_updated:
             break
 
         time.sleep(15)
 
-    print 'done configuring.'
+    sys.stdout.write('done configuring.\n')
 
 
 def main():
-
+    """
+    Main Entry Point
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument('--db',
-                        help='Name of the sqlite3 file to store progress. Assumes the tables have been created correctly',
-                        default='elasticsearch_uploads.sqlite3')
+        help="Name of the sqlite3 file to store progress. "\
+        "Assumes the tables have been created correctly",
+        default='elasticsearch_uploads.sqlite3')
     parser.add_argument('--create-db', action='store_true',
-                        help='Creates a db file with the correct tables and exits.')
+        help="Creates a db file with the correct tables and exits.")
     parser.add_argument('--elasticsearch-host',
-                        help='''The elasticsearch host in the form <host>:<port> or <host> which assumes port 80.
-If no host is given, then defaults to localhost:9200 or uses the information derived from the --elasticsearch-domain''')
-
+        help="The elasticsearch host in the form <host>:<port> or <host>"\
+        " which assumes port 80.\nIf no host is given, then defaults to "\
+        "localhost:9200 or uses the information derived from "\
+        "the --elasticsearch-domain")
     parser.add_argument('--s3-bucket',
-                        help='''S3 bucket to use for finding logs.''')
+        help="S3 bucket to use for finding logs.")
     parser.add_argument('--s3-prefix',
-                        help='''S3 prefix to use when searching for logs.''')
+        help="S3 prefix to use when searching for logs.")
     parser.add_argument('s3_keys', nargs='*',
-                        help='list of s3 keys to upload')
+        help="list of s3 keys to upload")
     parser.add_argument('--force', action='store_true',
-                        help="upload keys even if we've already uploaded them before")
+        help="upload keys even if we've already uploaded them before")
     parser.add_argument('--no-db', action='store_true',
-                        help="don't store or read from a db to keep track of progress")
+        help="don't store or read from a db to keep track of progress")
     parser.add_argument('--no-reconfigure', action='store_true',
-                        help="By default, the cluster is reconfigured before loading data and restored afterwards")
+        help="By default, the cluster is reconfigured before loading data"\
+        " and restored afterwards")
     parser.add_argument('--elasticsearch-domain',
-                        help='The elasticsearch domain to use. This overrides the default host of localhost:9200, but not an explicitly set --elasticsearch-host. This is also used to reconfigure the cluster before and after loading data.')
+        help="The elasticsearch domain to use. This overrides the default host"\
+        " of localhost:9200, but not an explicitly set --elasticsearch-host."\
+        " This is also used to reconfigure the cluster before and after"\
+        " loading data.")
 
     args = parser.parse_args()
 
     if not args.create_db and not os.path.exists(args.db):
-
-        raise Exception('Progress database not found. Create first with --create-db')
+        raise Exception(
+            'Progress database not found. Create first with --create-db')
 
     if args.no_db:
         # cheat and use an inmemory db
@@ -255,7 +296,7 @@ If no host is given, then defaults to localhost:9200 or uses the information der
 
         if args.create_db:
             create_tables(db)
-            print 'db created at %s' % args.db
+            sys.stdout.write('db created at %s\n' % args.db)
             sys.exit(0)
 
     es_client = None
@@ -266,7 +307,8 @@ If no host is given, then defaults to localhost:9200 or uses the information der
     if args.elasticsearch_domain:
         es_client = boto3.client('es')
 
-        full_config = es_client.describe_elasticsearch_domain(DomainName=args.elasticsearch_domain)
+        full_config = es_client.describe_elasticsearch_domain(
+            DomainName=args.elasticsearch_domain)
         es_host = full_config['DomainStatus']['Endpoint']
         es_port = '80'
 
@@ -274,10 +316,12 @@ If no host is given, then defaults to localhost:9200 or uses the information der
             old_config = normalized_config(full_config)
 
             beefier_config = deepcopy(old_config)
-            beefier_config['ElasticsearchClusterConfig']['InstanceType'] = 'm3.medium.elasticsearch'
+            beefier_config['ElasticsearchClusterConfig']['InstanceType'] \
+                = 'm3.medium.elasticsearch'
 
             smaller_config = deepcopy(old_config)
-            smaller_config['ElasticsearchClusterConfig']['InstanceType'] = 't2.micro.elasticsearch'
+            smaller_config['ElasticsearchClusterConfig']['InstanceType'] \
+                = 't2.micro.elasticsearch'
 
     if args.elasticsearch_host:
         host_parts = args.elasticsearch_host.split(':')
@@ -320,14 +364,15 @@ def upload_all():
         events_stream = events('/var/tmp/djaodjin-logs/tmp/%s' % fname)
 
 
-        (successes, errors) = elasticsearch.helpers.bulk(es,
-                                                         events_stream,
-                                                         request_timeout=500,
-                                                         raise_on_error=False,
-                                                         raise_on_exception=False)
+        (successes, errors) = elasticsearch.helpers.bulk(
+            es,
+            events_stream,
+            request_timeout=500,
+            raise_on_error=False,
+            raise_on_exception=False)
 
-        print 'successes:', successes
-        print 'errors:', errors
+        sys.stdout.write('successes: %s\n' % str(successes))
+        sys.stdout.write('errors: %s\n' % str(errors))
 
 
 if __name__ == '__main__':
