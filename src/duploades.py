@@ -28,23 +28,27 @@
 Command-line tool to populate an Elastic Search index.
 """
 
+import argparse, json, gzip, os.path, tempfile, sys, time
+from collections import namedtuple
+from datetime import datetime
+from copy import deepcopy
+
+from ansible.playbook import Playbook
+from ansible.template import Templar
+from ansible.executor.task_queue_manager import TaskQueueManager
+from ansible.inventory import Inventory
+from ansible.parsing.dataloader import DataLoader
+from ansible.vars import VariableManager
+import boto, boto.s3.key
+import boto3
 from elasticsearch import Elasticsearch
 import elasticsearch.helpers
-import json
-import gzip
-import boto
-import boto3
-import tempfile
-import dparselog
-from datetime import datetime
-import sqlite3
-import os.path
-import argparse
-import sys
-from copy import deepcopy
-import time
-import urllib3
 from pprint import pprint
+import sqlite3
+import urllib3, urllib3.util
+import tero
+import tero.dparselog
+
 
 def events(fname):
     with gzip.open(fname) as f:
@@ -149,56 +153,77 @@ def create_tables(db):
              (dt text, key text primary key, line integer, finished integer)''')
 
 
-def sync(db, es, s3_bucket=None, s3_prefix=None, s3_keys=None, force=False):
+def sync_fileobj(fileobj, es, name):
+    gzfile = gzip.GzipFile(fileobj=fileobj, mode='rb')
+    gzip_stream = enumerate(gzfile)
+
+    events_stream = tero.dparselog.generate_events(gzip_stream, name)
+
+    return elasticsearch.helpers.bulk(
+        es, events_stream,
+        request_timeout=500,
+        raise_on_error=False,
+        raise_on_exception=False)
 
 
+def sync(log_paths, es, location=None, db=None, force=False):
+    """
+    Insert log records into Elastic Search.
+    """
     create_index_templates(es)
-    conn = boto.connect_s3()
 
-    bucket = conn.get_bucket(s3_bucket)
-    if s3_keys:
-        s3_keys = (bucket.get_key(k) for k in s3_keys)
-    else:
-        s3_keys = bucket.list(prefix=s3_prefix)
+    conn = None
+    keys = log_paths
+    if location:
+        log_url = urllib3.util.parse_url(location)
+        if log_url.scheme == 's3':
+            s3_bucket = log_url.host
+            s3_prefix = log_url.path
+            if s3_prefix.startswith('/'):
+                s3_prefix = s3_prefix[1:]
+            if conn is None:
+                conn = boto.connect_s3()
+            bucket = conn.get_bucket(s3_bucket)
+            if not log_paths:
+                keys = bucket.list(prefix=s3_prefix)
+            else:
+                keys = [bucket.get_key(path) for path in log_paths]
 
-
-
-    for key in s3_keys:
+    for key in keys:
+        if isinstance(key, boto.s3.key.Key):
+            name = key.key
+        else:
+            name = key
 
         if force:
             finished = False
         else:
-            db.execute('select finished from UPLOAD where key=?', (key.key,))
+            db.execute('select finished from UPLOAD where key=?', (name,))
             row = db.fetchone()
             finished = (row and row[0])
 
         if not finished:
-            sys.stdout.write('uploading %s...\n' % key.key)
-            with tempfile.TemporaryFile() as f:
-                key.get_contents_to_file(f)
-                f.seek(0)
+            sys.stdout.write('uploading %s...\n' % name)
 
-                gzfile = gzip.GzipFile(fileobj=f, mode='rb')
-                gzip_stream = enumerate(gzfile)
-
-                events_stream = dparselog.generate_events(gzip_stream, key.key)
-
-                (successes, errors) = elasticsearch.helpers.bulk(
-                    es, events_stream,
-                    request_timeout=500,
-                    raise_on_error=False,
-                    raise_on_exception=False)
+            if isinstance(key, boto.s3.key.Key):
+                with tempfile.TemporaryFile() as temp_file:
+                    key.get_contents_to_file(temp_file)
+                    temp_file.seek(0)
+                    (successes, errors) = sync_fileobj(temp_file, es, name)
+            else:
+                with open(name, 'rb') as fileobj:
+                    (successes, errors) = sync_fileobj(fileobj, es, name)
 
             sys.stdout.write('successes: %s\n' % str(successes))
             sys.stdout.write('errors: %s\n' % str(errors))
 
             if not errors:
-                row_data = (datetime.now().isoformat(), key.key, True)
+                row_data = (datetime.now().isoformat(), name, True)
                 db.execute(
-'INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
-                sys.stdout.write('done %s\n' % key.key)
+    'INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
+                sys.stdout.write('done %s\n' % name)
         else:
-            sys.stdout.write('skipping %s\n' % key.key)
+            sys.stdout.write('skipping %s\n' % name)
 
 
 def normalized_config(full_config):
@@ -239,76 +264,96 @@ def set_config_and_wait(es_client, config):
     sys.stdout.write('done configuring.\n')
 
 
-def main():
+def pub_initcache(db_path='elasticsearch_uploads.sqlite3'):
     """
-    Main Entry Point
+    Create or re-create a SQLite3 database to store names of log files
+    already uploaded into the Elastic Search index.
+
+    --db_path
+        Name of the sqlite3 file to store progress.
+        Assumes the tables have been created correctly
+        defaults to 'elasticsearch_uploads.sqlite3'
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--db',
-        help="Name of the sqlite3 file to store progress. "\
-        "Assumes the tables have been created correctly",
-        default='elasticsearch_uploads.sqlite3')
-    parser.add_argument('--create-db', action='store_true',
-        help="Creates a db file with the correct tables and exits.")
-    parser.add_argument('--elasticsearch-host',
-        help="The elasticsearch host in the form <host>:<port> or <host>"\
-        " which assumes port 80.\nIf no host is given, then defaults to "\
-        "localhost:9200 or uses the information derived from "\
-        "the --elasticsearch-domain")
-    parser.add_argument('--s3-bucket',
-        help="S3 bucket to use for finding logs.")
-    parser.add_argument('--s3-prefix',
-        help="S3 prefix to use when searching for logs.")
-    parser.add_argument('s3_keys', nargs='*',
-        help="list of s3 keys to upload")
-    parser.add_argument('--force', action='store_true',
-        help="upload keys even if we've already uploaded them before")
-    parser.add_argument('--no-db', action='store_true',
-        help="don't store or read from a db to keep track of progress")
-    parser.add_argument('--no-reconfigure', action='store_true',
-        help="By default, the cluster is reconfigured before loading data"\
-        " and restored afterwards")
-    parser.add_argument('--elasticsearch-domain',
-        help="The elasticsearch domain to use. This overrides the default host"\
-        " of localhost:9200, but not an explicitly set --elasticsearch-host."\
-        " This is also used to reconfigure the cluster before and after"\
-        " loading data.")
+    dbconn = sqlite3.connect(db_path)
+    # auto commit
+    dbconn.isolation_level = None
+    db = dbconn.cursor()
 
-    args = parser.parse_args()
+    create_tables(db)
+    sys.stdout.write('db created at %s\n' % db_path)
 
-    if not args.create_db and not os.path.exists(args.db):
-        raise Exception(
-            'Progress database not found. Create first with --create-db')
 
-    if args.no_db:
+def pub_load(log_paths, location=None,
+             db_path='elasticsearch_uploads.sqlite3', no_cache=False,
+             elasticsearch_domain=None, no_reconfigure=True,
+             elasticsearch_host=None,
+             force=False):
+    """
+    Load logs into Elastic Search index.
+
+    log_paths
+        List of logs to index into Elastic Search
+
+    --location
+        Location of the logs (ex: s3://bucket/logs)
+
+    --db_path
+        Name of the sqlite3 file to store progress.
+        Assumes the tables have been created correctly
+        defaults to 'elasticsearch_uploads.sqlite3'
+
+    --no-cache
+        Don't store or read from a db to keep track
+        of progress
+
+    --no-reconfigure
+        By default, the cluster is reconfigured before
+        loading data and restored afterwards
+
+    --elasticsearch-domain
+       The elasticsearch domain to use. This overrides
+       the default host of localhost:9200, but not
+       an explicitly set --elasticsearch-host.
+       This is also used to reconfigure the cluster
+       before and after loading data.
+
+    --elasticsearch-host
+        The elasticsearch host in the form <host>:<port>
+        or <host> which assumes port 80.
+        If no host is given, then defaults
+        to localhost:9200 or uses the information
+        derived from --elasticsearch-domain.
+
+    --force
+        Upload keys even if we've already uploaded
+        them before
+    """
+    if no_cache:
         # cheat and use an inmemory db
         dbconn = sqlite3.connect(":memory:")
         # auto commit
         dbconn.isolation_level = None
         db = dbconn.cursor()
-
         create_tables(db)
+    elif not os.path.exists(db_path):
+        raise Exception(
+            'Progress database not found. Run %s initdb first.' % sys.argv[0])
     else:
-        dbconn = sqlite3.connect(args.db)
+        dbconn = sqlite3.connect(db_path)
         # auto commit
         dbconn.isolation_level = None
         db = dbconn.cursor()
-
-        if args.create_db:
-            create_tables(db)
-            sys.stdout.write('db created at %s\n' % args.db)
-            sys.exit(0)
 
     es_client = None
     beefier_config = None
     smaller_config = None
     es_host = None
     es_port = None
-    if args.elasticsearch_domain:
+    if elasticsearch_domain:
         es_client = boto3.client('es')
 
         full_config = es_client.describe_elasticsearch_domain(
-            DomainName=args.elasticsearch_domain)
+            DomainName=elasticsearch_domain)
         es_host = full_config['DomainStatus']['Endpoint']
         es_port = '80'
 
@@ -323,8 +368,8 @@ def main():
             smaller_config['ElasticsearchClusterConfig']['InstanceType'] \
                 = 't2.micro.elasticsearch'
 
-    if args.elasticsearch_host:
-        host_parts = args.elasticsearch_host.split(':')
+    if elasticsearch_host:
+        host_parts = elasticsearch_host.split(':')
 
         es_host = host_parts[0]
         es_port = host_parts[1] if len(host_parts) > 1 else 80
@@ -343,36 +388,84 @@ def main():
         if beefier_config:
             set_config_and_wait(es_client, beefier_config)
 
-        sync(db,
-             es,
-             s3_bucket=args.s3_bucket,
-             s3_prefix=args.s3_prefix,
-             s3_keys=args.s3_keys,
-             force=args.force)
+        sync(log_paths, es, location=location, db=db, force=force)
     finally:
         if smaller_config:
             set_config_and_wait(es_client, smaller_config)
 
 
-def upload_all():
-    create_index_templates(es)
-    import os
+def _execute_playbook(playbook_name):
+    """
+    Execute a playbook stored in the *share_dir*.
+    """
+    install_dir = os.path.dirname(os.path.dirname(sys.executable))
+    share_dir = os.path.join(install_dir, 'share', 'dws')
+    playbook_path = os.path.join(share_dir, 'playbooks', playbook_name)
+    if not os.path.exists(playbook_path):
+        # When running directly from within src_dir.
+        share_dir = os.path.join(install_dir, 'share')
+        playbook_path = os.path.join(share_dir, 'playbooks', playbook_name)
+    sysconf_dir = os.path.join(install_dir, 'etc')
+    Options = namedtuple('Options', ['connection', 'module_path', 'forks',
+        'become', 'become_method', 'become_user', 'check'])
+    options = Options(connection='local',
+        module_path=os.path.dirname(tero.__file__), forks=100, become=None,
+        become_method=None, become_user=None, check=False)
+    passwords = dict(vault_pass='secret')
+    loader = DataLoader()
+    variable_manager = VariableManager()
+    inventory = Inventory(loader=loader, variable_manager=variable_manager,
+        host_list=os.path.join(sysconf_dir, 'ansible', 'hosts'))
+    variable_manager.set_inventory(inventory)
+    playbook = Playbook.load(playbook_path,
+        variable_manager=variable_manager, loader=loader)
+    tqm = None
+    try:
+        tqm = TaskQueueManager(
+            inventory=inventory,
+            variable_manager=variable_manager,
+            loader=loader,
+            options=options,
+            passwords=passwords)
+        for play in playbook.get_plays():
+            result = tqm.run(play)
+    finally:
+        if tqm is not None:
+            tqm.cleanup()
 
-    dir = '/var/tmp/djaodjin-logs/tmp'
-    fnames = os.listdir(dir)
-    for fname in fnames:
-        events_stream = events('/var/tmp/djaodjin-logs/tmp/%s' % fname)
+
+def pub_start(args):
+    """
+    Start the ES cluster if not already running.
+    """
+    _execute_playbook(playbook_name='aws-start-elasticsearch-instance.yml')
 
 
-        (successes, errors) = elasticsearch.helpers.bulk(
-            es,
-            events_stream,
-            request_timeout=500,
-            raise_on_error=False,
-            raise_on_exception=False)
+def pub_stop(args):
+    """
+    Stop the ES cluster if running.
+    """
+    _execute_playbook(playbook_name='aws-stop-elasticsearch-instance.yml')
 
-        sys.stdout.write('successes: %s\n' % str(successes))
-        sys.stdout.write('errors: %s\n' % str(errors))
+
+def main():
+    """
+    Main Entry Point
+    """
+    import __main__
+
+    parser = argparse.ArgumentParser(
+        usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version '
+        + str(tero.__version__),
+        formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('--version', action='version',
+        version='%(prog)s ' + str(tero.__version__))
+    tero.build_subcommands_parser(parser, __main__)
+    args = parser.parse_args()
+
+    # Filter out options with are not part of the function prototype.
+    func_args = tero.filter_subcommand_args(args.func, args)
+    args.func(**func_args)
 
 
 if __name__ == '__main__':

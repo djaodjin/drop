@@ -4937,6 +4937,7 @@ def build_subcommands_parser(parser, module):
                 parser.add_argument(argspec.args[flags - 1], nargs='*')
             short_opts = set([])
             for idx, arg in enumerate(argspec.args[flags:]):
+                arg = arg.replace('_', '-')
                 short_opt = arg[0]
                 if not (arg.startswith('no') or (short_opt in short_opts)):
                     opts = ['-%s' % short_opt, '--%s' % arg]
@@ -4949,6 +4950,8 @@ def build_subcommands_parser(parser, module):
                     parser.add_argument(*opts, type=json.loads)
                 elif argspec.defaults[idx] is False:
                     parser.add_argument(*opts, action='store_true')
+                elif argspec.defaults[idx] is not None:
+                    parser.add_argument(*opts, default=argspec.defaults[idx])
                 else:
                     parser.add_argument(*opts)
 
