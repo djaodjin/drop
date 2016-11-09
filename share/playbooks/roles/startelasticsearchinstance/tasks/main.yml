@@ -1,5 +1,6 @@
 
 - ec2_remote_facts:
+    region: "{{aws_region}}"
     filters:
       "tag:Name": elasticsearch
   register: elasticsearch_instance
