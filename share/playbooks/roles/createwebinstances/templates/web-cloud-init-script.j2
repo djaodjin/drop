@@ -14,7 +14,7 @@ chmod 600 /home/fedora/.ssh/jenkins_rsa
 # Run dservices scripts
 mkdir -p /tmp/ansible/reps && cd /tmp/ansible/reps && git clone {{remote_dservices_repo}}
 virtualenv-2.7 --system-site-packages /tmp/ansible
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} /tmp/ansible/reps/drop/share/tero/webfront.xml
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} /tmp/ansible/reps/drop/share/profiles/webfront.xml
 
 # Install the web application
 /usr/bin/install -D  -o fedora -g fedora -m 755 /tmp/ansible/reps/drop/src/tero/__init__.py /var/www/{{webapp}}/bin/dws

@@ -12,4 +12,4 @@ aws s3 cp s3://{{deployutils_bucket}}/identities/mailfront.internal / --recursiv
 # Run dservices scripts
 mkdir -p /tmp/ansible && cd /tmp/ansible && git clone {{remote_dservices_repo}}
 virtualenv-2.7 --system-site-packages /tmp/ansible
-/tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py /tmp/ansible/drop/share/tero/mailfront.xml
+/tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py /tmp/ansible/drop/share/profiles/mailfront.xml

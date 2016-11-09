@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,8 +39,11 @@ installTop    ?= $(VIRTUAL_ENV)
 
 include $(srcTop)/drop/src/prefix.mk
 
+
+shareItemDirs ?= $(shell cd $(srcDir)/share && find playbooks profiles -type d)
+
 scripts := dbldpkg dcopylogs dlogfilt dregress dservices dstamp \
-    dtero dtimeout dws
+    dtero dtimeout dws duploades
 manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \
@@ -55,9 +58,9 @@ install::
 	cd $(srcDir)/src && python setup.py --quiet build \
 		-b $(CURDIR)/build install --prefix=$(DESTDIR)$(PREFIX)
 
-install:: $(wildcard $(srcDir)/share/tero/*.xml)
-	$(installDirs) $(shareDir)/tero
-	$(installFiles) $(filter %.xml, $^) $(shareDir)/tero
+install:: $(foreach shareItemDir,$(shareItemDirs),$(wildcard $(srcDir)/share/$(shareItemDir)/*))
+	for dir in $(shareItemDirs); do $(installDirs) $(shareDir)/dws/$$dir ; done
+	cd $(srcDir)/share && find playbooks profiles -path playbooks/group_vars -prune -o -type f -exec $(installFiles) {} $(shareDir)/dws/{} \;
 
 doc:
 	$(installDirs) docs

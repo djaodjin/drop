@@ -42,8 +42,8 @@ Then we create configuration files with specific information about our
 infrastructure such as AWS region, AWS credentials, etc.
 
     $ cd drop
-    $ mkdir -p playbooks/group_vars
-    $ cat playbooks/group_vars/all
+    $ mkdir -p share/playbooks/group_vars
+    $ cat share/playbooks/group_vars/all
     # Variables to connect to AWS
     aws_account: *AWS accountID (used in S3 bucket policies)*
     aws_region: *AWS region where resources are allocated*

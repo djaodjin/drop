@@ -12,4 +12,4 @@ mount /dev/xvdf /var
 cp -rf /var/pki /etc
 
 # Complete configuration with runtime information.
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/tero/databases.xml
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/profiles/databases.xml
