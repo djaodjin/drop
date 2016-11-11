@@ -203,7 +203,7 @@ def sync(log_paths, es, location=None, db=None, force=False):
             finished = (row and row[0])
 
         if not finished:
-            sys.stdout.write('uploading %s...\n' % name)
+            sys.stderr.write('uploading %s...\n' % name)
 
             if isinstance(key, boto.s3.key.Key):
                 with tempfile.TemporaryFile() as temp_file:
@@ -214,16 +214,18 @@ def sync(log_paths, es, location=None, db=None, force=False):
                 with open(name, 'rb') as fileobj:
                     (successes, errors) = sync_fileobj(fileobj, es, name)
 
-            sys.stdout.write('successes: %s\n' % str(successes))
-            sys.stdout.write('errors: %s\n' % str(errors))
+            sys.stdout.write('%s: %d successes, %d errors\n'
+                % (name, successes, len(errors)))
 
-            if not errors:
+            if errors:
+                sys.stdout.write('error: %s\n' % str(errors))
+            else:
                 row_data = (datetime.now().isoformat(), name, True)
                 db.execute(
     'INSERT OR REPLACE into UPLOAD (dt,key,finished) VALUES (?,?,?)', row_data)
-                sys.stdout.write('done %s\n' % name)
+                sys.stdout.write('%s: cache results\n' % name)
         else:
-            sys.stdout.write('skipping %s\n' % name)
+            sys.stdout.write('%s: cached (skipping)\n' % name)
 
 
 def normalized_config(full_config):
@@ -337,7 +339,7 @@ def pub_load(log_paths, location=None,
         create_tables(db)
     elif not os.path.exists(db_path):
         raise Exception(
-            'Progress database not found. Run %s initdb first.' % sys.argv[0])
+            "Progress cache not found. Run '%s initcache' first." % sys.argv[0])
     else:
         dbconn = sqlite3.connect(db_path)
         # auto commit
@@ -384,6 +386,13 @@ def pub_load(log_paths, location=None,
     connection = es.transport.get_connection()
     connection.headers.update(urllib3.make_headers(accept_encoding=True))
 
+    started = False
+    if not es.ping():
+        sys.stderr.write("warning: ElasticSearch is not responding,"\
+            "will attempt to start instances")
+        started = True
+        pub_start([])
+
     try:
         if beefier_config:
             set_config_and_wait(es_client, beefier_config)
@@ -392,6 +401,10 @@ def pub_load(log_paths, location=None,
     finally:
         if smaller_config:
             set_config_and_wait(es_client, smaller_config)
+
+    if started:
+        # I started the cluster so I will stop it here.
+        pub_stop([])
 
 
 def _execute_playbook(playbook_name):
