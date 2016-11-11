@@ -49,12 +49,18 @@ invoking the script.
 
 __version__ = None
 
-import datetime, getpass, hashlib, inspect, json, logging, logging.config
+import datetime, getpass, hashlib, inspect, json, locale
+import logging, logging.config
 import re, optparse, os, shutil, socket, stat, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
 
 # Minimal compatibility Python2 / Python3
 PY3 = sys.version_info[0] == 3
+
+if sys.stdout.isatty():
+    DEFAULT_ENCODING = sys.stdout.encoding
+else:
+    DEFAULT_ENCODING = locale.getpreferredencoding()
 
 try:
     from io import StringIO
@@ -5122,7 +5128,7 @@ def log_interactive(message):
 def log_info(message, context=None, *args, **kwargs):
     '''Write a info message onto stdout and into the log file'''
     message_line = u"%s\n" % message
-    sys.stdout.write(message_line)
+    sys.stdout.write(message_line.encode('utf-8'))
     if not NO_LOG:
         global LOGGER_BUFFER
         if LOGGER_BUFFERING_COUNT > 0:
@@ -6171,6 +6177,7 @@ def main(args):
 
         global INDEX
         INDEX = IndexProjects(CONTEXT)
+        sys.stdout.write(u"encoding: %s\n" % DEFAULT_ENCODING)
         # Filter out options with are not part of the function prototype.
         func_args = filter_subcommand_args(options.func, options)
         options.func(**func_args)
