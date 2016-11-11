@@ -4709,7 +4709,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
         while line != u'':
             if pat and re.match(pat, line):
                 filtered_output += [line]
-            log_info(line[:-1].encode('utf-8'))
+            log_info(line[:-1])
             line = cmd.stdout.readline().decode('utf-8')
         cmd.wait()
         if prev_euid:
