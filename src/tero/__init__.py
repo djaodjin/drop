@@ -4705,12 +4705,12 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
                                close_fds=True)
-        line = cmd.stdout.readline()
-        while line != '':
+        line = cmd.stdout.readline().decode('utf-8')
+        while line != u'':
             if pat and re.match(pat, line):
                 filtered_output += [line]
             log_info(line[:-1].encode('utf-8'))
-            line = cmd.stdout.readline()
+            line = cmd.stdout.readline().decode('utf-8')
         cmd.wait()
         if prev_euid:
             os.seteuid(prev_euid)
