@@ -4711,12 +4711,12 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
                                close_fds=True)
-        line = cmd.stdout.readline().decode('utf-8')
+        line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
         while line != u'':
             if pat and re.match(pat, line):
                 filtered_output += [line]
             log_info(line[:-1])
-            line = cmd.stdout.readline().decode('utf-8')
+            line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
         cmd.wait()
         if prev_euid:
             os.seteuid(prev_euid)
@@ -5128,7 +5128,7 @@ def log_interactive(message):
 def log_info(message, context=None, *args, **kwargs):
     '''Write a info message onto stdout and into the log file'''
     message_line = u"%s\n" % message
-    sys.stdout.write(message_line.encode('utf-8'))
+    sys.stdout.write(message_line.encode(DEFAULT_ENCODING))
     if not NO_LOG:
         global LOGGER_BUFFER
         if LOGGER_BUFFERING_COUNT > 0:
@@ -6177,7 +6177,6 @@ def main(args):
 
         global INDEX
         INDEX = IndexProjects(CONTEXT)
-        sys.stdout.write(u"encoding: %s\n" % DEFAULT_ENCODING)
         # Filter out options with are not part of the function prototype.
         func_args = filter_subcommand_args(options.func, options)
         options.func(**func_args)
