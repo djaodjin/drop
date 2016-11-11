@@ -389,9 +389,10 @@ def pub_load(log_paths, location=None,
     started = False
     if not es.ping():
         sys.stderr.write("warning: ElasticSearch is not responding,"\
-            "will attempt to start instances")
+            " will attempt to start instances")
         started = True
         pub_start([])
+        time.sleep(300) # wait for instance to finish startup and dns to settle.
 
     try:
         if beefier_config:
