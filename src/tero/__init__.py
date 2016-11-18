@@ -1435,7 +1435,7 @@ class Variable(object):
             default_prompt = ""
             if self.default:
                 default_prompt = " [" + self.default + "]"
-            self.value = prompt("Enter a string %s: " % default_prompt)
+            self.value = prompt(u"Enter a string %s: " % default_prompt)
         log_info(u"%s set to %s" % (self.name, str(self.value)),
             context=context)
         return True
@@ -1565,7 +1565,7 @@ class Pathname(Variable):
                 dirname = os.path.join(base_value, leaf_dir)
         else:
             if not USE_DEFAULT_ANSWER:
-                dirname = prompt("Enter a pathname [%s]: " % default)
+                dirname = prompt(u"Enter a pathname [%s]: " % default)
             if dirname == '':
                 dirname = default
         if not ':' in dirname:
@@ -3230,8 +3230,8 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
             continue
         link_name, suffix = link_build_name(name_pat, 'bin', variant)
         if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
+            log_interactive(u"%s/" % variant)
+        log_interactive(u"%s... " % name_pat)
         candidate = None
         if os.path.islink(link_name):
             # If we already have a symbolic link in the binBuildDir,
@@ -3415,8 +3415,8 @@ def find_data(dirname, names,
             continue
 
         if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
+            log_interactive(u"%s/" % variant)
+        log_interactive(u"%s... " % name_pat)
         link_num = 0
         if name_pat.startswith('.*' + os.sep):
             link_num = len(name_pat.split(os.sep)) - 2
@@ -3498,8 +3498,8 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 (name_pat, os.path.realpath(os.path.join(link_name, suffix))))
             continue
         if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
+            log_interactive(u"%s/" % variant)
+        log_interactive(u"%s... " % name_pat)
         found = False
         for include_sys_dir in include_sys_dirs:
             includes = []
@@ -5116,7 +5116,7 @@ def log_error(message, *args, **kwargs):
 def log_interactive(message):
     '''Write a message that should absolutely end up on the screen
     even when no newline is present at the end of the message.'''
-    sys.stdout.write(message)
+    sys.stdout.write(message.encode(DEFAULT_ENCODING))
     sys.stdout.flush()
     if not NO_LOG:
         global LOGGER_BUFFER
@@ -5939,7 +5939,7 @@ def select_one(description, choices, sort=True):
         if USE_DEFAULT_ANSWER:
             selection = "1"
         else:
-            selection = prompt("Enter a single number [1]: ")
+            selection = prompt(u"Enter a single number [1]: ")
             if selection == "":
                 selection = "1"
         try:
@@ -5972,7 +5972,7 @@ def select_multiple(description, selects):
             selection = "1"
         else:
             selection = prompt(
-                "Enter a list of numbers separated by spaces [1]: ")
+                u"Enter a list of numbers separated by spaces [1]: ")
             if len(selection) == 0:
                 selection = "1"
         # parse the answer for valid inputs
@@ -6006,7 +6006,7 @@ def select_yes_no(description):
     '''Prompt for a yes/no answer.'''
     if USE_DEFAULT_ANSWER:
         return True
-    yes_no = prompt(description + " [Y/n]? ")
+    yes_no = prompt(u"%s [Y/n]? " % description)
     if yes_no == '' or yes_no == 'Y' or yes_no == 'y':
         return True
     return False
