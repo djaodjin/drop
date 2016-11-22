@@ -37,7 +37,9 @@ from Crypto.PublicKey import RSA
 from StringIO import StringIO
 import re
 import time
-
+import subprocess
+import sys
+import botocore.exceptions
 # import django.core.management
 
 from random import choice
@@ -86,6 +88,23 @@ def copy_dir(sftp, local, remote):
             print 'copy %s -> %s' % (localpath, remotepath)
             sftp.put(localpath, remotepath)
 
+def rsync(pem_path, from_dir, to_dir):
+    absolute_pem_path = os.path.abspath(pem_path)
+    rsync_cmd = [
+        '/usr/bin/rsync',
+        '-ravz',  '--progress',
+        '--delete',
+        '-e', 'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i %s' % absolute_pem_path,
+        from_dir,
+        to_dir,
+    ]
+    print ' '.join(rsync_cmd)
+
+    process = subprocess.Popen(rsync_cmd, stdout=sys.stdout, stderr=sys.stderr)
+
+    exit_code = process.wait()
+    if exit_code != 0:
+        raise Exception('Rsync failed!')
 
 
 def sanitize_filename(fname):
@@ -97,7 +116,7 @@ def sanitize_filename(fname):
 
     return fname
 
-def make_task_definition_json(image, mounts):
+def make_task_definition_json(image, mounts, env=[]):
 
     volumes = []
     mount_points = []
@@ -124,12 +143,13 @@ def make_task_definition_json(image, mounts):
                 "name": make_name('rundocker'),
                 "image": image,
                 "essential": True,
-                # "portMappings": [
-                #     {
-                #         "containerPort": 80,
-                #         "hostPort": 80
-                #     }
-                # ],
+                "portMappings": [
+                    {
+                        "containerPort": 8000,
+                        "hostPort": 8020
+                    }
+                ],
+                "environment": env,
                 "memoryReservation": 512,
                 'mountPoints': mount_points
             },
@@ -141,7 +161,7 @@ def make_task_definition_json(image, mounts):
 
     return definition
 
-def run_docker(image, mounts, instance_profile, security_group):
+def run_docker(image, mounts, env, instance_profile, security_group):
     try:
 
         ecs = boto3.client('ecs', region_name='us-west-2')
@@ -150,9 +170,10 @@ def run_docker(image, mounts, instance_profile, security_group):
         keyName = make_name('ecs')
 
         keypair = ec2.create_key_pair(KeyName=keyName)
-        print
-        print privatekey(keypair)
-        print
+        with open('ecs.pem','w') as f:
+            f.write(privatekey(keypair))
+
+        os.chmod('ecs.pem', 0600)
 
         task_family = make_name('task')
         task_definition_json = make_task_definition_json(image, mounts)
@@ -189,7 +210,8 @@ def run_docker(image, mounts, instance_profile, security_group):
         ec2_resource = boto3.resource('ec2', region_name='us-west-2')
         instance = ec2_resource.Instance(instance_ids[0])
         instance_name = make_name('ecs')
-        print 'instance running: (%s) %s' % (instance_name, instance.public_ip_address)
+        print 'instance running: (%s) %s' % (instance_name, instance.private_ip_address)
+        print 'ssh -i ecs.pem ec2-user@%s' % instance.private_ip_address
 
         instance.create_tags(Tags=[{
             'Key': 'Name',
@@ -204,17 +226,23 @@ def run_docker(image, mounts, instance_profile, security_group):
         connected = False
         while True:
             try:
-                ssh.connect(instance.public_ip_address, username='ec2-user',pkey=key)
+                ssh.connect(instance.private_ip_address, username='ec2-user',pkey=key)
                 break
             except paramiko.ssh_exception.NoValidConnectionsError:
                 print 'waiting to connect to ec2 instance...'
                 time.sleep(15)
 
+        stdin, stdout, sterr = ssh.exec_command('sudo yum -y install rsync')
+        stdout.channel.recv_exit_status()
         sftp = ssh.open_sftp()
 
         for from_path,_ in mounts.items():
             source_path = os.path.join('/home/ec2-user', sanitize_filename(from_path))
-            copy_dir(sftp, from_path, source_path)
+            remote_path = 'ec2-user@%s:%s' % (instance.private_ip_address, source_path)
+            if os.path.isdir(from_path) and from_path[-1] != '/':
+                from_path = '%s/' % from_path
+            rsync('ecs.pem', from_path, remote_path)
+            # copy_dir_to_remote(sftp, from_path, source_path)
 
 
         while True:
@@ -240,6 +268,17 @@ def run_docker(image, mounts, instance_profile, security_group):
             cluster=cluster['cluster']['clusterName'],
             tasks=[task_arn]
         )
+
+        while True:
+            task_status = ecs.describe_tasks(
+                cluster=cluster['cluster']['clusterName'],
+                tasks=[task_arn]
+            )
+            print task_status
+            if task_status['tasks'][0]['lastStatus'] == 'STOPPED':
+                break
+
+            time.sleep(15)
 
         tasks_stopped_waiter = ecs.get_waiter('tasks_stopped')
         tasks_stopped_waiter.wait(
@@ -292,14 +331,23 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--instance-profile')
     parser.add_argument('--security-group')
-    parser.add_argument('-v', '--volume', action='append')
+    parser.add_argument('-v', '--volume', action='append', default=[])
     parser.add_argument('image')
+    parser.add_argument('-e', '--env', action='append', default=[])
+
 
     args = parser.parse_args()
 
     mounts = dict( mount.split(':') for mount in args.volume)
+    env = []
+    for name_value_pair in args.env:
+        name,value = name_value_pair.split('=', 1)
+        env.append({
+            'name': name,
+            'value': value
+        })
 
-    run_docker(args.image, mounts, args.instance_profile, args.security_group)
+    run_docker(args.image, mounts, env, args.instance_profile, args.security_group)
 
 
 if __name__ == '__main__':
