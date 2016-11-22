@@ -58,7 +58,7 @@ def privatekey(keypair):
     key = RSA.importKey(keypair['KeyMaterial'])
     return key.exportKey('PEM')
 
-def mkdirp(sftp, path):
+def mkdirp_remote(sftp, path):
     (head, tail) = os.path.split(path)
     if head != '' and head != '/':
         mkdirp(sftp, head)
@@ -82,7 +82,7 @@ def copy_dir(sftp, local, remote):
 
             dirname = os.path.dirname(remotepath)
 
-            mkdirp(sftp, dirname)
+            mkdirp_remote(sftp, dirname)
             print 'copy %s -> %s' % (localpath, remotepath)
             sftp.put(localpath, remotepath)
 
