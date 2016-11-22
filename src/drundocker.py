@@ -286,8 +286,15 @@ def run_docker(image, mounts, env, instance_profile, security_group):
             tasks=[task_arn]
         )
 
-    finally:
+        # copy mounted directories back to local
+        for from_path,_ in mounts.items():
+            source_path = os.path.join('/home/ec2-user', sanitize_filename(from_path))
+            remote_path = 'ec2-user@%s:%s' % (instance.private_ip_address, source_path)
+            if os.path.isdir(from_path) and from_path[-1] != '/':
+                from_path = '%s/' % from_path
+            rsync('ecs.pem', remote_path, from_path )
 
+    finally:
 
         try:
             sftp.close()
@@ -315,10 +322,16 @@ def run_docker(image, mounts, env, instance_profile, security_group):
         except Exception, e:
             print e
 
+
         try:
             ecs.delete_cluster(cluster=cluster['cluster']['clusterName'])
+        except botocore.exceptions.ClientError as e:
+            print e, type(e),dir(e)
+            print e.response['Error']
+            print e.response['Error']['Code']
         except Exception, e:
-            print e
+            print e, type(e),dir(e)
+
 
 
 
