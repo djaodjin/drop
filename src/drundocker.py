@@ -44,13 +44,12 @@ import botocore.exceptions
 
 from random import choice
 
-SUFFIX = "".join([choice("abcdefghijklmnopqrstuvwxyz0123456789") for i in range(10)])
-PREFIX = 'rundocker'
-def make_name(s=None):
-    if s is None:
-        return '%s-%s' % (PREFIX, SUFFIX)
-    else:
-        return '%s-%s-%s' % (PREFIX, s, SUFFIX)
+
+# def make_name():
+#     if s is None:
+#         return '%s-%s' % (PREFIX, SUFFIX)
+#     else:
+#         return '%s-%s-%s' % (PREFIX, s, SUFFIX)
 
 def pubkey(keypair):
     key = RSA.importKey(keypair['KeyMaterial'])
@@ -140,7 +139,6 @@ def make_task_definition_json(image, mounts, env=[]):
     definition = {
         'containerDefinitions': [
             {
-                "name": make_name('rundocker'),
                 "image": image,
                 "essential": True,
                 "portMappings": [
@@ -161,26 +159,28 @@ def make_task_definition_json(image, mounts, env=[]):
 
     return definition
 
-def run_docker(image, mounts, env, instance_profile, security_group):
+def run_docker(cluster_name, image, mounts, env, instance_profile, security_group, hosted_zone_id, host_name, key_path):
     try:
 
         ecs = boto3.client('ecs', region_name='us-west-2')
         ec2 = boto3.client('ec2', region_name='us-west-2')
+        route53 = boto3.client('route53')
 
-        keyName = make_name('ecs')
+        
+        keyName = '%s-key' % cluster_name
 
         keypair = ec2.create_key_pair(KeyName=keyName)
-        with open('ecs.pem','w') as f:
+        with open(key_path,'w') as f:
             f.write(privatekey(keypair))
 
-        os.chmod('ecs.pem', 0600)
+        os.chmod(key_path, 0600)
 
-        task_family = make_name('task')
+        task_family = '%s-task-family' % cluster_name 
         task_definition_json = make_task_definition_json(image, mounts)
         print task_definition_json
         task_definition = ecs.register_task_definition(**task_definition_json)
 
-        cluster = ecs.create_cluster(clusterName=make_name('cluster'))
+        cluster = ecs.create_cluster(clusterName=cluster_name)
 
         instance_json = {
             # Use the official ECS image for us-west2
@@ -209,9 +209,9 @@ def run_docker(image, mounts, env, instance_profile, security_group):
 
         ec2_resource = boto3.resource('ec2', region_name='us-west-2')
         instance = ec2_resource.Instance(instance_ids[0])
-        instance_name = make_name('ecs')
+        instance_name = '%s-ecs' % cluster_name
         print 'instance running: (%s) %s' % (instance_name, instance.private_ip_address)
-        print 'ssh -i ecs.pem ec2-user@%s' % instance.private_ip_address
+        print 'ssh -i %s ec2-user@%s' % (key_path, instance.private_ip_address)
 
         instance.create_tags(Tags=[{
             'Key': 'Name',
@@ -241,7 +241,7 @@ def run_docker(image, mounts, env, instance_profile, security_group):
             remote_path = 'ec2-user@%s:%s' % (instance.private_ip_address, source_path)
             if os.path.isdir(from_path) and from_path[-1] != '/':
                 from_path = '%s/' % from_path
-            rsync('ecs.pem', from_path, remote_path)
+            rsync(key_path, from_path, remote_path)
             # copy_dir_to_remote(sftp, from_path, source_path)
 
 
@@ -269,60 +269,115 @@ def run_docker(image, mounts, env, instance_profile, security_group):
             tasks=[task_arn]
         )
 
-        while True:
-            task_status = ecs.describe_tasks(
-                cluster=cluster['cluster']['clusterName'],
-                tasks=[task_arn]
-            )
-            print task_status
-            if task_status['tasks'][0]['lastStatus'] == 'STOPPED':
-                break
 
-            time.sleep(15)
-
-        tasks_stopped_waiter = ecs.get_waiter('tasks_stopped')
-        tasks_stopped_waiter.wait(
-            cluster=cluster['cluster']['clusterName'],
-            tasks=[task_arn]
+        client.change_resource_record_sets(
+            HostedZoneId=hosted_zone_id,
+            ChangeBatch={
+                'Changes': [
+                    {
+                        'Action': 'CREATE',
+                        'ResourceRecordSet': {
+                            'Name': hostname,
+                            'Type': 'A',
+                            # 'Region': 'us-west-2'
+                            'TTL': 3600,
+                            'ResourceRecords': [
+                                {
+                                    'Value': instance.private_ip_address
+                                },
+                            ],
+                        }
+                    },
+                ]
+            }
         )
+
+
+        # while True:
+        #     task_status = ecs.describe_tasks(
+        #         cluster=cluster['cluster']['clusterName'],
+        #         tasks=[task_arn]
+        #     )
+        #     print task_status
+        #     if task_status['tasks'][0]['lastStatus'] == 'STOPPED':
+        #         break
+
+        #     time.sleep(15)
+
+        # tasks_stopped_waiter = ecs.get_waiter('tasks_stopped')
+        # tasks_stopped_waiter.wait(
+        #     cluster=cluster['cluster']['clusterName'],
+        #     tasks=[task_arn]
+        # )
 
     finally:
 
+        pass
+        # try:
+        #     sftp.close()
+        # except Exception, e:
+        #     print e
 
-        try:
-            sftp.close()
-        except Exception, e:
-            print e
+        # try:
+        #     ssh.close()
+        # except Exception, e:
+        #     print e
 
-        try:
-            ssh.close()
-        except Exception, e:
-            print e
+        # try:
+        #     instance.terminate()
+        # except Exception, e:
+        #     print e
 
-        try:
-            instance.terminate()
-        except Exception, e:
-            print e
+        # try:
+        #     ec2.delete_key_pair(KeyName=keypair['KeyName'])
+        # except Exception, e:
+        #     print e
 
-        try:
-            ec2.delete_key_pair(KeyName=keypair['KeyName'])
-        except Exception, e:
-            print e
+        # try:
+        #     arn = task_definition['taskDefinition']['taskDefinitionArn']
+        #     ecs.deregister_task_definition(taskDefinition=arn)
+        # except Exception, e:
+        #     print e
 
-        try:
-            arn = task_definition['taskDefinition']['taskDefinitionArn']
-            ecs.deregister_task_definition(taskDefinition=arn)
-        except Exception, e:
-            print e
-
-        try:
-            ecs.delete_cluster(cluster=cluster['cluster']['clusterName'])
-        except Exception, e:
-            print e
+        # try:
+        #     ecs.delete_cluster(cluster=cluster['cluster']['clusterName'])
+        # except Exception, e:
+        #     print e
 
 
+def stop(family):
+    cluster_name = family
 
-def main():
+    task_arns = ecs.list_tasks(cluster=cluster_name)['taskArns']
+    
+    tasks = ecs.describe_tasks(cluster=cluster_name, tasks=task_arns)
+    
+    instance_arns = [task['containerInstanceArn'] for task in tasks['tasks']]
+
+    instances = [ec2_resource.Instance(arn) for arn in instance_arns]
+
+    keypair_names = [instance.key_name for instance in instances
+                     if instance.key_name.startswith(family)]
+
+    
+    for keyname in keypair_names:
+        ec2.delete_key_pair(KeyName=keyname)
+    for instance in instances:
+        instance.terminate()
+    
+    for task_arn in tasks_arns:
+        ecs.stop_task(cluster=cluster_name,
+                      task=task_arn)
+    
+    for task in tasks['tasks']:
+        ecs.deregister_task_definition(taskDefinition=task['taskDefinitionArn'])
+
+    ecs.delete_cluster(cluster=cluster_name)
+
+    
+
+
+def run(input_args):
     """
     Main Entry Point
     """
@@ -332,11 +387,14 @@ def main():
     parser.add_argument('--instance-profile')
     parser.add_argument('--security-group')
     parser.add_argument('-v', '--volume', action='append', default=[])
-    parser.add_argument('image')
     parser.add_argument('-e', '--env', action='append', default=[])
+    parser.add_argument('--cluster-name', required=True)
+    parser.add_argument('--hostname', required=True)
+    parser.add_argument('--hosted-zone-id', required=True)
+    parser.add_argument('--key', required=True)
+    parser.add_argument('image')
 
-
-    args = parser.parse_args()
+    args = parser.parse_args(input_args)
 
     mounts = dict( mount.split(':') for mount in args.volume)
     env = []
@@ -347,8 +405,14 @@ def main():
             'value': value
         })
 
-    run_docker(args.image, mounts, env, args.instance_profile, args.security_group)
+    print args
+    # run_docker(args.cluster_name, args.image, mounts, env, args.instance_profile, args.security_group, args.hosted_zone_id, args.hostname, key)
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if sys.argv[1] == 'run':
+        run(sys.argv[2:])
+    elif sys.argv[2] == 'stop':
+        stop(sys.argv[3])
+    # main()
