@@ -315,15 +315,15 @@ def run_docker(cluster_name, image, mounts, env, instance_profile, security_grou
     finally:
 
         pass
-        # try:
-        #     sftp.close()
-        # except Exception, e:
-        #     print e
+        try:
+            sftp.close()
+        except Exception, e:
+            print e
 
-        # try:
-        #     ssh.close()
-        # except Exception, e:
-        #     print e
+        try:
+            ssh.close()
+        except Exception, e:
+            print e
 
         # try:
         #     instance.terminate()
@@ -349,36 +349,103 @@ def run_docker(cluster_name, image, mounts, env, instance_profile, security_grou
 
 
 
-def stop(family):
-    cluster_name = family
+def stop(input_args):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--volume', action='append', default=[])
+    parser.add_argument('--cluster-name', required=True)
+    parser.add_argument('--key', required=True)
 
-    task_arns = ecs.list_tasks(cluster=cluster_name)['taskArns']
-    
-    tasks = ecs.describe_tasks(cluster=cluster_name, tasks=task_arns)
-    
-    instance_arns = [task['containerInstanceArn'] for task in tasks['tasks']]
+    args = parser.parse_args(input_args)
 
-    instances = [ec2_resource.Instance(arn) for arn in instance_arns]
+    mounts = dict( mount.split(':') for mount in args.volume)
+
+    ecs = boto3.client('ecs', region_name='us-west-2')
+    ec2 = boto3.client('ec2', region_name='us-west-2')
+    ec2_resource = boto3.resource('ec2', region_name='us-west-2')
+
+    cluster_name = args.cluster_name
+
+    running_task_arns = ecs.list_tasks(cluster=cluster_name, desiredStatus='RUNNING')['taskArns']
+    stopped_task_arns = ecs.list_tasks(cluster=cluster_name, desiredStatus='STOPPED')['taskArns']
+    all_task_arns = running_task_arns + stopped_task_arns
+    if all_task_arns:
+        tasks = ecs.describe_tasks(cluster=cluster_name,
+                                   tasks=all_task_arns)
+    else:
+        tasks = None
+
+    container_instance_arns = set([task['containerInstanceArn'] for task in tasks['tasks']])
+
+    container_instances = ecs.describe_container_instances(cluster=cluster_name, containerInstances=list(container_instance_arns))
+
+    instance_ids = [info['ec2InstanceId'] for info in container_instances['containerInstances']]
+    instances = [ec2_resource.Instance(iid) for iid in instance_ids]
+    instances = [instance for instance in instances
+                 if instance.state['Name'] == 'running']
 
     keypair_names = [instance.key_name for instance in instances
-                     if instance.key_name.startswith(family)]
+                     if instance.key_name.startswith(cluster_name)]
 
-    
-    for keyname in keypair_names:
-        ec2.delete_key_pair(KeyName=keyname)
-    for instance in instances:
-        instance.terminate()
-    
-    for task_arn in tasks_arns:
+
+    for task_arn in running_task_arns:
+        print 'stopping task', cluster_name, task_arn
         ecs.stop_task(cluster=cluster_name,
                       task=task_arn)
-    
-    for task in tasks['tasks']:
-        ecs.deregister_task_definition(taskDefinition=task['taskDefinitionArn'])
 
+    if running_task_arns:
+        tasks_stopped_waiter = ecs.get_waiter('tasks_stopped')
+        print 'waiting for tasks to stop'
+        tasks_stopped_waiter.wait(
+            cluster=cluster_name,
+            tasks=running_task_arns
+        )
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    with open(args.key) as key_file:
+        key = paramiko.RSAKey.from_private_key(key_file)
+
+    if instances:
+        ssh.connect(instances[0].private_ip_address, username='ec2-user',pkey=key)
+
+        for from_path,_ in mounts.items():
+            source_path = os.path.join('/home/ec2-user', '%s/' % sanitize_filename(from_path))
+            remote_path = 'ec2-user@%s:%s' % (instance.private_ip_address, source_path)
+
+            # docker sets file permissions as the user used inside the docker container
+            # which tends to be root.
+            stdin, stdout, sterr = ssh.exec_command('sudo chown ec2-user:ec2-user -R %s' % source_path)
+            stdout.channel.recv_exit_status()
+
+            if os.path.isdir(from_path) and from_path[-1] != '/':
+                from_path = '%s/' % from_path
+            rsync(args.key, remote_path, from_path )
+
+        ssh.close()
+
+    for keyname in keypair_names:
+        print 'deleting key pair',keyname
+        ec2.delete_key_pair(KeyName=keyname)
+
+    for instance in instances:
+        instance.terminate()
+
+    if instances:
+        print 'waiting for instances to shut down'
+        instances_terminated_waiter = ec2.get_waiter('instance_terminated')
+        instances_terminated_waiter.wait(InstanceIds=[instance.id for instance in instances])
+
+
+    if tasks:
+        for task in tasks['tasks']:
+            print 'deregistering task', task['taskDefinitionArn']
+            ecs.deregister_task_definition(taskDefinition=task['taskDefinitionArn'])
+
+
+    print 'deleting cluster', cluster_name
     ecs.delete_cluster(cluster=cluster_name)
 
-    
 
 
 def run(input_args):
@@ -409,14 +476,14 @@ def run(input_args):
             'value': value
         })
 
-    print args
-    # run_docker(args.cluster_name, args.image, mounts, env, args.instance_profile, args.security_group, args.hosted_zone_id, args.hostname, key)
+
+    run_docker(args.cluster_name, args.image, mounts, env, args.instance_profile, args.security_group, args.hosted_zone_id, args.hostname, args.key)
 
 
 if __name__ == '__main__':
     import sys
     if sys.argv[1] == 'run':
         run(sys.argv[2:])
-    elif sys.argv[2] == 'stop':
-        stop(sys.argv[3])
+    elif sys.argv[1] == 'stop':
+        stop(sys.argv[2:])
     # main()
