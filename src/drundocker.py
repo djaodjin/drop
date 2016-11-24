@@ -139,6 +139,7 @@ def make_task_definition_json(family, image, mounts, env=[]):
     definition = {
         'containerDefinitions': [
             {
+                "name": '%s-container' % family,
                 "image": image,
                 "essential": True,
                 "portMappings": [
@@ -154,7 +155,7 @@ def make_task_definition_json(family, image, mounts, env=[]):
 
         ],
         'volumes': volumes,
-        'family': make_name('rundocker')
+        'family': family
     }
 
     return definition
