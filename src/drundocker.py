@@ -115,7 +115,7 @@ def sanitize_filename(fname):
 
     return fname
 
-def make_task_definition_json(image, mounts, env=[]):
+def make_task_definition_json(family, image, mounts, env=[]):
 
     volumes = []
     mount_points = []
@@ -176,7 +176,7 @@ def run_docker(cluster_name, image, mounts, env, instance_profile, security_grou
         os.chmod(key_path, 0600)
 
         task_family = '%s-task-family' % cluster_name 
-        task_definition_json = make_task_definition_json(image, mounts)
+        task_definition_json = make_task_definition_json(task_family, image, mounts, env)
         print task_definition_json
         task_definition = ecs.register_task_definition(**task_definition_json)
 
