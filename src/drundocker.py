@@ -271,14 +271,14 @@ def run_docker(cluster_name, image, mounts, env, instance_profile, security_grou
         )
 
 
-        client.change_resource_record_sets(
+        route53.change_resource_record_sets(
             HostedZoneId=hosted_zone_id,
             ChangeBatch={
                 'Changes': [
                     {
-                        'Action': 'CREATE',
+                        'Action': 'UPSERT',
                         'ResourceRecordSet': {
-                            'Name': hostname,
+                            'Name': host_name,
                             'Type': 'A',
                             # 'Region': 'us-west-2'
                             'TTL': 3600,
