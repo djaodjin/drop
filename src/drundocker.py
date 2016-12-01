@@ -349,7 +349,7 @@ def shutdown_cluster(cluster_name, mounts, key_path):
                     for info in container_instances['containerInstances']]
     instances = [ec2_resource.Instance(iid) for iid in instance_ids]
     instances = [instance for instance in instances
-                 if instance.state['Name'] == 'running']
+                 if instance.state.get('Name') == 'running']
 
     keypair_names = [instance.key_name for instance in instances
                      if instance.key_name.startswith(cluster_name)]
