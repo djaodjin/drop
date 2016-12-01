@@ -465,7 +465,6 @@ def run(input_args):
         help='A security key is created and *written* to this file path.')
     parser.add_argument(
         'image',
-        required=True,
         help='The name of docker image to run.')
 
     args = parser.parse_args(input_args)
