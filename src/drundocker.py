@@ -40,16 +40,7 @@ import time
 import subprocess
 import sys
 import botocore.exceptions
-# import django.core.management
 
-from random import choice
-
-
-# def make_name():
-#     if s is None:
-#         return '%s-%s' % (PREFIX, SUFFIX)
-#     else:
-#         return '%s-%s-%s' % (PREFIX, s, SUFFIX)
 
 def pubkey(keypair):
     key = RSA.importKey(keypair['KeyMaterial'])
@@ -351,9 +342,9 @@ def run_docker(cluster_name, image, mounts, env, instance_profile, security_grou
 
 def stop(input_args):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-v', '--volume', action='append', default=[])
-    parser.add_argument('--cluster-name', required=True)
-    parser.add_argument('--key', required=True)
+    parser.add_argument('-v', '--volume', action='append', default=[], help='if provided, the files from the provided volume will be transferred back from the cluster instance after the task has been stopped.')
+    parser.add_argument('--cluster-name', required=True, help='name of the cluster instance to stop.')
+    parser.add_argument('--key', required=True, help='private key that can be used to connect to the cluster instance.')
 
     args = parser.parse_args(input_args)
 
@@ -455,15 +446,15 @@ def run(input_args):
     import __main__
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--instance-profile')
-    parser.add_argument('--security-group')
-    parser.add_argument('-v', '--volume', action='append', default=[])
-    parser.add_argument('-e', '--env', action='append', default=[])
-    parser.add_argument('--cluster-name', required=True)
-    parser.add_argument('--hostname', required=True)
-    parser.add_argument('--hosted-zone-id', required=True)
-    parser.add_argument('--key', required=True)
-    parser.add_argument('image')
+    parser.add_argument('--instance-profile', help='instance profile to use for cluster instance')
+    parser.add_argument('--security-group', help='security groupto run the ec2 instance in')
+    parser.add_argument('-v', '--volume', action='append', default=[], help='Adds a volume to run the docker instance with. The folder will be automatically transferred to the cluster instance. Conceptually similar to the docker run --volume args.')
+    parser.add_argument('-e', '--env', action='append', default=[], help='Environment variables to run the docker container with. Conceptually similar to the docker --env flag.')
+    parser.add_argument('--cluster-name', required=True, help='Name to use for the cluster. This can be used for stopping the cluster.')
+    parser.add_argument('--hostname', required=True, help='A dns entry with this hostname is created.')
+    parser.add_argument('--hosted-zone-id', required=True, help='The hosted zone id to creat the dns entry in.')
+    parser.add_argument('--key', required=True, help='A security key is created and *written* to this file path.' )
+    parser.add_argument('image', required=True, 'The name of docker image to run.')
 
     args = parser.parse_args(input_args)
 
@@ -486,4 +477,7 @@ if __name__ == '__main__':
         run(sys.argv[2:])
     elif sys.argv[1] == 'stop':
         stop(sys.argv[2:])
+    else:
+        print 'usage: python drundocker.py cmd args..'
+        sys.exit(1)
     # main()
