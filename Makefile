@@ -43,7 +43,7 @@ include $(srcTop)/drop/src/prefix.mk
 shareItemDirs ?= $(shell cd $(srcDir)/share && find playbooks profiles -type d)
 
 scripts := dbldpkg dcopylogs dlogfilt dregress dservices dstamp \
-    dtero dtimeout dws duploades
+    dtero dtimeout dws duploades drundocker
 manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \
