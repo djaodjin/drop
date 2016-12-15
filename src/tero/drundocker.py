@@ -294,7 +294,7 @@ def run_docker(
                             'Name': host_name,
                             'Type': 'A',
                             # 'Region': 'us-west-2'
-                            'TTL': 3600,
+                            'TTL': 60,
                             'ResourceRecords': [
                                 {
                                     'Value': instance.private_ip_address
@@ -339,17 +339,22 @@ def shutdown_cluster(cluster_name, mounts, key_path):
     else:
         tasks = None
 
-    container_instance_arns = set(
-        [task['containerInstanceArn'] for task in tasks['tasks']])
 
+    container_instance_arns = ecs.list_container_instances(cluster=cluster_name)
     container_instances = ecs.describe_container_instances(
-        cluster=cluster_name, containerInstances=list(container_instance_arns))
+        cluster=cluster_name, containerInstances=container_instance_arns['containerInstanceArns'])
+
 
     instance_ids = [info['ec2InstanceId']
                     for info in container_instances['containerInstances']]
     instances = [ec2_resource.Instance(iid) for iid in instance_ids]
+
+    for instance in instances:
+        instance.load()
     instances = [instance for instance in instances
-                 if instance.state['Name'] == 'running']
+                 if instance.meta.data
+                 if instance.state.get('Name') == 'running']
+
 
     keypair_names = [instance.key_name for instance in instances
                      if instance.key_name.startswith(cluster_name)]
@@ -367,23 +372,39 @@ def shutdown_cluster(cluster_name, mounts, key_path):
             tasks=running_task_arns
         )
 
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    with open(key_path) as key_file:
-        key = paramiko.RSAKey.from_private_key(key_file)
 
-    if instances:
+    if instances and tasks:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        with open(key_path) as key_file:
+            key = paramiko.RSAKey.from_private_key(key_file)
         ssh.connect(
             instances[0].private_ip_address,
             username='ec2-user',
             pkey=key)
 
-        for from_path, _ in mounts.items():
-            source_path = os.path.join(
-                '/home/ec2-user', '%s/' %
-                sanitize_filename(from_path))
-            remote_path = 'ec2-user@%s:%s' % (
+        task_definition = ecs.describe_task_definition(taskDefinition=tasks['tasks'][0]['taskDefinitionArn'])
+
+        for from_path, to_path in mounts.items():
+            mount_points = task_definition['taskDefinition']['containerDefinitions'][0]['mountPoints']
+            source_path = None
+            for mp in mount_points:
+                if to_path == mp['containerPath']:
+                    volume_name = mp['sourceVolume']
+                    break
+            else:
+                print 'Could not find volume source for %s!' % to_path
+                continue
+
+            volumes = task_definition['taskDefinition']['volumes']
+            for volume in volumes:
+                if volume['name'] == volume_name:
+                    source_path = volume['host']['sourcePath']
+                    break
+
+            remote_path = 'ec2-user@%s:%s/' % (
                 instance.private_ip_address, source_path)
 
             # docker sets file permissions as the user used inside the docker container
@@ -393,8 +414,6 @@ def shutdown_cluster(cluster_name, mounts, key_path):
                 source_path)
             stdout.channel.recv_exit_status()
 
-            if os.path.isdir(from_path) and from_path[-1] != '/':
-                from_path = '%s/' % from_path
             rsync(key_path, remote_path, from_path)
 
         ssh.close()
