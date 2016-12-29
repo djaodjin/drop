@@ -56,10 +56,12 @@ def datetime_hook(json_dict):
     return json_dict
 
 
-def as_keyname(filename, logsuffix=None, prefix=None):
+def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
     result = filename
+    if ext.startswith('.'):
+        ext = ext[1:]
     if logsuffix:
-        look = re.match(r'^(\S+\.log)(\S*)$', filename)
+        look = re.match(r'^(\S+\.%s)(\S*)$' % ext, filename)
         if look:
             result = look.group(1) + logsuffix + look.group(2)
     if prefix:
@@ -67,10 +69,12 @@ def as_keyname(filename, logsuffix=None, prefix=None):
     return result
 
 
-def as_filename(key_name, logsuffix=None, prefix=None):
+def as_filename(key_name, logsuffix=None, prefix=None, ext='.log'):
     result = key_name
+    if ext.startswith('.'):
+        ext = ext[1:]
     if logsuffix:
-        look = re.match(r'^(\S+\.log)%s(\S*)$' % logsuffix, key_name)
+        look = re.match(r'^(\S+\.%s)%s(\S*)$' % (ext, logsuffix), key_name)
         if look:
             result = look.group(1) + look.group(2)
     if prefix is not None:
@@ -81,9 +85,11 @@ def as_filename(key_name, logsuffix=None, prefix=None):
     return result
 
 
-def as_logname(key_name, logsuffix=None, prefix=None):
+def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
+    if ext.startswith('.'):
+        ext = ext[1:]
     result = as_filename(key_name, logsuffix=logsuffix, prefix=prefix)
-    look = re.match(r'(\S+\.log)((-\S+)\.gz)', result)
+    look = re.match(r'(\S+\.%s)((-\S+)\.gz)' % ext, result)
     if look:
         result = look.group(1)
     return result
@@ -93,7 +99,7 @@ def get_last_modified(item):
     return item['LastModified']
 
 
-def list_local(lognames, prefix=None):
+def list_local(lognames, prefix=None, list_all=False):
     """
     Returns a list of rotated log files with their timestamp.
 
@@ -107,6 +113,7 @@ def list_local(lognames, prefix=None):
     results = []
     for logname in lognames:
         dirname = os.path.dirname(logname)
+        _, ext = os.path.splitext(logname)
         if prefix:
             prefixed_dirname = prefix + dirname
         else:
@@ -115,8 +122,8 @@ def list_local(lognames, prefix=None):
             for filename in os.listdir(prefixed_dirname):
                 fullpath = os.path.join(dirname, filename)
                 prefixed_fullpath = os.path.join(prefixed_dirname, filename)
-                if (as_logname(fullpath) == logname
-                    and not fullpath == logname):
+                if (as_logname(fullpath, ext=ext) == logname
+                    and (list_all or not fullpath == logname)):
                     mtime = datetime.datetime.fromtimestamp(
                         os.path.getmtime(prefixed_fullpath), tz=utc)
                     results += [{"Key": fullpath, "LastModified": mtime}]
@@ -218,6 +225,9 @@ def main(args):
     parser.add_argument('--location', action='store',
         dest='location', default=None,
         help='Location where log files are stored')
+    parser.add_argument('--list-all', action='store_true',
+        dest='list_all', default=False,
+        help='List all files (by default it will exclude the current log)')
     parser.add_argument('--download', action='store_true',
         dest='download', default=False,
         help='Download the rotated log files (by default upload)')
@@ -252,7 +262,7 @@ def main(args):
     bucket = conn.get_bucket(s3_bucket)
     local_prefix = '.' if not to_s3 else None
     local_update, s3_update = list_updates(
-        list_local(lognames, prefix=local_prefix),
+        list_local(lognames, prefix=local_prefix, list_all=options.list_all),
         list_s3(bucket, lognames, prefix=s3_prefix,
                 time_from_logsuffix=(not to_s3)),
         logsuffix=logsuffix, prefix=s3_prefix)
