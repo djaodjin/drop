@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,7 @@ from ansible.executor.task_queue_manager import TaskQueueManager
 from ansible.inventory import Inventory
 from ansible.parsing.dataloader import DataLoader
 from ansible.vars import VariableManager
-import boto, boto.s3.key
+import boto, boto.s3.key, boto.exception
 import boto3
 from elasticsearch import Elasticsearch
 import elasticsearch.helpers
@@ -206,10 +206,15 @@ def sync(log_paths, es, location=None, db=None, force=False):
             sys.stderr.write('uploading %s...\n' % name)
 
             if isinstance(key, boto.s3.key.Key):
-                with tempfile.TemporaryFile() as temp_file:
-                    key.get_contents_to_file(temp_file)
-                    temp_file.seek(0)
-                    (successes, errors) = sync_fileobj(temp_file, es, name)
+                try:
+                    with tempfile.TemporaryFile() as temp_file:
+                        key.get_contents_to_file(temp_file)
+                        temp_file.seek(0)
+                        (successes, errors) = sync_fileobj(temp_file, es, name)
+                except boto.exception.S3ResponseError as err:
+                    # We might get an InvalidObjectState if the file
+                    # has been moved to Glacier already.
+                    (successes, errors) = (0, [str(err)])
             else:
                 with open(name, 'rb') as fileobj:
                     (successes, errors) = sync_fileobj(fileobj, es, name)
