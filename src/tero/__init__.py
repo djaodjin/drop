@@ -116,6 +116,9 @@ LOGGER_BUFFERING_COUNT = 0
 
 # Pattern used to search for logs to report through email.
 LOG_PAT = None
+# When True, asset files are not fetched regardless if they are
+# in the cache or not.
+NO_FETCH = False
 # When True, the log object is not used and output is only
 # done on sys.stdout.
 NO_LOG = False
@@ -3316,13 +3319,23 @@ def find_cache(context, names):
             else:
                 log_info(u"yes", context=context)
         elif os.path.isdir(local_name):
-            # We assume existing directories are up-to-date.
-            # If we don't we will try to execute a rsync in an environment
-            # where we might not have credentials to the data repo (ex. Docker).
-            log_info(u"yes", context=context)
+            # We cannot assume existing directories are up-to-date otherwise
+            # we will not download recent resources in htdocs/.
+            # If we always rsync directories in an environment though,
+            # we might end-up raising an invalid error, for example, when
+            # building a Docker container when the credentials to the data
+            # where not copied inside the container.
+            if NO_FETCH:
+                log_info(u"yes", context=context)
+            else:
+                log_info(u"yes (update anyway)", context=context)
+                results[pathname] = names[pathname]
         else:
-            results[pathname] = names[pathname]
-            log_info(u"no", context=context)
+            if NO_FETCH:
+                log_info(u"no (but won't fetch)", context=context)
+            else:
+                log_info(u"no", context=context)
+                results[pathname] = names[pathname]
     return results
 
 
@@ -6105,6 +6118,8 @@ def main(args):
 ' matching the name pattern.')
         parser.add_argument('--nolog', dest='nolog', action='store_true',
             help='Do not generate output in the log file')
+        parser.add_argument('--nofetch', dest='nofetch', action='store_true',
+            help='Do not fetch asset files (i.e. outside source control)')
         parser.add_argument('--patch', dest='patchTop', action='store',
             help='Set *patchTop* the root where local patches can be found.')
         parser.add_argument('--prefix', dest='installTop', action='store',
@@ -6148,7 +6163,8 @@ def main(args):
         # Find the build information
         global USE_DEFAULT_ANSWER
         USE_DEFAULT_ANSWER = options.default
-        global NO_LOG
+        global NO_FETCH, NO_LOG
+        NO_FETCH = options.nofetch
         NO_LOG = options.nolog
         if options.exclude_pats:
             global EXCLUDE_PATS
