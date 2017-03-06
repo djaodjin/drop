@@ -175,7 +175,7 @@ def run_docker(
         if not key_path:
             key_path = "%s_rsa" % cluster_name
         if not os.path.exists(key_path):
-            subproces.check_call(['/usr/bin/ssh-keygen', '-q', '-b', '2048',
+            subprocess.check_call(['/usr/bin/ssh-keygen', '-q', '-b', '2048',
                 '-t', 'rsa', '-f', key_path])
         if not key_name:
             key_name = '%s-key' % cluster_name
