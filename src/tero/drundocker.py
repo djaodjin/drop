@@ -179,6 +179,11 @@ def run_docker(
                 '-t', 'rsa', '-f', key_path])
         if not key_name:
             key_name = '%s-key' % cluster_name
+        keypairs = ec2.describe_key_pairs(KeyNames=[key_name])
+        ec2_key_fingerprint = keypairs['KeyPairs'][0]['KeyFingerprint']
+        LOGGER.debug("Fingerprint of key '%s' on ec2: %s",
+            key_name, ec2_key_fingerprint)
+        if not ec2_key_fingerprint:
             with open("%s.pub" % key_path, 'rb') as key_file:
                 public_key_material = key_file.read()
                 keypair = ec2.import_key_pair(
