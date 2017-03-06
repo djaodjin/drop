@@ -167,7 +167,6 @@ def run_docker(
         key_path=None,
         region_name=DEFAULT_REGION):
     try:
-
         ecs = boto3.client('ecs', region_name=region_name)
         ec2 = boto3.client('ec2', region_name=region_name)
         route53 = boto3.client('route53')
@@ -224,6 +223,7 @@ def run_docker(
             'Value': instance_name
         }])
 
+        LOGGER.info("creating ssh client...")
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -300,6 +300,8 @@ def run_docker(
                 ]
             }
         )
+    except Exception as err:
+            LOGGER.exception("%s", err)
 
     finally:
         try:
