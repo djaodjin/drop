@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,18 +28,14 @@
 Command-line tool to run docker images in ecs with their own resources.
 """
 
-import argparse
-import boto3
-import os
-import os.path
-import paramiko
-from Crypto.PublicKey import RSA
-from StringIO import StringIO
-import re
-import time
-import subprocess
-import sys
+import argparse, logging, os, os.path, re, subprocess, sys, time
+from io import StringIO
 
+import boto3, paramiko, six
+from Crypto.PublicKey import RSA
+
+LOGGER = logging.getLogger()
+DEFAULT_REGION = 'us-west-2'
 
 def pubkey(keypair):
     key = RSA.importKey(keypair['KeyMaterial'])
@@ -52,31 +48,27 @@ def privatekey(keypair):
 
 
 def mkdirp_remote(sftp, path):
-    (head, tail) = os.path.split(path)
+    head, _ = os.path.split(path)
     if head != '' and head != '/':
         mkdirp_remote(sftp, head)
-
     if path != '.':
         try:
             sftp.stat(path)
         except IOError:
             # file doesn't exist
-            print 'mkdir', path
+            LOGGER.debug('mkdir %s', path)
             sftp.mkdir(path)
 
 
 def copy_dir(sftp, local, remote):
-
-    for path, dirnames, fnames in os.walk(local):
+    for path, _, fnames in os.walk(local):
         for fname in fnames:
             localpath = os.path.join(path, fname)
             relpath = os.path.relpath(localpath, local)
             remotepath = os.path.join(remote, relpath)
-
             dirname = os.path.dirname(remotepath)
-
             mkdirp_remote(sftp, dirname)
-            print 'copy %s -> %s' % (localpath, remotepath)
+            LOGGER.info('copy %s -> %s', localpath, remotepath)
             sftp.put(localpath, remotepath)
 
 
@@ -88,12 +80,12 @@ def rsync(pem_path, from_dir, to_dir):
         '--progress',
         '--delete',
         '-e',
-        'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i %s' %
+    'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i %s' %
         absolute_pem_path,
         from_dir,
         to_dir,
     ]
-    print ' '.join(rsync_cmd)
+    LOGGER.debug(' '.join(rsync_cmd))
 
     process = subprocess.Popen(rsync_cmd, stdout=sys.stdout, stderr=sys.stderr)
 
@@ -112,13 +104,13 @@ def sanitize_filename(fname):
     return fname
 
 
-def make_task_definition_json(family, image, mounts, env=None):
+def make_task_definition_json(family, image, mounts, container_port, env=None):
     if env is None:
         env = []
 
     volumes = []
     mount_points = []
-    for i, mount in enumerate(mounts.items()):
+    for i, mount in enumerate(six.iteritems(mounts)):
         from_path, to_path = mount
 
         source_path = os.path.join(
@@ -145,7 +137,7 @@ def make_task_definition_json(family, image, mounts, env=None):
                 "essential": True,
                 "portMappings": [
                     {
-                        "containerPort": 8000,
+                        "containerPort": container_port,
                         "hostPort": 8020
                     }
                 ],
@@ -163,23 +155,24 @@ def make_task_definition_json(family, image, mounts, env=None):
 
 
 def run_docker(
-        cluster_name,
         image,
-        mounts,
-        env,
-        instance_profile,
-        security_group,
-        hosted_zone_id,
-        host_name,
-        key_path):
+        container_port=8020,
+        mounts=None,
+        env=None,
+        host_name=None,
+        cluster_name=None,
+        instance_profile=None,
+        security_group=None,
+        hosted_zone_id=None,
+        key_path=None,
+        region_name=DEFAULT_REGION):
     try:
 
-        ecs = boto3.client('ecs', region_name='us-west-2')
-        ec2 = boto3.client('ec2', region_name='us-west-2')
+        ecs = boto3.client('ecs', region_name=region_name)
+        ec2 = boto3.client('ec2', region_name=region_name)
         route53 = boto3.client('route53')
 
         key_name = '%s-key' % cluster_name
-
         keypair = ec2.create_key_pair(KeyName=key_name)
         with open(key_path, 'w') as key_file:
             key_file.write(privatekey(keypair))
@@ -188,8 +181,8 @@ def run_docker(
 
         task_family = '%s-task-family' % cluster_name
         task_definition_json = make_task_definition_json(
-            task_family, image, mounts, env)
-        print task_definition_json
+            task_family, image, mounts, container_port, env=env)
+        LOGGER.debug("task_definition=%s", task_definition_json)
         task_definition = ecs.register_task_definition(**task_definition_json)
 
         cluster = ecs.create_cluster(clusterName=cluster_name)
@@ -215,14 +208,16 @@ def run_docker(
         ec2_waiter = ec2.get_waiter('instance_running')
         instance_ids = [instance['InstanceId']
                         for instance in run_instances_response['Instances']]
-        print 'waiting for ec2 instance'
+        LOGGER.info('waiting for ec2 instance')
         ec2_waiter.wait(InstanceIds=instance_ids)
 
-        ec2_resource = boto3.resource('ec2', region_name='us-west-2')
+        ec2_resource = boto3.resource('ec2', region_name=DEFAULT_REGION)
         instance = ec2_resource.Instance(instance_ids[0])
         instance_name = '%s-ecs' % cluster_name
-        print 'instance running: (%s) %s' % (instance_name, instance.private_ip_address)
-        print 'ssh -i %s ec2-user@%s' % (key_path, instance.private_ip_address)
+        LOGGER.info('instance running: (%s) %s',
+            instance_name, instance.private_ip_address)
+        LOGGER.info('ssh -i %s ec2-user@%s',
+            key_path, instance.private_ip_address)
 
         instance.create_tags(Tags=[{
             'Key': 'Name',
@@ -243,14 +238,14 @@ def run_docker(
                     pkey=key)
                 break
             except paramiko.ssh_exception.NoValidConnectionsError:
-                print 'waiting to connect to ec2 instance...'
+                LOGGER.info('waiting to connect to ec2 instance...')
                 time.sleep(15)
 
-        stdin, stdout, sterr = ssh.exec_command('sudo yum -y install rsync')
+        _, stdout, _ = ssh.exec_command('sudo yum -y install rsync')
         stdout.channel.recv_exit_status()
         sftp = ssh.open_sftp()
 
-        for from_path, _ in mounts.items():
+        for from_path, _ in six.iteritems(mounts):
             source_path = os.path.join(
                 '/home/ec2-user', sanitize_filename(from_path))
             remote_path = 'ec2-user@%s:%s' % (
@@ -268,21 +263,21 @@ def run_docker(
             if len(container_instances['containerInstanceArns']) > 0:
                 break
 
-            print 'waiting for ec2 instances to join cluster...'
+            LOGGER.info('waiting for ec2 instances to join cluster...')
             time.sleep(15)
 
         run_task = ecs.run_task(
             cluster=cluster['cluster']['clusterName'],
-            taskDefinition=task_definition['taskDefinition']['taskDefinitionArn'],
+        taskDefinition=task_definition['taskDefinition']['taskDefinitionArn'],
             count=1,
         )
 
         task_arn = run_task['tasks'][0]['taskArn']
 
-        print ecs.describe_tasks(
+        LOGGER.info(ecs.describe_tasks(
             cluster=cluster['cluster']['clusterName'],
             tasks=[task_arn]
-        )
+        ))
 
         route53.change_resource_record_sets(
             HostedZoneId=hosted_zone_id,
@@ -293,7 +288,7 @@ def run_docker(
                         'ResourceRecordSet': {
                             'Name': host_name,
                             'Type': 'A',
-                            # 'Region': 'us-west-2'
+                            # 'Region': DEFAULT_REGION
                             'TTL': 60,
                             'ResourceRecords': [
                                 {
@@ -307,24 +302,22 @@ def run_docker(
         )
 
     finally:
-
         try:
             sftp.close()
-        except Exception as e:
-            print e
+        except Exception as err:
+            LOGGER.exception("%s", err)
 
         try:
             ssh.close()
-        except Exception as e:
-            print e
-
+        except Exception as err:
+            LOGGER.exception("%s", err)
 
 
 def shutdown_cluster(cluster_name, mounts, key_path):
 
-    ecs = boto3.client('ecs', region_name='us-west-2')
-    ec2 = boto3.client('ec2', region_name='us-west-2')
-    ec2_resource = boto3.resource('ec2', region_name='us-west-2')
+    ecs = boto3.client('ecs', region_name=DEFAULT_REGION)
+    ec2 = boto3.client('ec2', region_name=DEFAULT_REGION)
+    ec2_resource = boto3.resource('ec2', region_name=DEFAULT_REGION)
 
     running_task_arns = ecs.list_tasks(
         cluster=cluster_name,
@@ -334,16 +327,14 @@ def shutdown_cluster(cluster_name, mounts, key_path):
         desiredStatus='STOPPED')['taskArns']
     all_task_arns = running_task_arns + stopped_task_arns
     if all_task_arns:
-        tasks = ecs.describe_tasks(cluster=cluster_name,
-                                   tasks=all_task_arns)
+        tasks = ecs.describe_tasks(cluster=cluster_name, tasks=all_task_arns)
     else:
         tasks = None
 
-
     container_instance_arns = ecs.list_container_instances(cluster=cluster_name)
     container_instances = ecs.describe_container_instances(
-        cluster=cluster_name, containerInstances=container_instance_arns['containerInstanceArns'])
-
+        cluster=cluster_name,
+        containerInstances=container_instance_arns['containerInstanceArns'])
 
     instance_ids = [info['ec2InstanceId']
                     for info in container_instances['containerInstances']]
@@ -360,13 +351,13 @@ def shutdown_cluster(cluster_name, mounts, key_path):
                      if instance.key_name.startswith(cluster_name)]
 
     for task_arn in running_task_arns:
-        print 'stopping task', cluster_name, task_arn
+        LOGGER.info('stopping task %s on cluster %s', task_arn, cluster_name)
         ecs.stop_task(cluster=cluster_name,
                       task=task_arn)
 
     if running_task_arns:
         tasks_stopped_waiter = ecs.get_waiter('tasks_stopped')
-        print 'waiting for tasks to stop'
+        LOGGER.info('waiting for tasks to stop')
         tasks_stopped_waiter.wait(
             cluster=cluster_name,
             tasks=running_task_arns
@@ -390,12 +381,12 @@ def shutdown_cluster(cluster_name, mounts, key_path):
         for from_path, to_path in mounts.items():
             mount_points = task_definition['taskDefinition']['containerDefinitions'][0]['mountPoints']
             source_path = None
-            for mp in mount_points:
-                if to_path == mp['containerPath']:
-                    volume_name = mp['sourceVolume']
+            for mount_point in mount_points:
+                if to_path == mount_point['containerPath']:
+                    volume_name = mount_point['sourceVolume']
                     break
             else:
-                print 'Could not find volume source for %s!' % to_path
+                LOGGER.info('Could not find volume source for %s!', to_path)
                 continue
 
             volumes = task_definition['taskDefinition']['volumes']
@@ -407,9 +398,9 @@ def shutdown_cluster(cluster_name, mounts, key_path):
             remote_path = 'ec2-user@%s:%s/' % (
                 instance.private_ip_address, source_path)
 
-            # docker sets file permissions as the user used inside the docker container
-            # which tends to be root.
-            stdin, stdout, sterr = ssh.exec_command(
+            # docker sets file permissions as the user used inside the docker
+            # container which tends to be root.
+            _, stdout, _ = ssh.exec_command(
                 'sudo chown ec2-user:ec2-user -R %s' %
                 source_path)
             stdout.channel.recv_exit_status()
@@ -419,25 +410,25 @@ def shutdown_cluster(cluster_name, mounts, key_path):
         ssh.close()
 
     for keyname in keypair_names:
-        print 'deleting key pair', keyname
+        LOGGER.info('deleting key pair %s', keyname)
         ec2.delete_key_pair(KeyName=keyname)
 
     for instance in instances:
         instance.terminate()
 
     if instances:
-        print 'waiting for instances to shut down'
+        LOGGER.info('waiting for instances to shut down')
         instances_terminated_waiter = ec2.get_waiter('instance_terminated')
         instances_terminated_waiter.wait(
             InstanceIds=[instance.id for instance in instances])
 
     if tasks:
         for task in tasks['tasks']:
-            print 'deregistering task', task['taskDefinitionArn']
+            LOGGER.info('deregistering task %s', task['taskDefinitionArn'])
             ecs.deregister_task_definition(
                 taskDefinition=task['taskDefinitionArn'])
 
-    print 'deleting cluster', cluster_name
+    LOGGER.info('deleting cluster %s', cluster_name)
     ecs.delete_cluster(cluster=cluster_name)
 
 
@@ -498,15 +489,16 @@ def run(input_args):
         })
 
     run_docker(
-        args.cluster_name,
         args.image,
-        mounts,
-        env,
-        args.instance_profile,
-        args.security_group,
-        args.hosted_zone_id,
-        args.hostname,
-        args.key)
+        mounts=mounts,
+        env=env,
+        host_name=args.hostname,
+        cluster_name=args.cluster_name,
+        instance_profile=args.instance_profile,
+        security_group=args.security_group,
+        hosted_zone_id=args.hosted_zone_id,
+        key_path=args.key)
+
 
 def stop(input_args):
     parser = argparse.ArgumentParser()
@@ -533,11 +525,10 @@ def stop(input_args):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     if sys.argv[1] == 'run':
         run(sys.argv[2:])
     elif sys.argv[1] == 'stop':
         stop(sys.argv[2:])
-    else:
-        print 'usage: python drundocker.py cmd args..'
-        sys.exit(1)
-    # main()
+    sys.stderr.write('usage: python drundocker.py cmd args..\n')
+    sys.exit(1)
