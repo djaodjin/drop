@@ -164,6 +164,7 @@ def run_docker(
         instance_profile=None,
         security_group=None,
         hosted_zone_id=None,
+        key_name=None,
         key_path=None,
         region_name=DEFAULT_REGION):
     try:
@@ -171,12 +172,17 @@ def run_docker(
         ec2 = boto3.client('ec2', region_name=region_name)
         route53 = boto3.client('route53')
 
-        key_name = '%s-key' % cluster_name
-        keypair = ec2.create_key_pair(KeyName=key_name)
-        with open(key_path, 'w') as key_file:
-            key_file.write(privatekey(keypair))
-
-        os.chmod(key_path, 0o600)
+        if not key_path:
+            key_path = "%s_rsa" % cluster_name
+        if not os.path.exists(key_path):
+            subproces.check_call(['/usr/bin/ssh-keygen', '-q', '-b', '2048',
+                '-t', 'rsa', '-f', key_path])
+        if not key_name:
+            key_name = '%s-key' % cluster_name
+            with open("%s.pub" % key_path, 'rb') as key_file:
+                public_key_material = key_file.read()
+                keypair = ec2.import_key_pair(
+                    KeyName=key_name, PublicKeyMaterial=public_key_material)
 
         task_family = '%s-task-family' % cluster_name
         task_definition_json = make_task_definition_json(
@@ -193,7 +199,7 @@ def run_docker(
             'SecurityGroups': [
                 security_group,
             ],
-            'KeyName': keypair['KeyName'],
+            'KeyName': key_name,
             'MinCount': 1,
             'MaxCount': 1,
             'InstanceType': "t2.micro",
@@ -225,11 +231,8 @@ def run_docker(
 
         LOGGER.info("creating ssh client...")
         ssh = paramiko.SSHClient()
+        key = paramiko.RSAKey.from_private_key_file(filename=key_path)
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        key = paramiko.RSAKey.from_private_key(
-            StringIO(keypair['KeyMaterial']))
-
         while True:
             try:
                 ssh.connect(
@@ -348,7 +351,6 @@ def shutdown_cluster(cluster_name, mounts, key_path):
                  if instance.meta.data
                  if instance.state.get('Name') == 'running']
 
-
     keypair_names = [instance.key_name for instance in instances
                      if instance.key_name.startswith(cluster_name)]
 
@@ -364,8 +366,6 @@ def shutdown_cluster(cluster_name, mounts, key_path):
             cluster=cluster_name,
             tasks=running_task_arns
         )
-
-
 
     if instances and tasks:
         ssh = paramiko.SSHClient()
