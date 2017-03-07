@@ -28,7 +28,7 @@
 Command-line tool to run docker images in ecs with their own resources.
 """
 
-import argparse, logging, os, os.path, re, subprocess, sys, time
+import argparse, logging, os, os.path, re, sys, time
 from io import StringIO
 
 import boto3, paramiko, six
@@ -80,7 +80,6 @@ def rsync(pem_path, from_dir, to_dir):
     rsync_cmd = [
         '/usr/bin/rsync',
         '-ravz',
-        '--progress',
         '--delete',
         '-e',
     'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i %s' %
@@ -88,13 +87,7 @@ def rsync(pem_path, from_dir, to_dir):
         from_dir,
         to_dir,
     ]
-    LOGGER.debug(' '.join(rsync_cmd))
-
-    process = subprocess.Popen(rsync_cmd, stdout=sys.stdout, stderr=sys.stderr)
-
-    exit_code = process.wait()
-    if exit_code != 0:
-        raise Exception('Rsync failed!')
+    shell_command(rsync_cmd)
 
 
 def sanitize_filename(fname):
