@@ -87,7 +87,7 @@ def rsync(pem_path, from_dir, to_dir):
         from_dir,
         to_dir,
     ]
-    shell_command(rsync_cmd)
+    shell_command(rsync_cmd, nolog=True)
 
 
 def sanitize_filename(fname):
