@@ -4726,7 +4726,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
         if admin and GROUP:
             prev_egid = os.getegid()
             os.setegid(GROUP)
-        cmd = subprocess.Popen(cmdline,
+        cmd = subprocess.Popen(log_cmdline,
                                shell=True,
                                env=env,
                                stdout=subprocess.PIPE,
