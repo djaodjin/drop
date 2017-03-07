@@ -4679,6 +4679,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
     the text output is filtered and returned when pat exists.
     '''
     filtered_output = []
+    env = os.environ.copy()
     if admin and not (USER or GROUP):
         if False:
             # \todo cannot do this simple check because of a shell variable
@@ -4695,20 +4696,27 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
                 # XXX Workaround while sudo is broken
                 # http://groups.google.com/group/comp.lang.python/\
                 # browse_thread/thread/4c2bb14c12d31c29
-                cmdline = ['SUDO_ASKPASS="' + ASK_PASS + '"'] \
-                    + cmdline + ['-A']
+                env['SUDO_ASKPASS'] = ASK_PASS
+                cmdline = cmdline + ['-A']
             else:
                 cmdline += ['-n']
         cmdline += execute
     else:
         cmdline = execute
-    env = os.environ.copy()
     if search_path:
         env['PATH'] = ':'.join(search_path)
+    log_cmdline = ""
+    for cmdline_item in cmdline:
+        if log_cmdline:
+            log_cmdline += " "
+        if ' ' in cmdline_item:
+            log_cmdline += '"%s"' % cmdline_item
+        else:
+            log_cmdline += cmdline_item
     if not (noexecute or DO_NOT_EXECUTE):
-        log_info(u' '.join(cmdline), nolog=nolog)
+        log_info(log_cmdline, nolog=nolog)
     else:
-        log_info(u"(noexecute) %s" % ' '.join(cmdline), nolog=nolog)
+        log_info(u"(noexecute) %s" % log_cmdline, nolog=nolog)
     if not (noexecute or DO_NOT_EXECUTE):
         prev_euid = None
         prev_egid = None
@@ -4718,7 +4726,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
         if admin and GROUP:
             prev_egid = os.getegid()
             os.setegid(GROUP)
-        cmd = subprocess.Popen(' '.join(cmdline),
+        cmd = subprocess.Popen(cmdline,
                                shell=True,
                                env=env,
                                stdout=subprocess.PIPE,
@@ -4736,9 +4744,8 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
         if prev_egid:
             os.setegid(prev_egid)
         if cmd.returncode != 0:
-            raise Error("unable to complete: " + ' '.join(cmdline) \
-                            + '\n' + '\n'.join(filtered_output),
-                        cmd.returncode)
+            raise Error("unable to complete: %s\n%s\n"
+                % (log_cmdline, '\n'.join(filtered_output)), cmd.returncode)
     return filtered_output
 
 

@@ -82,7 +82,7 @@ def rsync(pem_path, from_dir, to_dir):
         '-ravz',
         '--delete',
         '-e',
-    'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i %s' %
+    '/usr/bin/ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i %s' %
         absolute_pem_path,
         from_dir,
         to_dir,
