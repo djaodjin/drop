@@ -3998,9 +3998,9 @@ def find_rsync(host, context=None, relative=True, admin=False,
         ssh = ssh + '"'
         cmdline += [ssh]
     if admin and username != 'root':
-        cmdline += ['--rsync-path "sudo /usr/bin/rsync"']
+        cmdline += ['--rsync-path', 'sudo /usr/bin/rsync']
     else:
-        cmdline += ['--rsync-path "/usr/bin/rsync"']
+        cmdline += ['--rsync-path', '/usr/bin/rsync']
     return cmdline, prefix
 
 def find_virtualenv(context):
