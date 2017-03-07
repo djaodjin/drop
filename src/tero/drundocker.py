@@ -34,6 +34,8 @@ from io import StringIO
 import boto3, paramiko, six
 from Crypto.PublicKey import RSA
 
+from . import shell_command
+
 LOGGER = logging.getLogger()
 DEFAULT_REGION = 'us-west-2'
 
@@ -175,8 +177,8 @@ def run_docker(
         if not key_path:
             key_path = "%s_rsa" % cluster_name
         if not os.path.exists(key_path):
-            subprocess.check_call(['/usr/bin/ssh-keygen', '-q', '-b', '2048',
-                '-t', 'rsa', '-f', key_path])
+            shell_command(['/usr/bin/ssh-keygen', '-q', '-b', '2048',
+                '-N', '""', '-t', 'rsa', '-f', key_path], nolog=True)
         if not key_name:
             key_name = '%s-key' % cluster_name
         keypairs = ec2.describe_key_pairs(KeyNames=[key_name])

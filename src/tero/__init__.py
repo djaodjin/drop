@@ -4673,7 +4673,7 @@ def search_back_to_root(filename, root=os.sep):
 
 
 def shell_command(execute, admin=False, search_path=None, pat=None,
-    noexecute=False):
+    noexecute=False, nolog=None):
     '''Execute a shell command and throws an exception when the command fails.
     sudo is used when *admin* is True.
     the text output is filtered and returned when pat exists.
@@ -4706,9 +4706,9 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
     if search_path:
         env['PATH'] = ':'.join(search_path)
     if not (noexecute or DO_NOT_EXECUTE):
-        log_info(u' '.join(cmdline))
+        log_info(u' '.join(cmdline), nolog=nolog)
     else:
-        log_info(u"(noexecute) %s" % ' '.join(cmdline))
+        log_info(u"(noexecute) %s" % ' '.join(cmdline), nolog=nolog)
     if not (noexecute or DO_NOT_EXECUTE):
         prev_euid = None
         prev_egid = None
@@ -4728,7 +4728,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
         while line != u'':
             if pat and re.match(pat, line):
                 filtered_output += [line]
-            log_info(line[:-1])
+            log_info(line[:-1], nolog=nolog)
             line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
         cmd.wait()
         if prev_euid:
@@ -5138,11 +5138,13 @@ def log_interactive(message):
         LOGGER_BUFFER.write(message)
 
 
-def log_info(message, context=None, *args, **kwargs):
+def log_info(message, context=None, nolog=None, *args, **kwargs):
     '''Write a info message onto stdout and into the log file'''
     message_line = u"%s\n" % message
     sys.stdout.write(message_line.encode(DEFAULT_ENCODING))
-    if not NO_LOG:
+    if nolog is None:
+        nolog = NO_LOG
+    if not nolog:
         global LOGGER_BUFFER
         if LOGGER_BUFFERING_COUNT > 0:
             if not LOGGER_BUFFER:
