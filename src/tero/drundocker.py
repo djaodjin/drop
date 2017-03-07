@@ -31,7 +31,8 @@ Command-line tool to run docker images in ecs with their own resources.
 import argparse, logging, os, os.path, re, subprocess, sys, time
 from io import StringIO
 
-import botocore, boto3, paramiko, six
+import boto3, paramiko, six
+from botocore.exceptions import ClientError
 from Crypto.PublicKey import RSA
 
 from . import shell_command
@@ -186,7 +187,7 @@ def run_docker(
             ec2_key_fingerprint = keypairs['KeyPairs'][0]['KeyFingerprint']
             LOGGER.debug("Fingerprint of key '%s' on ec2: %s",
                 key_name, ec2_key_fingerprint)
-        except botocore.exceptions.InvalidKeyPair.NotFound:
+        except ClientError as err:
             ec2_key_fingerprint = None
         if not ec2_key_fingerprint:
             with open("%s.pub" % key_path, 'rb') as key_file:
@@ -328,7 +329,13 @@ def run_docker(
             LOGGER.exception("%s", err)
 
 
-def shutdown_cluster(cluster_name, mounts, key_path):
+def shutdown_cluster(cluster_name, mounts, key_path=None):
+    """
+    Copy the localstate_dir data files (i.e. *mounts*) and shuts down
+    the cluster *cluster_name*.
+    """
+    if not key_path:
+        key_path = "%s_rsa" % cluster_name
 
     ecs = boto3.client('ecs', region_name=DEFAULT_REGION)
     ec2 = boto3.client('ec2', region_name=DEFAULT_REGION)
