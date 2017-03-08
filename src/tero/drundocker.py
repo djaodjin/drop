@@ -79,7 +79,6 @@ def rsync(pem_path, from_dir, to_dir):
     rsync_cmd = [
         '/usr/bin/rsync',
         '-ravz',
-        '--delete',
         '-e',
         '/usr/bin/ssh -o UserKnownHostsFile=/dev/null'\
             ' -o StrictHostKeyChecking=no -i %s' % absolute_pem_path,
