@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,11 +27,12 @@
 
 if __name__ == '__main__':
     import os, sys
+    #pylint:disable=invalid-name
     bin_path = os.path.realpath(os.path.abspath(sys.argv[0]))
     if bin_path.endswith('bin/drundocker'):
-        sys.path += [ os.path.join(
+        sys.path += [os.path.join(
                 os.path.dirname(os.path.dirname(bin_path)),
-                'lib','python2.7','site-packages') ]
+                'lib', 'python2.7', 'site-packages')]
     from tero.drundocker import run, stop
     if sys.argv[1] == 'run':
         run(sys.argv[2:])

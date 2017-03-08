@@ -28,8 +28,7 @@
 Command-line tool to run docker images in ecs with their own resources.
 """
 
-import argparse, logging, os, os.path, re, sys, time
-from io import StringIO
+import argparse, logging, os, re, time
 
 import boto3, paramiko, six
 from botocore.exceptions import ClientError
@@ -82,8 +81,8 @@ def rsync(pem_path, from_dir, to_dir):
         '-ravz',
         '--delete',
         '-e',
-    '/usr/bin/ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i %s' %
-        absolute_pem_path,
+        '/usr/bin/ssh -o UserKnownHostsFile=/dev/null'\
+            ' -o StrictHostKeyChecking=no -i %s' % absolute_pem_path,
         from_dir,
         to_dir,
     ]
@@ -106,14 +105,14 @@ def make_task_definition_json(family, image, mounts, container_port, env=None):
 
     volumes = []
     mount_points = []
-    for i, mount in enumerate(six.iteritems(mounts)):
+    for idx, mount in enumerate(six.iteritems(mounts)):
         from_path, to_path = mount
 
         source_path = os.path.join(
             '/home/ec2-user',
             sanitize_filename(from_path))
         volume = {
-            'name': 'm%d' % i,
+            'name': 'm%d' % idx,
             'host': {
                 'sourcePath': source_path
             }
@@ -163,6 +162,13 @@ def run_docker(
         key_name=None,
         key_path=None,
         region_name=DEFAULT_REGION):
+    """
+    Create an ECS cluster named *cluster_name*, create an EC2 instance
+    based of us-west2 ECS-ready image (ami-56ed4936), copy the directories
+    specified in mounts from the local machine to the EC2 instance,
+    launch the docker image (*image*) in the ECS cluster and associate
+    a *host_name* in the route53 DNS to access it.
+    """
     try:
         ecs = boto3.client('ecs', region_name=region_name)
         ec2 = boto3.client('ec2', region_name=region_name)
@@ -185,7 +191,7 @@ def run_docker(
         if not ec2_key_fingerprint:
             with open("%s.pub" % key_path, 'rb') as key_file:
                 public_key_material = key_file.read()
-                keypair = ec2.import_key_pair(
+                ec2.import_key_pair(
                     KeyName=key_name, PublicKeyMaterial=public_key_material)
 
         task_family = '%s-task-family' % cluster_name
@@ -210,7 +216,9 @@ def run_docker(
             'IamInstanceProfile': {
                 "Name": instance_profile
             },
-            'UserData': "#!/bin/bash \n echo ECS_CLUSTER=" + cluster['cluster']['clusterName'] + " >> /etc/ecs/ecs.config"
+            'UserData':
+              "#!/bin/bash \n echo ECS_CLUSTER=%s >> /etc/ecs/ecs.config" % str(
+                  cluster['cluster']['clusterName'])
         }
         run_instances_response = ec2.run_instances(**instance_json)
 
@@ -233,44 +241,39 @@ def run_docker(
             'Value': instance_name
         }])
 
-        LOGGER.info("creating ssh client...")
-        ssh = paramiko.SSHClient()
-        key = paramiko.RSAKey.from_private_key_file(filename=key_path)
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        while True:
-            try:
-                ssh.connect(
-                    instance.private_ip_address,
-                    username='ec2-user',
-                    pkey=key)
-                break
-            except paramiko.ssh_exception.NoValidConnectionsError:
-                LOGGER.info('waiting to connect to ec2 instance...')
-                time.sleep(15)
+        LOGGER.info("copying fixtures files to %s ...",
+            instance.private_ip_address)
+        with paramiko.SSHClient() as ssh:
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            while True:
+                try:
+                    ssh.connect(
+                        instance.private_ip_address,
+                        username='ec2-user',
+                        pkey=paramiko.RSAKey.from_private_key_file(
+                            filename=key_path))
+                    break
+                except paramiko.ssh_exception.NoValidConnectionsError:
+                    LOGGER.info('waiting to connect to ec2 instance...')
+                    time.sleep(15)
+            _, stdout, _ = ssh.exec_command('sudo yum -y install rsync')
+            stdout.channel.recv_exit_status()
+            for from_path, _ in six.iteritems(mounts):
+                source_path = os.path.join(
+                    '/home/ec2-user', sanitize_filename(from_path))
+                remote_path = 'ec2-user@%s:%s' % (
+                    instance.private_ip_address, source_path)
+                if os.path.isdir(from_path) and from_path[-1] != '/':
+                    from_path = '%s/' % from_path
+                rsync(key_path, from_path, remote_path)
 
-        _, stdout, _ = ssh.exec_command('sudo yum -y install rsync')
-        stdout.channel.recv_exit_status()
-        sftp = ssh.open_sftp()
-
-        for from_path, _ in six.iteritems(mounts):
-            source_path = os.path.join(
-                '/home/ec2-user', sanitize_filename(from_path))
-            remote_path = 'ec2-user@%s:%s' % (
-                instance.private_ip_address, source_path)
-            if os.path.isdir(from_path) and from_path[-1] != '/':
-                from_path = '%s/' % from_path
-            rsync(key_path, from_path, remote_path)
-            # copy_dir_to_remote(sftp, from_path, source_path)
-
+        LOGGER.info("waiting for ec2 instances to join cluster...")
         while True:
             container_instances = ecs.list_container_instances(
                 cluster=cluster['cluster']['clusterName'],
             )
-
             if len(container_instances['containerInstanceArns']) > 0:
                 break
-
-            LOGGER.info('waiting for ec2 instances to join cluster...')
             time.sleep(15)
 
         run_task = ecs.run_task(
@@ -278,14 +281,13 @@ def run_docker(
         taskDefinition=task_definition['taskDefinition']['taskDefinitionArn'],
             count=1,
         )
-
         task_arn = run_task['tasks'][0]['taskArn']
-
         LOGGER.info(ecs.describe_tasks(
             cluster=cluster['cluster']['clusterName'],
             tasks=[task_arn]
         ))
 
+        LOGGER.info("update DNS record for %s ...", host_name)
         route53.change_resource_record_sets(
             HostedZoneId=hosted_zone_id,
             ChangeBatch={
@@ -308,18 +310,8 @@ def run_docker(
             }
         )
     except Exception as err:
-            LOGGER.exception("%s", err)
-
-    finally:
-        try:
-            sftp.close()
-        except Exception as err:
-            LOGGER.exception("%s", err)
-
-        try:
-            ssh.close()
-        except Exception as err:
-            LOGGER.exception("%s", err)
+        LOGGER.exception("%s", err)
+        raise
 
 
 def shutdown_cluster(cluster_name, mounts, key_path=None):
@@ -388,7 +380,8 @@ def shutdown_cluster(cluster_name, mounts, key_path=None):
             username='ec2-user',
             pkey=key)
 
-        task_definition = ecs.describe_task_definition(taskDefinition=tasks['tasks'][0]['taskDefinitionArn'])
+        task_definition = ecs.describe_task_definition(
+            taskDefinition=tasks['tasks'][0]['taskDefinitionArn'])
 
         for from_path, to_path in mounts.items():
             mount_points = task_definition['taskDefinition']['containerDefinitions'][0]['mountPoints']
@@ -446,7 +439,7 @@ def shutdown_cluster(cluster_name, mounts, key_path=None):
 
 def run(input_args):
     """
-    Main Entry Point
+    Provision and boots a docker image into a container.
     """
     import __main__
 
@@ -462,17 +455,21 @@ def run(input_args):
         '--volume',
         action='append',
         default=[],
-        help='Adds a volume to run the docker instance with. The folder will be automatically transferred to the cluster instance. Conceptually similar to the docker run --volume args.')
+        help='Adds a volume to run the docker instance with. The folder will"\
+        " be automatically transferred to the cluster instance. Conceptually"\
+        " similar to the docker run --volume args.')
     parser.add_argument(
         '-e',
         '--env',
         action='append',
         default=[],
-        help='Environment variables to run the docker container with. Conceptually similar to the docker --env flag.')
+        help='Environment variables to run the docker container with."\
+        " Conceptually similar to the docker --env flag.')
     parser.add_argument(
         '--cluster-name',
         required=True,
-        help='Name to use for the cluster. This can be used for stopping the cluster.')
+        help='Name to use for the cluster. This can be used for stopping"\
+        " the cluster.')
     parser.add_argument(
         '--hostname',
         required=True,
@@ -499,7 +496,6 @@ def run(input_args):
             'name': name,
             'value': value
         })
-
     run_docker(
         args.image,
         mounts=mounts,
@@ -519,7 +515,9 @@ def stop(input_args):
         '--volume',
         action='append',
         default=[],
-        help='if provided, the files from the provided volume will be transferred back from the cluster instance after the task has been stopped.')
+        help='if provided, the files from the provided volume will be'\
+        ' transferred back from the cluster instance after the task'\
+        ' has been stopped.')
     parser.add_argument(
         '--cluster-name',
         required=True,
@@ -528,19 +526,6 @@ def stop(input_args):
         '--key',
         required=True,
         help='private key that can be used to connect to the cluster instance.')
-
     args = parser.parse_args(input_args)
-
     mounts = dict(mount.split(':') for mount in args.volume)
-
     shutdown_cluster(args.cluster_name, mounts, args.key)
-
-
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    if sys.argv[1] == 'run':
-        run(sys.argv[2:])
-    elif sys.argv[1] == 'stop':
-        stop(sys.argv[2:])
-    sys.stderr.write('usage: python drundocker.py cmd args..\n')
-    sys.exit(1)
