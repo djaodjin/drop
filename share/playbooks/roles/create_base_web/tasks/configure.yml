@@ -10,13 +10,14 @@
     image: "{{ami_id}}"
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
-    user_data: "{{ lookup('template', '../templates/web-cloud-init-script.j2') }}"
+    user_data: "{{lookup('template', '../templates/web-cloud-init-script.j2')}}"
     wait: yes
   register: web_base
 
 - set_fact:
     web_base_device_id: "{{web_base.instances[0].id}}"
 
-- lineinfile: "dest=group_vars/dynamic regexp='^web_base_device_id:' line='web_base_device_id: {{web_base.instances[0].id}}'"
+# Turn on when debugging:
+#- lineinfile: "dest=group_vars/dynamic regexp='^web_base_device_id:' line='web_base_device_id: {{web_base.instances[0].id}}'"
 
 - debug: msg="Connect to the ec2 instance with ssh -i ~/.ssh/{{key_name}} fedora@{{web_base.instances[0].public_ip}}"
