@@ -1,6 +1,9 @@
 # Create the AMI after the base EC2 instance was configured.
 
-- include_vars: group_vars/dynamic
+- name: Wait for configuration of EC2 instance completed
+  local_action:
+    module: command
+      ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i {{lookup('env', 'HOME')}}/.ssh/{{key_name}} fedora@{{dbs_base.instances[0].public_ip}} sh -c "'while [ ! -f /home/fedora/.dbs-done ]; do sleep 30; done'"
 
 - name: Create AMI for databases
   local_action:

@@ -1,0 +1,13 @@
+#!/bin/bash
+#
+# configure a stock Fedora to serve as a front-end web reverse proxy.
+
+set -e
+
+# Install necessary packages to bootstrap configuration
+dnf -y update
+dnf -y install docker awscli
+
+# Ansible will be waiting for this file to appear
+# before continuing to create the AMI.
+sudo -u fedora touch /home/fedora/.web-done

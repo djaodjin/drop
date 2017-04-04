@@ -10,8 +10,6 @@
 # We cannot attach EBS encrypted volumes to all types of instances. As well
 # we must wait until the instance is running before attaching an EBS volume.
 
-- include_vars: group_vars/dynamic
-
 - name: Create EC2 instance to setup databases
   local_action:
     module: ec2

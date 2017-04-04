@@ -1,13 +1,10 @@
-- name: Create AWS AMIs
+- name: Create and configure EC2 instances to be used as AMIs
   hosts: localhost
   connection: local
   gather_facts: False
   vars:
-   - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
+    - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
 
   roles:
-   - createdbsbase
-   # XXX Wait until could-init has completed before creating AMI.
-   # http://docs.ansible.com/ansible/wait_for_module.html
-#   - createdbsami
-#   - deletedbsbase
+    - create_base_web
+    - create_base_dbs

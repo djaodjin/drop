@@ -1,0 +1,20 @@
+# Create the AMI.
+
+- name: Wait for configuration of EC2 instance completed
+  local_action:
+    module: command
+      ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i {{lookup('env', 'HOME')}}/.ssh/{{key_name}} fedora@{{web_base.instances[0].public_ip}} sh -c "'while [ ! -f /home/fedora/.web-done ]; do sleep 30; done'"
+
+- name: Register AMI for front-end web servers
+  local_action:
+    module: ec2_ami
+    region: "{{aws_region}}"
+    instance_id: "{{web_base_device_id}}"
+    name: "web-{{web_base_device_id}}"
+    description: "Front-end web reverse proxy"
+    wait: yes
+  register: web_ami
+
+- debug: msg="{{web_ami}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^web_ami_id:' line='web_ami_id: {{web_ami.image_id}}'"

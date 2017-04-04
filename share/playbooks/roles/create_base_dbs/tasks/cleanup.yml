@@ -1,7 +1,5 @@
 # Delete the EC2 instance that was used to create the AMI for databases.
 
-- include_vars: group_vars/dynamic
-
 - name: Delete EC2 instance configured to host databases
   local_action:
     module: ec2

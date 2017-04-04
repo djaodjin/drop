@@ -5,8 +5,8 @@
 set -e
 
 # Install necessary packages to bootstrap configuration
-yum -y install git python-virtualenv python-pip
-pip install awscli
+dnf -y update
+dnf -y install git python-virtualenv python-pip awscli
 
 # Mount encrypted volume as /var after copying previous content over.
 if [ ! -d /var.old ] ; then
@@ -31,3 +31,5 @@ virtualenv-2.7 --system-site-packages /tmp/ansible
 
 # Restore database from flat files
 /tmp/ansible/bin/python /tmp/ansible/reps/drop/src/drestore.py --domainName={{domain_name}} /var/backups/*
+
+sudo -u fedora touch /home/fedora/.dbs-done
