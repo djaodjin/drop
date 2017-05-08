@@ -30,8 +30,6 @@ from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 
 class sssdSetup(SetupTemplate):
 
-    sssd_conf = os.path.join(CONTEXT.value('etcDir'), 'sssd', 'sssd.conf')
-
     def __init__(self, name, files, **kwargs):
         super(sssdSetup, self).__init__(name, files, **kwargs)
         self.daemons = ['sssd']
@@ -44,6 +42,7 @@ class sssdSetup(SetupTemplate):
             # files here.
             return complete
 
+        sssd_conf = os.path.join(context.value('etcDir'), 'sssd', 'sssd.conf')
         ldapHost = context.value('ldapHost')
         domain_parts = tuple(context.value('domainName').split('.'))
         ldapCertPath = os.path.join(context.value('etcDir'),
@@ -54,7 +53,7 @@ class sssdSetup(SetupTemplate):
             'domainTop': domain_parts[1],
             'ldapCertPath': ldapCertPath
         }
-        _, new_config_path = stageFile(self.sssd_conf, context)
+        _, new_config_path = stageFile(sssd_conf, context)
         with open(new_config_path, 'w') as new_config:
             new_config.write("""[sssd]
 config_file_version = 2
@@ -115,7 +114,7 @@ ldap_group_name = cn
 ldap_group_member = memberUid
 """ % names)
 
-        postinst.shellCommand(['chmod', '600', self.sssd_conf])
+        postinst.shellCommand(['chmod', '600', sssd_conf])
         postinst.shellCommand(['authconfig',
             '--update', '--enablesssd', '--enablesssdauth'])
         postinst.shellCommand(['setsebool',

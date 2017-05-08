@@ -136,7 +136,7 @@ server {
         # path for static files
         root %(document_root)s;
 
-        location %(path)s {
+        location / {
             try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
         }
 

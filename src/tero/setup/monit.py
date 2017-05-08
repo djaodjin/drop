@@ -22,53 +22,21 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
-
 from tero import setup
-from tero.setup import stageFile, postinst
 
-
-class syslog_ngSetup(setup.SetupTemplate):
-
-    syslog_te_config_template = """module syslog-ng 1.0;
-
-require {
-	type syslogd_t;
-	type device_t;
-	class sock_file { getattr unlink };
-	class lnk_file unlink;
-}
-
-#============= syslogd_t ==============
-
-allow syslogd_t device_t:lnk_file unlink;
-allow syslogd_t device_t:sock_file getattr;
-allow syslogd_t device_t:sock_file unlink;
-"""
+class monitSetup(setup.SetupTemplate):
 
     def __init__(self, name, files, **kwargs):
-        super(syslog_ngSetup, self).__init__(name, files, **kwargs)
-        self.daemons = ['syslog-ng']
+        super(monitSetup, self).__init__(name, files, **kwargs)
+        self.daemons = ['monit']
 
     def run(self, context):
-        complete = super(syslog_ngSetup, self).run(context)
+        complete = super(monitSetup, self).run(context)
         if not complete:
             # As long as the default setup cannot find all prerequisite
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
 
-        setup.postinst.shellCommand(
-            ['rm', '-f', '/etc/systemd/system/syslog.service'])
-
-        # Configure SELinux to run syslog-ng
-        syslog_te = os.path.join(
-            os.path.dirname(setup.postinst.postinst_run_path), 'syslog-ng.te')
-
-        _, syslog_te_path = stageFile(syslog_te, context)
-        with open(syslog_te_path, 'w') as syslog_te_file:
-            syslog_te_file.write(self.syslog_te_config_template)
-        setup.postinst.install_selinux_module(syslog_te,
-            comment="Configure SELinux to run syslog-ng.")
-
+        # XXX Configure monit here
         return complete

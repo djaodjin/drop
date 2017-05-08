@@ -26,7 +26,7 @@ fi
 aws s3 cp s3://{{deployutils_bucket}}/identities/dbs.internal / --recursive
 
 # Clone configuration scripts repository and setup the machine.
-mkdir -p /tmp/ansible/reps && cd /tmp/ansible/reps && git clone {{remote_dservices_repo}}
+mkdir -p /tmp/ansible/reps && cd /tmp/ansible/reps && git clone {{remote_drop_repo}}
 virtualenv-2.7 --system-site-packages /tmp/ansible
 /tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=localhost -DdomainName={{domain_name}} -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/profiles/databases.xml
 

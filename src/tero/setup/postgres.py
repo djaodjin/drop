@@ -27,7 +27,6 @@ import argparse, getpass, re, os, socket, sys
 from tero import Context, Variable
 from tero.setup import (after_daemon_start, modify_config, postinst, stageFile,
     SetupTemplate)
-from tero.setup.local import add_context_variables
 from tero.setup.cron import add_entry as cron_add_entry
 
 
@@ -220,7 +219,6 @@ def main(args):
     defines = dict([item.split('=') for item in options.defines])
 
     tero.CONTEXT = Context()
-    add_context_variables(tero.CONTEXT)
     tero.CONTEXT.environ['vpc_cidr'] = Variable('vpc_cidr',
              {'description': 'CIDR allowed to create remote connections',
               'default': defines.get('vpc_cidr', '192.168.144.0/24')})

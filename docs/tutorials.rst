@@ -69,7 +69,7 @@ infrastructure such as AWS region, AWS credentials, etc.
 
     # Credentials and configuration that must be available to setup scripts
     remote_src_top: *Root of where git repositories are found*
-    remote_dservices_repo: *where the deployment scripts can be found*
+    remote_drop_repo: *where the deployment scripts can be found*
     domain_name: *Domain name for your organization*
     webapp: *name of the web application to deploy*
     ldapPasswordHash: *hash of the root password for LDAP*

@@ -43,7 +43,7 @@ invoking the script.
   dwsSmtpPasswd=
 """
 
-# Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
+# Primary Author(s): Sebastien Mirolo <smirolo@djaodjin.com>
 #
 # Requires Python 2.7 or above.
 
@@ -2308,7 +2308,7 @@ class RpmInstallStep(InstallStep):
         if managed:
             admin = True
             noexecute = context.nonative
-            return [(['rpm', '-i', '--force', ' '.join(managed), '--nodeps'],
+            return [(['rpm', '-i', '--force'] + managed + ['--nodeps'],
                 admin, noexecute)]
         return []
 
@@ -4264,7 +4264,7 @@ def help_book(help_string):
          xml:id=\"""" + cmdname + """">
 <info>
 <author>
-<personname>Sebastien Mirolo &lt;smirolo@fortylines.com&gt;</personname>
+<personname>Sebastien Mirolo &lt;smirolo@djaodjin.com&gt;</personname>
 </author>
 </info>
 <refmeta>

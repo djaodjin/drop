@@ -75,11 +75,6 @@ class installScript(object):
 
 class debianInstallScript(installScript):
 
-    def prerequisites(self, prereqs):
-        self.script.write(
-            'DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install %s\n'
-                % ' '.join(prereqs))
-
     def install(self, packagename, force=False, postinst_script=None):
         if packagename.endswith('.tar.bz2'):
             super(debianInstallScript, self).install(
@@ -101,9 +96,6 @@ class redhatInstallScript(installScript):
         super(redhatInstallScript, self).__init__(
             script_path, mod_sysconfdir=mod_sysconfdir)
         self.jenkins_plugins_install = False
-
-    def prerequisites(self, prereqs):
-        self.script.write('yum -y install %s\n' % ' '.join(prereqs))
 
     def install(self, packagename,
                 force=False, postinst_script=None):
@@ -551,12 +543,10 @@ def stageFile(pathname, context):
     Prepare a configuration file for modification. It involves making
     a copy of the previous version, then opening a temporary file for edition.
     """
-    stage_user = context.value('admin')
-    stage_group = context.value('admin')
     new_path = context.modEtcDir + pathname
     org_path = context.tplEtcDir + pathname
-    log_info('stage %s\n  to %s\n  original at %s'
-                  % (pathname, new_path, org_path))
+    log_info('stage %s\n  to %s\n  original at %s' % (
+        pathname, new_path, org_path))
     if not os.path.exists(org_path):
         # We copy the original configuration file into the local build
         # directory before modifying it.
@@ -565,9 +555,16 @@ def stageFile(pathname, context):
         # the original original files when the script is run a second time.
         #
         try:
-            shell_command([
-                'install', '-D', '-p', '-o', stage_user, '-g', stage_group,
-                pathname, org_path], admin=True)
+            try:
+                user_opt = ['-o', context.value('admin')]
+            except Error:
+                user_opt = []
+            try:
+                group_opt = ['-g', context.value('admin')]
+            except Error:
+                group_opt = []
+            shell_command(['install', '-D', '-p'] + user_opt + group_opt +
+                [pathname, org_path], admin=len(user_opt) > 0)
         except Error as err:
             # We sometimes need sudo access to make backup copies of config
             # files (even ones with no credentials). This is just a convoluted

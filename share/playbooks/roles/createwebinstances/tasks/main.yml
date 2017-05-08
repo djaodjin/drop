@@ -20,7 +20,7 @@
     key_name: "{{key_name}}"
     instance_type: "t2.small"
     instance_profile_name: "{{castle_gate}}-profile"
-    image: "{{ami_id}}"
+    image: "{{web_ami_id}}"
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
     volumes:

@@ -36,7 +36,7 @@ import tero.setup # for global variables (postinst)
 from tero.setup.integrity import fingerprint
 
 
-def create_install_script(project_name, context, install_top):
+def create_install_script(dgen, context, install_top):
     """
     Create custom packages and an install script that can be run
     to setup the local machine. After this step, the final directory
@@ -95,11 +95,15 @@ def create_install_script(project_name, context, install_top):
 
 set -x
 ''')
-    deps = ordered_prerequisites([project_name], tero.INDEX)
+    deps = ordered_prerequisites(dgen, tero.INDEX)
     for dep in tero.EXCLUDE_PATS + [project_name]:
         if dep in deps:
             deps.remove(dep)
-    install_script.prerequisites(deps)
+    for step in [dep for dep in deps if hasattr(dep, 'install_commands')]:
+        cmds = step.install_commands(step.get_installs(), tero.CONTEXT)
+        for cmd, admin, noexecute in cmds:
+            install_script.script.write("%s\n" % ' '.join(cmd))
+
     package_name = os.path.basename(package_path)
     local_package_path = os.path.join(obj_dir, package_name)
     if (not os.path.exists(local_package_path)
@@ -182,8 +186,12 @@ include %(share_dir)s/dws/suffix.mk
 
     for pathname in ['/var/spool/cron/crontabs']:
         if not os.access(pathname, os.W_OK):
-            tero.setup.postinst.shellCommand(['[ -f ' + pathname + ' ]',
-                '&&', 'chown ', context.value('admin'), pathname])
+            try:
+                tero.setup.postinst.shellCommand(['[ -f ' + pathname + ' ]',
+                    '&&', 'chown ', context.value('admin'), pathname])
+            except Error:
+                # We don't have an admin variable anyway...
+                pass
 
     # Execute the extra steps necessary after installation
     # of the configuration files and before restarting the services.
@@ -333,7 +341,11 @@ def main(args):
         key, value = define.split('=')
         tero.CONTEXT.environ[key] = value
 
-    project_name = tero.CONTEXT.value('PROJECT_NAME')
+    if 'PROJECT_NAME' in tero.CONTEXT.environ:
+        project_name = tero.CONTEXT.value('PROJECT_NAME')
+    else:
+        project_name = os.path.splitext(
+            os.path.basename(options.profiles[0]))[0]
 
     log_path_prefix = stampfile(tero.CONTEXT.log_path(
             os.path.join(tero.CONTEXT.host(), socket.gethostname())))
@@ -384,7 +396,9 @@ def main(args):
 
     # Create the postinst script
     create_postinst(start_timestamp, setups)
-    final_install_package = create_install_script(project_name, tero.CONTEXT,
+    dgen = tero.BuildGenerator([project_name], [],
+        exclude_pats=tero.EXCLUDE_PATS, custom_steps=tero.CUSTOM_STEPS)
+    final_install_package = create_install_script(dgen, tero.CONTEXT,
         install_top=os.path.dirname(bin_base))
 
     # Install the package as if it was a normal distribution package.
