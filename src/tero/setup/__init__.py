@@ -142,13 +142,24 @@ class PostinstScript(object):
             self.postinst_path = os.path.join(
                 mod_sysconfdir, self.postinst_run_path[1:])
 
+    def serviceEnable(self, service):
+        if self.dist in YUM_DISTRIBS:
+            self.shellCommand(['systemctl', 'enable', '%s.service' % service])
+        else:
+            sys.stderr.write(
+                "warning: how to enable services on '%s' is unknown" %
+                self.dist)
+
     def serviceRestart(self, service):
         if self.dist in APT_DISTRIBS:
             self.shellCommand(
                 [os.path.join(self.sysconfdir, 'init.d', service), 'restart'])
         elif self.dist in YUM_DISTRIBS:
-            self.shellCommand(['service', service, 'restart'])
-            self.shellCommand(['systemctl', 'enable', '%s.service' % service])
+            self.shellCommand(['systemctl', 'restart', '%s.service' % service])
+        else:
+            sys.stderr.write(
+                "warning: how to start services on '%s' is unknown" %
+                self.dist)
 
     def shellCommand(self, cmdline, comment=None):
         # Insure the postinst script file is open for writing commands into it.

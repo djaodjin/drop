@@ -58,6 +58,11 @@ allow syslogd_t device_t:sock_file unlink;
             # files here.
             return complete
 
+        journald_conf = "/etc/systemd/journald.conf"
+        setup.modify_config(journald_conf,
+            settings={'ForwardToSyslog': "yes"},
+            sep='=', context=context)
+
         setup.postinst.shellCommand(
             ['rm', '-f', '/etc/systemd/system/syslog.service'])
 

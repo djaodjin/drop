@@ -13,7 +13,7 @@ siteTop=/var/www/djaoapp
 
 # Clone drop github repository in /tmp/ansible and run dservices scripts
 mkdir -p ${siteTop}/reps
-virtualenv --system-site-packages ${siteTop}
+virtualenv -p python3 --system-site-packages ${siteTop}
 cd ${siteTop}
 git clone {{remote_drop_repo}} reps/drop
 bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} reps/drop/share/profiles/webfront.xml

@@ -69,6 +69,9 @@ Name of the machine hosting the LDAP server.
       <dep name="monit">
         <bin>monit</bin>
       </dep>
+      <dep name="ssmtp">
+        <bin>ssmtp</bin>
+      </dep>
       <!-- reverse proxy -->
       <dep name="nginx">
         <bin>nginx</bin>
@@ -78,7 +81,6 @@ Name of the machine hosting the LDAP server.
           <webapp>
             <path>/</path>
             <port>8020</port>
-            <app_name>app</app_name>
           </webapp>
         </extra>
       </dep>

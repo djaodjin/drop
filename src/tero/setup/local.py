@@ -195,18 +195,22 @@ include %(share_dir)s/dws/suffix.mk
 
     # Execute the extra steps necessary after installation
     # of the configuration files and before restarting the services.
-    daemons = []
+    services = []
     for setup in setups:
         if setup:
-            daemons = merge_unique(daemons, setup.daemons)
+            services = merge_unique(services, setup.daemons)
 
-    # Restart services
+    # Enable all services before restarting them. In case we encounter
+    # an transient error on restart, at least the services will be enabled.
     if tero.setup.postinst.scriptfile:
-        tero.setup.postinst.scriptfile.write('\n# Restart services\n')
-    for daemon in daemons:
-        tero.setup.postinst.serviceRestart(daemon)
-        if daemon in tero.setup.after_statements:
-            for stmt in tero.setup.after_statements[daemon]:
+        tero.setup.postinst.scriptfile.write(
+            "\n# Enable and restart services\n")
+    for service in services:
+        tero.setup.postinst.serviceEnable(service)
+    for service in services:
+        tero.setup.postinst.serviceRestart(service)
+        if service in tero.setup.after_statements:
+            for stmt in tero.setup.after_statements[service]:
                 tero.setup.postinst.shellCommand([stmt])
     if tero.setup.postinst.scriptfile:
         tero.setup.postinst.scriptfile.close()

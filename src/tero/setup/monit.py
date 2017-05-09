@@ -39,4 +39,6 @@ class monitSetup(setup.SetupTemplate):
             return complete
 
         # XXX Configure monit here
+        # Add line:
+        #   set alert:sendmail as "/usr/sbin/sendmail -t"
         return complete

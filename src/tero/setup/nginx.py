@@ -135,16 +135,7 @@ server {
 
         # path for static files
         root %(document_root)s;
-
-        location / {
-            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
-        }
-
-        location @forward_to_%(app_name)s {
-            proxy_pass    http://proxy_%(app_name)s;
-            include       /etc/nginx/proxy_params;
-        }
-
+        %(forwards)s
         error_page 500 502 503 504 /500.html;
         location = /50x.html {
             root %(document_root)s;
@@ -291,6 +282,9 @@ server {
                         if not isinstance(webapp_settings, list):
                             webapp_settings = [webapp_settings]
                         for webapp in webapp_settings:
+                            if 'app_name' not in webapp:
+                                webapp.update({
+                                    'app_name': domain.split('.')[0]})
                             webapps += self.webapp_template % webapp
                             forwards += self.forward_template % webapp
                     port = settings.get('port', '80')
@@ -336,19 +330,21 @@ server {
         certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         setup.postinst.shellCommand([
-            '[', '-f', dhparam_path, ']', '||', 'openssl', 'dhparam', '-out',
-            dhparam_path, '4096'])
+            '[', '-f', dhparam_path, ']', '||', '/usr/bin/openssl',
+            'dhparam', '-out', dhparam_path, '4096'])
         setup.postinst.shellCommand([
             'setsebool', '-P', 'httpd_can_network_connect', '1'])
         return complete
 
 
     def site_conf(self, domain, context, config_template,
-                  webapps="", forwards=""):
+                  webapps="", forwards="", conf_name=None):
         """
         Generate a configuration file for the site.
         """
         app_name =  domain.split('.')[0]
+        if conf_name is None:
+            conf_name = app_name
         document_root = os.path.join(
             os.sep, 'var', 'www', app_name, 'reps', app_name, 'htdocs')
         org_proxy_params, new_proxy_params = setup.stageFile(os.path.join(
@@ -362,9 +358,42 @@ server {
         cert_path = os.path.join(certs_top, '%s.crt' % domain)
         wildcard_key_path = os.path.join(key_top, 'wildcard-%s.key' % domain)
         wildcard_cert_path = os.path.join(certs_top, 'wildcard-%s.crt' % domain)
+
+        # If no TLS certificate is present, we will create a self-signed one,
+        # this in order to start nginx correctly.
+        wildcard_csr_path = wildcard_cert_path.replace('.crt', '.csr')
+        domain_info = os.path.join(
+            os.path.dirname(setup.postinst.postinst_run_path),
+            '%s.info' % domain)
+        _, domain_info_path = stageFile(domain_info, context)
+        with open(domain_info_path, 'w') as domain_info_file:
+            domain_info_file.write("US\nCalifornia\nSan Francisco\n"\
+                "Dummy Corp\n\n*.%(domain)s\nsupport@%(email)s\n\n" %
+            {'domain': domain, 'email': 'root@localhost.localdomain'})
+        setup.postinst.shellCommand([
+            '[', '-f', wildcard_key_path, ']', '||', '/usr/bin/openssl',
+            'req', '-new', '-newkey', 'rsa:2048', '-nodes',
+            '-keyout', wildcard_key_path, '-out', wildcard_csr_path,
+            '<', domain_info_path])
+        setup.postinst.shellCommand([
+            '[', '-f', wildcard_cert_path, ']', '||', '/usr/bin/openssl',
+            'x509', '-req', '-days', 15,
+            '-in', wildcard_csr_path,
+            '-signkey', wildcard_key_path,
+            '-out', wildcard_cert_path])
+        setup.postinst.shellCommand([
+            '[', '-f', key_path, ']', '||', '/usr/bin/ln', '-s',
+            wildcard_key_path, key_path])
+        setup.postinst.shellCommand([
+            '[', '-f', cert_path, ']', '||', '/usr/bin/ln', '-s',
+            wildcard_cert_path, cert_path])
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         org_site_conf, new_site_conf = setup.stageFile(self.conf_path(
-            domain, context.host(), context.value('etcDir')), context=context)
+            domain, context.host(), context.value('etcDir')),
+            context=context)
+        # XXX increase server name hash with amazon host names.
+        # server_names_hash_bucket_size 64;
+        # XXX also to fix warn:     ``types_hash_bucket_size 256;``
         with open(new_site_conf, 'w') as site_conf_file:
             site_conf_file.write(config_template % {
                 'app_name': app_name,
