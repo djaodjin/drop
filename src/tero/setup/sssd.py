@@ -76,7 +76,7 @@ reconnection_retries = 3
 
 [domain/LDAP]
 # Debugging:
-debug_level = 9
+debug_level = 1
 
 ldap_tls_reqcert = demand
 # Note that enabling enumeration will have a moderate performance impact.

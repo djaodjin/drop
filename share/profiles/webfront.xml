@@ -84,6 +84,13 @@ Name of the machine hosting the LDAP server.
           </webapp>
         </extra>
       </dep>
+      <!-- because we use this profile for jenkins workers -->
+      <dep name="java-1.8.0-openjdk-headless">
+        <bin>java</bin>
+      </dep>
+      <dep name="wget">
+        <bin>wget</bin>
+      </dep>
     </package>
   </project>
   <project name="openldap-clients">

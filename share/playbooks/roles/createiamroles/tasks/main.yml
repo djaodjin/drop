@@ -1,22 +1,120 @@
 ---
 # IAM roles
 #
-# It seems Ansible does not yet support assume-role-policy-document
-# 2016/03/12: https://github.com/ansible/ansible-modules-core/issues/2468
-# When it does we can use code like so:
+# We create X roles
+#  - castle-gate    instances which are web facing
+#  - vault          instances which holds databases
+#  - kitchen-door   instances which behaves as sally ports for ssh logins
+#  - courtyard      instances with application logic (behind web facing proxy)
+#  - watch-tower    instances wil e-mail functionality
 #
-#- name: Create 'kitchen-door' role
-#  local_action:
-#     module: iam
-#     name: "{{kitchen_door}}"
-#     iam_type: role
-#     state: present
+#  - backstage      instances with special privileges to manage infrastructure
+#  - jenkins-worker instances to build Docker containers
 #
-# In the meantime, the following will fail if the roles already exit.
-# They can be deleted through ``deleteiamroles``.
+# The following code started to work after upgrading to Ansible 2.3.0
 
-- include: kitchen-door.yml
-- include: castle-gate.yml
-- include: vault.yml
-- include: courtyard.yml
-- include: watch-tower.yml
+
+# castle-gate
+# -----------
+- name: Create IAM role for castle-gate
+  iam_role:
+    region: "{{aws_region}}"
+    name: "{{castle_gate}}"
+    assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
+    state: present
+
+- name: Attach policy to the castle-gate role
+  iam_policy:
+    region: "{{aws_region}}"
+    iam_type: role
+    iam_name: "{{castle_gate}}"
+    policy_name: "WebFront"
+    state: present
+    policy_json: "{{lookup('file', 'web-front.json')}}"
+
+
+# courtyard
+# -----------
+- name: Create IAM role for courtyard
+  iam_role:
+    region: "{{aws_region}}"
+    name: "{{courtyard}}"
+    assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
+    state: present
+
+- name: Attach policy to the courtyard role
+  iam_policy:
+    region: "{{aws_region}}"
+    iam_type: role
+    iam_name: "{{courtyard}}"
+    policy_name: "WebApps"
+    state: present
+    policy_json: "{{lookup('template', 'web-apps.json.j2')}}"
+
+
+# kitchen-door
+# -----------
+- name: Create IAM role for kitchen-door
+  iam_role:
+    region: "{{aws_region}}"
+    name: "{{kitchen_door}}"
+    assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
+    state: present
+
+
+# vault
+# -----
+- name: Create IAM role for vault
+  iam_role:
+    region: "{{aws_region}}"
+    name: "{{vault}}"
+    assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
+    state: present
+
+
+# watch-tower
+# -----------
+- name: Create IAM role for watch-tower
+  iam_role:
+    region: "{{aws_region}}"
+    name: "{{watch_tower}}"
+    assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
+    state: present
+
+
+# jenkins-worker
+# --------------
+- name: Create IAM role for jenkins workers
+  iam_role:
+    region: "{{aws_region}}"
+    name: "{{tag_prefix}}jenkins-worker"
+    assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
+    state: present
+
+- name: Attach BuildDocker policy to the jenkins-worker role
+  iam_policy:
+    region: "{{aws_region}}"
+    iam_type: role
+    iam_name: "{{tag_prefix}}jenkins-worker"
+    policy_name: "BuildDocker"
+    state: present
+    policy_json: "{{lookup('file', 'build-docker.json')}}"
+
+
+# backstage
+# ---------
+- name: Create IAM role for backstage
+  iam_role:
+    region: "{{aws_region}}"
+    name: "{{backage}}"
+    assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
+    state: present
+
+- name: Attach JenkinsServer policy to backstage role
+  iam_policy:
+    region: "{{aws_region}}"
+    iam_type: role
+    iam_name: "{{backage}}"
+    policy_name: "JenkinsServer"
+    state: present
+    policy_json: "{{lookup('template', 'jenkins-server.json.j2')}}"
