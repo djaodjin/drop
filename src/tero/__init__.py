@@ -42,6 +42,7 @@ invoking the script.
   dwsSmtpLogin=
   dwsSmtpPasswd=
 """
+from __future__ import unicode_literals
 
 # Primary Author(s): Sebastien Mirolo <smirolo@djaodjin.com>
 #
@@ -383,7 +384,7 @@ class Context(object):
         '''Returns a project name derived out of the current directory.'''
         if not self.build_top_relative_cwd:
             self.environ['buildTop'].default = os.path.dirname(os.getcwd())
-            log_info(u"no workspace configuration file could be"\
+            log_info("no workspace configuration file could be"\
                " found from %(cwd)s"\
                " all the way up to /. A new one, called %(config)s,"\
                " will be created in *buildTop* after that path is set."
@@ -1143,12 +1144,12 @@ class DependencyGenerator(Unserializer):
             remains = next_remains
             next_remains = []
         if False:
-            log_info(u"!!!remains:")
+            log_info("!!!remains:")
             for step in remains:
                 is_vert = ''
                 if step.name in self.vertices:
                     is_vert = '*'
-                log_info(u"!!!\t%s %s %s"
+                log_info("!!!\t%s %s %s"
                          % (step.name, str(is_vert),
                             str([pre.name for pre in step.prerequisites])))
         loop_cnt = 0
@@ -1189,9 +1190,9 @@ class DependencyGenerator(Unserializer):
             remains = next_remains
             next_remains = []
         if False:
-            log_info(u"!!! => ordered:")
+            log_info("!!! => ordered:")
             for ordered_step in ordered:
-                log_info(u"%s -> %s" % (ordered_step.name,
+                log_info("%s -> %s" % (ordered_step.name,
                     [step.name for step in ordered_step.prerequisites]))
         return ordered
 
@@ -1430,7 +1431,7 @@ class Variable(object):
             self.value = os.environ[self.name]
         if self.value != None:
             return False
-        log_info(u"\n%s:" % self.name, context=context)
+        log_info("\n%s:" % self.name, context=context)
         log_info(self.descr, context=context)
         if USE_DEFAULT_ANSWER:
             self.value = self.default
@@ -1438,8 +1439,8 @@ class Variable(object):
             default_prompt = ""
             if self.default:
                 default_prompt = " [" + self.default + "]"
-            self.value = prompt(u"Enter a string %s: " % default_prompt)
-        log_info(u"%s set to %s" % (self.name, str(self.value)),
+            self.value = prompt("Enter a string %s: " % default_prompt)
+        log_info("%s set to %s" % (self.name, str(self.value)),
             context=context)
         return True
 
@@ -1523,7 +1524,7 @@ class Pathname(Variable):
         if self.name == 'logDir':
             global LOGGER_BUFFERING_COUNT
             LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT + 1
-        log_info(u'\n%s:\n%s' % (self.name, self.descr), context=context)
+        log_info("\n%s:\n%s" % (self.name, self.descr), context=context)
         if (not default
             or (not ((':' in default) or default.startswith(os.sep)))):
             # If there are no default values or the default is not
@@ -1568,7 +1569,7 @@ class Pathname(Variable):
                 dirname = os.path.join(base_value, leaf_dir)
         else:
             if not USE_DEFAULT_ANSWER:
-                dirname = prompt(u"Enter a pathname [%s]: " % default)
+                dirname = prompt("Enter a pathname [%s]: " % default)
             if dirname == '':
                 dirname = default
         if not ':' in dirname:
@@ -1576,13 +1577,13 @@ class Pathname(Variable):
         self.value = dirname
         if not ':' in dirname:
             if not os.path.exists(self.value):
-                log_info(u"%s does not exist." % self.value, context=context)
+                log_info("%s does not exist." % self.value, context=context)
                 # We should not assume the pathname is a directory,
                 # hence we do not issue a os.makedirs(self.value)
         # Now it should be safe to write to the logfile.
         if self.name == 'logDir':
             LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
-        log_info(u'%s set to %s' % (self.name, self.value), context=context)
+        log_info("%s set to %s" % (self.name, self.value), context=context)
         return True
 
 
@@ -1620,7 +1621,7 @@ class Multiple(Variable):
         if len(self.value) > 0:
             descr += " (constrained: " + ", ".join(self.value) + ")"
         self.value = select_multiple(descr, choices)
-        log_info(u'%s set to %s' % (self.name, ', '.join(self.value)),
+        log_info("%s set to %s" % (self.name, ', '.join(self.value)),
             context=context)
         self.choices = []
         return True
@@ -1658,7 +1659,7 @@ class Single(Variable):
         if self.value:
             return False
         self.value = select_one(self.descr, self.choices)
-        log_info(u'%s set to%s' % (self.name, self.value), context=context)
+        log_info("%s set to%s" % (self.name, self.value), context=context)
         return True
 
     def constrain(self, variables):
@@ -2342,7 +2343,7 @@ class YumInstallStep(InstallStep):
 'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
                 admin=True, noexecute=context.nonative)
             update_cmd, install_cmd = self.install_commands(managed, context)
-            log_info(u"update, then run: %s" % ' '.join(install_cmd[0]),
+            log_info("update, then run: %s" % ' '.join(install_cmd[0]),
                 context=context)
             shell_command(update_cmd[0],
                 admin=update_cmd[1], noexecute=update_cmd[2])
@@ -2506,7 +2507,7 @@ class Repository(object):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
             if len(patches) > 0:
-                log_info(u"######## patching %s..." % name, context=context)
+                log_info("######## patching %s..." % name, context=context)
                 prev = os.getcwd()
                 os.chdir(context.src_dir(name))
                 shell_command(
@@ -2560,7 +2561,7 @@ class GitRepository(Repository):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
             if len(patches) > 0:
-                log_info(u"######## patching %s..." % name, context=context)
+                log_info("######## patching %s..." % name, context=context)
                 os.chdir(context.src_dir(name))
                 shell_command([find_git(context), 'am', '-3', '-k',
                     os.path.join(context.patch_dir(name), '*.patch')])
@@ -3233,8 +3234,8 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
             continue
         link_name, suffix = link_build_name(name_pat, 'bin', variant)
         if variant:
-            log_interactive(u"%s/" % variant)
-        log_interactive(u"%s... " % name_pat)
+            log_interactive("%s/" % variant)
+        log_interactive("%s... " % name_pat)
         candidate = None
         if os.path.islink(link_name):
             # If we already have a symbolic link in the binBuildDir,
@@ -3248,7 +3249,7 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
             binpath = os.path.join('/Applications', name_pat)
             if os.path.isdir(binpath):
                 candidate = binpath
-                log_info(u"yes")
+                log_info("yes")
         else:
             for path in droots:
                 for binname in find_first_files(path, name_pat):
@@ -3279,16 +3280,16 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
                                 log_info(str(version))
                                 break
                             else:
-                                log_info(u"excluded (%s)" % str(numbers[0]))
+                                log_info("excluded (%s)" % str(numbers[0]))
                         else:
                             candidate = binpath
-                            log_info(u"yes")
+                            log_info("yes")
                             break
                 if candidate is not None:
                     break
         results.append((name_pat, candidate))
         if candidate is None:
-            log_info(u"no")
+            log_info("no")
             complete = False
     return results, version, complete
 
@@ -3299,7 +3300,7 @@ def find_cache(context, names):
     results = {}
     for pathname in names:
         name = os.path.basename(_urlparse(pathname).path)
-        log_interactive(u"%s..." % name)
+        log_interactive("%s..." % name)
         local_name = context.local_dir(pathname)
         if os.path.isfile(local_name):
             # It is required for fetching asset directories within a source
@@ -3311,13 +3312,13 @@ def find_cache(context, names):
                         sha1sum = hashlib.sha1(local_file.read()).hexdigest()
                     if sha1sum == expected:
                         # checksum are matching
-                        log_info(u"matched (sha1)", context=context)
+                        log_info("matched (sha1)", context=context)
                     else:
-                        log_info(u"corrupted? (sha1)", context=context)
+                        log_info("corrupted? (sha1)", context=context)
                 else:
-                    log_info(u"yes", context=context)
+                    log_info("yes", context=context)
             else:
-                log_info(u"yes", context=context)
+                log_info("yes", context=context)
         elif os.path.isdir(local_name):
             # We cannot assume existing directories are up-to-date otherwise
             # we will not download recent resources in htdocs/.
@@ -3326,15 +3327,15 @@ def find_cache(context, names):
             # building a Docker container when the credentials to the data
             # where not copied inside the container.
             if NO_FETCH:
-                log_info(u"yes", context=context)
+                log_info("yes", context=context)
             else:
-                log_info(u"yes (update anyway)", context=context)
+                log_info("yes (update anyway)", context=context)
                 results[pathname] = names[pathname]
         else:
             if NO_FETCH:
-                log_info(u"no (but won't fetch)", context=context)
+                log_info("no (but won't fetch)", context=context)
             else:
-                log_info(u"no", context=context)
+                log_info("no", context=context)
                 results[pathname] = names[pathname]
     return results
 
@@ -3428,8 +3429,8 @@ def find_data(dirname, names,
             continue
 
         if variant:
-            log_interactive(u"%s/" % variant)
-        log_interactive(u"%s... " % name_pat)
+            log_interactive("%s/" % variant)
+        log_interactive("%s... " % name_pat)
         link_num = 0
         if name_pat.startswith('.*' + os.sep):
             link_num = len(name_pat.split(os.sep)) - 2
@@ -3442,7 +3443,7 @@ def find_data(dirname, names,
         if len(full_names) > 0:
             try:
                 os.stat(full_names[0])
-                log_info(u"yes")
+                log_info("yes")
                 results.append((name_pat, full_names[0]))
                 found = True
             except IOError:
@@ -3451,7 +3452,7 @@ def find_data(dirname, names,
             for base in droots:
                 full_names = find_files(base, name_pat)
                 if len(full_names) > 0:
-                    log_info(u"yes")
+                    log_info("yes")
                     tokens = full_names[0].split(os.sep)
                     linked = os.sep.join(tokens[:len(tokens) - link_num])
                     # DEPRECATED: results.append((name_pat, linked))
@@ -3459,7 +3460,7 @@ def find_data(dirname, names,
                     found = True
                     break
         if not found:
-            log_info(u"no")
+            log_info("no")
             results.append((name_pat, None))
             complete = False
     return results, None, complete
@@ -3511,8 +3512,8 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 (name_pat, os.path.realpath(os.path.join(link_name, suffix))))
             continue
         if variant:
-            log_interactive(u"%s/" % variant)
-        log_interactive(u"%s... " % name_pat)
+            log_interactive("%s/" % variant)
+        log_interactive("%s... " % name_pat)
         found = False
         for include_sys_dir in include_sys_dirs:
             includes = []
@@ -3577,7 +3578,7 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                     version = includes[0][1]
                     log_info(version)
                 else:
-                    log_info(u"yes")
+                    log_info("yes")
                 results.append((name_pat, includes[0][0]))
                 name_pat_parts = name_pat.split(os.sep)
                 include_file_parts = includes[0][0].split(os.sep)
@@ -3595,7 +3596,7 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 found = True
                 break
         if not found:
-            log_info(u"no")
+            log_info("no")
             results.append((name_pat, None))
             complete = False
     return results, version, complete
@@ -3603,12 +3604,12 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
 
 def found_lib_suffix(candidate, pat):
     if candidate is None:
-        return u"no"
+        return "no"
     look = re.match(r'.*%s(.+)' % pat, candidate)
     if look:
         suffix = look.group(1)
         return suffix
-    return u"yes (no suffix?)"
+    return "yes (no suffix?)"
 
 
 def find_lib(names, search_path, build_top, versions=None, variant=None):
@@ -3688,8 +3689,8 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
                 results.append((name_pat, candidate))
                 break
         if variant:
-            log_interactive(u"%s/" % variant)
-        log_interactive(u"%s..." % name_pat)
+            log_interactive("%s/" % variant)
+        log_interactive("%s..." % name_pat)
         if candidate is not None:
             log_info(found_lib_suffix(candidate, pat=lib_base_pat))
             continue
@@ -3713,9 +3714,9 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
                 absolute_path_base = os.path.dirname(absolute_path)
                 absolute_path_parts = os.path.basename(absolute_path).split('.')
                 if len(absolute_path_parts) > 1:
-                    absolute_path_ext = u".%s" % absolute_path_parts[1]
+                    absolute_path_ext = ".%s" % absolute_path_parts[1]
                 else:
-                    absolute_path_ext = u""
+                    absolute_path_ext = ""
                 if len(numbers) == 1:
                     excluded = False
                     if excludes:
@@ -3884,16 +3885,15 @@ def find_boot_bin(name_pat, package=None, context=None, dbindex=None):
 def find_gem(context):
     gem_package = None
     if context.host() in APT_DISTRIBS:
-        gem_package = u'rubygems'
-    find_boot_bin(u'(gem).*', package=gem_package, context=context)
+        gem_package = 'rubygems'
+    find_boot_bin('(gem).*', package=gem_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'gem')
 
 
 def find_git(context):
     executable = os.path.join(context.bin_build_dir(), 'git')
     if not os.path.lexists(executable):
-        dbindex = IndexProjects(context,
-        '''<?xml version="1.0" ?>
+        dbindex = IndexProjects(context, """<?xml version="1.0" ?>
 <projects>
   <project name="dws">
     <repository>
@@ -3904,8 +3904,8 @@ def find_git(context):
     </repository>
   </project>
 </projects>
-''')
-        executables, _, complete = find_bin([(u'git', None)],
+""")
+        executables, _, complete = find_bin([('git', None)],
             context.search_path('bin'), context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
             validate_controls(
@@ -3922,8 +3922,7 @@ def find_npm(context):
     version = '0.10.35'
     build_npm = os.path.join(context.value('buildTop'), 'bin', 'npm')
     if not os.path.lexists(build_npm):
-        dbindex = IndexProjects(context,
-        '''<?xml version="1.0" ?>
+        dbindex = IndexProjects(context, """<?xml version="1.0" ?>
 <projects>
   <project name="nvm">
     <repository>
@@ -3936,7 +3935,7 @@ nvm install %s
     </repository>
   </project>
 </projects>
-''' % version)
+""" % version)
         executables, _, complete = find_bin(
             [('node', None), ('npm', None)],
             context.search_path('bin'), context.value('buildTop'))
@@ -3965,7 +3964,7 @@ def find_pip(context):
     pip_package = None
     if context.host() in YUM_DISTRIBS:
         pip_package = 'python-pip'
-    find_boot_bin(u'(pip).*', package=pip_package, context=context)
+    find_boot_bin('(pip).*', package=pip_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'pip')
 
 
@@ -3975,7 +3974,7 @@ def find_rsync(host, context=None, relative=True, admin=False,
     manager if it is not. rsync is a little special since it is used
     directly by this script and the script is not always installed
     through a project.'''
-    rsync = find_boot_bin(u'rsync', context=context)
+    rsync = find_boot_bin('rsync', context=context)
 
     # We are accessing the remote machine through a mounted
     # drive or through ssh.
@@ -4005,7 +4004,7 @@ def find_rsync(host, context=None, relative=True, admin=False,
 
 def find_virtualenv(context):
     virtual_package = 'python-virtualenv'
-    find_boot_bin(u"(virtualenv).*", package=virtual_package, context=context)
+    find_boot_bin("(virtualenv).*", package=virtual_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'virtualenv')
 
 def name_pat_regex(name_pat):
@@ -4018,7 +4017,7 @@ def name_pat_regex(name_pat):
     if not pat.startswith('.*'):
         # If we don't add the separator here we will end-up with unrelated
         # links to automake, pkmake, etc. when we are looking for "make".
-        pat = u".*" + os.sep + pat
+        pat = ".*" + os.sep + pat
     return re.compile(pat + '$')
 
 
@@ -4117,7 +4116,7 @@ def fetch(context, filenames,
             localname = context.local_dir(remotename)
             if not os.path.exists(os.path.dirname(localname)):
                 os.makedirs(os.path.dirname(localname))
-            log_info(u"fetching %s..." % remotename, context=context)
+            log_info("fetching %s..." % remotename, context=context)
             remote = urlopen(Request(remotename))
             local = open(localname, 'w')
             local.write(remote.read())
@@ -4716,7 +4715,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
     if not (noexecute or DO_NOT_EXECUTE):
         log_info(log_cmdline, nolog=nolog)
     else:
-        log_info(u"(noexecute) %s" % log_cmdline, nolog=nolog)
+        log_info("(noexecute) %s" % log_cmdline, nolog=nolog)
     if not (noexecute or DO_NOT_EXECUTE):
         prev_euid = None
         prev_egid = None
@@ -4733,7 +4732,7 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
                                stderr=subprocess.STDOUT,
                                close_fds=True)
         line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
-        while line != u'':
+        while line != "":
             if pat and re.match(pat, line):
                 filtered_output += [line]
             log_info(line[:-1], nolog=nolog)
@@ -4854,9 +4853,9 @@ def validate_controls(dgen, dbindex, graph=False,
 
     nb_updated_projects = len(UpdateStep.updated_sources)
     if nb_updated_projects > 0:
-        log_info(u"%d updated project(s)." % nb_updated_projects)
+        log_info("%d updated project(s)." % nb_updated_projects)
     else:
-        log_info(u"all project(s) are up-to-date.")
+        log_info("all project(s) are up-to-date.")
     return nb_updated_projects
 
 
@@ -5147,7 +5146,7 @@ def log_interactive(message):
 
 def log_info(message, context=None, nolog=None, *args, **kwargs):
     '''Write a info message onto stdout and into the log file'''
-    message_line = u"%s\n" % message
+    message_line = "%s\n" % message
     sys.stdout.write(message_line.encode(DEFAULT_ENCODING))
     if nolog is None:
         nolog = NO_LOG
@@ -5739,7 +5738,7 @@ def pub_patch(args):
     prev = os.getcwd()
     for rep in reps:
         patches = []
-        log_info(u"######## generating patch for project %s" % rep)
+        log_info("######## generating patch for project %s" % rep)
         os.chdir(CONTEXT.src_dir(rep))
         patch_dir = CONTEXT.patch_dir(rep)
         if not os.path.exists(patch_dir):
@@ -5863,19 +5862,19 @@ def pub_update(args):
                     update.run(CONTEXT)
                     log_footer(update.title)
                 except Error as err:
-                    log_info(u"warning: cannot update repository from %s"
+                    log_info("warning: cannot update repository from %s"
                         % str(update.rep.url))
                     log_footer(update.title, errcode=err.code)
             else:
                 ERRORS += [name]
         if len(ERRORS) > 0:
-            raise Error(u"%s is/are not project(s) under source control."
+            raise Error("%s is/are not project(s) under source control."
                         % ' '.join(ERRORS))
         nb_updated_projects = len(UpdateStep.updated_sources)
         if nb_updated_projects > 0:
-            log_info(u"%d updated project(s)." % nb_updated_projects)
+            log_info("%d updated project(s)." % nb_updated_projects)
         else:
-            log_info(u"all project(s) are up-to-date.")
+            log_info("all project(s) are up-to-date.")
 
 
 def pub_upstream(args):
@@ -5961,7 +5960,7 @@ def select_one(description, choices, sort=True):
         if USE_DEFAULT_ANSWER:
             selection = "1"
         else:
-            selection = prompt(u"Enter a single number [1]: ")
+            selection = prompt("Enter a single number [1]: ")
             if selection == "":
                 selection = "1"
         try:
@@ -5989,12 +5988,12 @@ def select_multiple(description, selects):
     choices = [['all']] + selects
     while len(choices) > 1 and not done:
         show_multiple(description, choices)
-        log_info(u"%d) done", len(choices) + 1)
+        log_info("%d) done", len(choices) + 1)
         if USE_DEFAULT_ANSWER:
             selection = "1"
         else:
             selection = prompt(
-                u"Enter a list of numbers separated by spaces [1]: ")
+                "Enter a list of numbers separated by spaces [1]: ")
             if len(selection) == 0:
                 selection = "1"
         # parse the answer for valid inputs
@@ -6028,7 +6027,7 @@ def select_yes_no(description):
     '''Prompt for a yes/no answer.'''
     if USE_DEFAULT_ANSWER:
         return True
-    yes_no = prompt(u"%s [Y/n]? " % description)
+    yes_no = prompt("%s [Y/n]? " % description)
     if yes_no == '' or yes_no == 'Y' or yes_no == 'y':
         return True
     return False
@@ -6056,7 +6055,7 @@ def show_multiple(description, choices):
             widths[col_index] = max(widths[col_index], len(col) + 2)
         displayed += [line]
     # Ask user to review selection
-    log_info(u'%s' % description)
+    log_info("%s" % description)
     for project in displayed:
         for col_index, col in enumerate(project):
             log_info(col.ljust(widths[col_index]))
@@ -6212,12 +6211,12 @@ def main(args):
 
     if options.mailto and len(options.mailto) > 0 and LOG_PAT:
         logs = find_files(CONTEXT.log_path(''), LOG_PAT)
-        log_info(u"forwarding logs %s..." % u' '.join(logs))
+        log_info("forwarding logs %s..." % ' '.join(logs))
         sendmail(createmail('build report', logs), options.mailto)
     if options.rsyncto and len(options.rsyncto) > 0 and LOG_PAT:
         log_dir = CONTEXT.log_path('')
         logs = find_files(log_dir, LOG_PAT)
-        log_info(u"uploading logs %s..." % u' '.join(logs))
+        log_info("uploading logs %s..." % ' '.join(logs))
         logs = [log.replace(log_dir, log_dir + './') for log in logs]
         for remote_path in options.rsyncto:
             upload(logs, remote_path)
