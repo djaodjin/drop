@@ -314,13 +314,15 @@ def run_docker(
         raise
 
 
-def shutdown_cluster(cluster_name, mounts, key_path=None):
+def shutdown_cluster(cluster_name, mounts,
+            key_path=None, delete_keypair=False):
     """
     Copy the localstate_dir data files (i.e. *mounts*) and shuts down
     the cluster *cluster_name*.
     """
     if not key_path:
-        key_path = "%s_rsa" % cluster_name
+        key_path = os.path.join(
+            os.path.expanduser('~'), '.ssh', '%s_rsa' % cluster_name)
 
     ecs = boto3.client('ecs', region_name=DEFAULT_REGION)
     ec2 = boto3.client('ec2', region_name=DEFAULT_REGION)
@@ -352,9 +354,6 @@ def shutdown_cluster(cluster_name, mounts, key_path=None):
     instances = [instance for instance in instances
                  if instance.meta.data
                  if instance.state.get('Name') == 'running']
-
-    keypair_names = [instance.key_name for instance in instances
-                     if instance.key_name.startswith(cluster_name)]
 
     for task_arn in running_task_arns:
         LOGGER.info('stopping task %s on cluster %s', task_arn, cluster_name)
@@ -414,9 +413,12 @@ def shutdown_cluster(cluster_name, mounts, key_path=None):
 
         ssh.close()
 
-    for keyname in keypair_names:
-        LOGGER.info('deleting key pair %s', keyname)
-        ec2.delete_key_pair(KeyName=keyname)
+    if delete_keypair:
+        keypair_names = [instance.key_name for instance in instances
+            if instance.key_name.startswith(cluster_name)]
+        for keyname in keypair_names:
+            LOGGER.info('deleting key pair %s', keyname)
+            ec2.delete_key_pair(KeyName=keyname)
 
     for instance in instances:
         instance.terminate()
