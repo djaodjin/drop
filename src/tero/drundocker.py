@@ -174,7 +174,8 @@ def run_docker(
         route53 = boto3.client('route53')
 
         if not key_path:
-            key_path = "%s_rsa" % cluster_name
+            key_path = os.path.join(
+                os.path.expanduser('~'), '.ssh', '%s_rsa' % cluster_name)
         if not os.path.exists(key_path):
             shell_command(['/usr/bin/ssh-keygen', '-q', '-b', '2048',
                 '-N', '""', '-t', 'rsa', '-f', key_path], nolog=True)
