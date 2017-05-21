@@ -1,0 +1,19 @@
+---
+# Creation of S3 bucket deployutils
+- name: Create deployutils, S3 bucket that holds identities files
+  local_action:
+    module: s3
+    bucket: "{{deployutils_bucket}}"
+    mode: create
+    region: "{{aws_region}}"
+
+- name: Generate S3 policy from template
+  local_action:
+    module: copy
+    content: "{{ lookup('template', '../files/s3-policy.j2')}}"
+    dest: ./s3-policy.json
+
+- name: Put S3 bucket policy file
+  local_action:
+    module: command
+      aws s3api put-bucket-policy --policy "file://s3-policy.json" --bucket "{{deployutils_bucket}}"

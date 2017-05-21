@@ -188,6 +188,7 @@ def duplicate(src_name, dest, vm_mac=None):
             if pathname.endswith('.log'):
                 # Otherwise the IP address from the base image is cached.
                 os.remove(pathname)
+                continue
             elif pathname.endswith('.vmx'):
                 os.chmod(pathname, 0755)
             elif (pathname.startswith(src_name + '-s')

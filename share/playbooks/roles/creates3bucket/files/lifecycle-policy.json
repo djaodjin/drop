@@ -1,0 +1,15 @@
+{
+ "Rules": [
+ {
+    "ID": "expire-logs",
+    "Prefix": "var/log/",
+    "Status": "Enabled",
+    "Transition": {
+      "Days": 90,
+      "StorageClass": "GLACIER"
+    },
+    "Expiration" : {
+      "Days": 365
+    }
+ }]
+}

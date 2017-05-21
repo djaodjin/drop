@@ -1,0 +1,44 @@
+{
+   "Version":"2012-10-17",
+   "Id":"DeployUtilsPolicy",
+   "Statement":[
+      {
+         "Sid": "Stmt1426564203455",
+         "Effect": "Allow",
+         "Principal": {
+           "AWS": [
+              "arn:aws:iam::{{aws_account}}:role/{{castle_gate}}",
+              "arn:aws:iam::{{aws_account}}:role/{{courtyard}}",
+              "arn:aws:iam::{{aws_account}}:role/{{kitchen_door}}",
+              "arn:aws:iam::{{aws_account}}:role/{{vault}}",
+              "arn:aws:iam::{{aws_account}}:role/{{watch_tower}}"
+            ]
+         },
+         "Action": [
+           "s3:ListBucket",
+           "s3:GetObjectAcl",
+           "s3:GetObject"
+         ],
+         "Resource": [
+           "arn:aws:s3:::{{deployutils_bucket}}",
+           "arn:aws:s3:::{{deployutils_bucket}}/*"
+           ]
+      },
+      {
+         "Sid":"DenyUnEncryptedObjectUploads",
+         "Effect":"Deny",
+         "Principal":{
+           "AWS" : [
+              "arn:aws:iam::{{aws_account}}:user/{{deployuser}}"
+           ]
+         },
+         "Action":"s3:PutObject",
+         "Resource":"arn:aws:s3:::{{deployutils_bucket}}/*",
+         "Condition":{
+            "StringNotEquals":{
+               "s3:x-amz-server-side-encryption":"AES256"
+            }
+         }
+      }
+   ]
+}

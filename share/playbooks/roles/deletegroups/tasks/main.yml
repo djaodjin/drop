@@ -1,0 +1,54 @@
+---
+# First we need to break the dependency circles otherwise EC2 will prevent
+# us from deleting the groups.
+
+- include_vars: group_vars/dynamic
+
+- name: Update 'castle-gate' security group
+  local_action:
+     module: ec2_group
+     name: "{{castle_gate}}"
+     vpc_id: "{{vpc_id}}"
+     description: "Web facing services"
+     region: "{{aws_region}}"
+     rules:
+
+- name: Delete 'vault' security group
+  local_action:
+    module: ec2_group
+    name: "{{vault}}"
+    description: "Email services"
+    region: "{{aws_region}}"
+    state: absent
+
+- name: Delete 'watch-tower' security group
+  local_action:
+    module: ec2_group
+    name: "{{watch_tower}}"
+    description: "Email services"
+    region: "{{aws_region}}"
+    state: absent
+
+- name: Delete 'courtyard' security group
+  local_action:
+    module: ec2_group
+    name: "{{courtyard}}"
+    description: "Transient workers"
+    region: "{{aws_region}}"
+    state: absent
+
+- name: Delete 'kitchen-door' security group
+  local_action:
+    module: ec2_group
+    name: "{{kitchen_door}}"
+    description: "Monitoring services"
+    region: "{{aws_region}}"
+    state: absent
+
+- name: Delete 'castle-gate' security group
+  local_action:
+    module: ec2_group
+    name: "{{castle_gate}}"
+    description: "Web facing services"
+    region: "{{aws_region}}"
+    state: absent

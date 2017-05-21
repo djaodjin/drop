@@ -1,7 +1,0 @@
----
-- include_vars: group_vars/dynamic
-
-- include: vault.yml
-- include: kitchen-door.yml
-- include: castle-gate.yml
-- include: courtyard.yml

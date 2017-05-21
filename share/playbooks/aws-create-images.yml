@@ -1,0 +1,10 @@
+- name: Create and configure EC2 instances to be used as AMIs
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars:
+    - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
+
+  roles:
+    - create_base_web
+    - create_base_dbs

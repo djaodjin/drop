@@ -1,0 +1,20 @@
+# Create the AMI after the base EC2 instance was configured.
+
+- name: Wait for configuration of EC2 instance completed
+  local_action:
+    module: command
+      ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i {{lookup('env', 'HOME')}}/.ssh/{{key_name}} fedora@{{dbs_base.instances[0].public_ip}} sh -c "'while [ ! -f /home/fedora/.dbs-done ]; do sleep 30; done'"
+
+- name: Create AMI for databases
+  local_action:
+    module: ec2_ami
+    region: "{{aws_region}}"
+    instance_id: "{{dbs_base_device_id}}"
+    name: "dbs-{{dbs_base_device_id}}"
+    description: "LDAP and SQL Databases"
+    wait: yes
+  register: dbs_ami
+
+- debug: msg="{{dbs_ami}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^dbs_ami_id:' line='dbs_ami_id: {{dbs_ami.image_id}}'"

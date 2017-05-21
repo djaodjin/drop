@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -42,17 +42,58 @@ invoking the script.
   dwsSmtpLogin=
   dwsSmtpPasswd=
 """
+from __future__ import unicode_literals
 
-# Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
+# Primary Author(s): Sebastien Mirolo <smirolo@djaodjin.com>
 #
 # Requires Python 2.7 or above.
 
 __version__ = None
 
-import datetime, hashlib, inspect, json, logging, logging.config, re, optparse
-import os, shutil, socket, stat, subprocess, sys, tempfile, urllib2, urlparse
+import datetime, getpass, hashlib, inspect, json, locale
+import logging, logging.config
+import re, optparse, os, shutil, socket, stat, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
-import cStringIO
+
+# Minimal compatibility Python2 / Python3
+PY3 = sys.version_info[0] == 3
+
+if sys.stdout.isatty():
+    DEFAULT_ENCODING = sys.stdout.encoding
+else:
+    DEFAULT_ENCODING = locale.getpreferredencoding()
+
+try:
+    from io import StringIO
+except ImportError:
+    from cStringIO import StringIO
+try:
+    from urllib.request import Request, urlopen
+    from urllib.parse import urlparse
+except ImportError:
+    from urllib2 import Request, urlopen
+    from urlparse import urlparse
+
+if PY3:
+    def _iteritems(dct, **kw):
+        return iter(dct.items(**kw))
+else:
+    def _iteritems(dct, **kw):
+        return dct.iteritems(**kw)
+
+def _urlparse(location):
+    return urlparse(location)
+
+def prompt(message):
+    '''If the script is run through a ssh command, the message would not
+    appear if passed directly in raw_input.'''
+    log_interactive(message)
+    try:
+        return raw_input("")
+    except NameError:
+        return input("")
+# End of Python2 / Python3
+
 
 # \todo executable used to return a password compatible with sudo. This is used
 # temporarly while sudo implementation is broken when invoked with no tty.
@@ -76,6 +117,9 @@ LOGGER_BUFFERING_COUNT = 0
 
 # Pattern used to search for logs to report through email.
 LOG_PAT = None
+# When True, asset files are not fetched regardless if they are
+# in the cache or not.
+NO_FETCH = False
 # When True, the log object is not used and output is only
 # done on sys.stdout.
 NO_LOG = False
@@ -185,6 +229,8 @@ class Context(object):
 '                       control lives on the local machine.',
                'base': 'siteTop',
                'default':'reps'})
+        dist = HostPlatform('-')
+        dist.configure(None)
         self.environ = {'buildTop': build_top,
                         'srcTop' : src_top,
                         'patchTop': Pathname('patchTop',
@@ -219,11 +265,6 @@ class Context(object):
 ' created',
               'base':'siteTop',
               'default':'log'}),
-                         'indexFile': Pathname('indexFile',
-             {'description':'Index file with projects dependencies information',
-              'base':'siteTop',
-              'default':os.path.join('resources',
-                                     os.path.basename(sys.argv[0]) + '.xml')}),
                          'remoteSiteTop': remote_site_top,
                          'remoteSrcTop': Pathname('remoteSrcTop',
              {'description':
@@ -236,7 +277,7 @@ class Context(object):
                   'Url to the remote index file with projects dependencies\n'\
 '                       information',
               'base':'remoteSiteTop',
-              'default':'reps/dws.git/dws.xml'}),
+              'default':'reps/drop.git/dws.xml'}),
                         'darwinTargetVolume': Single('darwinTargetVolume',
               {'description':
                     'Destination of installed packages on a Darwin local\n'\
@@ -268,7 +309,21 @@ class Context(object):
                    'dws occasionally emails build reports (see --mailto\n'
 '                       command line option). This is the address that will\n'\
 '                       be shown in the *From* field.',
-               'default':os.environ['LOGNAME'] + '@localhost'})}
+               'default': runuser() + '@localhost'}),
+       # Variables where modified and original sysconfig files are stored.
+                        'modEtcDir': Pathname('modEtcDir',
+             {'description':
+'directory where modified system configuration file are generated.',
+              'base':'srcTop',
+              'default': socket.gethostname().replace('.', '-')}),
+                        'tplEtcDir': Pathname('tplEtcDir',
+            {'description':
+'directory root that contains the orignal system configuration files.',
+             'base':'srcTop',
+             'default': os.path.join(
+                 'share', 'tero', dist.dist_codename if dist.dist_codename
+                 else dist.value)})
+        }
         self.build_top_relative_cwd = None
         self.config_filename = None
 
@@ -286,7 +341,7 @@ class Context(object):
             return os.path.splitext(os.path.basename(look.group(1)))[0]
         look = re.match(r'https?:(\S+)', locator)
         if look:
-            uri = urlparse.urlparse(locator)
+            uri = _urlparse(locator)
             return os.path.splitext(os.path.basename(uri.path))[0]
         return os.path.splitext(os.path.basename(locator))[0]
 
@@ -317,7 +372,7 @@ class Context(object):
 
     def remote_host(self):
         '''Returns the host pointed by *remoteSiteTop*'''
-        uri = urlparse.urlparse(self.value('remoteSiteTop'))
+        uri = _urlparse(self.value('remoteSiteTop'))
         hostname = uri.netloc
         if not uri.netloc:
             # If there is no protocol specified, the hostname
@@ -329,10 +384,12 @@ class Context(object):
         '''Returns a project name derived out of the current directory.'''
         if not self.build_top_relative_cwd:
             self.environ['buildTop'].default = os.path.dirname(os.getcwd())
-            log_info('no workspace configuration file could be ' \
-               + 'found from ' + os.getcwd() \
-               + ' all the way up to /. A new one, called ' + self.config_name\
-               + ', will be created in *buildTop* after that path is set.')
+            log_info("no workspace configuration file could be"\
+               " found from %(cwd)s"\
+               " all the way up to /. A new one, called %(config)s,"\
+               " will be created in *buildTop* after that path is set."
+               % {'cwd': os.getcwd(), 'config': self.config_name},
+            context=self)
             self.config_filename = os.path.join(self.value('buildTop'),
                                                 self.config_name)
             self.save()
@@ -350,19 +407,23 @@ class Context(object):
         return os.getcwd()[len(prefix) + 1:]
 
     def db_pathname(self):
-        '''Absolute pathname to the project index file.'''
-        if not str(self.environ['indexFile']):
+        """
+        Absolute pathname to the project index file.
+        """
+        # We always derive ``indexFile`` from ``remoteIndex`` such that we can
+        # run two ``dws build`` with a different project index file in the same
+        # directory.
+        if not hasattr(self, '_index_file'):
             filtered = filter_rep_ext(self.value('remoteIndex'))
             if filtered != self.value('remoteIndex'):
                 prefix = self.value('remoteSrcTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
-                self.environ['indexFile'].default = \
+                self._index_file = \
                     self.src_dir(os.path.normpath(filtered).replace(prefix, ''))
             else:
-                self.environ['indexFile'].default = \
-                    self.local_dir(self.value('remoteIndex'))
-        return self.value('indexFile')
+                self._index_file = self.local_dir(self.value('remoteIndex'))
+        return self._index_file
 
     def host(self):
         '''Returns the distribution of the local system
@@ -410,9 +471,12 @@ class Context(object):
                 if look != None:
                     if look.group(1) == 'siteTop':
                         site_top_found = True
-                    if (look.group(1) in self.environ
-                        and isinstance(self.environ[look.group(1)], Variable)):
-                        self.environ[look.group(1)].value = look.group(2)
+                    if look.group(1) in self.environ:
+                        # If variable was already resolved to a string, we won't
+                        # override the value. That makes it possible to override
+                        # the ``remoteIndex`` on the command line.
+                        if isinstance(self.environ[look.group(1)], Variable):
+                            self.environ[look.group(1)].value = look.group(2)
                     else:
                         self.environ[look.group(1)] = look.group(2)
                 line = config_file.readline()
@@ -458,13 +522,13 @@ class Context(object):
                 # self.build_top_relative_cwd = look.group(1)
                 pass
         # -- Read the environment variables set in the config file.
-        home_dir = os.environ['HOME']
-        if 'SUDO_USER' in os.environ:
-            home_dir = home_dir.replace(os.environ['SUDO_USER'],
-                                      os.environ['LOGNAME'])
-        user_default_config = os.path.join(home_dir, '.dws')
-        if os.path.exists(user_default_config):
-            self.load_context(user_default_config)
+        if 'HOME' in os.environ:
+            home_dir = os.environ['HOME']
+            if 'SUDO_USER' in os.environ:
+                home_dir = home_dir.replace(os.environ['SUDO_USER'], runuser())
+            user_default_config = os.path.join(home_dir, '.dws')
+            if os.path.exists(user_default_config):
+                self.load_context(user_default_config)
         site_top_found = self.load_context(self.config_filename)
         if not site_top_found and not self.environ['siteTop'].value:
             # By default we set *siteTop* to be the directory
@@ -565,14 +629,14 @@ class Context(object):
                 site_base = os.path.realpath(site_base)
             else:
                 site_base = os.getcwd()
-        self.environ['remoteIndex'].value = remote_path
+        self.environ['remoteIndex'] = remote_path
         self.environ['remoteSrcTop'].default = host_prefix + src_base
         # Note: We used to set the context[].default field which had for side
         # effect to print the value the first time the variable was used.
         # The problem is that we need to make sure remoteSiteTop is defined
         # before calling *local_dir*, otherwise the resulting indexFile value
         # will be different from the place the remoteIndex is fetched to.
-        self.environ['remoteSiteTop'].value = host_prefix + site_base
+        self.environ['remoteSiteTop'] = host_prefix + site_base
 
     def save(self):
         '''Write the config back to a file.'''
@@ -807,7 +871,8 @@ class Unserializer(PdbHandler):
 
 
 class DependencyGenerator(Unserializer):
-    '''*DependencyGenerator* implements a breath-first search of the project
+    """
+    *DependencyGenerator* implements a breath-first search of the project
     dependencies index with a specific twist.
     At each iteration, if all prerequisites for a project can be found
     on the local system, the dependency edge is cut from the next iteration.
@@ -819,7 +884,7 @@ class DependencyGenerator(Unserializer):
     distribution package.
     *DependencyGenerator.end_parse*() is at the heart of the workspace
     bootstrapping and other "recurse" features.
-    '''
+    """
 
     def __init__(self, repositories, packages, exclude_pats=None,
                  custom_steps=None, force_update=False):
@@ -920,22 +985,26 @@ class DependencyGenerator(Unserializer):
             # Of course it created problems, yet we want to check existance
             # as late as possible so there was no way to decide
             # at this point.
-            versions = None
-            if setup_name in self.vertices:
-                versions = self.vertices[setup_name].versions
-            install_step = create_managed(
-                managed_name, versions=versions, target=target)
+            install_step = create_managed(managed_name, target=target)
         if not install_step:
             # Remove special case install_step is None; replace it with
             # a placeholder instance that will throw an exception
             # when the *run* method is called.
             install_step = InstallStep(project_name, target=target)
         if install_step:
+            if setup_name in self.vertices:
+                # We collected all bins/libs/includes in a SetupStep.
+                # They need to be transfered to the InstallStep.
+                setup_step = self.vertices[setup_name]
+                install_step.add_prerequisites(setup_step)
             self.vertices[install_name] = install_step
             self.connect_to(setup_name, install_step)
         return install_step
 
     def add_setup(self, target, deps):
+        """
+        Add a step that will check all required prerequisites are present.
+        """
         targets = []
         for dep in deps:
             target_name = dep.target
@@ -952,6 +1021,11 @@ class DependencyGenerator(Unserializer):
                 self.vertices[setup.name] = setup
             else:
                 self.vertices[setup.name].add_prerequisites(setup)
+                # Add prerequisites test not already present in install step.
+                managed_name = dep.name.split(os.sep)[-1]
+                install_name = InstallStep.genid(managed_name)
+                if install_name in self.vertices:
+                    self.vertices[install_name].add_prerequisites(setup)
             targets += [self.vertices[setup.name]]
         return targets
 
@@ -1055,32 +1129,36 @@ class DependencyGenerator(Unserializer):
     def topological(self):
         '''Returns a topological ordering of projects selected.'''
         ordered = []
-        remains = []
-        for name in self.packages:
-            # We have to wait until here to create the install steps. Before
-            # then, we do not know if they will be required nor if prerequisites
-            # are repository projects in the index file or not.
-            install_step = self.add_install(name)
-            if install_step and not install_step.name in self.vertices:
-                remains += [install_step]
-        for step in self.vertices:
-            remains += [self.vertices[step]]
+        # We first force all install steps using a package manager
+        # to be grouped up front by package manager. This way a single
+        # command can be executed to install all of them at once.
         next_remains = []
+        remains = list(self.vertices.values())
+        for priority in (Step.install_native, Step.install_pip,
+                         Step.install_gem, Step.install_npm):
+            for step in remains:
+                if step.priority == priority:
+                    ordered += [step]
+                else:
+                    next_remains += [step]
+            remains = next_remains
+            next_remains = []
         if False:
-            log_info('!!!remains:')
+            log_info("!!!remains:")
             for step in remains:
                 is_vert = ''
                 if step.name in self.vertices:
                     is_vert = '*'
-                log_info('!!!\t%s %s %s'
+                log_info("!!!\t%s %s %s"
                          % (step.name, str(is_vert),
                             str([pre.name for pre in step.prerequisites])))
         loop_cnt = 0
+        next_remains = []
         while len(remains) > 0:
             loop_cnt = loop_cnt + 1
             for step in remains:
                 ready = True
-                insert_point = 0
+                min_insert_point = 0
                 for prereq in step.prerequisites:
                     index = 0
                     found = False
@@ -1092,18 +1170,18 @@ class DependencyGenerator(Unserializer):
                     if not found:
                         ready = False
                         break
-                    else:
-                        if index > insert_point:
-                            insert_point = index
+                    elif index > min_insert_point:
+                        min_insert_point = index
                 if ready:
-                    for ordered_step in ordered[insert_point:]:
-                        if ordered_step.priority > step.priority:
+                    insert_point = len(ordered)
+                    for ordered_step in reversed(ordered[min_insert_point:]):
+                        if ordered_step.priority < step.priority:
                             break
                         if(hasattr(ordered_step, 'target')
                            and hasattr(step, 'target')
                            and str(ordered_step.target) > str(step.target)):
                             break
-                        insert_point = insert_point + 1
+                        insert_point = insert_point - 1
                     ordered.insert(insert_point, step)
                 else:
                     next_remains += [step]
@@ -1114,7 +1192,8 @@ class DependencyGenerator(Unserializer):
         if False:
             log_info("!!! => ordered:")
             for ordered_step in ordered:
-                log_info(" " + ordered_step.name)
+                log_info("%s -> %s" % (ordered_step.name,
+                    [step.name for step in ordered_step.prerequisites]))
         return ordered
 
 
@@ -1142,10 +1221,8 @@ class BuildGenerator(DependencyGenerator):
                 prereqs = targets
                 if update_s:
                     prereqs = [update_s] + targets
-                self.add_config_make(variant,
-                                   project.repository.configure,
-                                   project.repository.make,
-                                   prereqs)
+                self.add_config_make(variant, project.repository.configure,
+                    project.repository.make, prereqs)
             elif dist in project.packages:
                 self.packages |= set([name])
                 targets = self.add_setup(variant.target,
@@ -1162,15 +1239,21 @@ class BuildGenerator(DependencyGenerator):
         return (False, targets)
 
 
+class PubDepsGenerator(BuildGenerator):
+
+    def add_update(self, project_name, update, update_rep=True):
+        return None
+
+
 class MakeGenerator(DependencyGenerator):
     '''Forces selection of installing from repository when that tag
     is available in a project.'''
 
     def __init__(self, repositories, packages,
                  exclude_pats=None, custom_steps=None):
-        DependencyGenerator.__init__(
-            self, repositories, packages,
-            exclude_pats, custom_steps, force_update=True)
+        super(MakeGenerator, self).__init__(repositories, packages,
+            exclude_pats=exclude_pats, custom_steps=custom_steps,
+            force_update=True)
         self.stop_make_after_error = True
 
     def contextual_targets(self, variant):
@@ -1271,31 +1354,6 @@ class MakeGenerator(DependencyGenerator):
         return results
 
 
-class MakeDepGenerator(MakeGenerator):
-    '''Generate the set of prerequisite projects regardless of the executables,
-    libraries, etc. which are already installed.'''
-
-    def add_install(self, project_name, target=None):
-        # We use a special "no-op" add_install in the MakeDepGenerator because
-        # we are not interested in prerequisites past the repository projects
-        # and their direct dependencies.
-        return InstallStep(project_name)
-
-    def add_setup(self, target, deps):
-        targets = []
-        for dep in deps:
-            target_name = dep.target
-            if not dep.target:
-                target_name = target
-            setup = SetupStep(dep.name, dep.files, dep.versions, target_name)
-            if not setup.name in self.vertices:
-                self.vertices[setup.name] = setup
-            else:
-                setup = self.vertices[setup.name].add_prerequisites(setup)
-            targets += [self.vertices[setup.name]]
-        return targets
-
-
 class DerivedSetsGenerator(PdbHandler):
     '''Generate the set of projects which are not dependency
     for any other project.'''
@@ -1337,7 +1395,7 @@ class Variable(object):
         self.descr = None
         self.default = None
         if isinstance(pairs, dict):
-            for key, val in pairs.iteritems():
+            for key, val in _iteritems(pairs):
                 if key == 'description':
                     self.descr = val
                 elif key == 'value':
@@ -1373,8 +1431,8 @@ class Variable(object):
             self.value = os.environ[self.name]
         if self.value != None:
             return False
-        log_info('\n' + self.name + ':')
-        log_info(self.descr)
+        log_info("\n%s:" % self.name, context=context)
+        log_info(self.descr, context=context)
         if USE_DEFAULT_ANSWER:
             self.value = self.default
         else:
@@ -1382,7 +1440,8 @@ class Variable(object):
             if self.default:
                 default_prompt = " [" + self.default + "]"
             self.value = prompt("Enter a string %s: " % default_prompt)
-        log_info("%s set to %s" % (self.name, str(self.value)))
+        log_info("%s set to %s" % (self.name, str(self.value)),
+            context=context)
         return True
 
 class HostPlatform(Variable):
@@ -1465,7 +1524,7 @@ class Pathname(Variable):
         if self.name == 'logDir':
             global LOGGER_BUFFERING_COUNT
             LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT + 1
-        log_info('\n%s:\n%s' % (self.name, self.descr))
+        log_info("\n%s:\n%s" % (self.name, self.descr), context=context)
         if (not default
             or (not ((':' in default) or default.startswith(os.sep)))):
             # If there are no default values or the default is not
@@ -1518,13 +1577,13 @@ class Pathname(Variable):
         self.value = dirname
         if not ':' in dirname:
             if not os.path.exists(self.value):
-                log_info(self.value + ' does not exist.')
+                log_info("%s does not exist." % self.value, context=context)
                 # We should not assume the pathname is a directory,
                 # hence we do not issue a os.makedirs(self.value)
         # Now it should be safe to write to the logfile.
         if self.name == 'logDir':
             LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
-        log_info('%s set to %s' % (self.name, self.value))
+        log_info("%s set to %s" % (self.name, self.value), context=context)
         return True
 
 
@@ -1553,7 +1612,7 @@ class Multiple(Variable):
         # There is no point to propose a choice already constraint by other
         # variables values.
         choices = []
-        for key, descr in self.choices.iteritems():
+        for key, descr in _iteritems(self.choices):
             if not key in self.value:
                 choices += [[key, descr]]
         if len(choices) == 0:
@@ -1562,7 +1621,8 @@ class Multiple(Variable):
         if len(self.value) > 0:
             descr += " (constrained: " + ", ".join(self.value) + ")"
         self.value = select_multiple(descr, choices)
-        log_info('%s set to %s', (self.name, ', '.join(self.value)))
+        log_info("%s set to %s" % (self.name, ', '.join(self.value)),
+            context=context)
         self.choices = []
         return True
 
@@ -1590,7 +1650,7 @@ class Single(Variable):
         self.choices = None
         if 'choices' in pairs:
             self.choices = []
-            for key, descr in pairs['choices'].iteritems():
+            for key, descr in _iteritems(pairs['choices']):
                 self.choices += [[key, descr]]
 
     def configure(self, context):
@@ -1599,7 +1659,7 @@ class Single(Variable):
         if self.value:
             return False
         self.value = select_one(self.descr, self.choices)
-        log_info('%s set to%s' % (self.name, self.value))
+        log_info("%s set to%s" % (self.name, self.value), context=context)
         return True
 
     def constrain(self, variables):
@@ -1625,7 +1685,7 @@ class Dependency(object):
         self.target = None
         self.files = {}
         self.name = name
-        for key, val in pairs.iteritems():
+        for key, val in _iteritems(pairs):
             if key == 'excludes':
                 self.versions['excludes'] = [val]
             elif key == 'includes':
@@ -1676,9 +1736,9 @@ class Alternates(Dependency):
     def __init__(self, name, pairs):
         Dependency.__init__(self, name, pairs)
         self.by_tags = {}
-        for key, val in pairs.iteritems():
+        for key, val in _iteritems(pairs):
             self.by_tags[key] = []
-            for dep_key, dep_val in val.iteritems():
+            for dep_key, dep_val in _iteritems(val):
                 self.by_tags[key] += [Dependency(dep_key, dep_val)]
 
     def __str__(self):
@@ -1741,7 +1801,7 @@ class Step(object):
 
     @classmethod
     def genid(cls, project_name, target_name=None):
-        name = unicode(project_name.replace(os.sep, '_').replace('-', '_'))
+        name = project_name.replace(os.sep, '_').replace('-', '_')
         if target_name:
             name = target_name + '_' + name
         if issubclass(cls, ConfigureStep):
@@ -1770,7 +1830,7 @@ class TargetStep(Step):
 
     def __init__(self, prefix, project_name, target=None):
         self.target = target
-        Step.__init__(self, prefix, project_name)
+        super(TargetStep, self).__init__(prefix, project_name)
         self.name = self.__class__.genid(project_name, target)
 
     @property
@@ -1787,7 +1847,8 @@ class ConfigureStep(TargetStep):
     etc.'''
 
     def __init__(self, project_name, envvars, target=None):
-        TargetStep.__init__(self, Step.configure, project_name, target)
+        super(ConfigureStep, self).__init__(
+            Step.configure, project_name, target)
         self.envvars = envvars
 
     def associate(self, target):
@@ -1797,26 +1858,122 @@ class ConfigureStep(TargetStep):
         self.updated = config_var(context, self.envvars)
 
 
-class InstallStep(Step):
-    '''The *install* step in the development cycle installs prerequisites
-    to a project.'''
+class SetupStep(TargetStep):
+    '''The *setup* step in the development cycle installs third-party
+    prerequisites. This steps gathers all the <dep> statements referring
+    to a specific prerequisite.'''
 
-    def __init__(self, project_name, managed=None, target=None,
-                 priority=Step.install):
-        Step.__init__(self, priority, project_name)
-        if managed and len(managed) == 0:
-            self.managed = [project_name]
-        else:
-            self.managed = managed
-        self.target = target
+    def __init__(self, project_name, files, versions=None, target=None):
+        """
+        files is a dictionnary.
 
-    def insert(self, install_step):
-        if install_step.managed:
-            self.managed += install_step.managed
+        We keep a reference to the project because we want to decide
+        to add native installer/made package/patch right after run.
+        """
+        super(SetupStep, self).__init__(Step.setup, project_name, target)
+        if not versions:
+            versions = {'includes': [], 'excludes': []}
+        self.managed = {project_name: {
+            'files': files,
+            'includes': versions.get('includes', []),
+            'excludes': versions.get('excludes', [])}}
+        self.updated = False
+        self.incompletes = None
+
+    def add_prerequisites(self, setup):
+        """
+        We only add prerequisites from *dep* which are not already present
+        in *self*. This is important because *find_prerequisites* will
+        initialize tuples (name_pat, absolute_path).
+        """
+        for dep_name, dep_items in _iteritems(setup.managed):
+            if dep_name in self.managed:
+                for dirname in dep_items['files']:
+                    if not dirname in self.managed[dep_name]['files']:
+                        self.managed[dep_name]['files'].update({
+                            dirname: dep_items['files'][dirname]})
+                    else:
+                        for prereq_1 in dep_items['files'][dirname]:
+                            found = False
+                            for prereq_2 in \
+                                self.managed[dep_name]['files'][dirname]:
+                                if prereq_2[0] == prereq_1[0]:
+                                    found = True
+                                    break
+                            if not found:
+                                self.managed[dep_name]['files'][dirname] \
+                                    += [prereq_1]
+                self.managed[dep_name]['excludes'] += dep_items['excludes']
+                self.managed[dep_name]['includes'] += dep_items['includes']
+            else:
+                self.managed.update({dep_name: dep_items})
 
     def run(self, context):
+        self.incompletes = []
+        for dep_name, dep_items in _iteritems(self.managed):
+            versions = {'includes': dep_items['includes'],
+                'excludes': dep_items['excludes']}
+            self.managed[dep_name]['files'], complete = find_prerequisites(
+                dep_items['files'], versions, self.target)
+            if complete:
+                self.managed[dep_name]['files'], complete = link_prerequisites(
+                    dep_items['files'], versions, self.target)
+            else:
+                self.incompletes += [dep_name]
+        self.updated = True
+        return len(self.incompletes) == 0
+
+
+class InstallStep(SetupStep):
+    """
+    Base class to install prerequisites through package managers, either
+    native (apt-get, yum) or language specific (pip, gem, nodejs).
+
+    ``InstallStep`` derives from ``SetupStep`` such that we are able
+    to check prerequisites and create a list of incomplete packages
+    to actually install through the native package manager. (see: ``run``)
+    This works in concert with the ``DependencyGenerator.add_install`` method.
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(InstallStep, self).__init__(project_name, {},
+            versions=versions, target=target)
+        if alt_names and len(alt_names) > 0:
+            self.alt_names = {project_name: alt_names}
+        else:
+            self.alt_names = {}
+        self.priority = Step.install
+
+    def insert(self, install_step):
+        self.add_prerequisites(install_step)
+        self.alt_names.update(install_step.alt_names)
+
+    def get_installs(self):
+        if self.incompletes is not None:
+            packages = self.incompletes
+        else:
+            packages = list(self.managed.keys())
+        installs = []
+        for install_name in packages:
+            installs += self.alt_names.get(install_name, [install_name])
+        return installs
+
+    def run(self, context):
+        super(InstallStep, self).run(context)
+        self.updated = False
+        installs = self.get_installs()
+        if len(installs) > 0:
+            self.install(installs, context)
+            self.updated = True
+
+    def install_commands(self, managed, context):
         raise Error("Does not know how to install '%s' on %s for %s"
-                    % (str(self.managed), context.host(), self.name))
+                    % (managed, context.host(), self.name))
+
+    def install(self, managed, context):
+        for cmdline, admin, noexecute in self.install_commands(
+                managed, context):
+            shell_command(cmdline, admin=admin, noexecute=noexecute)
 
     def info(self):
         raise Error(
@@ -1827,26 +1984,24 @@ class InstallStep(Step):
 class AptInstallStep(InstallStep):
     ''' Install a prerequisite to a project through apt (Debian, Ubuntu).'''
 
-    def __init__(self, project_name, target=None):
-        managed = [project_name]
-        packages = managed
-        if target and target.startswith('python'):
-            packages = [target + '-' + man for man in managed]
-        InstallStep.__init__(self, project_name, packages,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(AptInstallStep, self).__init__(project_name, alt_names=alt_names,
+            versions=versions, target=target)
+        self.priority = Step.install_native
 
-    def run(self, context):
+    @staticmethod
+    def install_commands(managed, context):
         # Add DEBIAN_FRONTEND=noninteractive such that interactive
         # configuration of packages do not pop up in the middle
         # of installation. We are going to update the configuration
         # in /etc afterwards anyway.
         # Emit only one shell command so that we can find out what the script
         # tried to do when we did not get priviledge access.
-        shell_command(['sh', '-c', '"/usr/bin/apt-get update'\
+        admin = True
+        return [(['sh', '-c', '"/usr/bin/apt-get update'\
 ' && DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install %s"'
-                       % ' '.join(self.managed)],
-                      admin=True, noexecute=context.nonative)
-        self.updated = True
+                       % ' '.join(managed)], admin, context.nonative)]
 
     def info(self):
         info = []
@@ -1875,83 +2030,109 @@ class AptInstallStep(InstallStep):
 class DarwinInstallStep(InstallStep):
     ''' Install a prerequisite to a project through pkg (Darwin, OSX).'''
 
-    def __init__(self, project_name, filenames, target=None):
-        InstallStep.__init__(self, project_name, managed=filenames,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(DarwinInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install
 
-    def run(self, context):
-        '''Mount *image*, a pathnme to a .dmg file and use the Apple installer
+    @staticmethod
+    def install_commands(managed, context):
+        """
+        Mount *image*, a pathnme to a .dmg file and use the Apple installer
         to install the *pkg*, a .pkg package onto the platform through the Apple
-        installer.'''
-        for filename in self.managed:
-            try:
-                volume = None
-                if filename.endswith('.dmg'):
-                    base, ext = os.path.splitext(filename)
-                    volume = os.path.join('/Volumes', os.path.basename(base))
-                    shell_command(['hdiutil', 'attach', filename])
-                target = context.value('darwinTargetVolume')
-                if target != 'CurrentUserHomeDirectory':
-                    message = 'ATTENTION: You need administrator privileges '\
-                      + 'on the local machine to execute the following cmmand\n'
-                    log_info(message)
-                    admin = True
-                else:
-                    admin = False
-                pkg = filename
-                if not filename.endswith('.pkg'):
-                    pkgs = find_files(volume, r'\.pkg')
-                    if len(pkgs) != 1:
-                        raise RuntimeError(
-                            'ambiguous: not exactly one .pkg to install')
-                    pkg = pkgs[0]
-                shell_command(['installer', '-pkg', os.path.join(volume, pkg),
-                              '-target "' + target + '"'], admin)
-                if filename.endswith('.dmg'):
-                    shell_command(['hdiutil', 'detach', volume])
-            except:
-                raise Error('failure to install darwin package ' + filename)
-        self.updated = True
+        installer.
+        """
+        admin = False
+        if len(managed) > 0:
+            target = context.value('darwinTargetVolume')
+            if target != 'CurrentUserHomeDirectory':
+                message = 'ATTENTION: You need administrator privileges '\
+                  + 'on the local machine to execute the following cmmand\n'
+                log_info(message, context=context)
+                admin = True
+        cmds = []
+        noexecute = False
+        for filename in managed:
+            volume = None
+            if filename.endswith('.dmg'):
+                base, ext = os.path.splitext(filename)
+                volume = os.path.join('/Volumes', os.path.basename(base))
+                cmdline = ['hdiutil', 'attach', filename]
+                cmds += [(cmdline, False, noexecute)]
+                shell_command(cmdline)
+            pkg = filename
+            if not filename.endswith('.pkg'):
+                pkgs = find_files(volume, r'\.pkg')
+                if len(pkgs) != 1:
+                    raise RuntimeError(
+                        'ambiguous: not exactly one .pkg to install')
+                pkg = pkgs[0]
+            cmdline = ['installer', '-pkg', os.path.join(volume, pkg),
+                          '-target "' + target + '"']
+            cmds += [(cmdline, admin, context.nonative)]
+            if filename.endswith('.dmg'):
+                cmdline = ['hdiutil', 'detach', volume]
+                cmds += [(cmdline, False, noexecute)]
+                shell_command(cmdline)
+        return cmds
 
 
 class DpkgInstallStep(InstallStep):
     ''' Install a prerequisite to a project through dpkg (Debian, Ubuntu).'''
 
-    def __init__(self, project_name, filenames, target=None):
-        managed = []
-        for filename in filenames:
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        filenames = []
+        for filename in alt_names:
             if filename.endswith('.deb'):
-                managed += [filename]
-        InstallStep.__init__(self, project_name, managed=managed,
-                             priority=Step.install_native)
+                filenames += [filename]
+        super(DpkgInstallStep, self).__init__(project_name,
+            alt_names=filenames, versions=versions, target=target)
+        self.priority = Step.install
 
-    def run(self, context):
-        if self.managed:
-            shell_command(['dpkg', '-i', ' '.join(self.managed)],
-                admin=True, noexecute=context.nonative)
-        self.updated = True
+    @staticmethod
+    def install_commands(managed, context):
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [(['dpkg', '-i', ' '.join(managed)], admin, noexecute)]
+        return []
 
 
 class GemInstallStep(InstallStep):
-    '''Install a prerequisite to a project through gem (Ruby).'''
-
-    def __init__(self, project_name, versions=None, target=None):
-        install_name = project_name
-        if (versions and 'includes' in versions
-            and len(versions['includes']) > 0):
-            install_name = '%s==%s' % (project_name, versions['includes'][0])
-        InstallStep.__init__(self, project_name, [install_name],
-                             priority=Step.install_gem)
+    """
+    Install a prerequisite to a project through gem (Ruby).
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(GemInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_gem
 
     def collect(self, context):
         """Collect prerequisites from Gemfile"""
         sys.stdout.write('''XXX collect from Gemfile NotYetImplemented!\n''')
 
-    def run(self, context):
-        shell_command(
-            [find_gem(context), 'install'] + self.managed,
-            admin=True, noexecute=context.nonative)
-        self.updated = True
+    def install_commands(self, managed, context):
+        packages = []
+        for dep_name in managed:
+            include_versions = self.managed[dep_name].get('includes', [])
+            if len(include_versions) > 0:
+                packages += ['%s:%s' % (dep_name, include_versions[0])]
+            else:
+                packages += [dep_name]
+        admin = False
+        noexecute = False
+        site_packages = os.path.join(context.value('shareDir'), 'gems')
+        if (os.path.exists(site_packages) and
+            os.stat(site_packages).st_uid != os.getuid()):
+            admin = True
+            noexecute = context.nonative
+        if packages:
+            return [([find_gem(context), 'install'] + packages + [
+                '--install-dir', site_packages], admin, noexecute)]
+        return []
 
     def info(self):
         info = []
@@ -1970,42 +2151,20 @@ class GemInstallStep(InstallStep):
 class MacPortInstallStep(InstallStep):
     ''' Install a prerequisite to a project through Macports.'''
 
-    def __init__(self, project_name, target=None):
-        managed = [project_name]
-        packages = managed
-        if target:
-            look = re.match(r'python(\d(\.\d)?)?', target)
-        else:
-            look = re.match(r'python(\d(\.\d)?)?-(.*)', project_name)
-            if look:
-                managed = [look.group(3)]
-        if look:
-            if look.group(1):
-                prefix = 'py%s-' % look.group(1).replace('.', '')
-            else:
-                prefix = 'py27-'
-            packages = []
-            for man in managed:
-                packages += [prefix + man]
-        darwin_names = {
-            # translation of package names. It is simpler than
-            # creating an <alternates> node even if it look more hacky.
-            'libicu-dev': 'icu'}
-        pre_packages = packages
-        packages = []
-        for package in pre_packages:
-            if package in darwin_names:
-                packages += [darwin_names[package]]
-            else:
-                packages += [package]
-        InstallStep.__init__(self, project_name, packages,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(MacPortInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_native
 
-
-    def run(self, context):
-        shell_command(['/opt/local/bin/port', 'install'] + self.managed,
-            admin=True, noexecute=context.nonative)
-        self.updated = True
+    @staticmethod
+    def install_commands(managed, context):
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [(['/opt/local/bin/port', 'install'] + managed,
+                admin, noexecute)]
+        return []
 
     def info(self):
         info = []
@@ -2019,30 +2178,45 @@ class MacPortInstallStep(InstallStep):
 
 
 class NpmInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through npm (Node.js manager).'''
+    """
+    Install a prerequisite to a project through npm (Node.js manager).
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(NpmInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_npm
 
-    def __init__(self, project_name, target=None):
-        InstallStep.__init__(self, project_name, [project_name],
-                             priority=Step.install_npm)
-
-    def _manager(self):
+    @staticmethod
+    def _manager(context):
         # nodejs is not available as a package on Fedora 17 or rather,
         # it was until the repo site went down.
-        find_npm(CONTEXT)
-        return os.path.join(CONTEXT.value('buildTop'), 'bin', 'npm')
+        find_npm(context)
+        return os.path.join(context.value('buildTop'), 'bin', 'npm')
 
-    def run(self, context):
-        shell_command([self._manager(), 'install', '-g',
+    def install_commands(self, managed, context):
+        packages = []
+        for dep_name in managed:
+            include_versions = self.managed[dep_name].get('includes', [])
+            if len(include_versions) > 0:
+                packages += ['%s@%s' % (dep_name, include_versions[0])]
+            else:
+                packages += [dep_name]
+        if packages:
+            admin = False
+            noexecute = False
+            return [([self._manager(context), 'install', '-g',
                 '--cache', os.path.join(context.value('installTop'), '.npm'),
                 '--tmp', os.path.join(context.value('installTop'), 'tmp'),
-                '--prefix', context.value('installTop')] + self.managed)
-        self.updated = True
+                '--prefix', context.value('installTop')] + packages,
+                admin, noexecute)]
+        return []
 
     def info(self):
         info = []
         unmanaged = []
         try:
-            shell_command([self._manager(), 'search'] + self.managed)
+            shell_command([self._manager(CONTEXT), 'search'] + self.managed)
             info = self.managed
         except Error:
             unmanaged = self.managed
@@ -2050,15 +2224,14 @@ class NpmInstallStep(InstallStep):
 
 
 class PipInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through pip (Python eggs).'''
-
-    def __init__(self, project_name, versions=None, target=None):
-        install_name = project_name
-        if (versions and 'includes' in versions
-            and len(versions['includes']) > 0):
-            install_name = '%s==%s' % (project_name, versions['includes'][0])
-        InstallStep.__init__(self, project_name, [install_name],
-                             priority=Step.install_pip)
+    """
+    Install a prerequisite to a project through pip.
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(PipInstallStep, self).__init__(project_name,
+            alt_names=alt_names, versions=versions, target=target)
+        self.priority = Step.install_pip
 
     def collect(self, context):
         """Collect prerequisites from requirements.txt"""
@@ -2074,9 +2247,16 @@ class PipInstallStep(InstallStep):
 </dep>
 ''' % (prerequisite, prerequisite))
 
-    def run(self, context):
+    def install_commands(self, managed, context):
+        packages = []
+        for dep_name in managed:
+            include_versions = self.managed[dep_name].get('includes', [])
+            if len(include_versions) > 0:
+                packages += ['%s==%s' % (dep_name, include_versions[0])]
+            else:
+                packages += [dep_name]
         # In most cases, when installing through pip, we should be running
-        # under virtualenv. This is only true for development machines though.
+        # under virtualenv.
         pip = find_pip(context)
         site_packages = None
         pip_version = subprocess.check_output([pip, '-V'])
@@ -2084,11 +2264,15 @@ class PipInstallStep(InstallStep):
         if look:
             site_packages = look.group(1)
         admin = False
+        noexecute = False
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
-        shell_command([pip, '--log-file', context.log_path('pip.log'),
-            'install'] + self.managed, admin=admin)
-        self.updated = True
+            noexecute = context.nonative
+        if packages:
+            return [([pip, '--log-file', context.log_path('pip.log'),
+            '--cache-dir', context.obj_dir('.cache'),
+            'install'] + packages, admin, noexecute)]
+        return []
 
     def info(self):
         info = []
@@ -2105,75 +2289,73 @@ class PipInstallStep(InstallStep):
 
 
 class RpmInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through rpm (Redhat-based).'''
-
-    def __init__(self, project_name, filenames, target=None):
-        managed = []
-        for filename in filenames:
+    """
+    Install a prerequisite to a project through rpm (Redhat-based).
+    """
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        filenames = []
+        for filename in alt_names:
             if filename.endswith('.rpm'):
-                managed += [filename]
-        InstallStep.__init__(self, project_name, managed=managed,
-                             priority=Step.install_native)
+                filenames += [filename]
+        super(RpmInstallStep, self).__init__(project_name,
+            alt_names=filenames, versions=versions, target=target)
+        self.priority = Step.install
 
-    def run(self, context):
-        if self.managed:
-            # --nodeps because rpm looks stupid and can't figure out that
-            # the vcd package provides the libvcd.so required by the executable.
-            shell_command(
-                ['rpm', '-i', '--force', ' '.join(self.managed), '--nodeps'],
-                admin=True, noexecute=context.nonative)
-            self.updated = True
+    @staticmethod
+    def install_commands(managed, context):
+        # --nodeps because rpm looks stupid and can't figure out that
+        # the vcd package provides the libvcd.so required by the executable.
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [(['rpm', '-i', '--force'] + managed + ['--nodeps'],
+                admin, noexecute)]
+        return []
 
 
 class YumInstallStep(InstallStep):
     ''' Install a prerequisite to a project through yum (Redhat-based).'''
 
-    def __init__(self, project_name, target=None):
-        managed = [project_name]
-        packages = managed
-        if target:
-            if target.startswith('python'):
-                packages = []
-                for man in managed:
-                    packages += [target + '-' + man]
-        fedora_names = {
-            'libbz2-dev': 'bzip2-devel',
-            'python-all-dev': 'python-devel',
-            'zlib1g-dev': 'zlib-devel'}
-        pre_packages = packages
-        packages = []
-        for package in pre_packages:
-            if package in fedora_names:
-                packages += [fedora_names[package]]
-            elif package.endswith('-dev'):
-                packages += [package + 'el']
-            else:
-                packages += [package]
-        InstallStep.__init__(self, project_name, packages,
-                             priority=Step.install_native)
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(YumInstallStep, self).__init__(project_name, alt_names=alt_names,
+            versions=versions, target=target)
+        self.priority = Step.install_native
 
-    def run(self, context):
-        # XXX Might not be the best place to do this,
-        # yet CentOS does not include basic tools such as fail2ban.
-        if context.host() == 'CentOS' and not os.path.exists(
-            '/etc/yum.repos.d/epel.repo'):
-            shell_command(['rpm', '-Uvh',
+    @staticmethod
+    def install_commands(managed, context):
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [
+                (['yum', '-y', 'update'], admin, noexecute),
+                (['yum', '-y', 'install'] + managed, admin, noexecute)]
+        return []
+
+    def install(self, managed, context):
+        if managed:
+            # XXX Might not be the best place to do this,
+            # yet CentOS does not include basic tools such as fail2ban.
+            if context.host() == 'CentOS' and not os.path.exists(
+                '/etc/yum.repos.d/epel.repo'):
+                shell_command(['rpm', '-Uvh',
 'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
-            admin=True, noexecute=context.nonative)
-        cmdline = ['yum', '-y', 'install'] + self.managed
-        log_info('update, then run: %s' % ' '.join(cmdline))
-        shell_command(['yum', '-y', 'update'],
-            admin=True, noexecute=context.nonative)
-        filtered = shell_command(cmdline,
-            admin=True, noexecute=context.nonative,
-            pat='No package (.*) available')
-        if len(filtered) > 0:
-            look = re.match('No package (.*) available', filtered[0])
-            if look:
-                unmanaged = look.group(1).split(' ')
-                if len(unmanaged) > 0:
-                    raise Error("yum cannot install " + ' '.join(unmanaged))
-        self.updated = True
+                admin=True, noexecute=context.nonative)
+            update_cmd, install_cmd = self.install_commands(managed, context)
+            log_info("update, then run: %s" % ' '.join(install_cmd[0]),
+                context=context)
+            shell_command(update_cmd[0],
+                admin=update_cmd[1], noexecute=update_cmd[2])
+            filtered = shell_command(install_cmd[0],
+                admin=install_cmd[1], noexecute=install_cmd[2],
+                pat='No package (.*) available')
+            if len(filtered) > 0:
+                look = re.match('No package (.*) available', filtered[0])
+                if look:
+                    unmanaged = look.group(1).split(' ')
+                    if len(unmanaged) > 0:
+                        raise Error("yum cannot install " + ' '.join(unmanaged))
 
     def info(self):
         info = []
@@ -2266,59 +2448,6 @@ class ShellStep(BuildStep):
             self.updated = True
 
 
-class SetupStep(TargetStep):
-    '''The *setup* step in the development cycle installs third-party
-    prerequisites. This steps gathers all the <dep> statements referring
-    to a specific prerequisite.'''
-
-    def __init__(self, project_name, files, versions=None, target=None):
-        '''We keep a reference to the project because we want to decide
-        to add native installer/made package/patch right after run'''
-        TargetStep.__init__(self, Step.setup, project_name, target)
-        self.files = files
-        self.updated = False
-        if versions:
-            self.versions = versions
-        else:
-            self.versions = {'includes': [], 'excludes': []}
-
-    def add_prerequisites(self, setup):
-        """
-        We only add prerequisites from *dep* which are not already present
-        in *self*. This is important because *find_prerequisites* will
-        initialize tuples (name_pat, absolute_path).
-        """
-        files = {}
-        for dirname in setup.files:
-            if not dirname in self.files:
-                self.files[dirname] = setup.files[dirname]
-                files[dirname] = setup.files[dirname]
-            else:
-                for prereq_1 in setup.files[dirname]:
-                    found = False
-                    for prereq_2 in self.files[dirname]:
-                        if prereq_2[0] == prereq_1[0]:
-                            found = True
-                            break
-                    if not found:
-                        self.files[dirname] += [prereq_1]
-                        if not dirname in files:
-                            files[dirname] = []
-                        files[dirname] += [prereq_1]
-        self.versions['excludes'] += setup.versions['excludes']
-        self.versions['includes'] += setup.versions['includes']
-        return SetupStep(self.project, files, self.versions, self.target)
-
-    def run(self, context):
-        self.files, complete = find_prerequisites(
-            self.files, self.versions, self.target)
-        if complete:
-            self.files, complete = link_prerequisites(
-                self.files, self.versions, self.target)
-        self.updated = True
-        return complete
-
-
 class UpdateStep(Step):
     '''The *update* step in the development cycle fetches files and source
     repositories from remote server onto the local system.'''
@@ -2370,14 +2499,15 @@ class Repository(object):
             result = result + '\t\t\tat head\n'
         return result
 
-    def apply_patches(self, name, context):
+    @staticmethod
+    def apply_patches(name, context):
         if os.path.isdir(context.patch_dir(name)):
             patches = []
             for pathname in os.listdir(context.patch_dir(name)):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
             if len(patches) > 0:
-                log_info('######## patching ' + name + '...')
+                log_info("######## patching %s..." % name, context=context)
                 prev = os.getcwd()
                 os.chdir(context.src_dir(name))
                 shell_command(
@@ -2402,13 +2532,13 @@ class Repository(object):
                 rev = look.group(4)
             path_list = sync.split(os.sep)
             for i in range(0, len(path_list)):
-                for ext, repo_class in repos.iteritems():
+                for ext, repo_class in _iteritems(repos):
                     if path_list[i].endswith(ext):
                         if path_list[i] == ext:
                             i = i - 1
                         return repo_class(os.sep.join(path_list[:i + 1]), rev)
             # We will guess, assuming the repository is on the local system
-            for ext, repo_class in repos.iteritems():
+            for ext, repo_class in _iteritems(repos):
                 if os.path.isdir(os.path.join(pathname, ext)):
                     return repo_class(pathname, rev)
             return RsyncRepository(pathname, rev)
@@ -2431,19 +2561,21 @@ class GitRepository(Repository):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
             if len(patches) > 0:
-                log_info('######## patching ' + name + '...')
+                log_info("######## patching %s..." % name, context=context)
                 os.chdir(context.src_dir(name))
                 shell_command([find_git(context), 'am', '-3', '-k',
                     os.path.join(context.patch_dir(name), '*.patch')])
         os.chdir(prev)
 
-    def push(self, pathname):
+    @staticmethod
+    def push(pathname):
         prev = os.getcwd()
         os.chdir(pathname)
         shell_command([find_git(CONTEXT), 'push'])
         os.chdir(prev)
 
-    def tarball(self, name, version='HEAD'):
+    @staticmethod
+    def tarball(name, version='HEAD'):
         local = CONTEXT.src_dir(name)
         gitexe = find_git(CONTEXT)
         cwd = os.getcwd()
@@ -2482,14 +2614,14 @@ class GitRepository(Repository):
             shell_command([git_executable, 'checkout', 'master'])
             # 'pull' does fetch and rebase all in one.
             cmdline = ' '.join([git_executable, 'pull'])
-            log_info(cmdline)
+            log_info(cmdline, context=context)
             cmd = subprocess.Popen(cmdline,
                                    shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
             line = cmd.stdout.readline()
             while line != '':
-                log_info(line.strip())
+                log_info(line.strip(), context=context)
                 look = re.match(r'^[Uu]pdating', line)
                 if look:
                     updated = True
@@ -2513,7 +2645,7 @@ class GitRepository(Repository):
             cmd = [git_executable, 'log', '-1', '--pretty=oneline']
             os.chdir(local)
             logline = subprocess.check_output(cmd)
-            log_info(logline)
+            log_info(logline, context=context)
             self.rev = logline.split(' ')[0]
         os.chdir(cwd)
         return updated
@@ -2555,7 +2687,7 @@ class RsyncRepository(Repository):
         # If the path to the remote repository is not absolute,
         # derive it from *remoteTop*. Binding any sooner will
         # trigger a potentially unnecessary prompt for remote_cache_path.
-        if not ':' in self.url and context:
+        if not ':' in self.url and not self.url.startswith(os.sep) and context:
             self.url = context.remote_src_path(self.url)
         fetch(context, {self.url: ''}, force=True)
         return True
@@ -2569,7 +2701,7 @@ class InstallFlavor(object):
         variables = {}
         self.deps = {}
         self.make = None
-        for key, val in pairs.iteritems():
+        for key, val in _iteritems(pairs):
             if isinstance(val, Variable):
                 variables[key] = val
                 # XXX Hack? We add the variable in the context here
@@ -2620,7 +2752,7 @@ class InstallFlavor(object):
 
     def prerequisites(self, tags):
         prereqs = []
-        for dep in self.deps.itervalues():
+        for _, dep in _iteritems(self.deps):
             prereqs += dep.prerequisites(tags)
         return prereqs
 
@@ -2628,7 +2760,7 @@ class InstallFlavor(object):
         '''same as *prerequisites* except only returns the names
         of the prerequisite projects.'''
         names = []
-        for dep in self.deps.itervalues():
+        for _, dep in _iteritems(self.deps):
             names += [prereq.name for prereq in dep.prerequisites(tags)]
         return names
 
@@ -2653,7 +2785,7 @@ class Project(object):
         self.patch = None
         self.repository = None
         self.installed_version = None
-        for key, val in pairs.iteritems():
+        for key, val in _iteritems(pairs):
             if key == 'title':
                 self.title = val
             elif key == 'version':
@@ -2712,6 +2844,7 @@ class Project(object):
             names += [prereq.name]
         return names
 
+
 class YAMLikeParser(object):
     """
     Parser for YAML-like files used by the ``dws`` script. Bare minimum
@@ -2730,23 +2863,22 @@ class YAMLikeParser(object):
         that generates callbacks on the handler interface.
         """
         self.handler = handler
-        print "XXX source: %s => %s" % (source, source.strip().find('\n'))
         if source.strip().find('\n') >= 0:
-            input_file = cStringIO.StringIO(source)
+            input_file = StringIO(source)
         else:
             input_file = open(source)
         for line in input_file.readlines():
-            print "%s" % line
             look = re.match(
-                r'(?P<indent>\s*)(?P<bullet>-\s*)?(?P<key>\S+)\s*:\s*(?P<value>\S.*)?',
+        r'(?P<indent>\s*)(?P<bullet>-\s*)?(?P<key>\S+)\s*:\s*(?P<value>\S.*)?',
                 line)
             if look:
                 key = look.group('key')
                 value = look.group('value')
                 indent_length = len(look.group('indent'))
-                if self.nodes and indent_length < self.nodes[len(self.nodes)-1]['indent']:
-                    while (len(self.nodes) > 0
-                           and indent_length < self.nodes[len(self.nodes)-1]['indent']):
+                if (self.nodes and
+                    indent_length < self.nodes[len(self.nodes)-1]['indent']):
+                    while (len(self.nodes) > 0 and
+                      indent_length < self.nodes[len(self.nodes)-1]['indent']):
                         child = self.nodes.pop()
                         parent = self.nodes[len(self.nodes)-1]['container']
                         if isinstance(parent, dict):
@@ -2755,7 +2887,8 @@ class YAMLikeParser(object):
                             parent += [child]
                         else:
                             raise ValueError()
-                if not self.nodes or indent_length > self.nodes[len(self.nodes)-1]['indent']:
+                if (not self.nodes or
+                    indent_length > self.nodes[len(self.nodes)-1]['indent']):
                     if look.group('bullet'):
                         self.nodes += [{
                             'indent': indent_length, 'container': []}]
@@ -2763,7 +2896,8 @@ class YAMLikeParser(object):
                         self.nodes += [{
                             'indent': indent_length, 'container': {key: value}}]
                 else:
-                    assert indent_length == self.nodes[len(self.nodes)-1]['indent']
+                    assert (indent_length
+                        == self.nodes[len(self.nodes)-1]['indent'])
                     parent = self.nodes[len(self.nodes)-1]['container']
                     if isinstance(parent, dict):
                         parent.update({key: value})
@@ -2808,7 +2942,7 @@ class XMLDbParser(xml.sax.ContentHandler):
             if attr == 'name':
                 # \todo have to conserve name if just for fetches.
                 # key = Step.genid(Step, attrs['name'], target)
-                if 'target' in attrs.keys():
+                if 'target' in attrs:
                     target = attrs['target']
                     key = os.path.join(target, attrs['name'])
                 else:
@@ -2833,21 +2967,21 @@ class XMLDbParser(xml.sax.ContentHandler):
         while node_name != name:
             # We are keeping the structure as simple as possible,
             # only introducing lists when there are more than one element.
-            for k in pairs.keys():
-                if not k in aggregate:
-                    aggregate[k] = pairs[k]
-                elif isinstance(aggregate[k], list):
-                    if isinstance(pairs[k], list):
-                        aggregate[k] += pairs[k]
+            for key, _ in _iteritems(pairs):
+                if not key in aggregate:
+                    aggregate[key] = pairs[key]
+                elif isinstance(aggregate[key], list):
+                    if isinstance(pairs[key], list):
+                        aggregate[key] += pairs[key]
                     else:
-                        aggregate[k] += [pairs[k]]
+                        aggregate[key] += [pairs[key]]
                 else:
-                    if isinstance(pairs[k], list):
-                        aggregate[k] = [aggregate[k]] + pairs[k]
+                    if isinstance(pairs[key], list):
+                        aggregate[key] = [aggregate[key]] + pairs[key]
                     else:
-                        aggregate[k] = [aggregate[k], pairs[k]]
+                        aggregate[key] = [aggregate[key], pairs[key]]
             node_name, pairs = self.nodes.pop()
-        key = pairs.keys()[0]
+        key = list(pairs.keys())[0]
         cap = name.capitalize()
         if cap in ['Metainfo', 'Multiple', 'Pathname', 'Single', 'Variable']:
             aggregate = getattr(sys.modules[__name__], cap)(key, aggregate)
@@ -2870,7 +3004,7 @@ class XMLDbParser(xml.sax.ContentHandler):
         parser.setFeature(xml.sax.handler.feature_namespaces, 0)
         parser.setContentHandler(self)
         if source.startswith('<?xml'):
-            parser.parse(cStringIO.StringIO(source))
+            parser.parse(StringIO(source))
         else:
             parser.parse(source)
 
@@ -2972,10 +3106,29 @@ def stampfile(filename):
         # this special case here.
         CONTEXT = Context()
         CONTEXT.locate()
-    if not 'buildstamp' in CONTEXT.environ:
+    if 'buildstamp' not in CONTEXT.environ:
         CONTEXT.environ['buildstamp'] = stamp(datetime.datetime.now())
         CONTEXT.save()
     return mark(os.path.basename(filename), CONTEXT.value('buildstamp'))
+
+
+def config_var(context, variables):
+    '''Look up the workspace configuration file the workspace make fragment
+    for definition of variables *variables*, instances of classes derived from
+    Variable (ex. Pathname, Single).
+    If those do not exist, prompt the user for input.'''
+    found = False
+    for key, val in _iteritems(variables):
+        # apply constrains where necessary
+        val.constrain(context.environ)
+        if not key in context.environ:
+            # If we do not add variable to the context, they won't
+            # be saved in the workspace make fragment
+            context.environ[key] = val
+            found |= val.configure(context)
+    if found:
+        context.save()
+    return found
 
 
 def create_index_pathname(db_index_pathname, db_pathnames):
@@ -2991,6 +3144,45 @@ def create_index_pathname(db_index_pathname, db_pathnames):
     shutil.copyfileobj(db_next, db_index)
     db_next.close()
     db_index.close()
+
+
+def found_bin_suffix(candidate, variant=None):
+    if candidate is None:
+        return 'no'
+    numbers = bin_version_candidates(candidate, variant=variant)
+    if len(numbers) > 0:
+        return str(numbers[0])
+    return 'yes'
+
+
+def cwd_projects(reps, recurse=False):
+    '''returns a list of projects based on the current directory
+    and/or a list passed as argument.'''
+    if len(reps) == 0:
+        # We try to derive project names from the current directory whever
+        # it is a subdirectory of buildTop or srcTop.
+        cwd = os.path.realpath(os.getcwd())
+        build_top = os.path.realpath(CONTEXT.value('buildTop'))
+        src_top = os.path.realpath(CONTEXT.value('srcTop'))
+        project_name = None
+        src_dir = src_top
+        src_prefix = os.path.commonprefix([cwd, src_top])
+        build_prefix = os.path.commonprefix([cwd, build_top])
+        if src_prefix == src_top:
+            src_dir = cwd
+            project_name = src_dir[len(src_top) + 1:]
+        elif build_prefix == build_top:
+            src_dir = cwd.replace(build_top, src_top)
+            project_name = src_dir[len(src_top) + 1:]
+        if project_name:
+            reps = [project_name]
+        else:
+            for repdir in find_files(src_dir, Repository.dirPats):
+                reps += [os.path.dirname(
+                        repdir.replace(src_top + os.sep, ''))]
+    if recurse:
+        raise NotImplementedError()
+    return reps
 
 
 def find_bin(names, search_path, build_top, versions=None, variant=None):
@@ -3035,29 +3227,29 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
     droots = search_path
     complete = True
     for name_pat, absolute_path in names:
-        if absolute_path != None and os.path.exists(absolute_path):
+        if absolute_path is not None and os.path.exists(absolute_path):
             # absolute paths only occur when the search has already been
             # executed and completed successfuly.
             results.append((name_pat, absolute_path))
             continue
         link_name, suffix = link_build_name(name_pat, 'bin', variant)
+        if variant:
+            log_interactive("%s/" % variant)
+        log_interactive("%s... " % name_pat)
+        candidate = None
         if os.path.islink(link_name):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
             # recomputing of things that hardly change.
-            results.append((name_pat,
-                            os.path.realpath(os.path.join(link_name, suffix))))
+            candidate = os.path.realpath(os.path.join(link_name, suffix))
+            results.append((name_pat, candidate))
+            log_info(found_bin_suffix(candidate, variant=variant))
             continue
-        if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
-        found = False
         if name_pat.endswith('.app'):
             binpath = os.path.join('/Applications', name_pat)
             if os.path.isdir(binpath):
-                found = True
-                log_info('yes')
-                results.append((name_pat, binpath))
+                candidate = binpath
+                log_info("yes")
         else:
             for path in droots:
                 for binname in find_first_files(path, name_pat):
@@ -3066,30 +3258,7 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
                         and os.access(binpath, os.X_OK)):
                         # We found an executable with the appropriate name,
                         # let's find out if we can retrieve a version number.
-                        numbers = []
-                        if not (variant and len(variant) > 0):
-                            # When looking for a specific *variant*, we do not
-                            # try to execute executables as they are surely
-                            # not meant to be run on the native system.
-                            # We run the help flag before --version, -V
-                            # because bzip2 would wait on stdin for data
-                            # otherwise.
-                            # XXX semilla --help is broken :(
-                            for flag in ['--version', '-V']:
-                                numbers = []
-                                cmdline = [binpath, flag]
-                                try:
-                                    output = subprocess.check_output(
-                                        cmdline, stderr=subprocess.STDOUT)
-                                    for line in output.splitlines():
-                                        numbers += version_candidates(line)
-                                except subprocess.CalledProcessError:
-                                    # When the command returns with an error
-                                    # code, we assume we passed an incorrect
-                                    # flag to retrieve the version number.
-                                    numbers = []
-                                if len(numbers) > 0:
-                                    break
+                        numbers = bin_version_candidates(binpath, variant)
                         # At this point *numbers* contains a list that can
                         # interpreted as versions. Hopefully, there is only
                         # one candidate.
@@ -3106,21 +3275,21 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
                                         excluded = True
                                         break
                             if not excluded:
+                                candidate = binpath
                                 version = numbers[0]
                                 log_info(str(version))
-                                results.append((name_pat, binpath))
+                                break
                             else:
-                                log_info('excluded (' +str(numbers[0])+ ')')
+                                log_info("excluded (%s)" % str(numbers[0]))
                         else:
-                            log_info('yes')
-                            results.append((name_pat, binpath))
-                        found = True
-                        break
-                if found:
+                            candidate = binpath
+                            log_info("yes")
+                            break
+                if candidate is not None:
                     break
-        if not found:
-            log_info('no')
-            results.append((name_pat, None))
+        results.append((name_pat, candidate))
+        if candidate is None:
+            log_info("no")
             complete = False
     return results, version, complete
 
@@ -3130,8 +3299,8 @@ def find_cache(context, names):
     is a dictionnary of file names used as key and the associated checksum.'''
     results = {}
     for pathname in names:
-        name = os.path.basename(urlparse.urlparse(pathname).path)
-        log_interactive(name + "... ")
+        name = os.path.basename(_urlparse(pathname).path)
+        log_interactive("%s..." % name)
         local_name = context.local_dir(pathname)
         if os.path.isfile(local_name):
             # It is required for fetching asset directories within a source
@@ -3143,22 +3312,39 @@ def find_cache(context, names):
                         sha1sum = hashlib.sha1(local_file.read()).hexdigest()
                     if sha1sum == expected:
                         # checksum are matching
-                        log_info("matched (sha1)")
+                        log_info("matched (sha1)", context=context)
                     else:
-                        log_info("corrupted? (sha1)")
+                        log_info("corrupted? (sha1)", context=context)
                 else:
-                    log_info("yes")
+                    log_info("yes", context=context)
             else:
-                log_info("yes")
+                log_info("yes", context=context)
+        elif os.path.isdir(local_name):
+            # We cannot assume existing directories are up-to-date otherwise
+            # we will not download recent resources in htdocs/.
+            # If we always rsync directories in an environment though,
+            # we might end-up raising an invalid error, for example, when
+            # building a Docker container when the credentials to the data
+            # where not copied inside the container.
+            if NO_FETCH:
+                log_info("yes", context=context)
+            else:
+                log_info("yes (update anyway)", context=context)
+                results[pathname] = names[pathname]
         else:
-            results[pathname] = names[pathname]
-            log_info("no")
+            if NO_FETCH:
+                log_info("no (but won't fetch)", context=context)
+            else:
+                log_info("no", context=context)
+                results[pathname] = names[pathname]
     return results
 
 
 def find_files(base, name_pat, recurse=True):
-    '''Search the directory tree rooted at *base* for files matching *name_pat*
-       and returns a list of absolute pathnames to those files.'''
+    """
+    Search the directory tree rooted at *base* for files matching *name_pat*
+    and returns a list of absolute pathnames to those files.
+    """
     result = []
     try:
         if os.path.exists(base):
@@ -3243,8 +3429,8 @@ def find_data(dirname, names,
             continue
 
         if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
+            log_interactive("%s/" % variant)
+        log_interactive("%s... " % name_pat)
         link_num = 0
         if name_pat.startswith('.*' + os.sep):
             link_num = len(name_pat.split(os.sep)) - 2
@@ -3257,7 +3443,7 @@ def find_data(dirname, names,
         if len(full_names) > 0:
             try:
                 os.stat(full_names[0])
-                log_info('yes')
+                log_info("yes")
                 results.append((name_pat, full_names[0]))
                 found = True
             except IOError:
@@ -3266,7 +3452,7 @@ def find_data(dirname, names,
             for base in droots:
                 full_names = find_files(base, name_pat)
                 if len(full_names) > 0:
-                    log_info('yes')
+                    log_info("yes")
                     tokens = full_names[0].split(os.sep)
                     linked = os.sep.join(tokens[:len(tokens) - link_num])
                     # DEPRECATED: results.append((name_pat, linked))
@@ -3274,7 +3460,7 @@ def find_data(dirname, names,
                     found = True
                     break
         if not found:
-            log_info('no')
+            log_info("no")
             results.append((name_pat, None))
             complete = False
     return results, None, complete
@@ -3326,8 +3512,8 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 (name_pat, os.path.realpath(os.path.join(link_name, suffix))))
             continue
         if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
+            log_interactive("%s/" % variant)
+        log_interactive("%s... " % name_pat)
         found = False
         for include_sys_dir in include_sys_dirs:
             includes = []
@@ -3392,7 +3578,7 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                     version = includes[0][1]
                     log_info(version)
                 else:
-                    log_info('yes')
+                    log_info("yes")
                 results.append((name_pat, includes[0][0]))
                 name_pat_parts = name_pat.split(os.sep)
                 include_file_parts = includes[0][0].split(os.sep)
@@ -3410,10 +3596,20 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 found = True
                 break
         if not found:
-            log_info('no')
+            log_info("no")
             results.append((name_pat, None))
             complete = False
     return results, version, complete
+
+
+def found_lib_suffix(candidate, pat):
+    if candidate is None:
+        return "no"
+    look = re.match(r'.*%s(.+)' % pat, candidate)
+    if look:
+        suffix = look.group(1)
+        return suffix
+    return "yes (no suffix?)"
 
 
 def find_lib(names, search_path, build_top, versions=None, variant=None):
@@ -3481,23 +3677,23 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
             lib_priority_suffix = lib_dyn_suffix()
             link_pats = [lib_base_pat + '.so',
                          lib_base_pat + lib_static_suffix()]
-        found = False
+        candidate = None
         for link_pat in link_pats:
             link_name, link_suffix = link_build_name(link_pat, 'lib', variant)
             if os.path.islink(link_name):
                 # If we already have a symbolic link in the libBuildDir,
                 # we will assume it is the one to use in order to cut off
                 # recomputing of things that hardly change.
-                results.append((name_pat, os.path.realpath(os.path.join(
-                                link_name, link_suffix))))
-                found = True
+                candidate = os.path.realpath(
+                    os.path.join(link_name, link_suffix))
+                results.append((name_pat, candidate))
                 break
-        if found:
-            continue
         if variant:
-            log_interactive(variant + '/')
-        log_interactive(name_pat + '... ')
-        found = False
+            log_interactive("%s/" % variant)
+        log_interactive("%s..." % name_pat)
+        if candidate is not None:
+            log_info(found_lib_suffix(candidate, pat=lib_base_pat))
+            continue
         for lib_sys_dir in droots:
             libs = []
             if '.*' in name_pat:
@@ -3516,8 +3712,11 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
                 numbers = version_candidates(libname)
                 absolute_path = os.path.join(lib_sys_dir, libname)
                 absolute_path_base = os.path.dirname(absolute_path)
-                absolute_path_ext = '.' \
-                    + os.path.basename(absolute_path).split('.')[1]
+                absolute_path_parts = os.path.basename(absolute_path).split('.')
+                if len(absolute_path_parts) > 1:
+                    absolute_path_ext = ".%s" % absolute_path_parts[1]
+                else:
+                    absolute_path_ext = ""
                 if len(numbers) == 1:
                     excluded = False
                     if excludes:
@@ -3562,18 +3761,10 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
             if len(libs) > 0:
                 candidate = libs[0][0]
                 version = libs[0][1]
-                look = re.match('.*%s(.+)' % lib_base_pat, candidate)
-                if look:
-                    suffix = look.group(1)
-                    log_info(suffix)
-                else:
-                    log_info('yes (no suffix?)')
-                results.append((name_pat, candidate))
-                found = True
                 break
-        if not found:
-            log_info('no')
-            results.append((name_pat, None))
+        results.append((name_pat, candidate))
+        log_info(found_lib_suffix(candidate, pat=lib_base_pat))
+        if candidate is None:
             complete = False
     return results, version, complete
 
@@ -3644,7 +3835,7 @@ def find_share(names, search_path, build_top, versions=None, variant=None):
     return find_data('share', names, search_path, build_top, versions, variant)
 
 
-def find_boot_bin(name, package=None, context=None, dbindex=None):
+def find_boot_bin(name_pat, package=None, context=None, dbindex=None):
     '''This script needs a few tools to be installed to bootstrap itself,
     most noticeably the initial source control tool used to checkout
     the projects dependencies index file.'''
@@ -3654,6 +3845,7 @@ def find_boot_bin(name, package=None, context=None, dbindex=None):
             CONTEXT = Context()
             CONTEXT.locate()
         context = CONTEXT
+    name, _ = regex_as_name(name_pat)
     executable = os.path.join(context.bin_build_dir(), name)
     if not os.path.exists(executable):
         # We do not use *validate_controls* here because dws in not
@@ -3667,20 +3859,22 @@ def find_boot_bin(name, package=None, context=None, dbindex=None):
             dbindex = IndexProjects(context,
                           '''<?xml version="1.0" ?>
 <projects>
-  <project name="dws">
-    <repository>
+  <project name="find-boot-bin">
+    <package>
       <dep name="%s">
         <bin>%s</bin>
       </dep>
-    </repository>
+    </package>
   </project>
 </projects>
-''' % (package, name))
-        executables, version, complete = find_bin([[name, None]],
+''' % (package, name_pat))
+        executables, version, complete = find_bin([[name_pat, None]],
             context.search_path('bin'), context.value('buildTop'))
         if len(executables) == 0 or not executables[0][1]:
-            install([package], dbindex)
-            executables, version, complete = find_bin([[name, None]],
+            validate_controls(
+                BuildGenerator(
+                    ['find-boot-bin'], [], force_update=True), dbindex)
+            executables, version, complete = find_bin([[name_pat, None]],
                 context.search_path('bin'), context.value('buildTop'))
         name, absolute_path = executables.pop()
         link_pat_path(name, absolute_path, 'bin')
@@ -3697,23 +3891,38 @@ def find_gem(context):
 
 
 def find_git(context):
-    if not os.path.lexists(
-        os.path.join(context.value('buildTop'), 'bin', 'git')):
-        files = {'bin': [('git', None)]}
-        if context.host() in APT_DISTRIBS:
-            files.update({'share': [('git-core', None)]})
-        else:
-            files.update({'libexec': [('git-core', None)]})
-        setup = SetupStep('git-all', files=files)
-        setup.run(context)
-    return 'git'
+    executable = os.path.join(context.bin_build_dir(), 'git')
+    if not os.path.lexists(executable):
+        dbindex = IndexProjects(context, """<?xml version="1.0" ?>
+<projects>
+  <project name="dws">
+    <repository>
+      <dep name="git">
+        <bin>git</bin>
+        <share>(git-core)/templates</share>
+      </dep>
+    </repository>
+  </project>
+</projects>
+""")
+        executables, _, complete = find_bin([('git', None)],
+            context.search_path('bin'), context.value('buildTop'))
+        if len(executables) == 0 or not executables[0][1]:
+            validate_controls(
+                BuildGenerator(['dws'], [], force_update=True), dbindex)
+            executables, version, complete = find_bin([('git', None)],
+                context.search_path('bin'), context.value('buildTop'))
+        name, absolute_path = executables.pop()
+        link_pat_path('git', absolute_path, 'bin')
+        executable = os.path.join(context.bin_build_dir(), name)
+    return executable
+
 
 def find_npm(context):
     version = '0.10.35'
     build_npm = os.path.join(context.value('buildTop'), 'bin', 'npm')
     if not os.path.lexists(build_npm):
-        dbindex = IndexProjects(context,
-        '''<?xml version="1.0" ?>
+        dbindex = IndexProjects(context, """<?xml version="1.0" ?>
 <projects>
   <project name="nvm">
     <repository>
@@ -3726,7 +3935,7 @@ nvm install %s
     </repository>
   </project>
 </projects>
-''' % version)
+""" % version)
         executables, _, complete = find_bin(
             [('node', None), ('npm', None)],
             context.search_path('bin'), context.value('buildTop'))
@@ -3788,14 +3997,14 @@ def find_rsync(host, context=None, relative=True, admin=False,
         ssh = ssh + '"'
         cmdline += [ssh]
     if admin and username != 'root':
-        cmdline += ['--rsync-path "sudo /usr/bin/rsync"']
+        cmdline += ['--rsync-path', 'sudo /usr/bin/rsync']
     else:
-        cmdline += ['--rsync-path "/usr/bin/rsync"']
+        cmdline += ['--rsync-path', '/usr/bin/rsync']
     return cmdline, prefix
 
 def find_virtualenv(context):
     virtual_package = 'python-virtualenv'
-    find_boot_bin('(virtualenv).*', package=virtual_package, context=context)
+    find_boot_bin("(virtualenv).*", package=virtual_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'virtualenv')
 
 def name_pat_regex(name_pat):
@@ -3804,73 +4013,50 @@ def name_pat_regex(name_pat):
     # We must postpend the '$' sign to the regular expression
     # otherwise "makeconv" and "makeinfo" will be picked up by
     # a match for the "make" executable.
-    pat = name_pat.replace('++', '\+\+')
+    pat = name_pat.replace('++', r'\+\+')
     if not pat.startswith('.*'):
         # If we don't add the separator here we will end-up with unrelated
         # links to automake, pkmake, etc. when we are looking for "make".
-        pat = '.*' + os.sep + pat
+        pat = ".*" + os.sep + pat
     return re.compile(pat + '$')
 
-def config_var(context, variables):
-    '''Look up the workspace configuration file the workspace make fragment
-    for definition of variables *variables*, instances of classes derived from
-    Variable (ex. Pathname, Single).
-    If those do not exist, prompt the user for input.'''
-    found = False
-    for key, val in variables.iteritems():
-        # apply constrains where necessary
-        val.constrain(context.environ)
-        if not key in context.environ:
-            # If we do not add variable to the context, they won't
-            # be saved in the workspace make fragment
-            context.environ[key] = val
-            found |= val.configure(context)
-    if found:
-        context.save()
-    return found
 
+def ordered_prerequisites(dgen, dbindex, graph=False):
+    """
+    Returns the dependencies in topological order, globbed by type,
+    for a set of projects.
+    """
+    dbindex.validate()
 
-def cwd_projects(reps, recurse=False):
-    '''returns a list of projects based on the current directory
-    and/or a list passed as argument.'''
-    if len(reps) == 0:
-        # We try to derive project names from the current directory whever
-        # it is a subdirectory of buildTop or srcTop.
-        cwd = os.path.realpath(os.getcwd())
-        build_top = os.path.realpath(CONTEXT.value('buildTop'))
-        src_top = os.path.realpath(CONTEXT.value('srcTop'))
-        project_name = None
-        src_dir = src_top
-        src_prefix = os.path.commonprefix([cwd, src_top])
-        build_prefix = os.path.commonprefix([cwd, build_top])
-        if src_prefix == src_top:
-            src_dir = cwd
-            project_name = src_dir[len(src_top) + 1:]
-        elif build_prefix == build_top:
-            src_dir = cwd.replace(build_top, src_top)
-            project_name = src_dir[len(src_top) + 1:]
-        if project_name:
-            reps = [project_name]
-        else:
-            for repdir in find_files(src_dir, Repository.dirPats):
-                reps += [os.path.dirname(
-                        repdir.replace(src_top + os.sep, ''))]
-    if recurse:
-        raise NotImplementedError()
-    return reps
-
-
-def ordered_prerequisites(roots, index):
-    '''returns the dependencies in topological order for a set of project
-    names in *roots*.'''
-    dgen = MakeDepGenerator(roots, [], exclude_pats=EXCLUDE_PATS)
-    steps = index.closure(dgen)
-    results = []
-    for step in steps:
-        # XXX this is an ugly little hack!
-        if isinstance(step, InstallStep) or isinstance(step, BuildStep):
-            results += [step.qualified_project_name()]
-    return results
+    # Add deep dependencies
+    vertices = dbindex.closure(dgen)
+    if graph:
+        gph_filename = os.path.splitext(CONTEXT.logname())[0] + '.dot'
+        gph_file = open(gph_filename, 'w')
+        gph_file.write("digraph structural {\n")
+        for vertex in vertices:
+            for project in vertex.prerequisites:
+                gph_file.write(
+                    "\t%s -> %s;\n" % (vertex.name, project.name))
+        gph_file.write("}\n")
+        gph_file.close()
+    globbed = []
+    while len(vertices) > 0:
+        first = vertices.pop(0)
+        glob = [first]
+        while len(vertices) > 0:
+            vertex = vertices.pop(0)
+            if(vertex.__class__ != first.__class__
+               or (hasattr(vertex, 'target') and hasattr(first, 'target')
+                   and vertex.target != first.target)):
+                vertices.insert(0, vertex)
+                break
+            if 'insert' in dir(first):
+                first.insert(vertex)
+            else:
+                glob += [vertex]
+        globbed += glob
+    return globbed
 
 
 def fetch(context, filenames,
@@ -3884,7 +4070,7 @@ def fetch(context, filenames,
     if filenames and len(filenames) > 0:
         # Expand filenames to absolute urls
         remote_site_top = context.value('remoteSiteTop')
-        uri = urlparse.urlparse(remote_site_top)
+        uri = _urlparse(remote_site_top)
         hostname = uri.netloc
         if not uri.netloc:
             # If there is no protocol specified, the hostname
@@ -3930,8 +4116,8 @@ def fetch(context, filenames,
             localname = context.local_dir(remotename)
             if not os.path.exists(os.path.dirname(localname)):
                 os.makedirs(os.path.dirname(localname))
-            log_info('fetching ' + remotename + '...')
-            remote = urllib2.urlopen(urllib2.Request(remotename))
+            log_info("fetching %s..." % remotename, context=context)
+            remote = urlopen(Request(remotename))
             local = open(localname, 'w')
             local.write(remote.read())
             local.close()
@@ -3956,7 +4142,7 @@ def fetch(context, filenames,
                     "", context=context, relative=relative, admin=admin)
                 shell_command(cmdline + ["'" + ' '.join(local_sources) + "'",
                                     context.value('siteTop')])
-            for hostname, paths in remote_sources.iteritems():
+            for hostname, paths in _iteritems(remote_sources):
                 if hostname and admin:
                     shell_command(['stty -echo;', 'ssh', hostname,
                               'sudo', '-v', '; stty echo'])
@@ -3974,17 +4160,20 @@ def create_managed(project_name, versions=None, target=None):
     on the native package manager for python with C bindings.'''
     install_step = None
     if target and target.startswith('python'):
-        install_step = PipInstallStep(project_name, versions, target)
+        install_step = PipInstallStep(
+            project_name, versions=versions, target=target)
     elif target and target.startswith('gems'):
-        install_step = GemInstallStep(project_name, versions, target)
+        install_step = GemInstallStep(
+            project_name, versions=versions, target=target)
     elif target and target.startswith('nodejs'):
-        install_step = NpmInstallStep(project_name, target)
+        install_step = NpmInstallStep(
+            project_name, versions=versions, target=target)
     elif CONTEXT.host() in APT_DISTRIBS:
-        install_step = AptInstallStep(project_name, target)
+        install_step = AptInstallStep(project_name, target=target)
     elif CONTEXT.host() in PORT_DISTRIBS:
-        install_step = MacPortInstallStep(project_name, target)
+        install_step = MacPortInstallStep(project_name, target=target)
     elif CONTEXT.host() in YUM_DISTRIBS:
-        install_step = YumInstallStep(project_name, target)
+        install_step = YumInstallStep(project_name, target=target)
     else:
         install_step = None
     return install_step
@@ -3992,11 +4181,11 @@ def create_managed(project_name, versions=None, target=None):
 
 def create_package_file(project_name, filenames):
     if CONTEXT.host() in APT_DISTRIBS:
-        install_step = DpkgInstallStep(project_name, filenames)
+        install_step = DpkgInstallStep(project_name, alt_names=filenames)
     elif CONTEXT.host() in PORT_DISTRIBS:
-        install_step = DarwinInstallStep(project_name, filenames)
+        install_step = DarwinInstallStep(project_name, alt_names=filenames)
     elif CONTEXT.host() in YUM_DISTRIBS:
-        install_step = RpmInstallStep(project_name, filenames)
+        install_step = RpmInstallStep(project_name, alt_names=filenames)
     else:
         install_step = None
     return install_step
@@ -4046,9 +4235,9 @@ def install(packages, dbindex):
                 managed += [name]
 
         if len(managed) > 0:
-            step = create_managed(managed[0], versions=None, target=None)
+            step = create_managed(managed[0])
             for package in managed[1:]:
-                step.insert(create_managed(package, versions=None, target=None))
+                step.insert(create_managed(package))
             step.run(CONTEXT)
 
     if package_files:
@@ -4074,7 +4263,7 @@ def help_book(help_string):
          xml:id=\"""" + cmdname + """">
 <info>
 <author>
-<personname>Sebastien Mirolo &lt;smirolo@fortylines.com&gt;</personname>
+<personname>Sebastien Mirolo &lt;smirolo@djaodjin.com&gt;</personname>
 </author>
 </info>
 <refmeta>
@@ -4231,11 +4420,10 @@ def link_context(path, link_name):
     if not os.path.exists(link_name) and os.path.exists(path):
         os.symlink(path, link_name)
 
-def link_build_name(name_pat, subdir, target=None):
-    # We normalize the library link name such as to make use of the default
-    # definitions of .LIBPATTERNS and search paths in make. It also avoids
-    # having to prefix and suffix library names in Makefile with complex
-    # variable substitution logic.
+def regex_as_name(name_pat):
+    """
+    Extract the normalized name used for creating links in *buildTop*.
+    """
     suffix = ''
     regex = name_pat_regex(name_pat)
     if regex.groups == 0:
@@ -4249,6 +4437,14 @@ def link_build_name(name_pat, subdir, target=None):
             name = name.split('|')[0]
         # XXX +1 ')', +2 '/'
         suffix = name_pat[re.search(r'\((.+)\)', name_pat).end(1) + 2:]
+    return name, suffix
+
+def link_build_name(name_pat, subdir, target=None):
+    # We normalize the library link name such as to make use of the default
+    # definitions of .LIBPATTERNS and search paths in make. It also avoids
+    # having to prefix and suffix library names in Makefile with complex
+    # variable substitution logic.
+    name, suffix = regex_as_name(name_pat)
     subpath = subdir
     if target:
         subpath = os.path.join(target, subdir)
@@ -4327,8 +4523,12 @@ def localize_context(context, name, target):
         name = local_context.value(dir_name + 'Dir')
     # \todo save local context only when necessary
     local_context.save()
-
     return local_context
+
+
+def runuser():
+    return getpass.getuser()
+
 
 def merge_unique(left, right):
     '''Merge a list of additions into a previously existing list.
@@ -4346,9 +4546,9 @@ def merge_build_conf(db_prev, db_upd, parser):
        augmented by user-supplied information such as "use source
        controlled repository", "skip version X dependency", etc. Hence
        we do a merge instead of a complete replace.'''
-    if db_prev == None:
+    if db_prev is None:
         return db_upd
-    elif db_upd == None:
+    elif db_upd is None:
         return db_prev
     else:
         # We try to keep user-supplied information in the prev
@@ -4472,12 +4672,13 @@ def search_back_to_root(filename, root=os.sep):
 
 
 def shell_command(execute, admin=False, search_path=None, pat=None,
-    noexecute=False):
+    noexecute=False, nolog=None):
     '''Execute a shell command and throws an exception when the command fails.
     sudo is used when *admin* is True.
     the text output is filtered and returned when pat exists.
     '''
     filtered_output = []
+    env = os.environ.copy()
     if admin and not (USER or GROUP):
         if False:
             # \todo cannot do this simple check because of a shell variable
@@ -4494,17 +4695,27 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
                 # XXX Workaround while sudo is broken
                 # http://groups.google.com/group/comp.lang.python/\
                 # browse_thread/thread/4c2bb14c12d31c29
-                cmdline = ['SUDO_ASKPASS="' + ASK_PASS + '"'] \
-                    + cmdline + ['-A']
+                env['SUDO_ASKPASS'] = ASK_PASS
+                cmdline = cmdline + ['-A']
             else:
                 cmdline += ['-n']
         cmdline += execute
     else:
         cmdline = execute
-    env = os.environ.copy()
     if search_path:
         env['PATH'] = ':'.join(search_path)
-    log_info(' '.join(cmdline))
+    log_cmdline = ""
+    for cmdline_item in cmdline:
+        if log_cmdline:
+            log_cmdline += " "
+        if ' ' in cmdline_item:
+            log_cmdline += '"%s"' % cmdline_item
+        else:
+            log_cmdline += cmdline_item
+    if not (noexecute or DO_NOT_EXECUTE):
+        log_info(log_cmdline, nolog=nolog)
+    else:
+        log_info("(noexecute) %s" % log_cmdline, nolog=nolog)
     if not (noexecute or DO_NOT_EXECUTE):
         prev_euid = None
         prev_egid = None
@@ -4514,27 +4725,26 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
         if admin and GROUP:
             prev_egid = os.getegid()
             os.setegid(GROUP)
-        cmd = subprocess.Popen(' '.join(cmdline),
+        cmd = subprocess.Popen(log_cmdline,
                                shell=True,
                                env=env,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
                                close_fds=True)
-        line = cmd.stdout.readline()
-        while line != '':
+        line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
+        while line != "":
             if pat and re.match(pat, line):
                 filtered_output += [line]
-            log_info(line[:-1])
-            line = cmd.stdout.readline()
+            log_info(line[:-1], nolog=nolog)
+            line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
         cmd.wait()
         if prev_euid:
             os.seteuid(prev_euid)
         if prev_egid:
             os.setegid(prev_egid)
         if cmd.returncode != 0:
-            raise Error("unable to complete: " + ' '.join(cmdline) \
-                            + '\n' + '\n'.join(filtered_output),
-                        cmd.returncode)
+            raise Error("unable to complete: %s\n%s\n"
+                % (log_cmdline, '\n'.join(filtered_output)), cmd.returncode)
     return filtered_output
 
 
@@ -4607,70 +4817,45 @@ def validate_controls(dgen, dbindex, graph=False,
     in *srcTop* and an associated dictionary of Project instances.
     By iterating through the list, it is possible to 'make'
     each prerequisite project in order.'''
-    dbindex.validate()
-
     global ERRORS
-    # Add deep dependencies
-    vertices = dbindex.closure(dgen)
-    if graph:
-        gph_filename = os.path.splitext(CONTEXT.logname())[0] + '.dot'
-        gph_file = open(gph_filename, 'w')
-        gph_file.write("digraph structural {\n")
-        for vertex in vertices:
-            for project in vertex.prerequisites:
-                gph_file.write(
-                    "\t%s -> %s;\n" % (vertex.name, project.name))
-        gph_file.write("}\n")
-        gph_file.close()
-    while len(vertices) > 0:
-        first = vertices.pop(0)
-        glob = [first]
-        while len(vertices) > 0:
-            vertex = vertices.pop(0)
-            if(vertex.__class__ != first.__class__
-               or (hasattr(vertex, 'target') and hasattr(first, 'target')
-                   and vertex.target != first.target)):
-                vertices.insert(0, vertex)
-                break
-            if 'insert' in dir(first):
-                first.insert(vertex)
-            else:
-                glob += [vertex]
-        # \todo "make recurse" should update only projects which are missing
-        # from *srcTop* and leave other projects in whatever state they are in.
-        # This is different from "build" which should update all projects.
-        if first.priority in priorities:
-            for vertex in glob:
-                errcode = 0
-                elapsed = 0
-                prev_cwd = os.getcwd()
-                log_header(vertex.title)
-                start = datetime.datetime.now()
-                try:
-                    vertex.run(CONTEXT)
+
+    glob = ordered_prerequisites(dgen, dbindex, graph=graph)
+
+    # \todo "make recurse" should update only projects which are missing
+    # from *srcTop* and leave other projects in whatever state they are in.
+    # This is different from "build" which should update all projects.
+    for vertex in glob:
+        if vertex.priority in priorities:
+            errcode = 0
+            elapsed = 0
+            prev_cwd = os.getcwd()
+            log_header(vertex.title)
+            start = datetime.datetime.now()
+            try:
+                vertex.run(CONTEXT)
+                finish = datetime.datetime.now()
+                elapsed = elapsed_duration(start, finish)
+            except Error as err:
+                if True:
+                    import traceback
+                    traceback.print_exc()
+                errcode = err.code
+                ERRORS += [str(vertex)]
+                if dgen.stop_make_after_error:
                     finish = datetime.datetime.now()
                     elapsed = elapsed_duration(start, finish)
-                except Error, err:
-                    if True:
-                        import traceback
-                        traceback.print_exc()
-                    errcode = err.code
-                    ERRORS += [str(vertex)]
-                    if dgen.stop_make_after_error:
-                        finish = datetime.datetime.now()
-                        elapsed = elapsed_duration(start, finish)
-                        log_footer(vertex.title, elapsed, errcode)
-                        raise err
-                    else:
-                        log_error(str(err))
-                log_footer(vertex.title, elapsed, errcode)
-                os.chdir(prev_cwd)
+                    log_footer(vertex.title, elapsed, errcode)
+                    raise err
+                else:
+                    log_error(str(err))
+            log_footer(vertex.title, elapsed, errcode)
+            os.chdir(prev_cwd)
 
     nb_updated_projects = len(UpdateStep.updated_sources)
     if nb_updated_projects > 0:
-        log_info('%d updated project(s).' % nb_updated_projects)
+        log_info("%d updated project(s)." % nb_updated_projects)
     else:
-        log_info('all project(s) are up-to-date.')
+        log_info("all project(s) are up-to-date.")
     return nb_updated_projects
 
 
@@ -4697,6 +4882,35 @@ def version_candidates(line):
         else:
             part = ''
     return candidates
+
+
+def bin_version_candidates(binpath, variant=None):
+    if variant is None or len(variant) == 0:
+        # When looking for a specific *variant*, we do not
+        # try to execute executables as they are surely
+        # not meant to be run on the native system.
+        return []
+    numbers = []
+    # We run the help flag before --version, -V
+    # because bzip2 would wait on stdin for data
+    # otherwise.
+    # XXX semilla --help is broken :(
+    for flag in ['--version', '-V']:
+        numbers = []
+        cmdline = [binpath, flag]
+        try:
+            output = subprocess.check_output(
+                cmdline, stderr=subprocess.STDOUT)
+            for line in output.splitlines():
+                numbers += version_candidates(line)
+        except subprocess.CalledProcessError:
+            # When the command returns with an error
+            # code, we assume we passed an incorrect
+            # flag to retrieve the version number.
+            numbers = []
+        if len(numbers) > 0:
+            break
+    return numbers
 
 
 def version_compare(left, right):
@@ -4730,7 +4944,7 @@ def build_subcommands_parser(parser, module):
     '''Returns a parser for the subcommands defined in the *module*
     (i.e. commands starting with a 'pub_' prefix).'''
     mdefs = module.__dict__
-    keys = mdefs.keys()
+    keys = list(mdefs.keys())
     keys.sort()
     subparsers = parser.add_subparsers(help='sub-command help')
     for command in keys:
@@ -4748,6 +4962,7 @@ def build_subcommands_parser(parser, module):
                 parser.add_argument(argspec.args[flags - 1], nargs='*')
             short_opts = set([])
             for idx, arg in enumerate(argspec.args[flags:]):
+                arg = arg.replace('_', '-')
                 short_opt = arg[0]
                 if not (arg.startswith('no') or (short_opt in short_opts)):
                     opts = ['-%s' % short_opt, '--%s' % arg]
@@ -4760,6 +4975,8 @@ def build_subcommands_parser(parser, module):
                     parser.add_argument(*opts, type=json.loads)
                 elif argspec.defaults[idx] is False:
                     parser.add_argument(*opts, action='store_true')
+                elif argspec.defaults[idx] is not None:
+                    parser.add_argument(*opts, default=argspec.defaults[idx])
                 else:
                     parser.add_argument(*opts)
 
@@ -4838,20 +5055,15 @@ def wait_until_ssh_up(hostname,
         raise Error("ssh connection attempt to " + hostname + " timed out.")
 
 
-def prompt(message):
-    '''If the script is run through a ssh command, the message would not
-    appear if passed directly in raw_input.'''
-    log_interactive(message)
-    return raw_input("")
-
-
-def log_init():
+def log_init(context=None):
+    if context is None:
+        context = CONTEXT
     global LOGGER
     if not LOGGER:
-        if os.path.exists(CONTEXT.logname()):
+        if os.path.exists(context.logname()):
             # We would rather not append to the previous logfile
             # but rather create a new one.
-            os.remove(CONTEXT.logname())
+            os.remove(context.logname())
         logging.config.dictConfig({
         'version': 1,
         'disable_existing_loggers': False,
@@ -4865,13 +5077,13 @@ def log_init():
             'logfile':{
                 'level': 'INFO',
                 'class':'logging.handlers.WatchedFileHandler',
-                'filename': CONTEXT.logname(),
+                'filename': context.logname(),
                 'formatter': 'simple'
             },
             'logbuild':{
                 'level': 'INFO',
                 'class':'logging.handlers.WatchedFileHandler',
-                'filename': CONTEXT.logbuildname(),
+                'filename': context.logbuildname(),
                 'formatter': 'simple'
             },
          },
@@ -4923,29 +5135,32 @@ def log_error(message, *args, **kwargs):
 def log_interactive(message):
     '''Write a message that should absolutely end up on the screen
     even when no newline is present at the end of the message.'''
-    sys.stdout.write(message)
+    sys.stdout.write(message.encode(DEFAULT_ENCODING))
     sys.stdout.flush()
     if not NO_LOG:
         global LOGGER_BUFFER
         if not LOGGER_BUFFER:
-            LOGGER_BUFFER = cStringIO.StringIO()
+            LOGGER_BUFFER = StringIO()
         LOGGER_BUFFER.write(message)
 
 
-def log_info(message, *args, **kwargs):
+def log_info(message, context=None, nolog=None, *args, **kwargs):
     '''Write a info message onto stdout and into the log file'''
-    sys.stdout.write(message + '\n')
-    if not NO_LOG:
+    message_line = "%s\n" % message
+    sys.stdout.write(message_line.encode(DEFAULT_ENCODING))
+    if nolog is None:
+        nolog = NO_LOG
+    if not nolog:
         global LOGGER_BUFFER
         if LOGGER_BUFFERING_COUNT > 0:
             if not LOGGER_BUFFER:
-                LOGGER_BUFFER = cStringIO.StringIO()
-            LOGGER_BUFFER.write((message + '\n' % args) % kwargs)
+                LOGGER_BUFFER = StringIO()
+            LOGGER_BUFFER.write((message_line % args) % kwargs)
         else:
             if not LOGGER:
-                log_init()
+                log_init(context=context)
             if LOGGER_BUFFER:
-                LOGGER_BUFFER.write((message + '\n' % args) % kwargs)
+                LOGGER_BUFFER.write((message_line % args) % kwargs)
                 for line in LOGGER_BUFFER.getvalue().splitlines():
                     LOGGER.info(line)
                 LOGGER_BUFFER = None
@@ -5051,10 +5266,12 @@ def pub_build(args, graph=False, clean=False,
         os.chdir(build_top)
         LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
 
-    if (not novirtualenv
-        and not os.path.isfile(os.path.join(install_top, 'bin', 'pip'))):
+    pip_executable = os.path.join(install_top, 'bin', 'pip')
+    if not novirtualenv and not os.path.isfile(pip_executable):
         shell_command([
             find_virtualenv(CONTEXT), '--system-site-packages', site_top])
+        # Force upgrade of setuptools otherwise html5lib install complains.
+        shell_command([pip_executable, 'install', 'setuptools', '--upgrade'])
 
     rgen = DerivedSetsGenerator()
     # If we do not force the update of the index file, the dependency
@@ -5066,7 +5283,7 @@ def pub_build(args, graph=False, clean=False,
         rgen.roots, [], exclude_pats=EXCLUDE_PATS, custom_steps=CUSTOM_STEPS)
     CONTEXT.targets = ['install']
     # Set the buildstamp that will be use by all "install" commands.
-    if not 'buildstamp' in CONTEXT.environ:
+    if 'buildstamp' not in CONTEXT.environ:
         CONTEXT.environ['buildstamp'] = '-'.join([socket.gethostname(),
                                             stamp(datetime.datetime.now())])
     CONTEXT.save()
@@ -5090,7 +5307,7 @@ def pub_build(args, graph=False, clean=False,
         raise Error("Found errors while making " + ' '.join(ERRORS))
     if CUSTOM_STEPS is not None:
         return [setup for setup in dgen.topological()
-            if setup.__class__ in CUSTOM_STEPS.values()]
+            if setup.__class__ in list(CUSTOM_STEPS.values())]
     return []
 
 
@@ -5192,11 +5409,10 @@ def pub_configure(args):
     symbolic links such that the project can be made
     later on.
     '''
-    CONTEXT.environ['indexFile'].value = CONTEXT.src_dir(
-        os.path.join(CONTEXT.cwd_project(), CONTEXT.indexName))
+    dbindex = IndexProjects(CONTEXT, CONTEXT.src_dir(
+        os.path.join(CONTEXT.cwd_project(), CONTEXT.indexName)))
     project_name = CONTEXT.cwd_project()
     dgen = MakeGenerator([project_name], [])
-    dbindex = IndexProjects(CONTEXT, CONTEXT.value('indexFile'))
     dbindex.parse(dgen)
     prerequisites = set([])
     for vertex in dgen.vertices:
@@ -5232,9 +5448,13 @@ def pub_context(args):
     sys.stdout.write(pathname)
 
 
-def pub_deps(args):
-    ''' Prints the dependency graph for a project.
-    '''
+def pub_deps(args, native=False):
+    """
+    Prints the statement used to install native and language packaged
+    prerequisites.
+    --native   Display only the prerequisites installed through
+               the native package manager.
+    """
     top = os.path.realpath(os.getcwd())
     if ((str(CONTEXT.environ['buildTop'])
          and top.startswith(os.path.realpath(CONTEXT.value('buildTop')))
@@ -5248,7 +5468,18 @@ def pub_deps(args):
         rgen = DerivedSetsGenerator()
         INDEX.parse(rgen)
         roots = rgen.roots
-    sys.stdout.write(' '.join(ordered_prerequisites(roots, INDEX)) + '\n')
+    dgen = PubDepsGenerator(roots, [], exclude_pats=EXCLUDE_PATS)
+    builds = []
+    for step in ordered_prerequisites(dgen, INDEX):
+        if isinstance(step, InstallStep):
+            if not native or step.priority == Step.install_native:
+                cmds = step.install_commands(step.get_installs(), CONTEXT)
+                for cmd, admin, noexecute in cmds:
+                    sys.stdout.write("%s\n" % ' '.join(cmd))
+        elif isinstance(step, BuildStep):
+            builds += [step.qualified_project_name()]
+    if not native:
+        sys.stdout.write("build: %s\n" % ' '.join(builds))
 
 
 def pub_export(args):
@@ -5507,7 +5738,7 @@ def pub_patch(args):
     prev = os.getcwd()
     for rep in reps:
         patches = []
-        log_info('######## generating patch for project ' + rep)
+        log_info("######## generating patch for project %s" % rep)
         os.chdir(CONTEXT.src_dir(rep))
         patch_dir = CONTEXT.patch_dir(rep)
         if not os.path.exists(patch_dir):
@@ -5630,20 +5861,20 @@ def pub_update(args):
                     log_header(update.title)
                     update.run(CONTEXT)
                     log_footer(update.title)
-                except Error, err:
-                    log_info('warning: cannot update repository from ' \
-                                  + str(update.rep.url))
+                except Error as err:
+                    log_info("warning: cannot update repository from %s"
+                        % str(update.rep.url))
                     log_footer(update.title, errcode=err.code)
             else:
                 ERRORS += [name]
         if len(ERRORS) > 0:
-            raise Error('%s is/are not project(s) under source control.'
+            raise Error("%s is/are not project(s) under source control."
                         % ' '.join(ERRORS))
         nb_updated_projects = len(UpdateStep.updated_sources)
         if nb_updated_projects > 0:
-            log_info('%d updated project(s).' % nb_updated_projects)
+            log_info("%d updated project(s)." % nb_updated_projects)
         else:
-            log_info('all project(s) are up-to-date.')
+            log_info("all project(s) are up-to-date.")
 
 
 def pub_upstream(args):
@@ -5796,7 +6027,7 @@ def select_yes_no(description):
     '''Prompt for a yes/no answer.'''
     if USE_DEFAULT_ANSWER:
         return True
-    yes_no = prompt(description + " [Y/n]? ")
+    yes_no = prompt("%s [Y/n]? " % description)
     if yes_no == '' or yes_no == 'Y' or yes_no == 'y':
         return True
     return False
@@ -5824,7 +6055,7 @@ def show_multiple(description, choices):
             widths[col_index] = max(widths[col_index], len(col) + 2)
         displayed += [line]
     # Ask user to review selection
-    log_info('%s' % description)
+    log_info("%s" % description)
     for project in displayed:
         for col_index, col in enumerate(project):
             log_info(col.ljust(widths[col_index]))
@@ -5861,13 +6092,14 @@ def main(args):
     '''Main Entry Point'''
 
     exit_code = 0
+    start_timestamp = datetime.datetime.now()
     try:
         import __main__
         import argparse
 
         global CONTEXT
         CONTEXT = Context()
-        keys = CONTEXT.environ.keys()
+        keys = list(CONTEXT.environ.keys())
         keys.sort()
         epilog = 'Variables defined in the workspace make fragment (' \
             + CONTEXT.config_name + '):\n'
@@ -5887,11 +6119,15 @@ def main(args):
 ' from the current directory.')
         parser.add_argument('--default', dest='default', action='store_true',
             help='Use default answer for every interactive prompt.')
+        parser.add_argument('-D', dest='defines', action='append', default=[],
+            help='Add a (key,value) definition to use in templates.')
         parser.add_argument('--exclude', dest='exclude_pats', action='append',
             help='The specified command will not be applied to projects'\
 ' matching the name pattern.')
         parser.add_argument('--nolog', dest='nolog', action='store_true',
             help='Do not generate output in the log file')
+        parser.add_argument('--nofetch', dest='nofetch', action='store_true',
+            help='Do not fetch asset files (i.e. outside source control)')
         parser.add_argument('--patch', dest='patchTop', action='store',
             help='Set *patchTop* the root where local patches can be found.')
         parser.add_argument('--prefix', dest='installTop', action='store',
@@ -5914,7 +6150,7 @@ def main(args):
             # Print help in docbook format.
             # We need the parser here so we can't create a pub_ function
             # for this command.
-            help_str = cStringIO.StringIO()
+            help_str = StringIO()
             parser.print_help(help_str)
             help_book(help_str)
             return 0
@@ -5935,7 +6171,8 @@ def main(args):
         # Find the build information
         global USE_DEFAULT_ANSWER
         USE_DEFAULT_ANSWER = options.default
-        global NO_LOG
+        global NO_FETCH, NO_LOG
+        NO_FETCH = options.nofetch
         NO_LOG = options.nolog
         if options.exclude_pats:
             global EXCLUDE_PATS
@@ -5958,24 +6195,28 @@ def main(args):
         if options.patchTop:
             CONTEXT.environ['patchTop'] = os.path.abspath(options.patchTop)
 
+        for define in options.defines:
+            key, value = define.split('=')
+            CONTEXT.environ[key] = value
+
         global INDEX
         INDEX = IndexProjects(CONTEXT)
         # Filter out options with are not part of the function prototype.
         func_args = filter_subcommand_args(options.func, options)
         options.func(**func_args)
 
-    except Error, err:
+    except Error as err:
         log_error(str(err))
         exit_code = err.code
 
     if options.mailto and len(options.mailto) > 0 and LOG_PAT:
         logs = find_files(CONTEXT.log_path(''), LOG_PAT)
-        log_info('forwarding logs ' + ' '.join(logs) + '...')
+        log_info("forwarding logs %s..." % ' '.join(logs))
         sendmail(createmail('build report', logs), options.mailto)
     if options.rsyncto and len(options.rsyncto) > 0 and LOG_PAT:
         log_dir = CONTEXT.log_path('')
         logs = find_files(log_dir, LOG_PAT)
-        log_info('uploading logs ' + ' '.join(logs) + '...')
+        log_info("uploading logs %s..." % ' '.join(logs))
         logs = [log.replace(log_dir, log_dir + './') for log in logs]
         for remote_path in options.rsyncto:
             upload(logs, remote_path)

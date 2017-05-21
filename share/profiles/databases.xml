@@ -1,0 +1,117 @@
+<?xml version="1.0" ?>
+<projects>
+  <project name="databases">
+    <title>Databases</title>
+    <description>
+Deploy and configure packages for running LDAP and SQL databases.
+    </description>
+    <maintainer>
+      <personname>Sebastien Mirolo</personname>
+      <email>smirolo@djaodjin.com</email>
+    </maintainer>
+    <variable name="dbUser">
+      <description>User to access databases.</description>
+    </variable>
+    <variable name="dbPassword">
+      <description>Password for user to access databases.</description>
+    </variable>
+    <package name="Fedora">
+      <dep name="postgresql-server">
+        <bin>postgres</bin>
+        <listen_addresses>private-ip.local, localhost</listen_addresses>
+      </dep>
+      <dep name="iptables">
+        <bin>iptables</bin>
+        <port>22</port>
+        <port>636</port>
+        <port>5432</port>
+      </dep>
+      <dep name="openssh-server">
+        <bin>sshd</bin>
+        <extra name="/etc/ssh/sshd_config">
+          <PermitRootLogin>no</PermitRootLogin>
+          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
+          <PasswordAuthentication>no</PasswordAuthentication>
+          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+          <PermitTunnel>no</PermitTunnel>
+          <X11Forwarding>no</X11Forwarding>
+          <StrictModes>yes</StrictModes>
+          <IgnoreRhosts>yes</IgnoreRhosts>
+          <HostbasedAuthentication>no</HostbasedAuthentication>
+          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <PubkeyAuthentication>yes</PubkeyAuthentication>
+        </extra>
+      </dep>
+      <dep name="openldap-servers">
+        <bin>slapd</bin>
+      </dep>
+      <dep name="sssd">
+        <bin>sssd</bin>
+      </dep>
+      <!-- monitoring -->
+      <dep name="syslog-ng">
+        <bin>syslog-ng</bin>
+      </dep>
+      <dep name="syslog-ng-libdbi">
+        <lib>dbi</lib>
+      </dep>
+      <!-- We need both executables (checkmodule and semodule_package)
+           to update the syslog SELinux policy -->
+      <dep name="checkpolicy">
+        <bin>checkmodule</bin>
+      </dep>
+      <dep name="policycoreutils-python">
+        <bin>semodule_package</bin>
+      </dep>
+      <dep name="fail2ban">
+        <bin>fail2ban-client</bin>
+      </dep>
+      <!-- XXX Client tools so we can debug installation. -->
+      <dep name="postgresql">
+        <bin>psql</bin>
+      </dep>
+      <dep name="openldap-clients">
+        <bin>ldapsearch</bin>
+      </dep>
+    </package>
+  </project>
+  <project name="openldap-servers">
+    <package name="Fedora">
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>e16090329f89360dc14b75e198b67786e8eac39c</sha1>
+      </fetch>
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-servers-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>f6d6ac22ecf55da76aafb68cb92c1d503706ef4f</sha1>
+      </fetch>
+      <dep name="libdb-utils">
+        <lib>db</lib>
+      </dep>
+      <dep name="libtool-ltdl">
+        <lib>ltdl</lib>
+      </dep>
+      <dep name="authconfig">
+        <!-- (optional) used to configure sssd -->
+        <bin>authconfig</bin>
+      </dep>
+      <dep name="openssl">
+        <!-- (optional)
+             Install openssl in order to create dummy certificates -->
+        <bin>openssl</bin>
+      </dep>
+    </package>
+  </project>
+  <project name="openldap-clients">
+    <package name="Fedora">
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>e16090329f89360dc14b75e198b67786e8eac39c</sha1>
+      </fetch>
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-clients-2.4.40-2.fc21.x86_64.rpm</url>
+        <sha1>9ae4deb88c3e7a3f619a84b088d87a4b0adb8268</sha1>
+      </fetch>
+    </package>
+  </project>
+</projects>

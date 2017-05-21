@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,8 +30,6 @@ from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 
 class sssdSetup(SetupTemplate):
 
-    sssd_conf = os.path.join(CONTEXT.SYSCONFDIR, 'sssd', 'sssd.conf')
-
     def __init__(self, name, files, **kwargs):
         super(sssdSetup, self).__init__(name, files, **kwargs)
         self.daemons = ['sssd']
@@ -44,17 +42,18 @@ class sssdSetup(SetupTemplate):
             # files here.
             return complete
 
-        ldapDomain = 'dbs.internal'
-        ldapCertPath = os.path.join(context.SYSCONFDIR,
-            'pki', 'tls', 'certs', '%s.crt' % ldapDomain)
+        sssd_conf = os.path.join(context.value('etcDir'), 'sssd', 'sssd.conf')
+        ldapHost = context.value('ldapHost')
         domain_parts = tuple(context.value('domainName').split('.'))
+        ldapCertPath = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {
-            'ldapDomain': ldapDomain,
+            'ldapHost': ldapHost,
             'domainNat': domain_parts[0],
             'domainTop': domain_parts[1],
             'ldapCertPath': ldapCertPath
         }
-        _, new_config_path = stageFile(self.sssd_conf, context)
+        _, new_config_path = stageFile(sssd_conf, context)
         with open(new_config_path, 'w') as new_config:
             new_config.write("""[sssd]
 config_file_version = 2
@@ -77,7 +76,7 @@ reconnection_retries = 3
 
 [domain/LDAP]
 # Debugging:
-debug_level = 9
+debug_level = 1
 
 ldap_tls_reqcert = demand
 # Note that enabling enumeration will have a moderate performance impact.
@@ -96,8 +95,8 @@ ldap_group_member = uniquemember
 id_provider = ldap
 ldap_id_use_start_tls = False
 chpass_provider = ldap
-ldap_uri = ldaps://%(ldapDomain)s/
-ldap_chpass_uri = ldaps://%(ldapDomain)s/
+ldap_uri = ldaps://%(ldapHost)s/
+ldap_chpass_uri = ldaps://%(ldapHost)s/
 # Allow offline logins by locally storing password hashes (default: false).
 cache_credentials = True
 ldap_tls_cacert = %(ldapCertPath)s
@@ -115,7 +114,7 @@ ldap_group_name = cn
 ldap_group_member = memberUid
 """ % names)
 
-        postinst.shellCommand(['chmod', '600', self.sssd_conf])
+        postinst.shellCommand(['chmod', '600', sssd_conf])
         postinst.shellCommand(['authconfig',
             '--update', '--enablesssd', '--enablesssdauth'])
         postinst.shellCommand(['setsebool',

@@ -1,0 +1,5 @@
+# Bring down all routing information
+
+- include_vars: group_vars/dynamic
+- include: route53.yml
+

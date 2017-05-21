@@ -1,0 +1,18 @@
+---
+- name: Remove 'watch-tower' role from instance profile
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam remove-role-from-instance-profile --instance-profile-name {{watch_tower}}-profile --role-name {{watch_tower}}
+  ignore_errors: True
+
+- name: Delete 'watch-tower' role
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam delete-role --role-name {{watch_tower}}
+  ignore_errors: True
+
+- name: Delete 'watch-tower' Instance profile
+  local_action:
+    module: command
+      aws --region {{aws_region}} iam delete-instance-profile --instance-profile-name {{watch_tower}}-profile
+  ignore_errors: True

@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+# databases machine
+
+set -x
+set -e
+
+# Install necessary packages to bootstrap configuration
+dnf -y update
+dnf -y install git python-virtualenv python-pip awscli
+
+# Mount encrypted volume as /var after copying previous content over.
+if [ ! -d /var.old ] ; then
+    mkfs.ext4 -m 0 /dev/xvdf
+    mkdir -p /mnt/encvol
+    mount /dev/xvdf /mnt/encvol
+    cd /var && cp -ax * /mnt/encvol
+    cd /
+    umount /dev/xvdf
+    mv /var /var.old
+    mkdir -p /var
+    mount /dev/xvdf /var
+fi
+
+# Install identities
+aws s3 cp s3://{{deployutils_bucket}}/identities/dbs.internal / --recursive
+
+# Clone configuration scripts repository and setup the machine.
+mkdir -p /tmp/ansible/reps && cd /tmp/ansible/reps && git clone {{remote_drop_repo}}
+virtualenv-2.7 --system-site-packages /tmp/ansible
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DldapHost=localhost -DdomainName={{domain_name}} -DldapPasswordHash="{{ldapPasswordHash}}" /tmp/ansible/reps/drop/share/profiles/databases.xml
+
+# Restore database from flat files
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/drestore.py --domainName={{domain_name}} /var/backups/*
+
+sudo -u fedora touch /home/fedora/.dbs-done

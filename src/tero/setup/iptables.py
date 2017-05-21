@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -51,7 +51,7 @@ class iptablesSetup(setup.SetupTemplate):
             return complete
         ports = []
         forwards = []
-        for key, val in self.files.iteritems():
+        for key, val in self.managed['iptables']['files'].iteritems():
             if key == 'port':
                 for port, _ in val:
                     ports += [int(port)]
@@ -63,7 +63,7 @@ class iptablesSetup(setup.SetupTemplate):
         # We completely overwrite the iptables configuration for both
         # ipv4 and ipv6. We own it.
         _, new_conf_path = setup.stageFile(
-            self.conf_path(context.host(), sysconfdir=context.SYSCONFDIR),
+            self.conf_path(context.host(), sysconfdir=context.value('etcDir')),
             context=context)
         with open(new_conf_path, 'w') as conf:
             if forwards:
@@ -99,7 +99,7 @@ COMMIT
             % port for port in ports])
         _, new_conf_path = setup.stageFile(
             self.conf_path(context.host(),
-                ip_type=self.IPV6, sysconfdir=context.SYSCONFDIR),
+                ip_type=self.IPV6, sysconfdir=context.value('etcDir')),
             context=context)
         with open(new_conf_path, 'w') as conf:
             conf.write("""
@@ -132,7 +132,10 @@ COMMIT
 
 /sbin/iptables-restore < /etc/sysconfig/iptables
 /sbin/ip6tables-restore < /etc/sysconfig/ip6tables
-""")
+
+IPADDR=`hostname -I`
+sed -i "/^.*  *%(domain)s/{h;s/.* /${IPADDR}/};\${x;/^\$/{s//${IPADDR} %(domain)s/;H};x}" /etc/hosts
+""" % {'domain': 'private-ip.local'})
         os.chmod(new_ifup_local,stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR
             |stat.S_IRGRP|stat.S_IXGRP|stat.S_IROTH|stat.S_IXOTH)
         setup.postinst.shellCommand(['/usr/sbin/ifup-local'])

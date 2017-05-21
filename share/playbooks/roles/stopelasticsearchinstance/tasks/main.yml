@@ -1,0 +1,16 @@
+
+- ec2_remote_facts:
+    region: "{{aws_region}}"
+    filters:
+      "tag:Name": elasticsearch
+  register: elasticsearch_instance
+
+- name: stopping ec2 instance
+  local_action:
+    module: ec2
+    instance_ids:
+      - "{{elasticsearch_instance.instances[0].id}}"
+    state: stopped
+    wait: True
+    region: "{{aws_region}}"
+

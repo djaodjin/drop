@@ -1,0 +1,7 @@
+---
+
+- include_vars: group_vars/dynamic
+- include: route53.yml
+
+# Write all dynamic settings that need to be shared amongst playbooks.
+- lineinfile: "dest=group_vars/dynamic regexp='^hosted_zone_id:' line='hosted_zone_id: {{hosted_zone_id}}'"

@@ -1,4 +1,4 @@
-# Copyright (c) 2014, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -75,11 +75,6 @@ class installScript(object):
 
 class debianInstallScript(installScript):
 
-    def prerequisites(self, prereqs):
-        self.script.write(
-            'DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get -y install %s\n'
-                % ' '.join(prereqs))
-
     def install(self, packagename, force=False, postinst_script=None):
         if packagename.endswith('.tar.bz2'):
             super(debianInstallScript, self).install(
@@ -101,9 +96,6 @@ class redhatInstallScript(installScript):
         super(redhatInstallScript, self).__init__(
             script_path, mod_sysconfdir=mod_sysconfdir)
         self.jenkins_plugins_install = False
-
-    def prerequisites(self, prereqs):
-        self.script.write('yum -y install %s\n' % ' '.join(prereqs))
 
     def install(self, packagename,
                 force=False, postinst_script=None):
@@ -140,21 +132,34 @@ class PostinstScript(object):
         self.sysconfdir = '/etc'
         self.scriptfile = None
         if self.dist in APT_DISTRIBS:
+            self.postinst_run_path = 'debian/postinst'
             self.postinst_path = os.path.join(
-                mod_sysconfdir, 'debian', 'postinst')
+                mod_sysconfdir, self.postinst_run_path)
         elif self.dist in YUM_DISTRIBS:
             # On Fedora, use %pre and %post in the spec file
             # http://fedoraproject.org/wiki/Packaging:ScriptletSnippets
+            self.postinst_run_path = '/usr/share/%s/postinst' % project_name
             self.postinst_path = os.path.join(
-               mod_sysconfdir, 'usr', 'share', project_name, 'postinst')
+                mod_sysconfdir, self.postinst_run_path[1:])
+
+    def serviceEnable(self, service):
+        if self.dist in YUM_DISTRIBS:
+            self.shellCommand(['systemctl', 'enable', '%s.service' % service])
+        else:
+            sys.stderr.write(
+                "warning: how to enable services on '%s' is unknown" %
+                self.dist)
 
     def serviceRestart(self, service):
         if self.dist in APT_DISTRIBS:
             self.shellCommand(
                 [os.path.join(self.sysconfdir, 'init.d', service), 'restart'])
         elif self.dist in YUM_DISTRIBS:
-            self.shellCommand(['service', service, 'restart'])
-            self.shellCommand(['systemctl', 'enable', '%s.service' % service])
+            self.shellCommand(['systemctl', 'restart', '%s.service' % service])
+        else:
+            sys.stderr.write(
+                "warning: how to start services on '%s' is unknown" %
+                self.dist)
 
     def shellCommand(self, cmdline, comment=None):
         # Insure the postinst script file is open for writing commands into it.
@@ -169,7 +174,29 @@ class PostinstScript(object):
             self.scriptfile.write('# ' + comment + '\n')
         self.scriptfile.write(' '.join(cmdline) + '\n')
 
+    def create_certificate(self, certificate_name, comment=None):
+        """
+        Shell commands to create a key pair.
+        """
+        priv_key = '/etc/pki/tls/private/%s.key' % certificate_name
+        sign_request = '/etc/pki/tls/certs/%s.csr' % certificate_name
+        pub_cert = '/etc/pki/tls/certs/%s.crt' % certificate_name
+        self.shellCommand(['if [ ! -f %s ] ; then' % priv_key])
+        self.shellCommand(['echo', '-e',
+            '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
+                '\nlocalhost\nsupport@example.com\n\n\n"', '|',
+            'openssl', 'req', '-new', '-sha256',
+            '-newkey', 'rsa:2048', '-nodes', '-keyout', priv_key,
+            '-out', sign_request],
+            comment=comment)
+        self.shellCommand(['openssl', 'x509', '-req', '-days', '365',
+            '-in', sign_request, '-signkey', priv_key, '-out', pub_cert])
+        self.shellCommand(['fi'])
+
     def install_selinux_module(self, module_te, comment=None):
+        """
+        Shell commands to install a SELinux module.
+        """
         module_mod = os.path.splitext(
             os.path.basename(module_te))[0] + '.mod'
         module_pp = os.path.splitext(
@@ -181,6 +208,8 @@ class PostinstScript(object):
             ['semodule_package', '-m', module_mod, '-o', module_pp])
         self.shellCommand(
             ['semodule', '-i', module_pp])
+
+
 
 
 class SetupTemplate(SetupStep):
@@ -257,10 +286,10 @@ def after_daemon_start(daemon, cmdline):
 def create_install_script(script_path, context=None):
     if context.host() in APT_DISTRIBS:
         return debianInstallScript(
-            script_path, mod_sysconfdir=context.MOD_SYSCONFDIR)
+            script_path, mod_sysconfdir=context.modEtcDir)
     elif context.host() in YUM_DISTRIBS:
         return redhatInstallScript(
-            script_path, mod_sysconfdir=context.MOD_SYSCONFDIR)
+            script_path, mod_sysconfdir=context.modEtcDir)
 
 
 def next_token_in_config(remain,
@@ -514,7 +543,7 @@ def modify_config_file(output_file, input_file, settings={},
 
 
 def stageDir(pathname, context):
-    newDir = context.MOD_SYSCONFDIR + pathname
+    newDir = context.modEtcDir + pathname
     if not os.path.exists(newDir):
         os.makedirs(newDir)
     return newDir
@@ -525,12 +554,10 @@ def stageFile(pathname, context):
     Prepare a configuration file for modification. It involves making
     a copy of the previous version, then opening a temporary file for edition.
     """
-    stage_user = context.value('admin')
-    stage_group = context.value('admin')
-    new_path = context.MOD_SYSCONFDIR + pathname
-    org_path = context.TPL_SYSCONFDIR + pathname
-    log_info('stage %s\n  to %s\n  original at %s'
-                  % (pathname, new_path, org_path))
+    new_path = context.modEtcDir + pathname
+    org_path = context.tplEtcDir + pathname
+    log_info('stage %s\n  to %s\n  original at %s' % (
+        pathname, new_path, org_path))
     if not os.path.exists(org_path):
         # We copy the original configuration file into the local build
         # directory before modifying it.
@@ -539,9 +566,16 @@ def stageFile(pathname, context):
         # the original original files when the script is run a second time.
         #
         try:
-            shell_command([
-                'install', '-D', '-p', '-o', stage_user, '-g', stage_group,
-                pathname, org_path], admin=True)
+            try:
+                user_opt = ['-o', context.value('admin')]
+            except Error:
+                user_opt = []
+            try:
+                group_opt = ['-g', context.value('admin')]
+            except Error:
+                group_opt = []
+            shell_command(['install', '-D', '-p'] + user_opt + group_opt +
+                [pathname, org_path], admin=len(user_opt) > 0)
         except Error as err:
             # We sometimes need sudo access to make backup copies of config
             # files (even ones with no credentials). This is just a convoluted
@@ -557,8 +591,8 @@ def unifiedDiff(pathname):
     '''Return a list of lines which is the unified diff between an original
     configuration file and the modified version.
     '''
-    new_path = CONTEXT.MOD_SYSCONFDIR + pathname
-    org_path = CONTEXT.TPL_SYSCONFDIR + pathname
+    new_path = CONTEXT.modEtcDir + pathname
+    org_path = CONTEXT.tplEtcDir + pathname
     cmdline = ' '.join(['diff', '-u', org_path, new_path])
     cmd = subprocess.Popen(cmdline,
                            shell=True,

@@ -1,0 +1,15 @@
+#!/bin/bash
+# worker instance configuration
+
+# Install git and package in instance
+yum -y install git python-virtualenv python-pip
+
+# Install awcli and Download keys, certificates, etc.
+pip install awscli
+aws s3 cp s3://{{deployutils_bucket}}/identities/worker.internal / --recursive
+
+# Clone drop github repository in /tmp/ansible and
+# Run dservices scripts
+mkdir -p /tmp/ansible && cd /tmp/ansible && git clone {{remote_drop_repo}}
+virtualenv-2.7 --system-site-packages /tmp/ansible
+/tmp/ansible/bin/python /tmp/ansible/drop/src/dservices.py /tmp/ansible/drop/share/tero/worker.xml

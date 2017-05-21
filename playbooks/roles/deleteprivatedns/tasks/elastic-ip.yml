@@ -1,6 +1,0 @@
----
-
-- name: Release elastic IP for the web front
-  ec2_eip: state='present' public_id="{{web_elastic_ip}}"
-  when: web_elastic_ip is defined
-  ignore_errors: True

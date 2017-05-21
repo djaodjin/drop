@@ -1,0 +1,7 @@
+
+- name: Delete deployutils S3 bucket
+  local_action:
+    module: s3
+    bucket: "{{deployutils_bucket}}"
+    mode: delete
+  ignore_errors: True

@@ -1,0 +1,17 @@
+---
+
+- name: Import key pair to connect to EC2 instances with a public IP address
+  local_action:
+    module: ec2_key
+    name: "{{key_name}}"
+    region: "{{aws_region}}"
+    key_material: "{{item}}"
+  with_file: ~/.ssh/{{key_name}}.pub
+
+- name: Import key pair to connect to instances hosting databases
+  local_action:
+    module: ec2_key
+    name: "{{dbs_key}}"
+    region: "{{aws_region}}"
+    key_material: "{{item}}"
+  with_file: ~/.ssh/{{dbs_key}}.pub

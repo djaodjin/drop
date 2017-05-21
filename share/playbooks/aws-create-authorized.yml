@@ -1,0 +1,25 @@
+# XXX Until Ansible v2 is widely available:
+# We run all native Ansible commands before awscli commands because those
+# later could fail if the resources do not exist. None-the-less here we
+# need to create the bucket after the roles were created.
+
+- name: Creating groups and roles
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars:
+    - castle_gate: "{{castle_gate_name | default(tag_prefix+'castle-gate')}}"
+    - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
+    - kitchen_door: "{{kitchen_door_name | default(tag_prefix+'kitchen-door')}}"
+    - vault: "{{vault_name | default(tag_prefix+'vault')}}"
+    - watch_tower: "{{watch_tower_name | default(tag_prefix+'watch-tower')}}"
+    - dbs_key: "{{dbs_key_name | default(key_name)}}"
+    - deployuser: "{{ lookup('env','LOGNAME') }}"
+  roles:
+    - dynamicfile
+    - keyimport
+    - createvpc
+    - creategroups
+    - createiamroles
+    - createprivatedns
+    - uploadidentities

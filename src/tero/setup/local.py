@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,98 +24,66 @@
 
 '''Entry Point to setting-up a local machine.'''
 
-import datetime, os, re, socket, shutil, sys, subprocess
+import datetime, getpass, os, socket, shutil, sys, subprocess
 
 import tero # for global variables (CONTEXT, etc.)
-from tero import (__version__, Error, log_info, pub_build, pub_make,
-    create_managed, shell_command, validate_controls,
+from tero import (__version__, Error, pub_build, pub_make,
+    create_managed, shell_command,
     FilteredList, ordered_prerequisites, fetch, merge_unique,
-    IndexProjects, DerivedSetsGenerator, BuildGenerator, MakeGenerator,
+    IndexProjects,
     Context, Variable, Pathname, stampfile, create_index_pathname)
 import tero.setup # for global variables (postinst)
-from tero.setup import (modifyIniConfig, stageFile, unifiedDiff, writeSettings,
-    prettyPrint)
+from tero.setup.integrity import fingerprint
 
 
-def docModifs(routine, config_paths):
-    '''Add the config modifications into the documentation.'''
-
-    routine.__doc__ += '<programlisting>\n'
-    for conf in config_paths:
-        routine.__doc__ += ''.join(unifiedDiff(conf))
-    routine.__doc__ += '</programlisting>\n</section>\n'
-
-
-def mergeSettings(left, right):
-    for setting in right:
-        if setting in left:
-            raise Error("duplicate settings for " + str(setting))
-        left[setting] = right[setting]
-    return left
-
-
-def copyNewConfigs(base):
-    for file_path in os.listdir(base):
-        file_path = os.path.join(base, file_path)
-        if os.path.isdir(file_path):
-            if not os.path.exists(file_path[3:]):
-                shell_command(['/usr/bin/install', '-d', file_path[3:]],
-                              admin=True)
-            copyNewConfigs(file_path)
-        else:
-            # remove the 'new" prefix to form the orginal pathname back.
-            shell_command(['/usr/bin/install', '-p', file_path, file_path[3:]],
-                          admin=True)
-
-
-def createInstallScript(project_name, install_top):
-    '''Create custom packages and an install script that can be run
+def create_install_script(dgen, context, install_top):
+    """
+    Create custom packages and an install script that can be run
     to setup the local machine. After this step, the final directory
     can then be tar'ed up and distributed to the local machine.
-    '''
+    """
     # Create a package through the local package manager or alternatively
     # a simple archive of the configuration files and postinst script.
-    context = tero.CONTEXT
     prev = os.getcwd()
-    shareDir = os.path.join(install_top, 'share')
-    project_name = os.path.basename(context.MOD_SYSCONFDIR)
-    packageDir = context.obj_dir(os.path.basename(context.MOD_SYSCONFDIR))
-    if not os.path.exists(packageDir):
-        os.makedirs(packageDir)
+    share_dir = os.path.join(install_top, 'share')
+    project_name = os.path.basename(context.value('modEtcDir'))
+    package_dir = context.obj_dir(os.path.basename(context.value('modEtcDir')))
+    if not os.path.exists(package_dir):
+        os.makedirs(package_dir)
     make_simple_archive = True
     if make_simple_archive:
-        os.chdir(context.MOD_SYSCONFDIR)
-        packagePath = os.path.join(packageDir,
+        os.chdir(context.value('modEtcDir'))
+        package_path = os.path.join(package_dir,
             project_name + '-' + str(__version__) + '.tar.bz2')
         archived = []
         for dirname in ['etc', 'usr', 'var']:
             if os.path.exists(dirname):
                 archived += [dirname]
-        shell_command(['tar', 'jcf', packagePath] + archived)
+        shell_command(['tar', 'jcf', package_path] + archived)
     else:
-        os.chdir(packageDir)
-        for binScript in ['dws', 'dbldpkg']:
-            buildBinScript = context.obj_dir(os.path.join('bin', binScript))
-            if os.path.islink(buildBinScript):
-                os.remove(buildBinScript)
-            os.symlink(os.path.join(install_top, 'bin', binScript),
-                       buildBinScript)
-        buildShareDrop = context.obj_dir(os.path.join('share', 'dws'))
-        if os.path.islink(buildShareDrop):
-            os.remove(buildShareDrop)
-        if not os.path.isdir(os.path.dirname(buildShareDrop)):
-            os.makedirs(os.path.dirname(buildShareDrop))
-        os.symlink(os.path.join(shareDir, 'dws'), buildShareDrop)
+        os.chdir(package_dir)
+        for bin_script in ['dws', 'dbldpkg']:
+            build_bin_script = context.obj_dir(os.path.join('bin', bin_script))
+            if os.path.islink(build_bin_script):
+                os.remove(build_bin_script)
+            os.symlink(os.path.join(install_top, 'bin', bin_script),
+                       build_bin_script)
+        build_share_drop = context.obj_dir(os.path.join('share', 'dws'))
+        if os.path.islink(build_share_drop):
+            os.remove(build_share_drop)
+        if not os.path.isdir(os.path.dirname(build_share_drop)):
+            os.makedirs(os.path.dirname(build_share_drop))
+        os.symlink(os.path.join(share_dir, 'dws'), build_share_drop)
         pub_make(['dist'])
-        packageNameFile = open(os.path.join(packageDir, '.packagename'), 'r')
-        packagePath = packageNameFile.read().strip()
-        packageNameFile.close()
+        with open(os.path.join(
+                package_dir, '.packagename')) as package_name_file:
+            package_path = package_name_file.read().strip()
     os.chdir(prev)
 
     # Create install script
-    fetchPackages = FilteredList()
-    tero.INDEX.parse(fetchPackages)
-    for package in fetchPackages.fetches:
+    fetch_packages = FilteredList()
+    tero.INDEX.parse(fetch_packages)
+    for package in fetch_packages.fetches:
         tero.EXCLUDE_PATS += [os.path.basename(package).split('_')[0]]
 
     obj_dir = context.obj_dir(project_name)
@@ -127,31 +95,35 @@ def createInstallScript(project_name, install_top):
 
 set -x
 ''')
-    deps = ordered_prerequisites([project_name], tero.INDEX)
+    deps = ordered_prerequisites(dgen, tero.INDEX)
     for dep in tero.EXCLUDE_PATS + [project_name]:
         if dep in deps:
             deps.remove(dep)
-    install_script.prerequisites(deps)
-    packageName = os.path.basename(packagePath)
-    localPackagePath = os.path.join(obj_dir, packageName)
-    if (not os.path.exists(localPackagePath)
-        or not os.path.samefile(packagePath, localPackagePath)):
-        print 'copy %s to %s' % (packagePath, localPackagePath)
-        shutil.copy(packagePath, localPackagePath)
-    packageFiles = [os.path.join(project_name, packageName)]
-    for name in fetchPackages.fetches:
+    for step in [dep for dep in deps if hasattr(dep, 'install_commands')]:
+        cmds = step.install_commands(step.get_installs(), tero.CONTEXT)
+        for cmd, admin, noexecute in cmds:
+            install_script.script.write("%s\n" % ' '.join(cmd))
+
+    package_name = os.path.basename(package_path)
+    local_package_path = os.path.join(obj_dir, package_name)
+    if (not os.path.exists(local_package_path)
+        or not os.path.samefile(package_path, local_package_path)):
+        print 'copy %s to %s' % (package_path, local_package_path)
+        shutil.copy(package_path, local_package_path)
+    package_files = [os.path.join(project_name, package_name)]
+    for name in fetch_packages.fetches:
         fullname = context.local_dir(name)
         package = os.path.basename(fullname)
         if not os.path.isfile(fullname):
             # If the package is not present (might happen if dws/semilla
             # are already installed on the system), let's download it.
-            fetch(CONTEXT,
+            fetch(tero.CONTEXT,
                       {'https://djaodjin.com/resources/./%s/%s' # XXX
                        % (context.host(), package): None})
         shutil.copy(fullname, os.path.join(obj_dir, package))
         install_script.install(package, force=True)
-        packageFiles += [os.path.join(project_name, package)]
-    install_script.install(packageName, force=True,
+        package_files += [os.path.join(project_name, package)]
+    install_script.install(package_name, force=True,
                           postinst_script=tero.setup.postinst.postinst_path)
     install_script.write('echo done.\n')
     install_script.script.close()
@@ -160,12 +132,12 @@ set -x
     prev = os.getcwd()
     os.chdir(os.path.dirname(obj_dir))
     shell_command(['tar', 'jcf', project_name + '.tar.bz2',
-                   os.path.join(project_name, 'install.sh')] + packageFiles)
+                   os.path.join(project_name, 'install.sh')] + package_files)
     os.chdir(prev)
     return os.path.join(os.path.dirname(obj_dir), project_name + '.tar.bz2')
 
 
-def createPostinst(startTimeStamp, setups, context=None):
+def create_postinst(start_timestamp, setups, context=None):
     '''This routine will copy the updated config files on top of the existing
     ones in /etc and will issue necessary commands for the updated config
     to be effective. This routine thus requires to execute a lot of commands
@@ -175,7 +147,7 @@ def createPostinst(startTimeStamp, setups, context=None):
         context = tero.CONTEXT
 
     # \todo how to do this better?
-    with open(os.path.join(context.MOD_SYSCONFDIR, 'Makefile'), 'w') as mkfile:
+    with open(os.path.join(context.value('modEtcDir'), 'Makefile'), 'w') as mkfile:
         mkfile.write('''
 # With dws, this Makefile will be invoked through
 #     make -f *buildTop*/dws.mk *srcDir*/Makefile
@@ -187,7 +159,7 @@ def createPostinst(startTimeStamp, setups, context=None):
 # directive.
 
 -include dws.mk
-include %(shareDir)s/dws/prefix.mk
+include %(share_dir)s/dws/prefix.mk
 
 DATAROOTDIR := /usr/share
 
@@ -209,42 +181,50 @@ install::
 \t\tcp -rpf ./usr/lib/systemd/system/* $(DESTDIR)/usr/lib/systemd/system ; \\
 \tfi
 
-include %(shareDir)s/dws/suffix.mk
-''' % {'shareDir': context.shareDir})
+include %(share_dir)s/dws/suffix.mk
+''' % {'share_dir': context.value('shareDir')})
 
     for pathname in ['/var/spool/cron/crontabs']:
         if not os.access(pathname, os.W_OK):
-            tero.setup.postinst.shellCommand(['[ -f ' + pathname + ' ]',
-                '&&', 'chown ', context.value('admin'), pathname])
+            try:
+                tero.setup.postinst.shellCommand(['[ -f ' + pathname + ' ]',
+                    '&&', 'chown ', context.value('admin'), pathname])
+            except Error:
+                # We don't have an admin variable anyway...
+                pass
 
     # Execute the extra steps necessary after installation
     # of the configuration files and before restarting the services.
-    daemons = []
+    services = []
     for setup in setups:
         if setup:
-            daemons = merge_unique(daemons, setup.daemons)
+            services = merge_unique(services, setup.daemons)
 
-    # Restart services
+    # Enable all services before restarting them. In case we encounter
+    # an transient error on restart, at least the services will be enabled.
     if tero.setup.postinst.scriptfile:
-        tero.setup.postinst.scriptfile.write('\n# Restart services\n')
-    for daemon in daemons:
-        tero.setup.postinst.serviceRestart(daemon)
-        if daemon in tero.setup.after_statements:
-            for stmt in tero.setup.after_statements[daemon]:
+        tero.setup.postinst.scriptfile.write(
+            "\n# Enable and restart services\n")
+    for service in services:
+        tero.setup.postinst.serviceEnable(service)
+    for service in services:
+        tero.setup.postinst.serviceRestart(service)
+        if service in tero.setup.after_statements:
+            for stmt in tero.setup.after_statements[service]:
                 tero.setup.postinst.shellCommand([stmt])
     if tero.setup.postinst.scriptfile:
         tero.setup.postinst.scriptfile.close()
         shell_command(['chmod', '755', tero.setup.postinst.postinst_path])
 
 
-def prepareLocalSystem(context, project_name, profiles):
+def prepare_local_system(context, project_name, profiles):
     """
     Install prerequisite packages onto the local system and create a project
     with the modified configuration files such that the machine can be
     reconfigured later by installing a native package (i.e. rpm or deb).
     """
     tero.setup.postinst = tero.setup.PostinstScript(
-        project_name, context.host(), context.MOD_SYSCONFDIR)
+        project_name, context.host(), context.value('modEtcDir'))
 
     # XXX Implement this or deprecated?
     # Since they contain sensitive information, credentials file
@@ -258,21 +238,19 @@ def prepareLocalSystem(context, project_name, profiles):
 
     # Write the profile file that contains information to turn
     # an ISO stock image into a specified server machine.
-    tplIndexFile = os.path.join(
-        tero.CONTEXT.MOD_SYSCONFDIR, '%s-tpl.xml' % project_name)
-    create_index_pathname(tplIndexFile, profiles)
-    indexFile = os.path.join(context.MOD_SYSCONFDIR, '%s.xml' % project_name)
-    if (len(os.path.dirname(indexFile)) > 0 and
-        not os.path.exists(os.path.dirname(indexFile))):
-        os.makedirs(os.path.dirname(indexFile))
-    # XXX we used to replace %()s by actual value in profile template.
-    with open(tplIndexFile) as profile:
-        profile_text = profile.read()
-    for name, value in context.environ.iteritems():
-        profile_text = profile_text.replace('%%(%s)s' % name, str(value))
-    with open(indexFile, 'w') as confIndex:
-        confIndex.write(profile_text)
-    sys.stdout.write('deploying profile %s ...\n' % indexFile)
+    tpl_index_file = os.path.join(
+        tero.CONTEXT.value('modEtcDir'), '%s-tpl.xml' % project_name)
+    create_index_pathname(tpl_index_file, profiles)
+    index_path = os.path.join(context.value('modEtcDir'), '%s.xml' % project_name)
+    if (len(os.path.dirname(index_path)) > 0 and
+        not os.path.exists(os.path.dirname(index_path))):
+        os.makedirs(os.path.dirname(index_path))
+    # matching code in driver.py ``copy_setup``
+    with open(tpl_index_file, 'r') as profile_file:
+        template_text = profile_file.read()
+    with open(index_path, 'w') as profile_file:
+        profile_file.write(template_text % context.environ)
+    sys.stdout.write('deploying profile %s ...\n' % index_path)
 
     import imp
     csteps = {}
@@ -294,10 +272,9 @@ def prepareLocalSystem(context, project_name, profiles):
         bzip2 = create_managed('bzip2')
         bzip2.run(context)
 
-    # Some magic to recompute paths correctly from ``indexFile``.
-    site_top = os.path.dirname(os.path.dirname(os.path.dirname(indexFile)))
-    index_path = indexFile.replace(site_top, site_top + '/.')
-    print "XXX index_path=%s" % index_path
+    # Some magic to recompute paths correctly from ``index_path``.
+    site_top = os.path.dirname(os.path.dirname(os.path.dirname(index_path)))
+    index_path = index_path.replace(site_top, site_top + '/.')
     return pub_build([index_path])
 
 
@@ -312,28 +289,31 @@ def main(args):
     # We keep a starting time stamp such that we can later on
     # find out the services that need to be restarted. These are
     # the ones whose configuration files have a modification
-    # later than *startTimeStamp*.
-    startTimeStamp = datetime.datetime.now()
+    # later than *start_timestamp*.
+    start_timestamp = datetime.datetime.now()
     prev = os.getcwd()
 
-    binBase = os.path.dirname(os.path.realpath(os.path.abspath(sys.argv[0])))
+    bin_base = os.path.dirname(os.path.realpath(os.path.abspath(sys.argv[0])))
 
     parser = argparse.ArgumentParser(
         usage='%(prog)s [options] *profile*\n\nVersion:\n  %(prog)s version ' \
             + str(__version__))
     parser.add_argument('profiles', nargs='*',
-                      help='Profiles to use to configure the machine.')
+        help='Profiles to use to configure the machine.')
     parser.add_argument('--version', action='version',
-                        version='%(prog)s ' + str(__version__))
+        version='%(prog)s ' + str(__version__))
     parser.add_argument('-D', dest='defines', action='append', default=[],
-                      help='Add a (key,value) definition to use in templates.')
-    parser.add_argument('--skip-recurse', dest='install', action='store_false',
-                      default=True,
-                      help='Assumes all prerequisites to build the'\
+        help='Add a (key,value) definition to use in templates.')
+    parser.add_argument('--fingerprint', dest='fingerprint',
+        action='store_true', default=False,
+        help='Fingerprint the system before making modifications')
+    parser.add_argument('--skip-recurse', dest='install',
+        action='store_false', default=True,
+        help='Assumes all prerequisites to build the'\
 ' configuration package have been installed correctly. Generate'\
 ' a configuration package but donot install it.')
     parser.add_argument('--dyndns', dest='dyndns', action='store_true',
-                      help='Add configuration for dynamic DNS')
+        help='Add configuration for dynamic DNS')
     parser.add_argument('--sshkey', dest='sshkey', action='store_true',
         help='Configure the ssh daemon to disable password login and use'\
 ' keys instead')
@@ -343,80 +323,38 @@ def main(args):
         sys.exit(1)
 
     # siteTop where packages are built
-    confTop = os.getcwd()
-    tero.ASK_PASS = os.path.join(binBase, 'askpass')
+    conf_top = os.getcwd()
+    tero.ASK_PASS = os.path.join(bin_base, 'askpass')
 
     # -- Let's start the configuration --
-    if not os.path.isdir(confTop):
-        os.makedirs(confTop)
-    os.chdir(confTop)
+    if not os.path.isdir(conf_top):
+        os.makedirs(conf_top)
+    os.chdir(conf_top)
     tero.USE_DEFAULT_ANSWER = True
     tero.CONTEXT = Context()
-    tero.CONTEXT.config_filename = os.path.join(confTop, 'dws.mk')
+    tero.CONTEXT.config_filename = os.path.join(conf_top, 'dws.mk')
     tero.CONTEXT.buildTopRelativeCwd \
         = os.path.dirname(tero.CONTEXT.config_filename)
     tero.CONTEXT.environ['version'] = __version__
 
     # Configuration information
-    if not 'admin' in tero.CONTEXT.environ:
-        tero.CONTEXT.environ['admin'] = Variable('admin',
-            {'description': 'Login for the administrator account',
-             'default': os.getenv("LOGNAME")})
-
-    distHost = tero.CONTEXT.host() # calls HostPlatform.configure()
-    dist_codename = tero.CONTEXT.environ['distHost'].dist_codename
-    # TODO If staged files already exist in the orig directory, they
-    #      won't be backed-up!
-    # TODO Where original (pre-modified) system files will be stored
-
-    # Parse a list of variable definitions with format key=value to append
-    # to the tero.CONTEXT.
+    # Add necessary variables in context, then parse a list of variable
+    # definitions with format key=value from the command line and append
+    # them to the context.
     for define in options.defines:
         key, value = define.split('=')
         tero.CONTEXT.environ[key] = value
 
-    # Derive necessary variables if they haven't been initialized yet.
-    if not 'DB_USER' in tero.CONTEXT.environ:
-        tero.CONTEXT.environ['DB_USER'] = Variable('DB_USER',
-        {'description': 'User to access databases.',
-         'default': 'djaoapp'})
-    if not 'DB_PASSWORD' in tero.CONTEXT.environ:
-        tero.CONTEXT.environ['DB_PASSWORD'] = Variable('DB_PASSWORD',
-        {'description': 'Password for user to access databases.',
-         'default': 'djaoapp'})
-    if not 'domainName' in tero.CONTEXT.environ:
-        tero.CONTEXT.environ['domainName'] = Variable('domainName',
-        {'description': 'Domain Name for the machine being configured.',
-         'default': socket.gethostname()})
-    if not 'PROJECT_NAME' in tero.CONTEXT.environ:
-        tero.CONTEXT.environ['PROJECT_NAME'] = Variable('PROJECT_NAME',
-        {'description': 'Project under which system modifications are stored.',
-         'default': socket.gethostname().replace('.', '-')})
-    if not 'SYSCONFDIR' in tero.CONTEXT.environ:
-        tero.CONTEXT.environ['SYSCONFDIR'] = Pathname('SYSCONFDIR',
-        {'description': 'system configuration directory.',
-         'default': '/etc'})
-    if not 'MOD_SYSCONFDIR' in tero.CONTEXT.environ:
-        tero.CONTEXT.environ['MOD_SYSCONFDIR'] = Pathname('MOD_SYSCONFDIR',
-        {'description':
-         'directory where modified system configuration file are generated.',
-         'base':'srcTop',
-         'default': socket.gethostname().replace('.', '-')})
-    if not 'TPL_SYSCONFDIR' in tero.CONTEXT.environ:
-        tplDir = os.path.join(confTop, 'share', 'tero')
-        if dist_codename:
-            tplDir = os.path.join(tplDir, dist_codename)
-        else:
-            tplDir = os.path.join(tplDir, distHost)
-        tero.CONTEXT.environ['TPL_SYSCONFDIR'] = Pathname('TPL_SYSCONFDIR',
-        {'description':
-         'directory root that contains the orignal system configuration files.',
-         'default': tplDir})
+    if 'PROJECT_NAME' in tero.CONTEXT.environ:
+        project_name = tero.CONTEXT.value('PROJECT_NAME')
+    else:
+        project_name = os.path.splitext(
+            os.path.basename(options.profiles[0]))[0]
 
-    project_name = tero.CONTEXT.value('PROJECT_NAME')
-
-    logPathPrefix = stampfile(tero.CONTEXT.log_path(
+    log_path_prefix = stampfile(tero.CONTEXT.log_path(
             os.path.join(tero.CONTEXT.host(), socket.gethostname())))
+    if options.fingerprint:
+        fingerprint(tero.CONTEXT, log_path_prefix)
 
     if options.install:
         # \todo We ask sudo password upfront such that the non-interactive
@@ -433,19 +371,12 @@ def main(args):
             shell_command(
                 ['SUDO_ASKPASS="%s"' % tero.ASK_PASS, 'sudo', '-A', '-v'])
 
-    if False:
-        from tero.integrity import fingerprint
-        fingerprint(tero.CONTEXT, logPathPrefix,
-                    skipFilesystem=True,
-                    skipPrivilegedExecutables=True,
-                    skipProcesses=True,
-                    skipPorts=True)
-
-    setups = prepareLocalSystem(tero.CONTEXT, project_name, options.profiles)
+    setups = prepare_local_system(tero.CONTEXT, project_name, options.profiles)
     os.chdir(prev)
     try:
-        book = open(os.path.join(tero.CONTEXT.MOD_SYSCONFDIR, 'config.book'), 'w')
-        book.write('''<?xml version="1.0"?>
+        with open(os.path.join(
+                tero.CONTEXT.value('modEtcDir'), 'config.book'), 'w') as book:
+            book.write('''<?xml version="1.0"?>
 <section xmlns="http://docbook.org/ns/docbook"
      xmlns:xlink="http://www.w3.org/1999/xlink"
      xmlns:xi="http://www.w3.org/2001/XInclude">
@@ -454,33 +385,35 @@ def main(args):
   </info>
   <section>
 <programlisting>''')
-        cmd = subprocess.Popen(' '.join([
-            'diff', '-rNu', tero.CONTEXT.TPL_SYSCONFDIR, tero.CONTEXT.MOD_SYSCONFDIR]),
-                               shell=True,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT)
-        book.write(''.join(cmd.stdout.readlines()))
-        book.write('</programlisting>\n</section>\n')
-        book.close()
-    except Error, e:
+            cmd = subprocess.Popen(' '.join(['diff', '-rNu',
+                tero.CONTEXT.value('tplEtcDir'),
+                tero.CONTEXT.value('modEtcDir')]),
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT)
+            book.write(''.join(cmd.stdout.readlines()))
+            book.write('</programlisting>\n</section>\n')
+    except Error:
         # We donot check error code here since the diff will complete
         # with a non-zero error code if we either modified the config file.
         pass
 
     # Create the postinst script
-    createPostinst(startTimeStamp, setups)
-    finalInstallPackage = createInstallScript(project_name,
-        install_top=os.path.dirname(binBase))
+    create_postinst(start_timestamp, setups)
+    dgen = tero.BuildGenerator([project_name], [],
+        exclude_pats=tero.EXCLUDE_PATS, custom_steps=tero.CUSTOM_STEPS)
+    final_install_package = create_install_script(dgen, tero.CONTEXT,
+        install_top=os.path.dirname(bin_base))
 
     # Install the package as if it was a normal distribution package.
     if options.install:
         if not os.path.exists('install'):
             os.makedirs('install')
-        shutil.copy(finalInstallPackage, 'install')
+        shutil.copy(final_install_package, 'install')
         os.chdir('install')
-        installBasename = os.path.basename(finalInstallPackage)
-        project_name = '.'.join(installBasename.split('.')[:-2])
-        shell_command(['tar', 'jxf', os.path.basename(finalInstallPackage)])
+        install_basename = os.path.basename(final_install_package)
+        project_name = '.'.join(install_basename.split('.')[:-2])
+        shell_command(['tar', 'jxf', os.path.basename(final_install_package)])
         sys.stdout.write('ATTENTION: A sudo password is required now.\n')
         os.chdir(project_name)
         shell_command(['./install.sh'], admin=True)

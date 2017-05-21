@@ -1,4 +1,4 @@
-# Copyright (c) 2014, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,8 +39,8 @@ class openssh_serverSetup(SetupTemplate):
        security unless users are also denied shell access, as they can
        always install their own forwarders.'''
 
-    ldap_conf = os.path.join(CONTEXT.SYSCONFDIR, 'ssh', 'ldap.conf')
-    sshd_conf = os.path.join(CONTEXT.SYSCONFDIR, 'ssh', 'sshd_config')
+    ldap_conf = os.path.join(CONTEXT.value('etcDir'), 'ssh', 'ldap.conf')
+    sshd_conf = os.path.join(CONTEXT.value('etcDir'), 'ssh', 'sshd_config')
 
     def __init__(self, name, files, **kwargs):
         super(openssh_serverSetup, self).__init__(name, files, **kwargs)
@@ -49,32 +49,32 @@ class openssh_serverSetup(SetupTemplate):
 
     def run(self, context):
         complete = super(openssh_serverSetup, self).run(context)
-        banner = os.path.join(context.SYSCONFDIR, 'issue.net')
+        ldapHost = context.value('ldapHost')
+        domain_parts = tuple(context.value('domainName').split('.'))
+        banner = os.path.join(context.value('etcDir'), 'issue.net')
         _, new_banner_path = stageFile(
             banner, context=context)
         with open(new_banner_path, 'w') as new_banner:
             new_banner.write(
                 'This server is private property. Authorized use only.\n')
         settings = {'Banner': banner}
-        for key, vals in self.files.iteritems():
+        for key, vals in self.managed['openssh-server']['files'].iteritems():
             if key == self.sshd_conf:
                 settings.update(vals[0][0])
         modify_config(self.sshd_conf,
             settings=settings, sep=' ', context=context)
 
-        ldapDomain = 'dbs.internal'
-        domain_parts = tuple(context.value('domainName').split('.'))
-        ldapCertPath = os.path.join(context.SYSCONFDIR,
-            'pki', 'tls', 'certs', '%s.crt' % ldapDomain)
+        ldapCertPath = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {
-            'ldapDomain': ldapDomain,
+            'ldapHost': ldapHost,
             'domainNat': domain_parts[0],
             'domainTop': domain_parts[1],
             'ldapCertPath': ldapCertPath
         }
         modify_config(self.ldap_conf,
             settings={
-                'URI': 'ldaps://%(ldapDomain)s' % names,
+                'URI': 'ldaps://%(ldapHost)s' % names,
                 'BASE': 'ou=people,dc=%(domainNat)s,dc=%(domainTop)s' % names,
                 'TLS_CACERT': ldapCertPath,
                 'TLS_REQCERT': 'demand',

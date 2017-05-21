@@ -1,0 +1,133 @@
+---
+# First create the EC2 security groups, then update the inbound rules
+# that could not be set on create because of the order in which groups
+# are created.
+
+- name: Create 'castle-gate' security group
+  local_action:
+     module: ec2_group
+     name: "{{castle_gate}}"
+     vpc_id: "{{vpc_id}}"
+     description: "Web facing services"
+     region: "{{aws_region}}"
+     rules:
+
+- name: Create 'kitchen-door' security group
+  local_action:
+    module: ec2_group
+    name: "{{kitchen_door}}"
+    vpc_id: "{{vpc_id}}"
+    description: "Monitoring services"
+    region: "{{aws_region}}"
+    rules:
+      - proto: tcp
+        from_port: "{{ssh_port}}"
+        to_port: "{{ssh_port}}"
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 2222
+        to_port: 2222
+        group_name: '{{castle_gate}}'
+    rules_egress:
+      - proto: all
+        cidr_ip: 0.0.0.0/0
+
+- name: Update 'castle-gate' security group
+  local_action:
+     module: ec2_group
+     name: "{{castle_gate}}"
+     vpc_id: "{{vpc_id}}"
+     description: "Web facing services"
+     region: "{{aws_region}}"
+     rules:
+       - proto: tcp
+         from_port: 80
+         to_port: 80
+         cidr_ip: 0.0.0.0/0
+       - proto: tcp
+         from_port: 443
+         to_port: 443
+         cidr_ip: 0.0.0.0/0
+       - proto: tcp
+         from_port: 22
+         to_port: 22
+         group_name: "{{kitchen_door}}"
+     rules_egress:
+       - proto: all
+         cidr_ip: 0.0.0.0/0
+
+- name: Create 'watch-tower' security group
+  local_action:
+    module: ec2_group
+    name: "{{watch_tower}}"
+    vpc_id: "{{vpc_id}}"
+    description: "Email services"
+    region: "{{aws_region}}"
+    rules:
+      - proto: tcp
+        from_port: 25
+        to_port: 25
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        group_name: "{{kitchen_door}}"
+    rules_egress:
+      - proto: all
+        cidr_ip: 0.0.0.0/0
+
+- name: Create 'courtyard' security group
+  local_action:
+      module: ec2_group
+      name: "{{courtyard}}"
+      vpc_id: "{{vpc_id}}"
+      description: "Transient workers"
+      region: "{{aws_region}}"
+      rules:
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          group_name: "{{kitchen_door}}"
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          group_name: "{{castle_gate}}"
+      rules_egress:
+        - proto: all
+          cidr_ip: 0.0.0.0/0
+
+- name: Create 'vault' security group
+  local_action:
+     module: ec2_group
+     name: "{{vault}}"
+     vpc_id: "{{vpc_id}}"
+     description: "LDAP and SQL Databases"
+     region: "{{aws_region}}"
+     rules:
+       - proto: tcp
+         from_port: 22
+         to_port: 22
+         group_name: "{{kitchen_door}}"
+       - proto: tcp
+         from_port: 5432
+         to_port: 5432
+         group_name: "{{castle_gate}}"
+       - proto: tcp
+         from_port: 636
+         to_port: 636
+         group_name: '{{castle_gate}}'
+       - proto: tcp
+         from_port: 636
+         to_port: 636
+         group_name: "{{kitchen_door}}"
+       - proto: tcp
+         from_port: 636
+         to_port: 636
+         group_name: "{{courtyard}}"
+       - proto: tcp
+         from_port: 636
+         to_port: 636
+         group_name: "{{watch_tower}}"
+     rules_egress:
+       - proto: all
+         cidr_ip: 0.0.0.0/0

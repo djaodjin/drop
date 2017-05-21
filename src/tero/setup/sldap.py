@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,12 +29,49 @@ from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 
 class openldap_serversSetup(SetupTemplate):
 
+    backup_script = [
+        "slapcat -v -l /var/backups/people.ldif",
+        "chmod 600 /var/backups/people.ldif"]
+
     def __init__(self, name, files, **kwargs):
         super(openldap_serversSetup, self).__init__(name, files, **kwargs)
-        self.daemons = ['slapd']
+
+    def create_cron_conf(self, context):
+        """
+        Create a cron job to backup the database to a flat text file.
+        """
+        _, new_conf_path = stageFile(os.path.join(
+            context.value('etcDir'), 'cron.daily', 'ldap_backup'), context)
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write("""#!/bin/sh
+
+%(backup_script)s
+"""  % {'backup_script': '\n'.join(self.backup_script)})
+
+    def create_logrotate_conf(self, context):
+        """
+        Rotate flat file backups.
+        """
+        _, new_conf_path = stageFile(os.path.join(
+            context.value('etcDir'), 'logrotate.d', 'ldap_backup'), context)
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write("""/var/backups/people.ldif
+{
+    create 0600 root root
+    daily
+    rotate 7
+    missingok
+    notifempty
+    compress
+    sharedscripts
+    postrotate
+        %(backup_script)s
+    endscript
+}
+""" % {'backup_script': '\n        '.join(self.backup_script)})
 
     def create_syslogng_conf(self, context):
-        _, conf_path = stageFile(os.path.join(context.SYSCONFDIR,
+        _, conf_path = stageFile(os.path.join(context.value('etcDir'),
             'syslog-ng', 'conf.d', 'slapd.conf'), context=context)
         with open(conf_path, 'w') as conf_file:
             conf_file.write(
@@ -58,44 +95,44 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
-        domain = 'dbs.internal'
+        ldapHost = context.value('ldapHost')
         company_domain = context.value('domainName')
         password_hash = context.value('ldapPasswordHash')
-        priv_key = os.path.join(context.SYSCONFDIR,
-            'pki', 'tls', 'private', '%s.key' % domain)
-        config_path = os.path.join(context.SYSCONFDIR,
+        priv_key = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'private', '%s.key' % ldapHost)
+        config_path = os.path.join(context.value('etcDir'),
             'openldap', 'slapd.d', 'cn=config.ldif')
         _, new_config_path = stageFile(config_path, context)
         modify_config(config_path,
             sep=': ', context=context,
             settings={
                 'olcTLSCACertificatePath': os.path.join(
-                    context.SYSCONFDIR, 'pki', 'tls', 'certs'),
-                'olcTLSCertificateFile': os.path.join(context.SYSCONFDIR,
-                    'pki', 'tls', 'certs', '%s.crt' % domain),
+                    context.value('etcDir'), 'pki', 'tls', 'certs'),
+                'olcTLSCertificateFile': os.path.join(context.value('etcDir'),
+                    'pki', 'tls', 'certs', '%s.crt' % ldapHost),
                 'olcTLSCertificateKeyFile': priv_key
             })
         self._update_crc32(new_config_path)
 
         domain_parts = tuple(company_domain.split('.'))
-        config_path = os.path.join(context.SYSCONFDIR,
+        db_config_path = os.path.join(context.value('etcDir'),
             'openldap', 'slapd.d', 'cn=config', 'olcDatabase={0}config.ldif')
-        _, new_config_path = stageFile(config_path, context)
-        modify_config(config_path,
+        _, new_config_path = stageFile(db_config_path, context)
+        modify_config(db_config_path,
             sep=': ', enter_block_sep=None, exit_block_sep=None,
             one_per_line=True, context=context, settings={
-               'olcRootPW': '{SSHA}%s' % password_hash
+               'olcRootPW': '%s' % password_hash
             })
         self._update_crc32(new_config_path)
-        config_path = os.path.join(context.SYSCONFDIR,
-            'openldap', 'slapd.d', 'cn=config', 'olcDatabase={2}mdb.ldif')
-        _, new_config_path = stageFile(config_path, context)
-        modify_config(config_path,
+        db_hdb_path = os.path.join(context.value('etcDir'),
+            'openldap', 'slapd.d', 'cn=config', 'olcDatabase={2}hdb.ldif')
+        _, new_config_path = stageFile(db_hdb_path, context)
+        modify_config(db_hdb_path,
             sep=': ', enter_block_sep=None, exit_block_sep=None,
             one_per_line=True, context=context, settings={
                'olcSuffix': 'dc=%s,dc=%s' % domain_parts,
                'olcRootDN': 'cn=Manager,dc=%s,dc=%s' % domain_parts,
-               'olcRootPW': '{SSHA}%s' % password_hash,
+               'olcRootPW': '%s' % password_hash,
                'olcAccess': [
                    '{0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage by * break',
                    '{0}to attrs=userPassword by self write by dn.base="cn=Manager,dc=%s,dc=%s" write by anonymous auth by * none' % domain_parts,
@@ -103,7 +140,7 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
             })
         self._update_crc32(new_config_path)
 
-        schema_path = os.path.join(context.SYSCONFDIR,
+        schema_path = os.path.join(context.value('etcDir'),
             'openldap', 'schema', 'openssh-ldap.ldif')
         _, new_schema_path = stageFile(schema_path, context)
         with open(new_schema_path, 'w') as schema_file:
@@ -118,21 +155,31 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
   uid ) )
 """)
 
+        self.create_cron_conf(context)
+        self.create_syslogng_conf(context)
+
+        postinst.create_certificate(ldapHost)
         postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
         postinst.shellCommand(['chgrp', 'ldap', os.path.dirname(priv_key)])
         postinst.shellCommand(['chmod', '640', priv_key])
         postinst.shellCommand(['chgrp', 'ldap', priv_key])
+        postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
+        postinst.shellCommand(['chown', 'ldap:ldap',
+            config_path, db_config_path, db_hdb_path])
+        postinst.shellCommand(['chmod', '600',
+            config_path, db_config_path, db_hdb_path])
 
-        self.create_syslogng_conf(context)
-
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/nis.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/inetorgperson.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-x', '-W', '-H', 'ldap:///', '-f',
-            '/etc/openldap/schema/openssh-ldap.ldif', '-D', '"cn=config"'])
+        # We need to start the server before adding the schemas.
+        postinst.shellCommand(['service', 'slapd', 'restart'])
+        postinst.shellCommand(['systemctl','enable', 'slapd.service'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+            '-f', '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+            '-f', '/etc/openldap/schema/nis.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+          '-f', '/etc/openldap/schema/inetorgperson.ldif', '-D', '"cn=config"'])
+        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+          '-f', '/etc/openldap/schema/openssh-ldap.ldif', '-D', '"cn=config"'])
 
         return complete
 
@@ -153,13 +200,13 @@ class openldap_clientsSetup(SetupTemplate):
             # files here.
             return complete
 
-        domain = 'dbs.internal'
-        modify_config(os.path.join(context.SYSCONFDIR,
+        ldapHost = context.value('ldapHost')
+        modify_config(os.path.join(context.value('etcDir'),
             'openldap', 'ldap.conf'), sep=' ', context=context,
             settings={
                 'TLS_CACERT': os.path.join(
-                    context.SYSCONFDIR, 'pki', 'tls', 'certs',
-                    '%s.crt' % domain),
+                    context.value('etcDir'), 'pki', 'tls', 'certs',
+                    '%s.crt' % ldapHost),
                 'TLS_REQCERT': 'demand'})
 
         return complete

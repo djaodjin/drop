@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# Configuration of a webfront instance (based of web base AMI created
+# by the create_web_base Ansible role).
+
+set -x
+set -e
+
+siteTop=/var/www
+
+# Install awcli and Download keys, certificates, etc.
+aws s3 cp s3://{{deployutils_bucket}}/identities/web.internal / --recursive
+chown fedora:fedora /home/fedora/.ssh
+chmod 600 /home/fedora/.ssh/jenkins_rsa
+
+# Install the web application
+cd ${siteTop}
+sudo -u fedora {{webapp}}/bin/dws build {{remote_src_top}}{{webapp}}.git/{{webapp}}.xml
+cd /etc/systemd/system && ln -s ${siteTop}/{{webapp}}/etc/systemd/system/{{webapp}}.service
+/usr/bin/install -o nginx -g nginx -d ${siteTop}/{{webapp}}/var/run
+systemctl enable {{webapp}}.service
+systemctl start {{webapp}}.service

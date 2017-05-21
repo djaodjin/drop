@@ -1,0 +1,15 @@
+# Create AWS resources (S3 bucket, Elastic IP) which are in use for the whole
+# time of the project.
+#
+# This script is intended to be run only once at the beginning of the project.
+
+- name: Creating groups and roles
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars:
+     deployuser: "{{ lookup('env','LOGNAME') }}"
+  roles:
+    - dynamicfile
+    - creates3bucket
+    - createelasticip

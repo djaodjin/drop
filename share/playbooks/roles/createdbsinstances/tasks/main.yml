@@ -1,0 +1,45 @@
+# We cannot attach EBS encrypted volumes to all instance types
+# References:
+#  - http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSVolumeTypes.html
+#  - http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSEncryption.html#EBSEncryption_supported_instances
+
+- include_vars: group_vars/dynamic
+
+- name: Create databases EC2 instances
+  local_action:
+    module: ec2
+    region: "{{aws_region}}"
+    vpc_subnet_id: "{{dbs_subnet_id}}"
+    key_name: "{{dbs_key}}"
+    group: "{{vault}}"
+    instance_profile_name: "{{vault}}-profile"
+    instance_type: m3.medium
+    image: "{{dbs_ami_id}}"
+    zone: "{{aws_zone}}"
+    wait: yes
+    user_data: "{{ lookup('template', '../templates/dbs-cloud-init-script.j2') }}"
+    instance_tags:
+      prefix: "{{tag_prefix}}archi"
+      profile: "dbs"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "dbs"
+    exact_count: 1
+  register: dbs_server
+
+- name: Create databases EC2 instances
+  local_action:
+    module: ec2
+    instance: "{{ item.id }}"
+    name: "{{dbs_volume_id}}"
+    device_name: /dev/xvdf
+  with_items: dbs_server.instances
+
+- route53:
+    command: create
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "dbs.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{dbs_server.instances[0].private_ip}}"
+    overwrite: yes

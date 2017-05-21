@@ -1,0 +1,8 @@
+# Delete the EC2 instance that was used to create the AMI for databases.
+
+- name: Delete EC2 instance configured to host databases
+  local_action:
+    module: ec2
+    region: "{{aws_region}}"
+    instance_id: "{{dbs_base_device_id}}"
+    state: absent

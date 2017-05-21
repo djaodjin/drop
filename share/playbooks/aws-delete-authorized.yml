@@ -1,0 +1,17 @@
+# Release all resources acquired by running aws-create-authorized.yml
+
+- name: Deleting groups and roles
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars:
+    - castle_gate: "{{castle_gate_name | default(tag_prefix+'castle-gate')}}"
+    - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
+    - kitchen_door: "{{kitchen_door_name | default(tag_prefix+'kitchen-door')}}"
+    - vault: "{{vault_name | default(tag_prefix+'vault')}}"
+    - watch_tower: "{{watch_tower_name | default(tag_prefix+'watch-tower')}}"
+  roles:
+    - deletegroups
+    - deleteiamroles
+    - deleteprivatedns
+    - deletevpc

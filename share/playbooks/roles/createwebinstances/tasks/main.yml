@@ -1,0 +1,55 @@
+---
+- include_vars: group_vars/dynamic
+
+- name: Find 'castle-gate' security group id
+  local_action:
+    module: command
+      aws --region {{aws_region}} ec2 describe-security-groups --filters Name=group-name,Values='{{castle_gate}}' --query 'SecurityGroups[*].{name:GroupName,id:GroupId}'
+  register: castle_gate_sg_cmd
+
+- set_fact: castle_gate_security_groups="{{castle_gate_sg_cmd.stdout | from_json}}"
+
+- debug: msg="{{castle_gate_security_groups[0].id}}"
+
+- name: Create front-end web server EC2 instances
+  local_action:
+    module: ec2
+    group: "{{castle_gate}}"
+    vpc_subnet_id: "{{web_subnet_id}}"
+    assign_public_ip: yes
+    key_name: "{{key_name}}"
+    instance_type: "t2.small"
+    instance_profile_name: "{{castle_gate}}-profile"
+    image: "{{web_ami_id}}"
+    region: "{{aws_region}}"
+    zone: "{{aws_zone}}"
+    volumes:
+      - device_name: /dev/sda1
+        delete_on_termination: true
+        volume_size: 12
+        device_type: gp2
+    wait: yes
+    user_data: "{{ lookup('template', '../templates/web-cloud-init-script.j2') }}"
+    instance_tags:
+      prefix: "{{tag_prefix}}archi"
+      profile: "web"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "web"
+    exact_count: 1
+  register: web_servers
+
+- route53:
+    command: create
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "web.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{web_servers.instances[0].private_ip}}"
+    overwrite: yes
+
+- debug: msg="{{web_servers.instances[0]}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^domain_name:' line='domain_name: {{web_servers.instances[0].public_dns_name}}'"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^web_device_id:' line='web_device_id: {{web_servers.instances[0].id}}'"

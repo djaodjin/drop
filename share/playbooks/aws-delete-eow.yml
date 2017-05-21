@@ -1,0 +1,9 @@
+# Release all resources acquired by running aws-create-forever.yml
+
+- name: Deleting groups and roles
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  roles:
+    - deleteelasticip
+    - deletes3bucket

@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2016, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,7 @@ server {
 %(webapps)s
 server {
         listen          80;
-        server_name     %(domain)s *.%(domain)s;
+        server_name     ~^((?<subdomain>\w+)\.)?%(domain)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
@@ -80,7 +80,7 @@ server {
         root %(document_root)s;
 
         location / {
-            try_files /%(app_name)s$uri/index.html /%(app_name)s$uri.html /%(app_name)s$uri $uri/index.html $uri.html $uri @https-rewrite;
+            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @https-rewrite;
         }
 
         location @https-rewrite {
@@ -98,7 +98,7 @@ server {
         ssl_certificate_key  %(key_path)s;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
         ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+        ssl_dhparam %(dhparam_path)s;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout  5m;
@@ -110,7 +110,7 @@ server {
 
 server {
         listen       443;
-        server_name  *.%(domain)s;
+        server_name  ~^(?<subdomain>\w+)\.%(domain)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
@@ -121,7 +121,7 @@ server {
         ssl_session_timeout  5m;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
         ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+        ssl_dhparam %(dhparam_path)s;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;
 
@@ -155,7 +155,7 @@ server {
         ssl_certificate_key  %(key_path)s;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
         ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+        ssl_dhparam %(dhparam_path)s;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout  5m;
@@ -180,6 +180,39 @@ server {
         location = /50x.html {
             root %(document_root)s;
         }
+}
+"""
+
+    https_default_template = """# All default https request end here.
+
+server {
+        listen       443;
+        server_name  _;
+
+        access_log /var/log/nginx/%(domain)s-access.log main;
+        error_log  /var/log/nginx/%(domain)s-error.log;
+
+        ssl                  on;
+        ssl_certificate      %(wildcard_cert_path)s;
+        ssl_certificate_key  %(wildcard_key_path)s;
+        ssl_session_timeout  5m;
+        ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+        ssl_dhparam %(dhparam_path)s;
+        ssl_prefer_server_ciphers on;
+        ssl_session_cache shared:SSL:10m;
+
+        client_max_body_size 4G;
+        keepalive_timeout 5;
+
+        # path for static files
+        root %(document_root)s;
+        %(forwards)s
+        error_page 500 502 503 504 /500.html;
+        location = /50x.html {
+            root %(document_root)s;
+        }
+
 }
 """
 
@@ -232,8 +265,10 @@ server {
             # files here.
             return complete
 
+        last_webapps = ""
+        last_forwards = ""
         remove_default_server = False
-        for name, vals in self.files.iteritems():
+        for name, vals in self.managed['nginx']['files'].iteritems():
             webapps = ""
             forwards = ""
             if name.startswith('site-config'):
@@ -247,6 +282,9 @@ server {
                         if not isinstance(webapp_settings, list):
                             webapp_settings = [webapp_settings]
                         for webapp in webapp_settings:
+                            if 'app_name' not in webapp:
+                                webapp.update({
+                                    'app_name': domain.split('.')[0]})
                             webapps += self.webapp_template % webapp
                             forwards += self.forward_template % webapp
                     port = settings.get('port', '80')
@@ -257,12 +295,21 @@ server {
                     remove_default_server = True
                 self.site_conf(domain, context, conf_template,
                         webapps=webapps, forwards=forwards)
+                if webapps:
+                    last_webapps = webapps
+                if forwards:
+                    last_forwards = forwards
+
+        # Forward all other https to last webapp configured.
+        # This is useful for testing staged servers.
+        self.site_conf("stage", context, self.https_default_template,
+                       webapps=last_webapps, forwards=last_forwards)
 
         # Remove default server otherwise our config for intermediate nodes
         # with no domain names will be overridden.
         if remove_default_server:
             org_nginx_conf, new_nginx_conf = setup.stageFile(os.path.join(
-                context.SYSCONFDIR, 'nginx', 'nginx.conf'), context=context)
+                context.value('etcDir'), 'nginx', 'nginx.conf'), context=context)
             with open(org_nginx_conf) as org_nginx_conf_file:
                 with open(new_nginx_conf, 'w') as new_nginx_conf_file:
                     remove = 0
@@ -280,38 +327,73 @@ server {
                         if remove == 0:
                             new_nginx_conf_file.write(line)
 
-        certs_top = os.path.join(
-            context.SYSCONFDIR, 'ssl', 'certs')
+        certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         setup.postinst.shellCommand([
-            '[', '-f', dhparam_path, ']', '||', 'openssl', 'dhparam', '-out',
-            dhparam_path, '4096'])
+            '[', '-f', dhparam_path, ']', '||', '/usr/bin/openssl',
+            'dhparam', '-out', dhparam_path, '4096'])
         setup.postinst.shellCommand([
             'setsebool', '-P', 'httpd_can_network_connect', '1'])
         return complete
 
 
     def site_conf(self, domain, context, config_template,
-                  webapps="", forwards=""):
+                  webapps="", forwards="", conf_name=None):
         """
         Generate a configuration file for the site.
         """
         app_name =  domain.split('.')[0]
+        if conf_name is None:
+            conf_name = app_name
         document_root = os.path.join(
             os.sep, 'var', 'www', app_name, 'reps', app_name, 'htdocs')
         org_proxy_params, new_proxy_params = setup.stageFile(os.path.join(
-            context.SYSCONFDIR, 'nginx', 'proxy_params'), context=context)
+            context.value('etcDir'), 'nginx', 'proxy_params'), context=context)
         with open(new_proxy_params, 'w') as proxy_params_file:
             proxy_params_file.write(self.proxy_params_template)
 
-        certs_top = os.path.join(context.SYSCONFDIR, 'pki', 'tls', 'certs')
-        key_top = os.path.join(context.SYSCONFDIR, 'pki', 'tls', 'private')
+        certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
+        key_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'private')
         key_path = os.path.join(key_top, '%s.key' % domain)
         cert_path = os.path.join(certs_top, '%s.crt' % domain)
         wildcard_key_path = os.path.join(key_top, 'wildcard-%s.key' % domain)
         wildcard_cert_path = os.path.join(certs_top, 'wildcard-%s.crt' % domain)
+
+        # If no TLS certificate is present, we will create a self-signed one,
+        # this in order to start nginx correctly.
+        wildcard_csr_path = wildcard_cert_path.replace('.crt', '.csr')
+        domain_info = os.path.join(
+            os.path.dirname(setup.postinst.postinst_run_path),
+            '%s.info' % domain)
+        _, domain_info_path = stageFile(domain_info, context)
+        with open(domain_info_path, 'w') as domain_info_file:
+            domain_info_file.write("US\nCalifornia\nSan Francisco\n"\
+                "Dummy Corp\n\n*.%(domain)s\nsupport@%(email)s\n\n" %
+            {'domain': domain, 'email': 'root@localhost.localdomain'})
+        setup.postinst.shellCommand([
+            '[', '-f', wildcard_key_path, ']', '||', '/usr/bin/openssl',
+            'req', '-new', '-newkey', 'rsa:2048', '-nodes',
+            '-keyout', wildcard_key_path, '-out', wildcard_csr_path,
+            '<', domain_info_path])
+        setup.postinst.shellCommand([
+            '[', '-f', wildcard_cert_path, ']', '||', '/usr/bin/openssl',
+            'x509', '-req', '-days', 15,
+            '-in', wildcard_csr_path,
+            '-signkey', wildcard_key_path,
+            '-out', wildcard_cert_path])
+        setup.postinst.shellCommand([
+            '[', '-f', key_path, ']', '||', '/usr/bin/ln', '-s',
+            wildcard_key_path, key_path])
+        setup.postinst.shellCommand([
+            '[', '-f', cert_path, ']', '||', '/usr/bin/ln', '-s',
+            wildcard_cert_path, cert_path])
+        dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         org_site_conf, new_site_conf = setup.stageFile(self.conf_path(
-            domain, context.host(), context.SYSCONFDIR), context=context)
+            domain, context.host(), context.value('etcDir')),
+            context=context)
+        # XXX increase server name hash with amazon host names.
+        # server_names_hash_bucket_size 64;
+        # XXX also to fix warn:     ``types_hash_bucket_size 256;``
         with open(new_site_conf, 'w') as site_conf_file:
             site_conf_file.write(config_template % {
                 'app_name': app_name,
@@ -319,6 +401,7 @@ server {
                 'document_root': document_root,
                 'key_path': key_path,
                 'cert_path': cert_path,
+                'dhparam_path': dhparam_path,
                 'webapps': webapps,
                 'forwards': forwards,
                 'wildcard_key_path': wildcard_key_path,
