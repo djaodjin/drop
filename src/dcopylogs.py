@@ -296,7 +296,7 @@ def main(args):
             if filename.startswith('/'):
                 filename = '.' + filename
             s3_key = boto.s3.key.Key(bucket, keyname)
-            if s3_key.storage_class == 'STANDARD_IA':
+            if s3_key.storage_class == 'STANDARD':
                 sys.stderr.write("download %s to %s\n" % (
                     keyname, os.path.abspath(filename)))
                 if not os.path.isdir(os.path.dirname(filename)):
