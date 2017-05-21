@@ -75,6 +75,14 @@ Maintenance scripts for the front-end reverse proxy.
       </dep>
     </package>
   </project>
+  <project name="podofo">
+    <package name="Fedora">
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc22/x86_64/podofo.fc22.x86_64.rpm</url>
+        <sha1></sha1>
+      </fetch>
+    </package>
+  </project>
   <project name="openldap-clients">
     <package name="Fedora">
       <fetch>
