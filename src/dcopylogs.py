@@ -295,14 +295,17 @@ def main(args):
             filename = as_filename(keyname, prefix=s3_prefix)
             if filename.startswith('/'):
                 filename = '.' + filename
-            sys.stderr.write(
-                "XXX download %s to %s\n" % (keyname, filename))
-            s3_key = boto.s3.key.Key(bucket)
-            s3_key.name = keyname
-            if not os.path.isdir(os.path.dirname(filename)):
-                os.makedirs(os.path.dirname(filename))
-            with open(filename, 'wb') as file_obj:
-                s3_key.get_contents_to_file(file_obj)
+            s3_key = boto.s3.key.Key(bucket, keyname)
+            if s3_key.storage_class == 'STANDARD_IA':
+                sys.stderr.write("download %s to %s\n" % (
+                    keyname, os.path.abspath(filename)))
+                if not os.path.isdir(os.path.dirname(filename)):
+                    os.makedirs(os.path.dirname(filename))
+                with open(filename, 'wb') as file_obj:
+                    s3_key.get_contents_to_file(file_obj)
+            else:
+                sys.stderr.write("skip %s (on %s storage)\n" % (
+                    keyname, s3_key.storage_class))
         for item in sorted(list_local(lognames, prefix=local_prefix),
                            key=get_last_modified):
             filename = item['Key']
