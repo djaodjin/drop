@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -108,7 +108,7 @@ set -x
     local_package_path = os.path.join(obj_dir, package_name)
     if (not os.path.exists(local_package_path)
         or not os.path.samefile(package_path, local_package_path)):
-        print 'copy %s to %s' % (package_path, local_package_path)
+        sys.stdout.write('copy %s to %s\n' % (package_path, local_package_path))
         shutil.copy(package_path, local_package_path)
     package_files = [os.path.join(project_name, package_name)]
     for name in fetch_packages.fetches:
