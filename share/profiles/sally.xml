@@ -1,0 +1,84 @@
+<?xml version="1.0" ?>
+<projects>
+  <project name="sally">
+    <title>configuration of the sally port servers</title>
+    <description>
+Installs and configures services used on SSH-accessible machines.
+    </description>
+    <maintainer>
+      <personname>Sebastien Mirolo</personname>
+      <email>smirolo@djaodjin.com</email>
+    </maintainer>
+    <package name="Fedora">
+      <variable name="ldapHost">
+        <description>
+Name of the machine hosting the LDAP server.
+        </description>
+        <default>dbs.ec2.internal</default>
+      </variable>
+      <!-- Access control -->
+      <dep name="iptables">
+        <bin>iptables</bin>
+        <forward>%(sshPort)s:22</forward>
+      </dep>
+      <dep name="authconfig">
+        <bin>authconfig</bin>
+      </dep>
+      <dep name="sssd">
+        <bin>sssd</bin>
+      </dep>
+      <dep name="openssh-ldap">
+        <libexec>.*/(openssh)/ssh-ldap-helper</libexec>
+      </dep>
+      <dep name="openssh-server">
+        <bin>sshd</bin>
+        <extra name="/etc/ssh/sshd_config">
+          <PermitRootLogin>no</PermitRootLogin>
+          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
+          <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
+          <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
+          <PasswordAuthentication>no</PasswordAuthentication>
+          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+          <PermitTunnel>no</PermitTunnel>
+          <X11Forwarding>no</X11Forwarding>
+          <StrictModes>yes</StrictModes>
+          <IgnoreRhosts>yes</IgnoreRhosts>
+          <HostbasedAuthentication>no</HostbasedAuthentication>
+          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <PubkeyAuthentication>yes</PubkeyAuthentication>
+        </extra>
+      </dep>
+      <dep name="openldap-clients">
+        <bin>ldapsearch</bin>
+      </dep>
+      <!-- monitoring -->
+      <dep name="syslog-ng">
+        <bin>syslog-ng</bin>
+      </dep>
+      <dep name="syslog-ng-libdbi">
+        <lib>dbi</lib>
+      </dep>
+      <dep name="fail2ban">
+        <bin>fail2ban-client</bin>
+      </dep>
+      <dep name="monit">
+        <bin>monit</bin>
+      </dep>
+      <dep name="ssmtp">
+        <bin>ssmtp</bin>
+      </dep>
+    </package>
+  </project>
+  <project name="openldap-clients">
+    <package name="Fedora">
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
+        <sha1>6f6428deee881efa18003482d5353587fbf35b5b</sha1>
+      </fetch>
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-clients-2.4.44-10.fc25.x86_64.rpm</url>
+        <sha1>dbcfa8f4ceda5b31c17bcab5484f2de7c3aec8ff</sha1>
+      </fetch>
+    </package>
+  </project>
+</projects>
