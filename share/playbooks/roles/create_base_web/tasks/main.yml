@@ -1,8 +1,0 @@
-# Create an EC2 instance, configure it with the packages required
-# to run a front-end web server and make an AMI out of it.
-
-- include_vars: group_vars/dynamic
-
-- include: configure.yml
-- include: ami.yml
-- include: cleanup.yml

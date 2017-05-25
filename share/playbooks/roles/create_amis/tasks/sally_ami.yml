@@ -1,0 +1,21 @@
+# Create the sally port AMI.
+
+- name: Wait for configuration of EC2 instance completed
+  wait_for:
+    delay: 540
+    host: "{{sally_base.instances[0].public_ip}}"
+    port: 80
+    state: started
+
+- name: Register AMI for SSH-accessible servers
+  local_action:
+    module: ec2_ami
+    region: "{{aws_region}}"
+    instance_id: "{{sally_base_device_id}}"
+    name: "sally-{{sally_base_device_id}}"
+    description: "SSH-accessible sally port servers"
+    wait: yes
+  register: sally_ami
+
+# Records the ami-id is the set of dynamic variables for other playbooks.
+- lineinfile: "dest=group_vars/dynamic regexp='^sally_ami_id:' line='sally_ami_id: {{sally_ami.image_id}}'"

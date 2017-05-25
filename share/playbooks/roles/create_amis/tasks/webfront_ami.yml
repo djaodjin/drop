@@ -3,7 +3,7 @@
 - name: Wait for configuration of EC2 instance completed
   wait_for:
     delay: 540
-    host: "{{web_base.instances[0].public_ip}}"
+    host: "{{webfront_base.instances[0].public_ip}}"
     port: 80
     state: started
 
@@ -11,11 +11,11 @@
   local_action:
     module: ec2_ami
     region: "{{aws_region}}"
-    instance_id: "{{web_base_device_id}}"
-    name: "web-{{web_base_device_id}}"
+    instance_id: "{{webfront_base_device_id}}"
+    name: "webfront-{{webfront_base_device_id}}"
     description: "Front-end web reverse proxy"
     wait: yes
-  register: web_ami
+  register: webfront_ami
 
 # Records the ami-id is the set of dynamic variables for other playbooks.
-- lineinfile: "dest=group_vars/dynamic regexp='^web_ami_id:' line='web_ami_id: {{web_ami.image_id}}'"
+- lineinfile: "dest=group_vars/dynamic regexp='^webfront_ami_id:' line='webfront_ami_id: {{webfront_ami.image_id}}'"

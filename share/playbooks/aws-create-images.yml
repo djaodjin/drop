@@ -6,5 +6,4 @@
     - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
 
   roles:
-    - create_base_web
-    - create_base_dbs
+    - create_amis

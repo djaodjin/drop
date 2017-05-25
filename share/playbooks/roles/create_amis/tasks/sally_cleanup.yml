@@ -1,8 +1,8 @@
 # Delete the EC2 instance that was used to create the AMI.
 
-- name: Delete EC2 instance configured to create front-end web server AMI
+- name: Delete EC2 instance configured to create a sally port server AMI
   local_action:
     module: ec2
     region: "{{aws_region}}"
-    instance_id: "{{web_base_device_id}}"
+    instance_id: "{{sally_base_device_id}}"
     state: absent
