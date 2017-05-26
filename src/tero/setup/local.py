@@ -24,7 +24,7 @@
 
 '''Entry Point to setting-up a local machine.'''
 
-import datetime, getpass, os, socket, shutil, sys, subprocess
+import datetime, getpass, os, six, shutil, socket, subprocess, sys
 
 import tero # for global variables (CONTEXT, etc.)
 from tero import (__version__, Error, pub_build, pub_make,
@@ -391,7 +391,11 @@ def main(args):
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT)
-            book.write(''.join(cmd.stdout.readlines()))
+            for line in cmd.stdout.readlines():
+                if isinstance(line, six.string_types):
+                    book.write(line)
+                else:
+                    book.write(line.decode('utf-8'))
             book.write('</programlisting>\n</section>\n')
     except Error:
         # We donot check error code here since the diff will complete

@@ -82,12 +82,12 @@
     state: present
 
 
-# jenkins-worker
+# build-worker
 # --------------
 - name: Create IAM role for jenkins workers
   iam_role:
     region: "{{aws_region}}"
-    name: "{{tag_prefix}}jenkins-worker"
+    name: "{{build_worker}}"
     assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
     state: present
 
@@ -95,7 +95,7 @@
   iam_policy:
     region: "{{aws_region}}"
     iam_type: role
-    iam_name: "{{tag_prefix}}jenkins-worker"
+    iam_name: "{{build_worker}}"
     policy_name: "BuildDocker"
     state: present
     policy_json: "{{lookup('file', 'build-docker.json')}}"
@@ -106,15 +106,24 @@
 - name: Create IAM role for backstage
   iam_role:
     region: "{{aws_region}}"
-    name: "{{backage}}"
+    name: "{{backstage}}"
     assume_role_policy_document: "{{lookup('file','assume-role-policy.json')}}"
     state: present
 
-- name: Attach JenkinsServer policy to backstage role
+- name: Attach policy to build and test Docker containers to backstage role
   iam_policy:
     region: "{{aws_region}}"
     iam_type: role
-    iam_name: "{{backage}}"
+    iam_name: "{{backstage}}"
     policy_name: "JenkinsServer"
     state: present
     policy_json: "{{lookup('template', 'jenkins-server.json.j2')}}"
+
+- name: Attach policy to access logs in S3 bucket to backstage role
+  iam_policy:
+    region: "{{aws_region}}"
+    iam_type: role
+    iam_name: "{{backstage}}"
+    policy_name: "ReadLogs"
+    state: present
+    policy_json: "{{lookup('template', 'web-apps.json.j2')}}"

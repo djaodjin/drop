@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os, stat
+import os, six, stat
 
 from tero import APT_DISTRIBS, YUM_DISTRIBS, setup
 
@@ -51,7 +51,7 @@ class iptablesSetup(setup.SetupTemplate):
             return complete
         ports = []
         forwards = []
-        for key, val in self.managed['iptables']['files'].iteritems():
+        for key, val in six.iteritems(self.managed['iptables']['files']):
             if key == 'port':
                 for port, _ in val:
                     ports += [int(port)]

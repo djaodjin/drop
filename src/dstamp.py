@@ -216,6 +216,6 @@ if __name__ == '__main__':
         else:
             raise dws.Error(sys.argv[0] + ' ' + arg + ' does not exist.\n')
 
-    except dws.Error, err:
+    except dws.Error as err:
         sys.stderr.write(str(err))
         sys.exit(err.code)

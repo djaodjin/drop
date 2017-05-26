@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -328,6 +328,8 @@ class Context(object):
         self.config_filename = None
 
     def __getattr__(self, name):
+        if name.startswith('_'):
+            return super(Context, self).__getattr__(name)
         return self.value(name)
 
     def base(self, name):
@@ -4117,11 +4119,9 @@ def fetch(context, filenames,
             if not os.path.exists(os.path.dirname(localname)):
                 os.makedirs(os.path.dirname(localname))
             log_info("fetching %s..." % remotename, context=context)
-            remote = urlopen(Request(remotename))
-            local = open(localname, 'w')
-            local.write(remote.read())
-            local.close()
-            remote.close()
+            with urlopen(Request(remotename)) as remote:
+                with open(localname, 'wb') as local:
+                    local.write(remote.read())
         # fetch sshs
         if len(sshs) > 0:
             local_sources = []
@@ -4756,11 +4756,11 @@ def sort_build_conf_list(db_pathnames, parser):
     if len(db_pathnames) == 0:
         return None
     elif len(db_pathnames) == 1:
-        db_prev = open(db_pathnames[0])
+        db_prev = open(db_pathnames[0], 'rb')
         return db_prev
     elif len(db_pathnames) == 2:
-        db_prev = open(db_pathnames[0])
-        db_upd = open(db_pathnames[1])
+        db_prev = open(db_pathnames[0], 'rb')
+        db_upd = open(db_pathnames[1], 'rb')
     else:
         db_prev = sort_build_conf_list(
             db_pathnames[:len(db_pathnames) / 2], parser)
@@ -5135,7 +5135,10 @@ def log_error(message, *args, **kwargs):
 def log_interactive(message):
     '''Write a message that should absolutely end up on the screen
     even when no newline is present at the end of the message.'''
-    sys.stdout.write(message.encode(DEFAULT_ENCODING))
+    if PY3:
+        sys.stdout.write(message)
+    else:
+        sys.stdout.write(message.encode(DEFAULT_ENCODING))
     sys.stdout.flush()
     if not NO_LOG:
         global LOGGER_BUFFER
@@ -5147,7 +5150,10 @@ def log_interactive(message):
 def log_info(message, context=None, nolog=None, *args, **kwargs):
     '''Write a info message onto stdout and into the log file'''
     message_line = "%s\n" % message
-    sys.stdout.write(message_line.encode(DEFAULT_ENCODING))
+    if PY3:
+        sys.stdout.write(message_line)
+    else:
+        sys.stdout.write(message_line.encode(DEFAULT_ENCODING))
     if nolog is None:
         nolog = NO_LOG
     if not nolog:

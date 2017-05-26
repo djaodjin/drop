@@ -136,7 +136,7 @@ class GunicornLogParser(object):
 
         one_ip_regex = '\\.'.join([ip_num_regex] * 4)
         two_ip_regex = r'%s, %s' % (one_ip_regex, one_ip_regex)
-        x_forwarded_for_regex = r'(?:%s|%s)' % (one_ip_regex, two_ip_regex)
+        x_forwarded_for_regex = r'(?:%s|%s|-)' % (one_ip_regex, two_ip_regex)
         regexps = {
             '%({X-Forwarded-For}i)s': x_forwarded_for_regex,
             '%(l)s': r'-',

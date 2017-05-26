@@ -24,10 +24,6 @@
         from_port: "{{ssh_port}}"
         to_port: "{{ssh_port}}"
         cidr_ip: 0.0.0.0/0
-      - proto: tcp
-        from_port: 2222
-        to_port: 2222
-        group_name: '{{castle_gate}}'
     rules_egress:
       - proto: all
         cidr_ip: 0.0.0.0/0

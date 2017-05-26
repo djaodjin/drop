@@ -1,11 +1,11 @@
 ---
-- name: Create monitoring EC2 instances
+- name: Create sally port EC2 instances
   local_action:
     module: ec2
     key_name: "{{key_name}}"
     group: "{{kitchen_door}}"
-    instance_type: "t2.small"
-    image: "{{ami_id}}"
+    instance_type: "t2.micro"
+    image: "{{sally_ami_id}}"
     region: "{{aws_region}}"
     instance_profile_name: "{{kitchen_door}}-profile"
     volumes:
@@ -13,17 +13,17 @@
         volume_size: 16
         delete_on_termination: true
     wait: yes
-    user_data: "{{ lookup('template', '../templates/kitchen-door-cloud-init-script.j2') }}"
+    user_data: "{{ lookup('template', '../templates/sally-cloud-init-script.j2') }}"
     instance_tags:
       prefix: "{{tag_prefix}}archi"
-      profile: "dev"
+      profile: "sally"
     count_tag:
       prefix: "{{tag_prefix}}archi"
-      profile: "dev"
+      profile: "sally"
     exact_count: 1
   register: dev_servers
 
-- debug: msg="Connect to the kitchen-door with ssh -i ~/.ssh/{{key_name}} -p {{ssh_port}} fedora@{{dev_servers.instances[0].public_ip}}"
+- debug: msg="Connect to the kitchen-door with ssh -p {{ssh_port}} -i ~/.ssh/{{key_name}} -p {{ssh_port}} fedora@{{dev_servers.instances[0].public_dns}}"
 
 - route53:
     command: create

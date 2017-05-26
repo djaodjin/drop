@@ -1,0 +1,8 @@
+#!/bin/bash
+#
+# fetch identities for the sally port instance
+
+set -x
+set -e
+
+aws s3 cp s3://{{deployutils_bucket}}/identities/dev.internal / --recursive

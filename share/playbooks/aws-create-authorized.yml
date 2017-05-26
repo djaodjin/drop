@@ -8,8 +8,10 @@
   connection: local
   gather_facts: False
   vars:
+    - backstage: "{{backstage_name | default(tag_prefix+'backstage')}}"
     - castle_gate: "{{castle_gate_name | default(tag_prefix+'castle-gate')}}"
     - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
+    - build_worker: "{{build_worker_name | default(tag_prefix+'build-worker')}}"
     - kitchen_door: "{{kitchen_door_name | default(tag_prefix+'kitchen-door')}}"
     - vault: "{{vault_name | default(tag_prefix+'vault')}}"
     - watch_tower: "{{watch_tower_name | default(tag_prefix+'watch-tower')}}"

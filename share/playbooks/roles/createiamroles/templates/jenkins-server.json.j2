@@ -19,7 +19,37 @@
         {
             "Effect": "Allow",
             "Action": "iam:PassRole",
-            "Resource": "arn:aws:iam::{{aws_account}}:role/jenkins-worker"
+            "Resource": "arn:aws:iam::{{aws_account}}:role/{{build_worker}}"
+        },
+        {
+            "Action": [
+                "ecs:RegisterTaskDefinition",
+                "ecs:CreateCluster",
+                "ecs:RunTask",
+                "ecs:ListTasks",
+                "ecs:ListContainerInstances",
+                "ecs:DescribeContainerInstances",
+                "ecs:DescribeTasks",
+                "ecs:StopTask",
+                "ecs:DeleteCluster",
+                "route53:ChangeResourceRecordSets"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "iam:PassRole",
+            "Resource": "arn:aws:iam::{{aws_account}}:role/{{courtyard}}"
+        },
+        {
+            "Action": [
+                "ec2:DescribeInstanceAttribute",
+                "route53:ListHostedZones",
+                "route53:ListResourceRecordSets"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
         }
     ]
 }

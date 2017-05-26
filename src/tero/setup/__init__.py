@@ -607,9 +607,7 @@ def unifiedDiff(pathname):
 
 def writeSettings(config, settings, outs=[], sep='=', indent='', prefix=None,
                   one_per_line=False):
-    keys = settings.keys()
-    keys.sort()
-    for name in keys:
+    for name in sorted(settings.keys()):
         if prefix:
             prefixname = '.'.join([prefix, name])
         else:
