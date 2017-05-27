@@ -181,7 +181,7 @@ def duplicate(src_name, dest, vm_mac=None):
         src = os.path.dirname(src)
         subprocess.check_call('rsync -rav "%s/" "%s"' % (src, dest), shell=True)
         prev_cwd = os.getcwd()
-        os.chmod(dest, 0755)
+        os.chmod(dest, 0o755)
         os.chdir(dest)
         # Base and target have different names, we need to do some magic here.
         for pathname in os.listdir('.'):

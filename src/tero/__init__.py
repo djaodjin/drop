@@ -658,8 +658,10 @@ class Context(object):
         config_file.close()
 
     def search_path(self, name, variant=None):
-        '''Derives a list of directory names based on the PATH
-        environment variable, *name* and a *variant* triplet.'''
+        """
+        Derives a list of directory names based on the PATH
+        environment variable, *name* and a *variant* triplet.
+        """
         candidates = []
         # We want the actual value of *name*Dir and not one derived from binDir
         dirname = CONTEXT.value(name + 'Dir')
@@ -668,10 +670,18 @@ class Context(object):
             # because even though libraries are often in variant subdirectories,
             # executables often are not.
             if variant:
-                for subdir in os.listdir(dirname):
-                    if re.match(variant, subdir):
-                        candidates += [os.path.join(dirname, subdir)]
-            candidates += [dirname]
+                if variant == 'python':
+                    candidate = os.path.join(dirname, python_version(self))
+                    if (os.path.exists(candidate) and
+                        (len(candidates) == 0 or candidates[-1] != candidate)):
+                        candidates += [candidate]
+                else:
+                    candidate = os.path.join(dirname, variant)
+                    if (os.path.exists(candidate) and
+                        (len(candidates) == 0 or candidates[-1] != candidate)):
+                        candidates += [candidate]
+            if len(candidates) == 0 or candidates[-1] != dirname:
+                candidates += [dirname]
         candidates += os.environ['PATH'].split(':')
         dirs = []
         for path in candidates:
@@ -683,27 +693,42 @@ class Context(object):
                     dirname = os.path.join(base, subpath)
                     if os.path.isdir(dirname):
                         if variant:
-                            for subdir in os.listdir(dirname):
-                                if re.match(variant, subdir):
-                                    dirs += [os.path.join(dirname, subdir)]
-                        else:
+                            if variant == 'python':
+                                candidate = os.path.join(
+                                    dirname, python_version(self))
+                                if (os.path.exists(candidate) and
+                                    (len(dirs) == 0
+                                    or dirs[-1] != candidate)):
+                                    dirs += [candidate]
+                            else:
+                                candidate = os.path.join(dirname, variant)
+                                if (os.path.exists(candidate) and
+                                    (len(dirs) == 0
+                                    or dirs[-1] != candidate)):
+                                    dirs += [candidate]
+                        if len(dirs) == 0 or dirs[-1] != dirname:
                             dirs += [dirname]
             elif name == 'bin':
                 # Especially on Fedora, /sbin, /usr/sbin, etc. are many times
                 # not in the PATH.
                 if os.path.isdir(path):
-                    dirs += [path]
+                    if len(dirs) == 0 or dirs[-1] != path:
+                        dirs += [path]
                 sbin = os.path.join(base, 'sbin')
                 if (not sbin in os.environ['PATH'].split(':')
                     and os.path.isdir(sbin)):
-                    dirs += [sbin]
+                    if len(dirs) == 0 or dirs[-1] != path:
+                        dirs += [sbin]
             else:
-                if os.path.isdir(os.path.join(base, name)):
-                    dirs += [os.path.join(base, name)]
+                dirname = os.path.join(base, name)
+                if os.path.isdir(dirname):
+                    if len(dirs) == 0 or dirs[-1] != dirname:
+                        dirs += [dirname]
         if name == 'lib' and self.host() in PORT_DISTRIBS:
             # Just because python modules do not get installed
             # in /opt/local/lib/python2.7/site-packages
-            dirs += ['/opt/local/Library/Frameworks']
+            dirs += [python_version(self).replace('python',
+                '/opt/local/Library/Frameworks/Python.framework/Versions/')]
         if name == 'share' and self.host() in APT_DISTRIBS:
             dirs += ['/var/lib/gems']
         return dirs
@@ -3243,7 +3268,7 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
             # If we already have a symbolic link in the binBuildDir,
             # we will assume it is the one to use in order to cut off
             # recomputing of things that hardly change.
-            candidate = os.path.realpath(os.path.join(link_name, suffix))
+            candidate = os.path.realpath(link_name)
             results.append((name_pat, candidate))
             log_info(found_bin_suffix(candidate, variant=variant))
             continue
@@ -3967,7 +3992,11 @@ def find_pip(context):
     if context.host() in YUM_DISTRIBS:
         pip_package = 'python-pip'
     find_boot_bin('(pip).*', package=pip_package, context=context)
-    return os.path.join(context.value('buildTop'), 'bin', 'pip')
+    executables, _, _ = find_bin([['(python).*', None]],
+        context.search_path('bin'), context.value('buildTop'))
+    name, absolute_path = executables.pop()
+    link_pat_path(name, absolute_path, 'bin')
+    return os.path.join(context.bin_build_dir(), 'pip')
 
 
 def find_rsync(host, context=None, relative=True, admin=False,
@@ -4004,9 +4033,10 @@ def find_rsync(host, context=None, relative=True, admin=False,
         cmdline += ['--rsync-path', '/usr/bin/rsync']
     return cmdline, prefix
 
-def find_virtualenv(context):
+def find_virtualenv(context, version=3):
     virtual_package = 'python-virtualenv'
-    find_boot_bin("(virtualenv).*", package=virtual_package, context=context)
+    find_boot_bin(r"(virtualenv)(-%d\.\d)?" % version,
+        package=virtual_package, context=context)
     return os.path.join(context.value('buildTop'), 'bin', 'virtualenv')
 
 def name_pat_regex(name_pat):
@@ -4404,7 +4434,9 @@ def link_prerequisites(files, versions=None, target=None):
 
 
 def link_context(path, link_name):
-    '''link a *path* into the workspace.'''
+    """
+    Links a *path* into the workspace as *link_name*.
+    """
     if not path:
         log_error('There is no target for link ' + link_name + '\n')
         return
@@ -4432,11 +4464,12 @@ def regex_as_name(name_pat):
         if len(parts) > 0:
             name = parts[len(parts) - 1]
     else:
-        name = re.search(r'\((.+)\)', name_pat).group(1)
+        look = re.search(r'\(([^\)]+)\)', name_pat)
+        name = look.group(1)
         if '|' in name:
             name = name.split('|')[0]
         # XXX +1 ')', +2 '/'
-        suffix = name_pat[re.search(r'\((.+)\)', name_pat).end(1) + 2:]
+        suffix = name_pat[look.end(1) + 1:]
     return name, suffix
 
 def link_build_name(name_pat, subdir, target=None):
@@ -4885,7 +4918,7 @@ def version_candidates(line):
 
 
 def bin_version_candidates(binpath, variant=None):
-    if variant is None or len(variant) == 0:
+    if variant is not None:
         # When looking for a specific *variant*, we do not
         # try to execute executables as they are surely
         # not meant to be run on the native system.
@@ -4894,8 +4927,7 @@ def bin_version_candidates(binpath, variant=None):
     # We run the help flag before --version, -V
     # because bzip2 would wait on stdin for data
     # otherwise.
-    # XXX semilla --help is broken :(
-    for flag in ['--version', '-V']:
+    for flag in ['--help', '--version', '-V']:
         numbers = []
         cmdline = [binpath, flag]
         try:
@@ -4911,6 +4943,16 @@ def bin_version_candidates(binpath, variant=None):
         if len(numbers) > 0:
             break
     return numbers
+
+
+def python_version(context):
+    """
+    Returns a name as typically expected for prefixes to site-packages.
+    """
+    numbers = bin_version_candidates(
+        os.path.join(context.bin_build_dir(), 'python'))
+    version = '.'.join(numbers[0].split('.')[:2])
+    return "python%s" % str(version)
 
 
 def version_compare(left, right):
@@ -5175,7 +5217,7 @@ def log_info(message, context=None, nolog=None, *args, **kwargs):
 
 
 def pub_build(args, graph=False, clean=False,
-              novirtualenv=False, nonative=False):
+              novirtualenv=False, nonative=False, python2=False):
     '''remoteIndex [ siteTop [ buildTop ] ]
     This command executes a complete build cycle:
       - (optional) delete all files in *siteTop*,
@@ -5274,8 +5316,8 @@ def pub_build(args, graph=False, clean=False,
 
     pip_executable = os.path.join(install_top, 'bin', 'pip')
     if not novirtualenv and not os.path.isfile(pip_executable):
-        shell_command([
-            find_virtualenv(CONTEXT), '--system-site-packages', site_top])
+        shell_command([find_virtualenv(CONTEXT, 2 if python2 else 3),
+            '--system-site-packages', site_top])
         # Force upgrade of setuptools otherwise html5lib install complains.
         shell_command([pip_executable, 'install', 'setuptools', '--upgrade'])
 
