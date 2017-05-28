@@ -4034,8 +4034,6 @@ def find_virtualenv(context, version=3):
     virtual_package = 'python-virtualenv'
     find_boot_bin(r"(virtualenv)(-%d\.\d)?" % version,
         package=virtual_package, context=context)
-    link_pat_path(
-        'python', os.path.join(context.value('binDir'), 'python'), 'bin')
     return os.path.join(context.bin_build_dir(), 'virtualenv')
 
 def name_pat_regex(name_pat):
@@ -5324,8 +5322,13 @@ def pub_build(args, graph=False, clean=False,
     if not novirtualenv and not os.path.isfile(pip_executable):
         shell_command([find_virtualenv(CONTEXT, 2 if python2 else 3),
             '--system-site-packages', site_top])
+        link_pat_path(
+            'python', os.path.join(context.value('binDir'), 'python'), 'bin')
         # Force upgrade of setuptools otherwise html5lib install complains.
-        shell_command([pip_executable, 'install', 'setuptools', '--upgrade'])
+        shell_command([pip_executable,
+            '--log-file', os.path.join(context.value('buildTop'), 'pip.log'),
+            '--cache-dir', context.obj_dir('.cache/pip'),
+            'install', 'setuptools', '--upgrade'])
 
     rgen = DerivedSetsGenerator()
     # If we do not force the update of the index file, the dependency
