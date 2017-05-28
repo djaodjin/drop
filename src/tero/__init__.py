@@ -4037,7 +4037,11 @@ def find_virtualenv(context, version=3):
     virtual_package = 'python-virtualenv'
     find_boot_bin(r"(virtualenv)(-%d\.\d)?" % version,
         package=virtual_package, context=context)
-    return os.path.join(context.value('buildTop'), 'bin', 'virtualenv')
+    executables, _, _ = find_bin([['(python).*', None]],
+        context.search_path('bin'), context.value('buildTop'))
+    name, absolute_path = executables.pop()
+    link_pat_path(name, absolute_path, 'bin')
+    return os.path.join(context.bin_build_dir(), 'virtualenv')
 
 def name_pat_regex(name_pat):
     # Many C++ tools contain ++ in their name which might trip
