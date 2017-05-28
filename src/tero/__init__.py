@@ -4486,25 +4486,32 @@ def link_build_name(name_pat, subdir, target=None):
 
 
 def link_pat_path(name_pat, absolute_path, subdir, target=None):
-    '''Create a link in the build directory.'''
+    """
+    Creates a link to *absolute_path* in the build directory with a name
+    derived from *name_pat*.
+    """
     link_path = absolute_path
-    ext = ''
-    if absolute_path:
-        _, ext = os.path.splitext(absolute_path)
     subpath = subdir
     if target:
         subpath = os.path.join(target, subdir)
-    if name_pat.endswith('.a') or name_pat.endswith('.so'):
-        # static/dynamic was explicitly specified. We override ``ext``
-        # because it could have been previously computed as ``.so.X``.
-        name_pat, ext = os.path.splitext(name_pat)
-    if ext in ['.a', lib_static_suffix()]:
-        link_name = CONTEXT.obj_dir(os.path.join(subpath, 'lib%s.a' % name_pat))
-    elif ext in ['.so', lib_dyn_suffix()]:
-        link_name = CONTEXT.obj_dir(os.path.join(
-            subpath, 'lib%s.so' % name_pat))
-    else:
-        link_name, suffix = link_build_name(name_pat, subdir, target)
+    link_name = None
+    clean_pat = name_pat.replace('.*', '')
+    if not name_pat.startswith('.*'):
+        ext = ''
+        if absolute_path:
+            _, ext = os.path.splitext(absolute_path)
+        if clean_pat.endswith('.a') or clean_pat.endswith('.so'):
+            # static/dynamic was explicitly specified. We override ``ext``
+            # because it could have been previously computed as ``.so.X``.
+            clean_pat, ext = os.path.splitext(clean_pat)
+        if ext in ['.a', lib_static_suffix()]:
+            link_name = CONTEXT.obj_dir(
+                os.path.join(subpath, 'lib%s.a' % clean_pat))
+        elif ext in ['.so', lib_dyn_suffix()]:
+            link_name = CONTEXT.obj_dir(os.path.join(
+                subpath, 'lib%s.so' % clean_pat))
+    if link_name is None:
+        link_name, suffix = link_build_name(clean_pat, subdir, target)
         if absolute_path and len(suffix) > 0 and absolute_path.endswith(suffix):
             # Interestingly absolute_path[:-0] returns an empty string.
             link_path = absolute_path[:-len(suffix)]
