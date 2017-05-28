@@ -5323,11 +5323,11 @@ def pub_build(args, graph=False, clean=False,
         shell_command([find_virtualenv(CONTEXT, 2 if python2 else 3),
             '--system-site-packages', site_top])
         link_pat_path(
-            'python', os.path.join(context.value('binDir'), 'python'), 'bin')
+            'python', os.path.join(CONTEXT.value('binDir'), 'python'), 'bin')
         # Force upgrade of setuptools otherwise html5lib install complains.
         shell_command([pip_executable,
-            '--log-file', os.path.join(context.value('buildTop'), 'pip.log'),
-            '--cache-dir', context.obj_dir('.cache/pip'),
+            '--log-file', os.path.join(CONTEXT.value('buildTop'), 'pip.log'),
+            '--cache-dir', CONTEXT.obj_dir('.cache/pip'),
             'install', 'setuptools', '--upgrade'])
 
     rgen = DerivedSetsGenerator()
