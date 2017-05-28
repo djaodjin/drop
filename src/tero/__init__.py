@@ -2296,8 +2296,9 @@ class PipInstallStep(InstallStep):
             admin = True
             noexecute = context.nonative
         if packages:
-            return [([pip, '--log-file', context.log_path('pip.log'),
-            '--cache-dir', context.obj_dir('.cache'),
+            return [([pip, '--log-file', os.path.join(
+                context.value('buildTop'), 'pip.log'),
+            '--cache-dir', context.obj_dir('.cache/pip'),
             'install'] + packages, admin, noexecute)]
         return []
 
