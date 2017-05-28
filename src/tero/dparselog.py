@@ -27,6 +27,8 @@ from __future__ import unicode_literals
 import gzip, itertools, json, re, os, os.path
 from datetime import tzinfo, timedelta, datetime
 
+import six
+
 # http://stackoverflow.com/questions/1101508/how-to-parse-dates-with-0400-timezone-string-in-python/23122493#23122493
 class FixedOffset(tzinfo):
     """Fixed offset in minutes: `time = utc_time + utc_offset`."""
@@ -116,7 +118,6 @@ class NginxLogParser(object):
         }
         self.format_vars = re.findall(var_regex, format_string)
         self.regex = generate_regex(format_string, var_regex, regexps)
-        
 
     def parse(self, to_parse):
         match = self.regex.match(to_parse)
@@ -125,14 +126,14 @@ class NginxLogParser(object):
         else:
             return None
 
-        parsed = {k[1:]: v for k, v in parsed.items() }
+        parsed = {k[1:]: v for k, v in six.iteritems(parsed) }
 
         field_types = {
             'status' : int,
             'body_bytes_sent': int,
             'time_local': parse_date,
         }
-        for k, convert in field_types.items():
+        for k, convert in six.iteritems(field_types):
             parsed[k] = convert(parsed[k])
 
         request_regex = r'(?P<http_method>[A-Z]+) (?P<http_path>.*) HTTP/1.[01]'
@@ -194,7 +195,7 @@ class GunicornLogParser(object):
             '%(f)s': 'http_referer',
             '%(a)s': 'http_user_agent',
         }
-        parsed = {better_names[k] : v for k, v in parsed.items()}
+        parsed = {better_names[k] : v for k, v in six.iteritems(parsed)}
 
         request_regex = r'(?P<http_method>[A-Z]+) (?P<http_path>.*) HTTP/1.[01]'
         request_match = re.match(request_regex, parsed['request'])
@@ -210,7 +211,7 @@ class GunicornLogParser(object):
             'body_bytes_sent': convert_bytes_sent,
             'time_local': lambda s: parse_date(s[1:-1]),
         }
-        for k, convert in field_types.items():
+        for k, convert in six.iteritems(field_types):
             parsed[k] = convert(parsed[k])
 
         return parsed
@@ -270,7 +271,7 @@ def generate_events(stream, key):
         else:
             parser = GunicornLogParser()
     else:
-        print 'unknown log folder!', log_folder
+        sys.stderr.write("error: unknown log folder %s\n" % log_folder)
         yield error_event(fname, key, 'could not find parser for log folder',
                           {'log_folder': log_folder,
                            'log_date': log_date})
@@ -283,7 +284,8 @@ def generate_events(stream, key):
 
         total_count = ok_count + error_count
         if total_count > 100 and (float(error_count)/total_count) > 0.8:
-            print 'too many errors. bailing', key
+            sys.stderr.write(
+                "error: too many errors for key '%s'. bailing" % str(key))
             yield error_event(fname, key, 'bailing because of too many errors.',
                               {'log_date': log_date,
                                'line': line})
@@ -291,18 +293,19 @@ def generate_events(stream, key):
 
         try:
             event = parser.parse(line)
-        except Exception, e:
-            print e, line
+        except Exception as err:
+            sys.stderr.write("error: %s in line '%s'\n" % (err, line))
             yield error_event(fname, key, 'could not parse log line',
                               {'line': line,
-                               'exception_message': e.message,
+                               'exception_message': err.message,
                                'log_date': log_date,
-                               'exception_type': type(e).__name__})
+                               'exception_type': type(err).__name__})
 
             continue
 
         if event is None:
-            print 'parse error', log_folder, repr(line)
+            sys.stderr.write(
+                "error: parsing '%s' in '%s'\n" % (repr(line), log_folder))
             yield error_event(fname, key, 'could not parse log line',
                               {'line': line,
                                'log_date': log_date,})
@@ -347,7 +350,7 @@ def main():
 
     outname = 'tmp/%s' % sanitize_filename(key)
     if os.path.exists(outname):
-        print 'already done'
+        sys.stderr.write("'%s' already done\n" % str(outname))
         sys.exit(0)
 
     from elasticsearch.serializer import JSONSerializer

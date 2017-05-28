@@ -190,15 +190,15 @@ def duplicate(src_name, dest, vm_mac=None):
                 os.remove(pathname)
                 continue
             elif pathname.endswith('.vmx'):
-                os.chmod(pathname, 0755)
+                os.chmod(pathname, 0o755)
             elif (pathname.startswith(src_name + '-s')
                   or pathname.endswith('.nvram')
                   or pathname.endswith('.vmdk')):
-                os.chmod(pathname, 0600)
+                os.chmod(pathname, 0o600)
             elif (pathname.endswith('.vmsd')
                   or pathname.endswith('.vmxf')
                   or pathname.endswith('.plist')):
-                os.chmod(pathname, 0644)
+                os.chmod(pathname, 0o644)
             if  src_name != dest_name:
                 if (pathname == src_name + '.vmdk'
                     or pathname.endswith('.vmx')
