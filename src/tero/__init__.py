@@ -2037,8 +2037,8 @@ class AptInstallStep(InstallStep):
             # apt-cache showpkg will return 0 even when the package cannot
             # be found.
             cmdline = ['apt-cache', 'showpkg'] + self.managed
-            manager_output = subprocess.check_output(
-                ' '.join(cmdline), shell=True, stderr=subprocess.STDOUT)
+            manager_output = subprocess.check_output(' '.join(cmdline),
+                shell=True, stderr=subprocess.STDOUT).decode(DEFAULT_ENCODING)
             found = False
             for line in manager_output.splitlines():
                 if re.match('^Package:', line):
@@ -2286,7 +2286,8 @@ class PipInstallStep(InstallStep):
         # under virtualenv.
         pip = find_pip(context)
         site_packages = None
-        pip_version = subprocess.check_output([pip, '-V'])
+        pip_version = subprocess.check_output(
+            [pip, '-V']).decode(DEFAULT_ENCODING)
         look = re.match(r'pip [0-9\.]+ from (\S+)', pip_version)
         if look:
             site_packages = look.group(1)
@@ -2647,13 +2648,13 @@ class GitRepository(Repository):
                                    shell=True,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
-            line = cmd.stdout.readline()
+            line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
             while line != '':
                 log_info(line.strip(), context=context)
                 look = re.match(r'^[Uu]pdating', line)
                 if look:
                     updated = True
-                line = cmd.stdout.readline()
+                line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
             cmd.wait()
             if cmd.returncode != 0:
                 # It is ok to get an error in case we are running
@@ -2672,7 +2673,7 @@ class GitRepository(Repository):
             # Just the commit: cmd = [git_executable, 'rev-parse', 'HEAD']
             cmd = [git_executable, 'log', '-1', '--pretty=oneline']
             os.chdir(local)
-            logline = subprocess.check_output(cmd)
+            logline = subprocess.check_output(cmd).decode(DEFAULT_ENCODING)
             log_info(logline, context=context)
             self.rev = logline.split(' ')[0]
         os.chdir(cwd)
@@ -4816,7 +4817,7 @@ def ssh_tunnels(hostname, ports):
         cmdline = ['ps', 'xwww']
         connections = []
         for line in subprocess.check_output(' '.join(cmdline), shell=True,
-                        stderr=subprocess.STDOUT).splitlines():
+                stderr=subprocess.STDOUT).decode(DEFAULT_ENCODING).splitlines():
             look = re.match('ssh', line)
             if look:
                 connections += [line]
@@ -4936,7 +4937,7 @@ def bin_version_candidates(binpath, variant=None):
         cmdline = [binpath, flag]
         try:
             output = subprocess.check_output(
-                cmdline, stderr=subprocess.STDOUT)
+                cmdline, stderr=subprocess.STDOUT).decode(DEFAULT_ENCODING)
             for line in output.splitlines():
                 numbers += version_candidates(line)
         except subprocess.CalledProcessError:
@@ -5712,8 +5713,8 @@ class ListPdbHandler(PdbHandler):
             prev = os.getcwd()
             os.chdir(CONTEXT.src_dir(proj.name))
             cmdline = ' '.join(['git', 'rev-parse', 'HEAD'])
-            lines = subprocess.check_output(
-                cmdline, shell=True, stderr=subprocess.STDOUT).splitlines()
+            lines = subprocess.check_output(cmdline, shell=True,
+                stderr=subprocess.STDOUT).decode(DEFAULT_ENCODING).splitlines()
             sys.stdout.write(' '.join(lines).strip() + ' ')
             os.chdir(prev)
         sys.stdout.write(proj.name + '\n')
@@ -5802,7 +5803,7 @@ def pub_patch(args):
             os.makedirs(patch_dir)
         cmdline = ['git', 'format-patch', '-o', patch_dir, 'origin']
         for line in subprocess.check_output(' '.join(cmdline), shell=True,
-                        stderr=subprocess.STDOUT).splitlines():
+                stderr=subprocess.STDOUT).decode(DEFAULT_ENCODING).splitlines():
             patches += [line.strip()]
             sys.stdout.write(line)
         for patch in patches:
@@ -5842,7 +5843,7 @@ def pub_status(args, recurse=False):
         os.chdir(CONTEXT.src_dir(rep))
         try:
             output = subprocess.check_output(cmdline, shell=True,
-                                             stderr=subprocess.STDOUT)
+                stderr=subprocess.STDOUT).decode(DEFAULT_ENCODING)
             untracked = False
             for line in output.splitlines():
                 look = re.match(r'#?\s*([a-z]+):\s+(\S+)', line)

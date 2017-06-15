@@ -328,17 +328,6 @@ def main(args):
                 os.makedirs(os.path.dirname(options.last_run))
             with open(options.last_run, 'w') as last_run:
                 json.dump(last_run_logs, last_run, cls=JSONEncoder, indent=2)
-        # We are printing the commands to analyze the downloaded logs
-        # The execution order is important to webalizer incremental processing
-        for logname, filenames in downloads.iteritems():
-            sys.stdout.write('# %s\n' % logname)
-            look = re.match(r'(\S+)-access\.log', logname)
-            if look:
-                conffile = os.path.join(
-                    os.path.basename(look.group(1)), 'webalizer.conf')
-                for filename in filenames:
-                    sys.stdout.write(
-                        'webalizer -c %s %s\n' % (conffile, filename))
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
