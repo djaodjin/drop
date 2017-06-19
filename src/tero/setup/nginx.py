@@ -23,10 +23,8 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os, re, six
-from string import Template
 
-from tero import APT_DISTRIBS, YUM_DISTRIBS, CONTEXT, setup, log_info
-from tero.setup import modify_config
+from tero import APT_DISTRIBS, YUM_DISTRIBS, setup
 
 
 class nginxSetup(setup.SetupTemplate):
@@ -54,7 +52,7 @@ server {
 }
 """
 
-    https_config_template = """# whitelabel for %(app_name)s
+    https_config_template = r"""# whitelabel for %(app_name)s
 
 %(webapps)s
 server {
@@ -309,12 +307,13 @@ server {
         # with no domain names will be overridden.
         if remove_default_server:
             org_nginx_conf, new_nginx_conf = setup.stageFile(os.path.join(
-                context.value('etcDir'), 'nginx', 'nginx.conf'), context=context)
+                context.value('etcDir'), 'nginx', 'nginx.conf'),
+                context=context)
             with open(org_nginx_conf) as org_nginx_conf_file:
                 with open(new_nginx_conf, 'w') as new_nginx_conf_file:
                     remove = 0
                     for line in org_nginx_conf_file.readlines():
-                        look = re.match('.*server\s+{', line)
+                        look = re.match(r'.*server\s+{', line)
                         if look:
                             remove = 1
                         elif remove > 0:
@@ -342,12 +341,12 @@ server {
         """
         Generate a configuration file for the site.
         """
-        app_name =  domain.split('.')[0]
+        app_name = domain.split('.')[0]
         if conf_name is None:
             conf_name = app_name
         document_root = os.path.join(
             os.sep, 'var', 'www', app_name, 'reps', app_name, 'htdocs')
-        org_proxy_params, new_proxy_params = setup.stageFile(os.path.join(
+        _, new_proxy_params = setup.stageFile(os.path.join(
             context.value('etcDir'), 'nginx', 'proxy_params'), context=context)
         with open(new_proxy_params, 'w') as proxy_params_file:
             proxy_params_file.write(self.proxy_params_template)
@@ -365,7 +364,7 @@ server {
         domain_info = os.path.join(
             os.path.dirname(setup.postinst.postinst_run_path),
             '%s.info' % domain)
-        _, domain_info_path = stageFile(domain_info, context)
+        _, domain_info_path = setup.stageFile(domain_info, context)
         with open(domain_info_path, 'w') as domain_info_file:
             domain_info_file.write("US\nCalifornia\nSan Francisco\n"\
                 "Dummy Corp\n\n*.%(domain)s\nsupport@%(email)s\n\n" %
@@ -388,7 +387,7 @@ server {
             '[', '-f', cert_path, ']', '||', '/usr/bin/ln', '-s',
             wildcard_cert_path, cert_path])
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
-        org_site_conf, new_site_conf = setup.stageFile(self.conf_path(
+        _, new_site_conf = setup.stageFile(self.conf_path(
             domain, context.host(), context.value('etcDir')),
             context=context)
         # XXX increase server name hash with amazon host names.
