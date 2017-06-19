@@ -376,7 +376,7 @@ server {
             '<', domain_info_path])
         setup.postinst.shellCommand([
             '[', '-f', wildcard_cert_path, ']', '||', '/usr/bin/openssl',
-            'x509', '-req', '-days', 15,
+            'x509', '-req', '-days', '15',
             '-in', wildcard_csr_path,
             '-signkey', wildcard_key_path,
             '-out', wildcard_cert_path])
