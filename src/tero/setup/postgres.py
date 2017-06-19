@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -23,6 +23,8 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import argparse, getpass, re, os, socket, sys
+
+import six
 
 from tero import Context, Variable
 from tero.setup import (after_daemon_start, modify_config, postinst, stageFile,
@@ -92,7 +94,8 @@ class postgresql_serverSetup(SetupTemplate):
         pg_hba_conf = '/var/lib/pgsql/data/pg_hba.conf'
 
         listen_addresses = "'localhost'"
-        for key, val in self.managed['postgresql-server']['files'].iteritems():
+        for key, val in six.iteritems(
+                self.managed['postgresql-server']['files']):
             if key == 'listen_addresses':
                 listen_addresses = "'%s'" % val
 
@@ -197,7 +200,7 @@ class postgresqlSetup(SetupTemplate):
             # files here.
             return complete
         files = self.managed.get('postgresql', {}).get('files', {})
-        for name, vals in files.iteritems():
+        for name, vals in six.iteritems(files):
             if name == 'databases':
                 db_name = None
                 for elem in vals:

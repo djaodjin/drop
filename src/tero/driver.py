@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@ import imp, logging, os, re, shutil, subprocess, sys, time, tempfile
 
 import fabric.api as fab
 from fabric.context_managers import settings as fab_settings
+import six
 
 from tero import (__version__, find_rsync, shell_command,
     build_subcommands_parser, filter_subcommand_args)
@@ -151,7 +152,7 @@ def run_dservices(profile_names, host, remote_path, settings=None):
     # on the remote machine.
     defines = []
     if settings:
-        for key, value in settings.iteritems():
+        for key, value in six.iteritems(settings):
             defines += ['-D"%s"="%s"' % (key, value)]
     profiles = []
     for profile_name in profile_names:
@@ -185,10 +186,10 @@ def pub_deploy(hosts, profiles=[], identities=[], settings={}):
         remote_paths += [parts[1]] if len(parts) > 1 else [DEFAULT_REMOTE_PATH]
     hosts = [host_path.split(':')[0] for host_path in hosts]
     host_ips = CLOUD_BACKEND.network_ip(hosts)
-    for host, ipaddr in host_ips.iteritems():
+    for host, ipaddr in six.iteritems(host_ips):
         if not ipaddr:
             logging.error('cannot find IP for %s', host)
-    fab.env.hosts = host_ips.values()
+    fab.env.hosts = list(host_ips.values())
     for host, remote_path in zip(fab.env.hosts, remote_paths):
         fab.env.host_string = host
         if identities:

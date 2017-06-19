@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -23,6 +23,8 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import logging, os, re
+
+import six
 
 from tero import (APT_DISTRIBS, CONTEXT, YUM_DISTRIBS,
     Error, SetupStep, log_info, shell_command)
@@ -344,7 +346,7 @@ def modifyIniConfig(pathname, settings={}, sep='=', context=None):
                         if look:
                             # We found a block
                             if block:
-                                for key, val in block.iteritems():
+                                for key, val in six.iteritems(block):
                                     new_conf.write(
                                         '%(key)s%(sep)s%(val)s\n' % {
                                             'key': key, 'sep': sep, 'val': val})
@@ -630,9 +632,7 @@ def writeSettings(config, settings, outs=[], sep='=', indent='', prefix=None,
 
 
 def prettyPrint(settings):
-    names = settings.keys()
-    names.sort()
-    for name in names:
+    for name in sorted(settings.keys()):
         if not settings[name]:
             logging.info('warning: %s has no associated value.', name)
         else:

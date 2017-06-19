@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os, re
+import os, re, six
 from string import Template
 
 from tero import APT_DISTRIBS, YUM_DISTRIBS, CONTEXT, setup, log_info
@@ -268,7 +268,7 @@ server {
         last_webapps = ""
         last_forwards = ""
         remove_default_server = False
-        for name, vals in self.managed['nginx']['files'].iteritems():
+        for name, vals in six.iteritems(self.managed['nginx']['files']):
             webapps = ""
             forwards = ""
             if name.startswith('site-config'):

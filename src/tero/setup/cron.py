@@ -1,4 +1,4 @@
-# Copyright (c) 2014, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -51,7 +51,8 @@ class cronSetup(SetupTemplate):
             # files here.
             return complete
 
-        for key, vals in self.managed['iptables']['files'].iteritems():
+        for key, vals in six.iteritems(
+                self.managed['iptables']['files']):
             if key.startswith('/etc/cron.d'):
                 for cmds in vals:
                     lines = cmds[0]

@@ -382,7 +382,7 @@ def shutdown_cluster(cluster_name, mounts,
         task_definition = ecs.describe_task_definition(
             taskDefinition=tasks['tasks'][0]['taskDefinitionArn'])
 
-        for from_path, to_path in mounts.items():
+        for from_path, to_path in six.iteritems(mounts):
             mount_points = task_definition['taskDefinition']['containerDefinitions'][0]['mountPoints']
             source_path = None
             for mount_point in mount_points:

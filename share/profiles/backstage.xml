@@ -93,6 +93,10 @@ servers.
       <dep name="jenkins">
         <share>jetty.sh</share>
       </dep>
+      <dep name="libselinux-python">
+        <!-- to use `lineinfo:` in ansible playbooks -->
+        <share>.*/(selinux)/__init__.py</share>
+      </dep>
     </package>
   </project>
   <project name="openldap-clients">

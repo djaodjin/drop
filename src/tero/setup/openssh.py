@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -23,6 +23,8 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
+
+import six
 
 from tero import APT_DISTRIBS, YUM_DISTRIBS, CONTEXT
 from tero.setup import (SetupTemplate, modify_config,
@@ -58,7 +60,8 @@ class openssh_serverSetup(SetupTemplate):
             new_banner.write(
                 'This server is private property. Authorized use only.\n')
         settings = {'Banner': banner}
-        for key, vals in self.managed['openssh-server']['files'].iteritems():
+        for key, vals in six.iteritems(
+                self.managed['openssh-server']['files']):
             if key == self.sshd_conf:
                 settings.update(vals[0][0])
         modify_config(self.sshd_conf,
