@@ -2967,7 +2967,7 @@ class XMLDbParser(xml.sax.ContentHandler):
         self.text = ""
         key = name
         elems = {}
-        for attr, _ in _iteritems(attrs):
+        for attr in attrs.keys(): # attrs is a instance of AttributesImpl
             if attr == 'name':
                 # \todo have to conserve name if just for fetches.
                 # key = Step.genid(Step, attrs['name'], target)
