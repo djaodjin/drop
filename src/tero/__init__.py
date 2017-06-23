@@ -4559,8 +4559,7 @@ def localize_context(context, name, target):
     # a change to override defaults for installTop, etc.
     for dir_name in ['include', 'lib', 'bin', 'etc', 'share']:
         name = local_context.value(dir_name + 'Dir')
-    # \todo save local context only when necessary
-    local_context.save()
+
     return local_context
 
 
