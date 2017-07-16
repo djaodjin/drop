@@ -137,7 +137,7 @@ INSTALL_DIRS = ['bin', 'include', 'lib', 'libexec', 'etc', 'share']
 
 # distributions per native package managers
 APT_DISTRIBS = ['Debian', 'Ubuntu']
-YUM_DISTRIBS = ['Fedora', 'CentOS']
+DNF_DISTRIBS = ['Fedora', 'CentOS']
 PORT_DISTRIBS = ['Darwin']
 
 # Real uid and gid when the -u,--user and/or -g,--group command
@@ -428,8 +428,10 @@ class Context(object):
         return self._index_file
 
     def host(self):
-        '''Returns the distribution of the local system
-        on which the script is running.'''
+        """
+        Returns the distribution of the local system
+        on which the script is running.
+        """
         return self.value('distHost')
 
     def local_dir(self, name):
@@ -1474,7 +1476,9 @@ class Variable(object):
 class HostPlatform(Variable):
 
     def __init__(self, name, pairs=None):
-        '''Initialize an HostPlatform variable. *pairs* is a dictionnary.'''
+        """
+        Initialize an HostPlatform variable. *pairs* is a dictionnary.
+        """
         Variable.__init__(self, name, pairs)
         self.dist_codename = None
 
@@ -1494,7 +1498,7 @@ class HostPlatform(Variable):
                     version = open(version_path)
                     line = version.readline()
                     while line != '':
-                        for dist in APT_DISTRIBS + YUM_DISTRIBS:
+                        for dist in APT_DISTRIBS + DNF_DISTRIBS:
                             look = re.match('.*' + dist + '.*', line)
                             if look:
                                 self.value = dist
@@ -1954,7 +1958,7 @@ class SetupStep(TargetStep):
 class InstallStep(SetupStep):
     """
     Base class to install prerequisites through package managers, either
-    native (apt-get, yum) or language specific (pip, gem, nodejs).
+    native (apt-get, dnf) or language specific (pip, gem, nodejs).
 
     ``InstallStep`` derives from ``SetupStep`` such that we are able
     to check prerequisites and create a list of incomplete packages
@@ -2343,12 +2347,12 @@ class RpmInstallStep(InstallStep):
         return []
 
 
-class YumInstallStep(InstallStep):
-    ''' Install a prerequisite to a project through yum (Redhat-based).'''
+class DnfInstallStep(InstallStep):
+    ''' Install a prerequisite to a project through dnf (Redhat-based).'''
 
     def __init__(self, project_name, alt_names=None,
                  versions=None, target=None):
-        super(YumInstallStep, self).__init__(project_name, alt_names=alt_names,
+        super(DnfInstallStep, self).__init__(project_name, alt_names=alt_names,
             versions=versions, target=target)
         self.priority = Step.install_native
 
@@ -2358,8 +2362,8 @@ class YumInstallStep(InstallStep):
             admin = True
             noexecute = context.nonative
             return [
-                (['yum', '-y', 'update'], admin, noexecute),
-                (['yum', '-y', 'install'] + managed, admin, noexecute)]
+                (['dnf', '-y', 'update'], admin, noexecute),
+                (['dnf', '-y', 'install'] + managed, admin, noexecute)]
         return []
 
     def install(self, managed, context):
@@ -2367,7 +2371,7 @@ class YumInstallStep(InstallStep):
             # XXX Might not be the best place to do this,
             # yet CentOS does not include basic tools such as fail2ban.
             if context.host() == 'CentOS' and not os.path.exists(
-                '/etc/yum.repos.d/epel.repo'):
+                '/etc/dnf.repos.d/epel.repo'):
                 shell_command(['rpm', '-Uvh',
 'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
                 admin=True, noexecute=context.nonative)
@@ -2384,13 +2388,13 @@ class YumInstallStep(InstallStep):
                 if look:
                     unmanaged = look.group(1).split(' ')
                     if len(unmanaged) > 0:
-                        raise Error("yum cannot install " + ' '.join(unmanaged))
+                        raise Error("dnf cannot install " + ' '.join(unmanaged))
 
     def info(self):
         info = []
         unmanaged = []
         try:
-            filtered = shell_command(['yum', 'info'] + self.managed,
+            filtered = shell_command(['dnf', 'info'] + self.managed,
                 pat=r'Name\s*:\s*(\S+)')
             if filtered:
                 info = self.managed
@@ -3991,7 +3995,7 @@ nvm install %s
 
 def find_pip(context):
     pip_package = None
-    if context.host() in YUM_DISTRIBS:
+    if context.host() in DNF_DISTRIBS:
         pip_package = 'python-pip'
     find_boot_bin('(pip).*', package=pip_package, context=context)
     return os.path.join(context.bin_build_dir(), 'pip')
@@ -4200,8 +4204,8 @@ def create_managed(project_name, versions=None, target=None):
         install_step = AptInstallStep(project_name, target=target)
     elif CONTEXT.host() in PORT_DISTRIBS:
         install_step = MacPortInstallStep(project_name, target=target)
-    elif CONTEXT.host() in YUM_DISTRIBS:
-        install_step = YumInstallStep(project_name, target=target)
+    elif CONTEXT.host() in DNF_DISTRIBS:
+        install_step = DnfInstallStep(project_name, target=target)
     else:
         install_step = None
     return install_step
@@ -4212,7 +4216,7 @@ def create_package_file(project_name, filenames):
         install_step = DpkgInstallStep(project_name, alt_names=filenames)
     elif CONTEXT.host() in PORT_DISTRIBS:
         install_step = DarwinInstallStep(project_name, alt_names=filenames)
-    elif CONTEXT.host() in YUM_DISTRIBS:
+    elif CONTEXT.host() in DNF_DISTRIBS:
         install_step = RpmInstallStep(project_name, alt_names=filenames)
     else:
         install_step = None
@@ -5537,6 +5541,44 @@ def pub_deps(args, native=False):
             builds += [step.qualified_project_name()]
     if not native:
         sys.stdout.write("build: %s\n" % ' '.join(builds))
+
+
+def pub_dockerfile(args):
+    """dockerfile_template
+    Create a Dockerfile in *siteTop* from a template file and the workspace
+    context.
+    """
+    if len(args) < 1:
+        raise Error("usage: dws dockerfile *dockerfile_template_path*")
+    dockerfile_template_path = args[0]
+    with open(dockerfile_template_path) as dockerfile_template_file:
+        dockerfile_template = dockerfile_template_file.readlines()
+    look = re.match('FROM (\S+):.*', dockerfile_template[0])
+    if look:
+        CONTEXT.environ['distHost'] = look.group(1).capitalize()
+    rgen = DerivedSetsGenerator()
+    INDEX.parse(rgen)
+    dgen = PubDepsGenerator(rgen.roots, [], exclude_pats=EXCLUDE_PATS)
+    native_prerequisites = ""
+    app_name = rgen.roots[0]
+    for step in ordered_prerequisites(dgen, INDEX):
+        if isinstance(step, InstallStep):
+            if step.priority == Step.install_native:
+                cmds = step.install_commands(step.get_installs(), CONTEXT)
+                sep = ""
+                for cmd, _, _ in cmds:
+                    native_prerequisites += "%s%s" % (sep, ' '.join(cmd))
+                    sep = "\nRUN "
+    sys.stdout.write(''.join(dockerfile_template) % {
+        'native_prerequisites': native_prerequisites,
+        'app_name': app_name,
+        'site_top': '/var/www/%s' % app_name,
+        'bin_dir': '/var/www/%s/bin' % app_name,
+        'lib_dir': '/var/www/%s/lib' % app_name,
+        'src_top': '/var/www/%s/reps' % app_name,
+        'share_dir': '/var/www/%s/share' % app_name,
+        'etc_dir': '/var/www/%s/etc' % app_name
+    })
 
 
 def pub_export(args):
