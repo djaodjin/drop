@@ -3270,10 +3270,11 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
             log_interactive("%s/" % variant)
         log_interactive("%s... " % name_pat)
         candidate = None
-        if os.path.islink(link_name):
-            # If we already have a symbolic link in the binBuildDir,
-            # we will assume it is the one to use in order to cut off
-            # recomputing of things that hardly change.
+        if (os.path.islink(link_name) and
+            os.path.exists(os.path.realpath(link_name))):
+            # If we already have a symbolic link that points to a valid
+            # file in the binBuildDir, we will assume it is the one to use
+            # in order to cut off re-computing things that hardly change.
             candidate = os.path.realpath(link_name)
             results.append((name_pat, candidate))
             log_info(found_bin_suffix(candidate, variant=variant))
