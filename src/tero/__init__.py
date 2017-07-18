@@ -123,6 +123,8 @@ NO_FETCH = False
 # When True, the log object is not used and output is only
 # done on sys.stdout.
 NO_LOG = False
+# When True, we are not running Python within a virtualenv environment
+NO_VIRTUALENV = False
 # Address to email log reports to.
 MAILTO = []
 # When True, *find_lib* will prefer static libraries over dynamic ones if both
@@ -664,6 +666,7 @@ class Context(object):
         Derives a list of directory names based on the PATH
         environment variable, *name* and a *variant* triplet.
         """
+        py_ver = python_version(self)
         candidates = []
         # We want the actual value of *name*Dir and not one derived from binDir
         dirname = CONTEXT.value(name + 'Dir')
@@ -673,7 +676,7 @@ class Context(object):
             # executables often are not.
             if variant:
                 if variant == 'python':
-                    candidate = os.path.join(dirname, python_version(self))
+                    candidate = os.path.join(dirname, py_ver)
                     if (os.path.exists(candidate) and
                         (len(candidates) == 0 or candidates[-1] != candidate)):
                         candidates += [candidate]
@@ -684,6 +687,9 @@ class Context(object):
                         candidates += [candidate]
             if len(candidates) == 0 or candidates[-1] != dirname:
                 candidates += [dirname]
+        if variant and variant == 'python' and not NO_VIRTUALENV:
+            # For pure Python modules, we are only looking into the virtualenv.
+            return candidates
         candidates += os.environ['PATH'].split(':')
         dirs = []
         for path in candidates:
@@ -696,17 +702,14 @@ class Context(object):
                     if os.path.isdir(dirname):
                         if variant:
                             if variant == 'python':
-                                candidate = os.path.join(
-                                    dirname, python_version(self))
+                                candidate = os.path.join(dirname, py_ver)
                                 if (os.path.exists(candidate) and
-                                    (len(dirs) == 0
-                                    or dirs[-1] != candidate)):
+                                    (len(dirs) == 0 or dirs[-1] != candidate)):
                                     dirs += [candidate]
                             else:
                                 candidate = os.path.join(dirname, variant)
                                 if (os.path.exists(candidate) and
-                                    (len(dirs) == 0
-                                    or dirs[-1] != candidate)):
+                                    (len(dirs) == 0 or dirs[-1] != candidate)):
                                     dirs += [candidate]
                         if len(dirs) == 0 or dirs[-1] != dirname:
                             dirs += [dirname]
@@ -729,7 +732,7 @@ class Context(object):
         if name == 'lib' and self.host() in PORT_DISTRIBS:
             # Just because python modules do not get installed
             # in /opt/local/lib/python2.7/site-packages
-            dirs += [python_version(self).replace('python',
+            dirs += [py_ver.replace('python',
                 '/opt/local/Library/Frameworks/Python.framework/Versions/')]
         if name == 'share' and self.host() in APT_DISTRIBS:
             dirs += ['/var/lib/gems']
@@ -1290,6 +1293,7 @@ class MakeGenerator(DependencyGenerator):
         name = variant.project
         if not name in self.projects:
             self.packages |= set([name])
+            self.add_install(name, variant.target)
             return (False, [])
 
         need_prompt = True
@@ -3994,6 +3998,7 @@ nvm install %s
             link_pat_path(name, absolute_path, 'bin')
     return os.path.join(context.bin_build_dir(), 'npm')
 
+
 def find_pip(context):
     pip_package = None
     if context.host() in DNF_DISTRIBS:
@@ -4958,8 +4963,16 @@ def python_version(context):
     """
     Returns a name as typically expected for prefixes to site-packages.
     """
-    numbers = bin_version_candidates(
-        os.path.join(context.bin_build_dir(), 'python'))
+    dirname = context.bin_build_dir()
+    link_name = os.path.join(dirname, 'python')
+    if not os.path.exists(link_name):
+        prev = os.getcwd()
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+        os.chdir(dirname)
+        os.symlink(os.path.relpath(sys.executable), 'python')
+        os.chdir(prev)
+    numbers = bin_version_candidates(link_name)
     version = '.'.join(numbers[0].split('.')[:2])
     return "python%s" % str(version)
 
@@ -5323,6 +5336,8 @@ def pub_build(args, graph=False, clean=False,
         os.chdir(build_top)
         LOGGER_BUFFERING_COUNT = LOGGER_BUFFERING_COUNT - 1
 
+    global NO_VIRTUALENV
+    NO_VIRTUALENV = novirtualenv
     pip_executable = os.path.join(install_top, 'bin', 'pip')
     if not novirtualenv and not os.path.isfile(pip_executable):
         shell_command([find_virtualenv(CONTEXT, 2 if python2 else 3),
@@ -5769,10 +5784,15 @@ def pub_list(args):
 
 
 def pub_make(args, graph=False):
-    '''    Make projects. "make recurse" will build
+    """    Make projects. `make recurse` will build
     all dependencies required before a project
     can be itself built.
-    '''
+    `make recurse` will install prerequisites available
+    through package managers as needed but won't update
+    source repositories nor download asset files.
+    For a full-blown update/compile look at the `build`
+    command.
+    """
     # \todo That should not be required:
     # context.environ['siteTop'].default = os.path.dirname(os.path.dirname(
     #    os.path.realpath(os.getcwd())))
@@ -5792,6 +5812,8 @@ def pub_make(args, graph=False):
         if opt == 'recurse':
             CONTEXT.targets += ['install']
             recurse = True
+            global NO_FETCH
+            NO_FETCH = True
         elif re.match(r'\S+=.*', opt):
             CONTEXT.overrides += [opt]
         else:
