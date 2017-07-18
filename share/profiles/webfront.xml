@@ -19,6 +19,21 @@ Name of the machine hosting the LDAP server.
         </description>
         <default>dbs.ec2.internal</default>
       </variable>
+      <variable name="notifyEmail">
+        <description>Email to send notification to about the state of the machine.</description>
+      </variable>
+      <variable name="emailHost">
+        <description>Host for the email server used to send notification about the state of the machine.</description>
+      </variable>
+      <variable name="emailPort">
+        <description>Port on the host email server used to send notification about the state of the machine.</description>
+      </variable>
+      <variable name="emailHostUser">
+        <description>User to connect to the email server used to send notification about the state of the machine.</description>
+      </variable>
+      <variable name="emailHostPassword">
+        <description>Password to connect to the email server used to send notification about the state of the machine.</description>
+      </variable>
       <!-- Access control -->
       <dep name="iptables">
         <bin>iptables</bin>
@@ -42,7 +57,7 @@ Name of the machine hosting the LDAP server.
           <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
           <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
           <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
-          <PasswordAuthentication>no</PasswordAuthentication>
+          <PasswordAuthentication>no</PasswordAuthentication><!-- `yes` when using sally port -->
           <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <PermitTunnel>no</PermitTunnel>
           <X11Forwarding>no</X11Forwarding>
@@ -80,13 +95,40 @@ Name of the machine hosting the LDAP server.
           <port>443</port>
           <webapp>
             <path>/</path>
-            <port>8020</port>
+            <port>8000</port>
           </webapp>
         </extra>
+      </dep>
+      <dep name="docker">
+        <bin>docker</bin>
+      </dep>
+      <!-- fonts used to generate PDFs -->
+      <dep name="dejavu-sans-fonts">
+        <share>fonts/extras/dejavu-sans-fonts.ttf</share>
+      </dep>
+      <dep name="dejavu-serif-fonts">
+        <share>fonts/extras/dejavu-serif-fonts.ttf</share>
+      </dep>
+      <dep name="dejavu-lgc-sans-fonts">
+        <share>fonts/extras/dejavu-lgc-sans-fonts.ttf</share>
+      </dep>
+      <dep name="dejavu-lgc-serif-fonts">
+        <share>fonts/extras/dejavu-lgc-serif-fonts.ttf</share>
+      </dep>
+      <dep name="dejavu-sans-mono-fonts">
+        <share>fonts/extras/dejavu-sans-mono-fonts.ttf</share>
+      </dep>
+      <dep name="dejavu-lgc-sans-mono-fonts">
+        <share>fonts/extras/dejavu-lgc-sans-mono-fonts.ttf</share>
       </dep>
       <!-- because we use this profile for jenkins workers -->
       <dep name="java-1.8.0-openjdk-headless">
         <bin>java</bin>
+      </dep>
+      <dep name="jq">
+        <!-- command-line JSON parser that is useful
+             to process aws cli output. -->
+        <bin>jq</bin>
       </dep>
       <dep name="wget">
         <bin>wget</bin>

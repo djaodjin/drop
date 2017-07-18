@@ -32,8 +32,9 @@
   ec2_vpc_subnet:
     state: present
     region: "{{aws_region}}"
-    vpc_id: {{vpc_id}}
-    cidr: {{web_subnet_cidr}}
+    vpc_id: "{{vpc_id}}"
+    az: "{{aws_zone}}"
+    cidr: "{{web_subnet_cidr}}"
     resource_tags:
       Name: Web Subnet
   register: web_subnet

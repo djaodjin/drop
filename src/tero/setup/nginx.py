@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -57,7 +57,7 @@ server {
 %(webapps)s
 server {
         listen          80;
-        server_name     ~^((?<subdomain>\w+)\.)?%(domain)s$;
+        server_name     ~^((?<subdomain>[a-zA-Z0-9-]+)\.)%(domain_re)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
@@ -66,12 +66,12 @@ server {
         keepalive_timeout 5;
 
         # Only requests to our Host are allowed
-        if ($http_host !~* ^([a-zA-Z0-9-]+.)?%(domain)s$ ) {
+        if ($http_host !~* ^([a-zA-Z0-9-]+.)?%(domain_re)s$ ) {
             return 444;
         }
 
         # Block download user agents
-        if ($http_user_agent ~* YoudaoBot|Sogou|YandexBot|linkdexbot) {
+        if ($http_user_agent ~* YoudaoBot|Sogou|YandexBot|linkdexbot|BLEXBot) {
             return 403;
         }
 
@@ -79,6 +79,37 @@ server {
 
         location / {
             try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @https-rewrite;
+        }
+
+        location @https-rewrite {
+            return 301 https://$http_host$request_uri;
+        }
+}
+
+server {
+        listen          80;
+        server_name     %(domain)s$;
+
+        access_log /var/log/nginx/%(domain)s-access.log main;
+        error_log  /var/log/nginx/%(domain)s-error.log;
+
+        client_max_body_size 4G;
+        keepalive_timeout 5;
+
+        # Only requests to our Host are allowed
+        if ( $http_host !~* ^%(domain)s$ ) {
+            return 444;
+        }
+
+        # Block download user agents
+        if ($http_user_agent ~* YoudaoBot|Sogou|YandexBot|linkdexbot|BLEXBot) {
+            return 403;
+        }
+
+        root %(document_root)s;
+
+        location / {
+            try_files $uri/index.html $uri.html $uri @https-rewrite;
         }
 
         location @https-rewrite {
@@ -108,7 +139,7 @@ server {
 
 server {
         listen       443;
-        server_name  ~^(?<subdomain>\w+)\.%(domain)s$;
+        server_name  ~^((?<subdomain>[a-zA-Z0-9-]+)\.)%(domain_re)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
@@ -127,13 +158,22 @@ server {
         keepalive_timeout 5;
 
         # Only requests to our Host are allowed
-        if ($http_host !~* ^([a-zA-Z0-9-]+.)?%(domain)s$ ) {
+        if ($http_host !~* ^([a-zA-Z0-9-]+.)?%(domain_re)s$ ) {
             return 444;
         }
 
         # path for static files
         root %(document_root)s;
-        %(forwards)s
+
+        location / {
+            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @https-rewrite;
+        }
+
+        location @forward_to_%(app_name)s {
+            proxy_pass    http://proxy_%(app_name)s;
+            include       /etc/nginx/proxy_params;
+        }
+
         error_page 500 502 503 504 /500.html;
         location = /50x.html {
             root %(document_root)s;
@@ -167,7 +207,7 @@ server {
         }
 
         # Block download user agents
-        if ($http_user_agent ~* YoudaoBot|Sogou|YandexBot|linkdexbot) {
+        if ($http_user_agent ~* YoudaoBot|Sogou|YandexBot|linkdexbot|BLEXBot) {
             return 403;
         }
 
@@ -397,6 +437,7 @@ server {
             site_conf_file.write(config_template % {
                 'app_name': app_name,
                 'domain': domain,
+                'domain_re': domain.replace('.', '\\.'),
                 'document_root': document_root,
                 'key_path': key_path,
                 'cert_path': cert_path,

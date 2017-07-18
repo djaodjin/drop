@@ -23,7 +23,7 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from tero.setup import SetupTemplate, stageFile
+from tero.setup import SetupTemplate, modify_config, stageFile
 
 def add_entry(filename, command,
               username='root', minutes='0', hours='19', dom='*', months='*',
@@ -50,6 +50,15 @@ class cronSetup(SetupTemplate):
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
+
+        anacrontab_conf = os.path.join(context.SYSCONFDIR, 'anacrontab')
+        crontab_conf = os.path.join(context.SYSCONFDIR, 'crontab')
+        notify_email = context.value('notifyEmail')
+        if notify_email:
+            modify_config(anacrontab_conf,
+                settings={'MAILTO': notify_email}, context=context)
+            modify_config(crontab_conf,
+                settings={'MAILTO': notify_email}, context=context)
 
         for key, vals in six.iteritems(
                 self.managed['iptables']['files']):

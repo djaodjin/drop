@@ -22,41 +22,55 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from tero import setup
+import os
 
-class monitSetup(setup.SetupTemplate):
+from tero.setup import setupTemplate, modify_config
+
+
+class fail2banSetup(setupTemplate):
 
     def __init__(self, name, files, **kwargs):
-        super(monitSetup, self).__init__(name, files, **kwargs)
-        self.daemons = ['monit']
+        super(fail2banSetup, self).__init__(name, files, **kwargs)
+        self.daemons = ['fail2ban']
 
     def run(self, context):
-        complete = super(monitSetup, self).run(context)
+        complete = setupTemplate.run(self, context)
         if not complete:
             # As long as the default setup cannot find all prerequisite
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
 
-        # XXX Monit wants to talk directly to the mail server and so far
-        #     we are using ssmtp instead of a local maildrop.
-        monit_conf = os.path.join(context.SYSCONFDIR, 'monitrc')
+        jail_conf = os.path.join(context.SYSCONFDIR, 'fail2ban', 'jail.conf')
+        # XXX in filter.d/apache-badbots.conf:
+        # ^<HOST> -.*"(GET|POST).*(\.php|\.asp|\.exe|\.pl).*HTTP.*".*$
+        # jail.conf:
+        # apache-badbots: /var/log/nginx/*-access.log
+
+        # XXX /etc/fail2ban/jail.conf
+        # 1. sendmail-whois[name=SSH, dest=root, sender=root@fortylines.com]
+        # 2. add fail2ban user or use root.
+        # XXX nginx settings!
+        jail_settings = {
+            'apache': {'enabled': 'true'},
+            'apache-noscript': {'enabled': 'true'},
+            'apache-overflows': {'enabled': 'true'},
+            'ssh-iptables': {'maxretry': '3'},
+            'spamassassin': {
+                    'enabled': 'true',
+                    'bantime': '3600',
+                    'port': 'http,https,smtp,ssmtp',
+                    'filter': 'spamassassin',
+                    'logpath': '/var/log/mail.log'}}
         notify_email = context.value('notifyEmail')
         if notify_email:
-            email_host = context.value('emailHost')
-            email_port = context.value('emailPort')
-            email_host_user = context.value('emailHostUser')
-            email_host_password = context.value('emailHostPassword')
-            modify_config(monit_conf, settings={
-                'mailserver': "%(email_host)s port %(email_port)s,"\
-            " username %(email_host_user)s password %(email_host_password)s"\
-            " using tlsv1" % {'email_host': email_host,
-                              'email_port': email_port,
-                              'email_host_user': email_host_user,
-                              'email_host_password': email_host_password,
-                             },
-                'mail-format': "{ from: %s }" % notify_email,
-                'alert': notify_email
-            }, context=context)
-
+            jail_settings.update({
+                'destemail': notify_email,
+                'sender': notify_email
+            })
+        modify_config(jail_conf, settings=jail_settings, context=context)
+        # XXX http://blog.darkseer.org/wordpress/?p=149
+        # Add in /etc/fail2ban/filter.d/sshd.conf
+        # ^%(__prefix_line)sReceived disconnect from <HOST>: \
+        # 11: Bye Bye \[preauth\]\s*$
         return complete

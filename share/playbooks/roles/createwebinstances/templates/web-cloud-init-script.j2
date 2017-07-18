@@ -9,7 +9,7 @@ set -e
 siteTop=/var/www
 
 # Install awcli and Download keys, certificates, etc.
-aws s3 cp s3://{{deployutils_bucket}}/identities/web.internal / --recursive
+aws s3 cp s3://{{deployutils_bucket}}/identities/web.ec2.internal / --recursive
 chown fedora:fedora /home/fedora/.ssh
 chmod 600 /home/fedora/.ssh/jenkins_rsa
 

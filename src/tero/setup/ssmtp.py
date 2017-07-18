@@ -22,41 +22,50 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from tero import setup
+import os
 
-class monitSetup(setup.SetupTemplate):
+from tero import CONTEXT
+from tero.setup import modify_config, stageFile, postinst, SetupTemplate
+
+
+class sstmpSetup(SetupTemplate):
 
     def __init__(self, name, files, **kwargs):
-        super(monitSetup, self).__init__(name, files, **kwargs)
-        self.daemons = ['monit']
+        super(sstmpSetup, self).__init__(name, files, **kwargs)
 
     def run(self, context):
-        complete = super(monitSetup, self).run(context)
+        complete = super(sstmpSetup, self).run(context)
         if not complete:
             # As long as the default setup cannot find all prerequisite
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
 
-        # XXX Monit wants to talk directly to the mail server and so far
-        #     we are using ssmtp instead of a local maildrop.
-        monit_conf = os.path.join(context.SYSCONFDIR, 'monitrc')
+        revaliases_conf = os.path.join(
+            context.value('etcDir'), 'ssmtp', 'revaliases')
+        sstmp_conf = os.path.join(
+            context.value('etcDir'), 'ssmtp', 'ssmtp.conf')
+
+        domain = context.value('domainName')
         notify_email = context.value('notifyEmail')
         if notify_email:
             email_host = context.value('emailHost')
             email_port = context.value('emailPort')
             email_host_user = context.value('emailHostUser')
             email_host_password = context.value('emailHostPassword')
-            modify_config(monit_conf, settings={
-                'mailserver': "%(email_host)s port %(email_port)s,"\
-            " username %(email_host_user)s password %(email_host_password)s"\
-            " using tlsv1" % {'email_host': email_host,
-                              'email_port': email_port,
-                              'email_host_user': email_host_user,
-                              'email_host_password': email_host_password,
-                             },
-                'mail-format': "{ from: %s }" % notify_email,
-                'alert': notify_email
-            }, context=context)
+            modify_config(sstmp_conf, settings={
+                'root': notify_email,
+                'mailhub': email_host,
+                'RewriteDomain': domain,
+                'Hostname': domain,
+                'FromLineOverride': "NO",
+                'UseSTARTTLS': "YES",
+                'UseTLS': "YES",
+                'AuthUser': email_host_user,
+                'AuthPass': email_host_password
+            }, sep='=', context=context)
+            modify_config(revaliases, settings={
+                'root': notify_email
+            }, sep=':', context=context)
 
         return complete
