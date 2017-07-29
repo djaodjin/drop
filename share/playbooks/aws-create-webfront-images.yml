@@ -1,0 +1,9 @@
+- name: Create and configure EC2 instances to be used as webfront AMIs
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars:
+    - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
+
+  roles:
+    - create_webfront_ami

@@ -1,0 +1,45 @@
+#!/bin/bash
+#
+# configure a stock Fedora to serve as a front-end web reverse proxy.
+
+set -x
+set -e
+
+appname=""
+rootDir=/var/www
+
+# Install necessary public packages to bootstrap configuration
+/usr/bin/dnf -y install awscli python-virtualenv
+
+# Download and install packages that require authentication credentials
+/usr/bin/aws s3 cp s3://{{deployutils_bucket}}/identities/ami-web.ec2.internal / --recursive
+
+cd $rootDir
+packages=$(ls *.tar.bz2)
+if [ "X$packages" != "X" ] ; then
+    for package in packages ; do
+        /usr/bin/tar jxf $package
+    done
+    for dirname in $(find . -maxdepth 1 -type d) ; do
+        appname="$dirname"
+        pushd $dirname/reps/$dirname
+        /usr/bin/python ../drop/src/tero/__init__.py make recurse
+        popd
+    done
+fi
+
+# Install and configure publicly available packages
+siteTop="$rootDir/$appname"
+if [ "X$appname" == "X" ] ; then
+    mkdir -p ${siteTop}/reps
+    virtualenv -p python3 --system-site-packages ${siteTop}
+    git clone {{remote_drop_repo}} ${siteTop}/reps/drop
+fi
+cd $siteTop
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} reps/drop/share/profiles/webfront.xml
+
+
+# Ansible will be waiting for this server to respond
+# before it continues with registering the AMI.
+echo "DONE" > index.html
+#/usr/bin/python3 -m http.server 80

@@ -3,14 +3,6 @@
 
 - include_vars: group_vars/dynamic
 
-- include: sally_configure.yml
-- include: sally_ami.yml
-- include: sally_cleanup.yml
-
-- include: dbs_configure.yml
-- include: dbs_ami.yml
-- include: dbs_cleanup.yml
-
 - include: webfront_configure.yml
 - include: webfront_ami.yml
 - include: webfront_cleanup.yml

@@ -1,0 +1,8 @@
+# Create an EC2 instance, configure it with the packages required
+# to run a sally/entry-port machine and make an AMI out of it.
+
+- include_vars: group_vars/dynamic
+
+- include: sally_configure.yml
+- include: sally_ami.yml
+- include: sally_cleanup.yml
