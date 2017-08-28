@@ -46,7 +46,7 @@ class FixedOffset(tzinfo):
     def dst(self, dt=None):
         return timedelta(0)
     def __repr__(self):
-        return 'FixedOffset(%d)' % (self.utcoffset().total_seconds() / 60)
+        return 'FixedOffset(%d)' % (self.utcoffset().total_seconds() // 60)
 
 def parse_date(dt_str):
     naive_date_str, offset_str = dt_str.split(' ')
@@ -80,7 +80,7 @@ def generate_regex(format_string, var_regex, regexps):
     )
 
     grouped_non_var_indexes = [(non_var_indexes[i*2], non_var_indexes[i*2+1])
-                               for i in range(len(non_var_indexes)/2)]
+                               for i in range(len(non_var_indexes)//2)]
 
     non_var_strings = [format_string[start:end]
                        for start, end in grouped_non_var_indexes]
@@ -88,7 +88,7 @@ def generate_regex(format_string, var_regex, regexps):
 
     named_regexps = ['(' + regexps[s] + ')' for i, s in enumerate(format_vars)]
     full_regex_pieces = list(
-        itertools.chain(*itertools.izip_longest(escaped_non_var_strings,
+        itertools.chain(*six.moves.zip_longest(escaped_non_var_strings,
                                                 named_regexps, fillvalue=''))
     )
 
