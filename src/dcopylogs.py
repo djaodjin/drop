@@ -26,7 +26,7 @@
 
 import argparse, datetime, json, logging, os, re, sys, time
 
-import boto
+import boto, six
 from pytz import utc
 
 __version__ = None
@@ -45,7 +45,7 @@ class JSONEncoder(json.JSONEncoder):
 
 
 def datetime_hook(json_dict):
-    for key, value in json_dict.items():
+    for key, value in six.items(json_dict):
         try:
             json_dict[key] = datetime.datetime.strptime(
                 value, "%Y-%m-%dT%H:%M:%S.%f+00:00")
@@ -319,7 +319,7 @@ def main(args):
                 if not logname in downloads:
                     downloads[logname] = []
                 downloads[logname] += [filename]
-        for logname, last_modified in logs.iteritems():
+        for logname, last_modified in six.iteritems(logs):
             if (not logname in last_run_logs
                 or last_run_logs[logname] < last_modified):
                 last_run_logs[logname] = last_modified
