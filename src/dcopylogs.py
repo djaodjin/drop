@@ -45,7 +45,7 @@ class JSONEncoder(json.JSONEncoder):
 
 
 def datetime_hook(json_dict):
-    for key, value in six.items(json_dict):
+    for key, value in list(six.iteritems(json_dict)):
         try:
             json_dict[key] = datetime.datetime.strptime(
                 value, "%Y-%m-%dT%H:%M:%S.%f+00:00")
