@@ -143,21 +143,24 @@ def datetime_hook(json_dict):
     return json_dict
 
 
-def download_updated_logs(local_update,
+def download_updated_logs(lognames, local_prefix=None, logsuffix=None,
                           bucket=None, s3_prefix=None, last_run=None):
     """
     Fetches log files which are on S3 and more recent that specified
-    in last_run.
+    in last_run and returns a list of filenames.
     """
-    downloaded = []
-    for item in sorted(local_update, key=get_last_modified):
+    local_update, _ = list_updates(
+        list_local(lognames, prefix=local_prefix, list_all=False),
+        list_s3(bucket, lognames, prefix=s3_prefix, time_from_logsuffix=False),
+        logsuffix=logsuffix, prefix=s3_prefix)
+
+    for item in local_update:
         keyname = item['Key']
         filename = as_filename(keyname, prefix=s3_prefix)
         if filename.startswith('/'):
             filename = '.' + filename
         logname = as_logname(filename)
-        if not last_run or last_run.more_recent(
-                logname, item['LastModified'], update=True):
+        if not last_run or last_run.more_recent(logname, item['LastModified']):
             s3_key = boto.s3.key.Key(bucket, keyname)
             if s3_key.storage_class == 'STANDARD':
                 sys.stderr.write("download %s to %s\n" % (
@@ -166,10 +169,23 @@ def download_updated_logs(local_update,
                     os.makedirs(os.path.dirname(filename))
                 with open(filename, 'wb') as file_obj:
                     s3_key.get_contents_to_file(file_obj)
-                    downloaded += [filename]
             else:
                 sys.stderr.write("skip %s (on %s storage)\n" % (
                     keyname, s3_key.storage_class))
+
+    # It is possible some files were already downloaded as part of a previous
+    # run so we construct the list of recent files here.
+    downloaded = []
+    for item in sorted(list_local(lognames,
+                prefix=local_prefix, list_all=False), key=get_last_modified):
+        keyname = item['Key']
+        filename = as_filename(keyname, prefix=s3_prefix)
+        if filename.startswith('/'):
+            filename = '.' + filename
+        logname = as_logname(filename)
+        if not last_run or last_run.more_recent(
+                logname, item['LastModified'], update=True):
+            downloaded += [filename]
     return downloaded
 
 
