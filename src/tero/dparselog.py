@@ -134,7 +134,7 @@ def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
 def datetime_hook(json_dict):
     for key, value in list(six.iteritems(json_dict)):
         try:
-            json_dict[key] = datetime.datetime.strptime(
+            json_dict[key] = datetime.strptime(
                 value, "%Y-%m-%dT%H:%M:%S.%f+00:00")
             if json_dict[key].tzinfo is None:
                 json_dict[key] = json_dict[key].replace(tzinfo=utc)
@@ -202,7 +202,7 @@ def list_local(lognames, prefix=None, list_all=False):
                 prefixed_fullpath = os.path.join(prefixed_dirname, filename)
                 if (as_logname(fullpath, ext=ext) == logname
                     and (list_all or not fullpath == logname)):
-                    mtime = datetime.datetime.fromtimestamp(
+                    mtime = datetime.fromtimestamp(
                         os.path.getmtime(prefixed_fullpath), tz=utc)
                     results += [{"Key": fullpath, "LastModified": mtime}]
     return results
@@ -229,10 +229,10 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
             if as_logname(s3_key.name, prefix=prefix) == logname:
                 look = re.match(r'\S+-(\d\d\d\d\d\d\d\d)\.gz', s3_key.name)
                 if time_from_logsuffix and look:
-                    last_modified = datetime.datetime.strptime(
+                    last_modified = datetime.strptime(
                         look.group(1), "%Y%m%d")
                 else:
-                    last_modified = datetime.datetime(*time.strptime(
+                    last_modified = datetime(*time.strptime(
                         s3_key.last_modified, BOTO_DATETIME_FORMAT)[0:6])
                 if last_modified.tzinfo is None:
                     last_modified = last_modified.replace(tzinfo=utc)
