@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import argparse, getpass, re, os, socket, sys
+import argparse, re, os, sys
 
 import six
 
@@ -158,7 +158,7 @@ r'^host\s+(?P<db>\S+)\s+(?P<pg_user>\S+)\s+(?P<cidr>\S+)\s+(?P<method>\S+)',
                                 new_conf.write(line)
                         else:
                             new_conf.write(line)
-                if len(connections) > 0:
+                if connections:
                     new_conf.write("# Remote connections\n")
                     for conn in connections:
                         new_conf.write(

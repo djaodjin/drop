@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import logging, os, re
+import logging, os, re, subprocess, sys
 
 import six
 
@@ -242,7 +242,7 @@ def addLines(pathname, lines, context=None):
     if os.path.exists(org_config_path):
         orgConfig = open(org_config_path)
         line = orgConfig.readline()
-        while len(lines) > 0 and line != '':
+        while lines and line != '':
             found = False
             look = re.match(r'^\s*#'+ lines[0], line)
             if look != None:
@@ -264,7 +264,7 @@ def addLines(pathname, lines, context=None):
             line = orgConfig.readline()
         orgConfig.close()
     # Copy remaining lines to add to the configuration file.
-    if len(lines) > 0:
+    if lines:
         newConfig.write('\n'.join(lines))
         newConfig.write('\n')
     newConfig.close()
@@ -308,14 +308,14 @@ def next_token_in_config(remain,
         idx = idx + 1
     indent = remain[:idx]
     remain = remain[idx:]
-    if len(remain) > 0 and remain[0] in seps:
+    if remain and remain[0] in seps:
         token = remain[0]
         remain = remain[1:]
     else:
         idx = 0
         while idx < len(remain) and not remain[idx] in [sep, ' ', '\t', '\n']:
             idx = idx + 1
-        if len(remain[:idx]) > 0:
+        if remain[:idx]:
             token = remain[:idx]
         remain = remain[idx:]
     return indent, token, remain
@@ -468,7 +468,7 @@ def modify_config_file(output_file, input_file, settings={},
                 # Handles "[key]" blocks is different from "{...}" blocks
                 writeSettings(output_file, settings, modified,
                     sep, firstIndent + '  ', prefix, one_per_line=one_per_line)
-            if len(configStack) > 0:
+            if configStack:
                 prefix, settings, unchanged, present \
                         = configStack.pop()
                 if present and commented:

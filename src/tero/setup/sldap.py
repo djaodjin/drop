@@ -171,14 +171,14 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
 
         # We need to start the server before adding the schemas.
         postinst.shellCommand(['service', 'slapd', 'restart'])
-        postinst.shellCommand(['systemctl','enable', 'slapd.service'])
-        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+        postinst.shellCommand(['systemctl', 'enable', 'slapd.service'])
+        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
             '-f', '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
             '-f', '/etc/openldap/schema/nis.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
           '-f', '/etc/openldap/schema/inetorgperson.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-Y','EXTERNAL', '-H', 'ldapi:///',
+        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
           '-f', '/etc/openldap/schema/openssh-ldap.ldif', '-D', '"cn=config"'])
 
         return complete

@@ -623,7 +623,7 @@ class Context(object):
         if not self.tunnel_point:
             # We can't use realpath before we figured out where the '.'
             # delimiter is in remote_path.
-            if len(src_base) > 0:
+            if src_base:
                 remote_path = os.path.normpath(remote_path).replace(
                     src_base, os.path.realpath(src_base))
                 src_base = os.path.realpath(src_base)
@@ -631,7 +631,7 @@ class Context(object):
                 remote_path = os.path.normpath(
                     os.path.join(os.getcwd(), remote_path))
                 src_base = os.getcwd()
-            if len(site_base) > 0:
+            if site_base:
                 site_base = os.path.realpath(site_base)
             else:
                 site_base = os.getcwd()
@@ -657,7 +657,7 @@ class Context(object):
         config_file.write('# configuration for development workspace\n\n')
         for key in keys:
             val = self.environ[key]
-            if len(str(val)) > 0:
+            if str(val):
                 config_file.write(key + '=' + str(val) + '\n')
         config_file.close()
 
@@ -1067,7 +1067,7 @@ class DependencyGenerator(Unserializer):
             return self.vertices[update_name]
         update_s = None
         fetches = {}
-        if len(update.fetches) > 0:
+        if update.fetches:
             # We could unconditionally add all source tarball since
             # the *fetch* function will perform a *find_cache* before
             # downloading missing files. Unfortunately this would
@@ -1077,7 +1077,7 @@ class DependencyGenerator(Unserializer):
         rep = None
         if update_rep or not os.path.isdir(CONTEXT.src_dir(project_name)):
             rep = update.rep
-        if update.rep or len(fetches) > 0:
+        if update.rep or fetches:
             update_s = UpdateStep(project_name, rep, fetches)
             self.vertices[update_s.name] = update_s
         return update_s
@@ -1186,7 +1186,7 @@ class DependencyGenerator(Unserializer):
                             str([pre.name for pre in step.prerequisites])))
         loop_cnt = 0
         next_remains = []
-        while len(remains) > 0:
+        while remains:
             loop_cnt = loop_cnt + 1
             for step in remains:
                 ready = True
@@ -1310,7 +1310,7 @@ class MakeGenerator(DependencyGenerator):
                 nb_choices = nb_choices + 1
             if project.patch:
                 nb_choices = nb_choices + 1
-            if len(project.packages) > 0:
+            if project.packages:
                 nb_choices = nb_choices + 1
 
         targets = []
@@ -1334,7 +1334,7 @@ class MakeGenerator(DependencyGenerator):
                                    prereqs)
                 if not name in chosen:
                     self.repositories |= set([name])
-            elif len(project.packages) > 0 or project.patch:
+            elif project.packages or project.patch:
                 need_prompt = False
                 targets = self.add_setup(variant.target,
                     project.packages[dist].prerequisites(tags))
@@ -1364,7 +1364,7 @@ class MakeGenerator(DependencyGenerator):
                                    project.repository.configure,
                                    project.repository.make,
                                    prereqs)
-            elif len(project.packages) > 0 or project.patch:
+            elif project.packages or project.patch:
                 need_prompt = False
                 targets = self.add_setup(variant.target,
                     project.packages[dist].prerequisites(tags))
@@ -1653,7 +1653,7 @@ class Multiple(Variable):
         if len(choices) == 0:
             return False
         descr = self.descr
-        if len(self.value) > 0:
+        if self.value:
             descr += " (constrained: " + ", ".join(self.value) + ")"
         self.value = select_multiple(descr, choices)
         log_info("%s set to %s" % (self.name, ', '.join(self.value)),
@@ -1973,7 +1973,7 @@ class InstallStep(SetupStep):
                  versions=None, target=None):
         super(InstallStep, self).__init__(project_name, {},
             versions=versions, target=target)
-        if alt_names and len(alt_names) > 0:
+        if alt_names:
             self.alt_names = {project_name: alt_names}
         else:
             self.alt_names = {}
@@ -2153,7 +2153,7 @@ class GemInstallStep(InstallStep):
         packages = []
         for dep_name in managed:
             include_versions = self.managed[dep_name].get('includes', [])
-            if len(include_versions) > 0:
+            if include_versions:
                 packages += ['%s:%s' % (dep_name, include_versions[0])]
             else:
                 packages += [dep_name]
@@ -2233,7 +2233,7 @@ class NpmInstallStep(InstallStep):
         packages = []
         for dep_name in managed:
             include_versions = self.managed[dep_name].get('includes', [])
-            if len(include_versions) > 0:
+            if include_versions:
                 packages += ['%s@%s' % (dep_name, include_versions[0])]
             else:
                 packages += [dep_name]
@@ -2286,7 +2286,7 @@ class PipInstallStep(InstallStep):
         packages = []
         for dep_name in managed:
             include_versions = self.managed[dep_name].get('includes', [])
-            if len(include_versions) > 0:
+            if include_versions:
                 packages += ['%s==%s' % (dep_name, include_versions[0])]
             else:
                 packages += [dep_name]
@@ -2387,11 +2387,11 @@ class DnfInstallStep(InstallStep):
             filtered = shell_command(install_cmd[0],
                 admin=install_cmd[1], noexecute=install_cmd[2],
                 pat='No package (.*) available')
-            if len(filtered) > 0:
+            if filtered:
                 look = re.match('No package (.*) available', filtered[0])
                 if look:
                     unmanaged = look.group(1).split(' ')
-                    if len(unmanaged) > 0:
+                    if unmanaged:
                         raise Error("dnf cannot install " + ' '.join(unmanaged))
 
     def info(self):
@@ -2543,7 +2543,7 @@ class Repository(object):
             for pathname in os.listdir(context.patch_dir(name)):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
-            if len(patches) > 0:
+            if patches:
                 log_info("######## patching %s..." % name, context=context)
                 prev = os.getcwd()
                 os.chdir(context.src_dir(name))
@@ -2559,7 +2559,7 @@ class Repository(object):
         from an absent sync field which would use rsync as a "Repository".
         '''
         rev = None
-        if pathname and len(pathname) > 0:
+        if pathname:
             repos = {'.git': GitRepository,
                      '.svn': SvnRepository}
             sync = pathname
@@ -2597,7 +2597,7 @@ class GitRepository(Repository):
             for pathname in os.listdir(context.patch_dir(name)):
                 if pathname.endswith('.patch'):
                     patches += [pathname]
-            if len(patches) > 0:
+            if patches:
                 log_info("######## patching %s..." % name, context=context)
                 os.chdir(context.src_dir(name))
                 shell_command([find_git(context), 'am', '-3', '-k',
@@ -2770,15 +2770,15 @@ class InstallFlavor(object):
 
     def __str__(self):
         result = ''
-        if len(self.update.fetches) > 0:
+        if self.update.fetches:
             result = result + '\t\tfetch archives\n'
             for archive in self.update.fetches:
                 result = result + '\t\t\t' + archive + '\n'
-        if len(self.deps) > 0:
+        if self.deps:
             result = result + '\t\tdependencies from local system\n'
             for dep in self.deps:
                 result = result + '\t\t\t' + str(dep) + '\n'
-        if len(self.configure.envvars) > 0:
+        if self.configure.envvars:
             result = result + '\t\tenvironment variables\n'
             for var in self.configure.envvars:
                 result = result + '\t\t\t' + str(var) + '\n'
@@ -2848,7 +2848,7 @@ class Project(object):
             + '\t' + str(self.title) + '\n' \
             + '\tfound version ' + str(self.installed_version) \
             + ' installed locally\n'
-        if len(self.packages) > 0:
+        if self.packages:
             result = result + '\tpackages\n'
             for package_name in self.packages:
                 result = result + '\t[' + package_name + ']\n'
@@ -2914,7 +2914,7 @@ class YAMLikeParser(object):
                 indent_length = len(look.group('indent'))
                 if (self.nodes and
                     indent_length < self.nodes[len(self.nodes)-1]['indent']):
-                    while (len(self.nodes) > 0 and
+                    while (self.nodes and
                       indent_length < self.nodes[len(self.nodes)-1]['indent']):
                         child = self.nodes.pop()
                         parent = self.nodes[len(self.nodes)-1]['container']
@@ -3187,7 +3187,7 @@ def found_bin_suffix(candidate, variant=None):
     if candidate is None:
         return 'no'
     numbers = bin_version_candidates(candidate, variant=variant)
-    if len(numbers) > 0:
+    if numbers:
         return str(numbers[0])
     return 'yes'
 
@@ -3611,7 +3611,7 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                     # If we find no version number, we append the header
                     # at the end of the list with 'None' for version.
                     includes.append((header, None))
-            if len(includes) > 0:
+            if includes:
                 if includes[0][1]:
                     version = includes[0][1]
                     log_info(version)
@@ -3620,13 +3620,12 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 results.append((name_pat, includes[0][0]))
                 name_pat_parts = name_pat.split(os.sep)
                 include_file_parts = includes[0][0].split(os.sep)
-                while (len(name_pat_parts) > 0
-                       and name_pat_parts[len(name_pat_parts)-1]
+                while (name_pat_parts and name_pat_parts[len(name_pat_parts)-1]
                        == include_file_parts[len(include_file_parts)-1]):
                     name_pat_part = name_pat_parts.pop()
                     include_file_part = include_file_parts.pop()
                 prefix = os.sep.join(name_pat_parts)
-                if prefix and len(prefix) > 0:
+                if prefix:
                     prefix = prefix + os.sep
                     include_sys_dirs = [os.sep.join(include_file_parts)]
                 else:
@@ -3796,7 +3795,7 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
                             break
                         index = index + 1
                     libs.insert(index, (absolute_path, None))
-            if len(libs) > 0:
+            if libs:
                 candidate = libs[0][0]
                 version = libs[0][1]
                 break
@@ -4251,10 +4250,10 @@ def install(packages, dbindex):
             local_files += [name]
         else:
             projects += [name]
-    if len(local_files) > 0:
+    if local_files:
         package_files = create_package_file(local_files[0], local_files)
 
-    if len(projects) > 0:
+    if projects:
         handler = Unserializer(projects)
         dbindex.parse(handler)
 
@@ -4272,7 +4271,7 @@ def install(packages, dbindex):
             else:
                 managed += [name]
 
-        if len(managed) > 0:
+        if managed:
             step = create_managed(managed[0])
             for package in managed[1:]:
                 step.insert(create_managed(package))
@@ -4288,7 +4287,7 @@ def help_book(help_string):
     first_term = True
     first_section = True
     lines = help_string.getvalue().split('\n')
-    while len(lines) > 0:
+    while lines:
         line = lines.pop(0)
         if line.strip().startswith('Usage'):
             look = re.match(r'Usage: (\S+)', line.strip())
@@ -4350,7 +4349,7 @@ def help_book(help_string):
                 sys.stdout.write("</varlistentry>\n")
             first_term = False
             for word in stmt[1:]:
-                if len(word) > 0:
+                if word:
                     break
             if line.startswith("  -h,"):
                 # Hack because "show" does not start
@@ -4469,7 +4468,7 @@ def regex_as_name(name_pat):
     if regex.groups == 0:
         name = name_pat.replace('\\', '')
         parts = name.split(os.sep)
-        if len(parts) > 0:
+        if parts:
             name = parts[len(parts) - 1]
     else:
         look = re.search(r'\(([^\)]+)\)', name_pat)
@@ -4520,7 +4519,7 @@ def link_pat_path(name_pat, absolute_path, subdir, target=None):
                 subpath, 'lib%s.so' % clean_pat))
     if link_name is None:
         link_name, suffix = link_build_name(clean_pat, subdir, target)
-        if absolute_path and len(suffix) > 0 and absolute_path.endswith(suffix):
+        if absolute_path and suffix and absolute_path.endswith(suffix):
             # Interestingly absolute_path[:-0] returns an empty string.
             link_path = absolute_path[:-len(suffix)]
     # create links
@@ -5569,7 +5568,7 @@ def pub_dockerfile(args):
     dockerfile_template_path = args[0]
     with open(dockerfile_template_path) as dockerfile_template_file:
         dockerfile_template = dockerfile_template_file.readlines()
-    look = re.match('FROM (\S+):.*', dockerfile_template[0])
+    look = re.match(r'FROM (\S+):.*', dockerfile_template[0])
     if look:
         CONTEXT.environ['distHost'] = look.group(1).capitalize()
     rgen = DerivedSetsGenerator()

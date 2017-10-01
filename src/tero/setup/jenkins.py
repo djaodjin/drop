@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,10 +22,8 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os, re
-from string import Template
+import os
 
-from tero import log_info
 from tero import setup
 
 
@@ -385,7 +383,7 @@ allow httpd_t unreserved_port_t:tcp_socket name_bind;
 
         # Workarounds to get jetty started (webdefault.xml and command line
         # arguments)
-        org_webdefault_conf, new_webdefault_conf = setup.stageFile(
+        _, new_webdefault_conf = setup.stageFile(
             self.webdefault_conf_path, context=context)
         with open(new_webdefault_conf, 'w') as webdefault_conf_file:
             webdefault_conf_file.write(self.webdefault_config_template)
@@ -407,7 +405,7 @@ allow httpd_t unreserved_port_t:tcp_socket name_bind;
             settings={'Service':
                 {'EnvironmentFile': '-%s' % jenkins_default_path}},
             context=context)
-        org_context_conf, new_context_conf = setup.stageFile(
+        _, new_context_conf = setup.stageFile(
             os.path.join(self.jetty_home, 'webapps', 'jenkins.xml'),
             context=context)
         with open(new_context_conf, 'w') as context_conf_file:

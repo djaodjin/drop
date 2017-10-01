@@ -23,6 +23,9 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
+
+import six
+
 from tero.setup import SetupTemplate, modify_config, stageFile
 
 def add_entry(filename, command,

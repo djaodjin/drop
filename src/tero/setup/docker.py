@@ -22,10 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
-
 from tero import setup
-from tero.setup import stageFile, postinst
 
 
 class dockerSetup(setup.SetupTemplate):

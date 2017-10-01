@@ -23,7 +23,11 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import logging, os, re, shutil, subprocess, sys
+
 import fabric.api as fab
+
+import tero
+
 
 LOGGER = logging.getLogger(__name__)
 

@@ -24,8 +24,7 @@
 
 import os
 
-from tero import CONTEXT
-from tero.setup import modify_config, stageFile, postinst, SetupTemplate
+from tero.setup import modify_config, SetupTemplate
 
 
 class sstmpSetup(SetupTemplate):
@@ -64,7 +63,7 @@ class sstmpSetup(SetupTemplate):
                 'AuthUser': email_host_user,
                 'AuthPass': email_host_password
             }, sep='=', context=context)
-            modify_config(revaliases, settings={
+            modify_config(revaliases_conf, settings={
                 'root': notify_email
             }, sep=':', context=context)
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,8 +24,7 @@
 
 import os
 
-from tero import CONTEXT
-from tero.setup import modify_config, stageFile, postinst, SetupTemplate
+from tero.setup import stageFile, postinst, SetupTemplate
 
 
 class sssdSetup(SetupTemplate):

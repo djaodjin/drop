@@ -25,7 +25,7 @@
 import os
 
 from tero import setup
-from tero.setup import stageFile, postinst
+from tero.setup import stageFile
 
 
 class syslog_ngSetup(setup.SetupTemplate):

@@ -22,16 +22,17 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-'''Entry Point to setting-up a local machine.'''
+"""
+Entry Point to setting-up a local machine.
+"""
 
-import datetime, getpass, os, six, shutil, socket, subprocess, sys
+import datetime, os, six, shutil, socket, subprocess, sys
 
 import tero # for global variables (CONTEXT, etc.)
 from tero import (__version__, Error, pub_build, pub_make,
     create_managed, shell_command,
     FilteredList, ordered_prerequisites, fetch, merge_unique,
-    IndexProjects,
-    Context, Variable, Pathname, stampfile, create_index_pathname)
+    IndexProjects, Context, stampfile, create_index_pathname)
 import tero.setup # for global variables (postinst)
 from tero.setup.integrity import fingerprint
 
@@ -242,7 +243,7 @@ def prepare_local_system(context, project_name, profiles):
         tero.CONTEXT.value('modEtcDir'), '%s-tpl.xml' % project_name)
     create_index_pathname(tpl_index_file, profiles)
     index_path = os.path.join(context.value('modEtcDir'), '%s.xml' % project_name)
-    if (len(os.path.dirname(index_path)) > 0 and
+    if (os.path.dirname(index_path) and
         not os.path.exists(os.path.dirname(index_path))):
         os.makedirs(os.path.dirname(index_path))
     # matching code in driver.py ``copy_setup``

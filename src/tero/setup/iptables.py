@@ -121,8 +121,9 @@ COMMIT
 """ % {'local6_filter_rules': local6_filter_rules})
 
         # Make sure we disable firewalld, we are using static rules here.
-        setup.postinst.shellCommand(['systemctl','stop', 'firewalld.service'])
-        setup.postinst.shellCommand(['systemctl','disable','firewalld.service'])
+        setup.postinst.shellCommand(['systemctl', 'stop', 'firewalld.service'])
+        setup.postinst.shellCommand(
+            ['systemctl', 'disable', 'firewalld.service'])
 
         # Create ifup-local script to load iptables rules
         _, new_ifup_local = setup.stageFile(
@@ -136,7 +137,7 @@ COMMIT
 IPADDR=`hostname -I`
 sed -i "/^.*  *%(domain)s/{h;s/.* /${IPADDR}/};\${x;/^\$/{s//${IPADDR} %(domain)s/;H};x}" /etc/hosts
 """ % {'domain': 'private-ip.local'})
-        os.chmod(new_ifup_local,stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR
+        os.chmod(new_ifup_local, stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR
             |stat.S_IRGRP|stat.S_IXGRP|stat.S_IROTH|stat.S_IXOTH)
         setup.postinst.shellCommand(['/usr/sbin/ifup-local'])
 

@@ -26,9 +26,8 @@ import os
 
 import six
 
-from tero import APT_DISTRIBS, DNF_DISTRIBS, CONTEXT
-from tero.setup import (SetupTemplate, modify_config,
-    stageDir, stageFile, postinst)
+from tero import CONTEXT
+from tero.setup import SetupTemplate, modify_config, stageFile, postinst
 
 
 class openssh_serverSetup(SetupTemplate):

@@ -22,6 +22,8 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
+
 from tero import setup
 
 class monitSetup(setup.SetupTemplate):
@@ -47,7 +49,7 @@ class monitSetup(setup.SetupTemplate):
             email_port = context.value('emailPort')
             email_host_user = context.value('emailHostUser')
             email_host_password = context.value('emailHostPassword')
-            modify_config(monit_conf, settings={
+            setup.modify_config(monit_conf, settings={
                 'mailserver': "%(email_host)s port %(email_port)s,"\
             " username %(email_host_user)s password %(email_host_password)s"\
             " using tlsv1" % {'email_host': email_host,
