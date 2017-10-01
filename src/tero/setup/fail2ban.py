@@ -24,17 +24,17 @@
 
 import os
 
-from tero.setup import setupTemplate, modify_config
+from tero.setup import SetupTemplate, modify_config
 
 
-class fail2banSetup(setupTemplate):
+class fail2banSetup(SetupTemplate):
 
     def __init__(self, name, files, **kwargs):
         super(fail2banSetup, self).__init__(name, files, **kwargs)
         self.daemons = ['fail2ban']
 
     def run(self, context):
-        complete = setupTemplate.run(self, context)
+        complete = super(fail2banSetup, self).run(context)
         if not complete:
             # As long as the default setup cannot find all prerequisite
             # executable, libraries, etc. we cannot update configuration
