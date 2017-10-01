@@ -346,6 +346,13 @@ def main(args):
         key, value = define.split('=')
         tero.CONTEXT.environ[key] = value
 
+    # More often than not, the wesite for the product is different
+    # from the corporate (LDAP, e-mail, etc.) domains.
+    if ('domainName' in tero.CONTEXT.environ
+        and 'wwwDomainName' not in tero.CONTEXT.environ):
+        tero.CONTEXT.environ['wwwDomainName'] \
+            = tero.CONTEXT.environ['domainName']
+
     if 'PROJECT_NAME' in tero.CONTEXT.environ:
         project_name = tero.CONTEXT.value('PROJECT_NAME')
     else:

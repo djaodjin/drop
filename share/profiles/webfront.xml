@@ -11,7 +11,7 @@ Maintenance scripts for the front-end reverse proxy.
     </maintainer>
     <package name="Fedora">
       <variable name="domainName">
-        <description>Domain name for the machine being configured.</description>
+        <description>Domain name for the web server being configured.</description>
       </variable>
       <variable name="ldapHost">
         <description>
@@ -90,8 +90,8 @@ Name of the machine hosting the LDAP server.
       <!-- reverse proxy -->
       <dep name="nginx">
         <bin>nginx</bin>
-        <extra name="site-config/%(domainName)s.conf">
-          <domainName>%(domainName)s</domainName>
+        <extra name="site-config/%(wwwDomainName)s.conf">
+          <domainName>%(wwwDomainName)s</domainName>
           <port>443</port>
           <webapp>
             <path>/</path>
