@@ -26,7 +26,7 @@ import os
 
 import six
 
-from tero import APT_DISTRIBS, YUM_DISTRIBS, CONTEXT
+from tero import APT_DISTRIBS, DNF_DISTRIBS, CONTEXT
 from tero.setup import (SetupTemplate, modify_config,
     stageDir, stageFile, postinst)
 

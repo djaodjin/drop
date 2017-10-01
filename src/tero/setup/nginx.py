@@ -24,7 +24,7 @@
 
 import os, re, six
 
-from tero import APT_DISTRIBS, YUM_DISTRIBS, setup
+from tero import APT_DISTRIBS, DNF_DISTRIBS, setup
 
 
 class nginxSetup(setup.SetupTemplate):
@@ -291,7 +291,7 @@ server {
         if dist_host in APT_DISTRIBS:
             return os.path.join(
                 sysconfdir, 'nginx', 'sites-available', domain)
-        elif dist_host in YUM_DISTRIBS:
+        elif dist_host in DNF_DISTRIBS:
             return os.path.join(
                 sysconfdir, 'nginx', 'conf.d', domain + '.conf')
 

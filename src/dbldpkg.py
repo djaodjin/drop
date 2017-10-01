@@ -665,7 +665,7 @@ def build_package(project, version):
     dist = dws.CONTEXT.host()
     if dist == 'Darwin':
         return build_darwin_package(project, version)
-    elif dist in dws.YUM_DISTRIBS:
+    elif dist in dws.DNF_DISTRIBS:
         return build_rpm_package(project, version)
     elif dist in dws.APT_DISTRIBS:
         return build_deb_package(project, version)

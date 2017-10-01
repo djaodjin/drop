@@ -26,7 +26,7 @@ import logging, os, re
 
 import six
 
-from tero import (APT_DISTRIBS, CONTEXT, YUM_DISTRIBS,
+from tero import (APT_DISTRIBS, CONTEXT, DNF_DISTRIBS,
     Error, SetupStep, log_info, shell_command)
 
 postinst = None
@@ -45,7 +45,7 @@ class SSLKeysMixin(object):
                 'key_file': os.path.join('ssl', 'private', domain + '.key'),
                 'cert_file': os.path.join('ssl', 'certs', domain + '.pem')
                 }
-        elif dist_host in YUM_DISTRIBS:
+        elif dist_host in DNF_DISTRIBS:
             # XXX Not sure where those go on Fedora. searching through
             # the web is unclear.
             conf_paths = {
@@ -137,7 +137,7 @@ class PostinstScript(object):
             self.postinst_run_path = 'debian/postinst'
             self.postinst_path = os.path.join(
                 mod_sysconfdir, self.postinst_run_path)
-        elif self.dist in YUM_DISTRIBS:
+        elif self.dist in DNF_DISTRIBS:
             # On Fedora, use %pre and %post in the spec file
             # http://fedoraproject.org/wiki/Packaging:ScriptletSnippets
             self.postinst_run_path = '/usr/share/%s/postinst' % project_name
@@ -145,7 +145,7 @@ class PostinstScript(object):
                 mod_sysconfdir, self.postinst_run_path[1:])
 
     def serviceEnable(self, service):
-        if self.dist in YUM_DISTRIBS:
+        if self.dist in DNF_DISTRIBS:
             self.shellCommand(['systemctl', 'enable', '%s.service' % service])
         else:
             sys.stderr.write(
@@ -156,7 +156,7 @@ class PostinstScript(object):
         if self.dist in APT_DISTRIBS:
             self.shellCommand(
                 [os.path.join(self.sysconfdir, 'init.d', service), 'restart'])
-        elif self.dist in YUM_DISTRIBS:
+        elif self.dist in DNF_DISTRIBS:
             self.shellCommand(['systemctl', 'restart', '%s.service' % service])
         else:
             sys.stderr.write(
@@ -289,7 +289,7 @@ def create_install_script(script_path, context=None):
     if context.host() in APT_DISTRIBS:
         return debianInstallScript(
             script_path, mod_sysconfdir=context.modEtcDir)
-    elif context.host() in YUM_DISTRIBS:
+    elif context.host() in DNF_DISTRIBS:
         return redhatInstallScript(
             script_path, mod_sysconfdir=context.modEtcDir)
 
