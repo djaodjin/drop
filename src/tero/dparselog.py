@@ -24,10 +24,15 @@
 
 from __future__ import unicode_literals
 
-import gzip, itertools, json, re, os, os.path
+import gzip, itertools, json, re, os, os.path, sys, time
 from datetime import tzinfo, timedelta, datetime
 
-import six
+import boto, six
+from pytz import utc
+
+
+BOTO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
+
 
 # http://stackoverflow.com/questions/1101508/how-to-parse-dates-with-0400-timezone-string-in-python/23122493#23122493
 class FixedOffset(tzinfo):
@@ -48,6 +53,259 @@ class FixedOffset(tzinfo):
     def __repr__(self):
         return 'FixedOffset(%d)' % (self.utcoffset().total_seconds() // 60)
 
+
+class JSONEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        if hasattr(obj, 'isoformat'):
+            return obj.isoformat()
+        return super(JSONEncoder, self).default(obj)
+
+
+class LastRunCache(object):
+    """
+    Cache for last run on a log file.
+    """
+
+    def __init__(self, filename):
+        self.filename = filename
+        self.last_run_logs = {}
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.filename):
+            with open(self.filename) as last_run:
+                self.last_run_logs = json.load(
+                    last_run, object_hook=datetime_hook)
+
+    def save(self):
+        if not os.path.isdir(os.path.dirname(self.filename)):
+            os.makedirs(os.path.dirname(self.filename))
+        with open(self.filename, 'w') as last_run:
+            json.dump(self.last_run_logs, last_run, cls=JSONEncoder, indent=2)
+
+    def more_recent(self, logname, last_modified, update=False):
+        result = (not logname in self.last_run_logs
+            or self.last_run_logs[logname] < last_modified)
+        if result and update:
+            self.last_run_logs[logname] = last_modified
+        return result
+
+
+def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
+    result = filename
+    if ext.startswith('.'):
+        ext = ext[1:]
+    if logsuffix:
+        look = re.match(r'^(\S+\.%s)(\S*)$' % ext, filename)
+        if look:
+            result = look.group(1) + logsuffix + look.group(2)
+    if prefix:
+        result = prefix + result
+    return result
+
+
+def as_filename(key_name, logsuffix=None, prefix=None, ext='.log'):
+    result = key_name
+    if ext.startswith('.'):
+        ext = ext[1:]
+    if logsuffix:
+        look = re.match(r'^(\S+\.%s)%s(\S*)$' % (ext, logsuffix), key_name)
+        if look:
+            result = look.group(1) + look.group(2)
+    if prefix is not None:
+        #if not prefix.endswith('/'):
+        #    prefix = prefix + '/'
+        if result.startswith(prefix):
+            result = result[len(prefix):]
+    return result
+
+
+def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
+    if ext.startswith('.'):
+        ext = ext[1:]
+    result = as_filename(key_name, logsuffix=logsuffix, prefix=prefix)
+    look = re.match(r'(\S+\.%s)((-\S+)\.gz)' % ext, result)
+    if look:
+        result = look.group(1)
+    return result
+
+
+def datetime_hook(json_dict):
+    for key, value in list(six.iteritems(json_dict)):
+        try:
+            json_dict[key] = datetime.strptime(
+                value, "%Y-%m-%dT%H:%M:%S.%f+00:00")
+            if json_dict[key].tzinfo is None:
+                json_dict[key] = json_dict[key].replace(tzinfo=utc)
+        except:
+            pass
+    return json_dict
+
+
+def download_updated_logs(lognames, local_prefix=None, logsuffix=None,
+                          bucket=None, s3_prefix=None, last_run=None):
+    """
+    Fetches log files which are on S3 and more recent that specified
+    in last_run and returns a list of filenames.
+    """
+    local_update, _ = list_updates(
+        list_local(lognames, prefix=local_prefix, list_all=False),
+        list_s3(bucket, lognames, prefix=s3_prefix, time_from_logsuffix=False),
+        logsuffix=logsuffix, prefix=s3_prefix)
+
+    for item in local_update:
+        keyname = item['Key']
+        filename = as_filename(keyname, prefix=s3_prefix)
+        if filename.startswith('/'):
+            filename = '.' + filename
+        logname = as_logname(filename)
+        if not last_run or last_run.more_recent(logname, item['LastModified']):
+            s3_key = boto.s3.key.Key(bucket, keyname)
+            if s3_key.storage_class == 'STANDARD':
+                sys.stderr.write("download %s to %s\n" % (
+                    keyname, os.path.abspath(filename)))
+                if not os.path.isdir(os.path.dirname(filename)):
+                    os.makedirs(os.path.dirname(filename))
+                with open(filename, 'wb') as file_obj:
+                    s3_key.get_contents_to_file(file_obj)
+            else:
+                sys.stderr.write("skip %s (on %s storage)\n" % (
+                    keyname, s3_key.storage_class))
+
+    # It is possible some files were already downloaded as part of a previous
+    # run so we construct the list of recent files here.
+    downloaded = []
+    for item in sorted(list_local(lognames,
+                prefix=local_prefix, list_all=False), key=get_last_modified):
+        keyname = item['Key']
+        filename = as_filename(keyname, prefix=s3_prefix)
+        if filename.startswith('/'):
+            filename = '.' + filename
+        logname = as_logname(filename)
+        if not last_run or last_run.more_recent(
+                logname, item['LastModified'], update=True):
+            downloaded += [filename]
+    return downloaded
+
+
+def get_last_modified(item):
+    return item['LastModified']
+
+
+def list_local(lognames, prefix=None, list_all=False):
+    """
+    Returns a list of rotated log files with their timestamp.
+
+    Example:
+    [{ "Key": "/var/log/nginx/www.example.com.log-20160106.gz",
+       "LastModified": "Mon, 06 Jan 2016 00:00:00 UTC"},
+     { "Key": "/var/log/nginx/www.example.com.log-20160105.gz",
+       "LastModified": "Mon, 05 Jan 2016 00:00:00 UTC"},
+    ]
+    """
+    results = []
+    for logname in lognames:
+        dirname = os.path.dirname(logname)
+        _, ext = os.path.splitext(logname)
+        if prefix:
+            prefixed_dirname = prefix + dirname
+        else:
+            prefixed_dirname = dirname
+        if os.path.isdir(prefixed_dirname):
+            for filename in os.listdir(prefixed_dirname):
+                fullpath = os.path.join(dirname, filename)
+                prefixed_fullpath = os.path.join(prefixed_dirname, filename)
+                if (as_logname(fullpath, ext=ext) == logname
+                    and (list_all or not fullpath == logname)):
+                    mtime = datetime.fromtimestamp(
+                        os.path.getmtime(prefixed_fullpath), tz=utc)
+                    results += [{"Key": fullpath, "LastModified": mtime}]
+    return results
+
+
+def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
+    """
+    Returns a list of rotated log files present in a bucket
+    with their timestamp.
+
+    Example:
+    [{ "Key": "/var/log/nginx/www.example.com.log-20160106.gz",
+       "LastModified": "Mon, 06 Jan 2016 00:00:00 UTC"},
+     { "Key": "/var/log/nginx/www.example.com.log-20160105.gz",
+       "LastModified": "Mon, 05 Jan 2016 00:00:00 UTC"},
+    ]
+    """
+    results = []
+    for logname in lognames:
+        dirname = os.path.dirname(logname)
+        if prefix:
+            dirname = prefix + dirname
+        for s3_key in bucket.list(dirname):
+            if as_logname(s3_key.name, prefix=prefix) == logname:
+                look = re.match(r'\S+-(\d\d\d\d\d\d\d\d)\.gz', s3_key.name)
+                if time_from_logsuffix and look:
+                    last_modified = datetime.strptime(
+                        look.group(1), "%Y%m%d")
+                else:
+                    last_modified = datetime(*time.strptime(
+                        s3_key.last_modified, BOTO_DATETIME_FORMAT)[0:6])
+                if last_modified.tzinfo is None:
+                    last_modified = last_modified.replace(tzinfo=utc)
+                results += [{"Key": s3_key.name, "LastModified": last_modified}]
+    return results
+
+
+def list_updates(local_items, s3_items, logsuffix=None, prefix=None):
+    """
+    Returns two lists of updated files. The first list is all the files
+    in the list *s3_items* which are more recent that files in the list
+    *local_items*.
+    The second returned list is all the files in the list *local_items*
+    which are more recent that files in the list *s3_items*.
+
+    Example:
+    [{ "Key": "abc.txt",
+       "LastModified": "Mon, 05 Jan 2015 12:00:00 UTC"},
+     { "Key": "def.txt",
+       "LastModified": "Mon, 05 Jan 2015 12:00:001 UTC"},
+    ]
+    """
+    local_results = []
+    local_index = {}
+    for local_val in local_items:
+        local_index[as_keyname(local_val['Key'],
+            logsuffix=logsuffix, prefix=prefix)] = local_val
+    for s3_val in s3_items:
+        s3_key = s3_val['Key']
+        local_val = local_index.get(s3_key, None)
+        if local_val:
+            local_datetime = local_val['LastModified']
+            s3_datetime = s3_val['LastModified']
+            if s3_datetime > local_datetime:
+                local_results += [s3_val]
+        else:
+            local_results += [s3_val]
+
+    s3_results = []
+    s3_index = {}
+    for s3_val in s3_items:
+        s3_index[as_filename(s3_val['Key'],
+            logsuffix=logsuffix, prefix=prefix)] = s3_val
+    for local_val in local_items:
+        local_key = local_val['Key']
+        s3_val = s3_index.get(local_key, None)
+        if s3_val:
+            s3_datetime = s3_val['LastModified']
+            local_datetime = local_val['LastModified']
+            if local_datetime > s3_datetime:
+                s3_results += [local_val]
+        else:
+            s3_results += [local_val]
+
+    return local_results, s3_results
+
+
 def parse_date(dt_str):
     naive_date_str, offset_str = dt_str.split(' ')
     naive_dt = datetime.strptime(naive_date_str, '%d/%b/%Y:%H:%M:%S')
@@ -55,15 +313,14 @@ def parse_date(dt_str):
     offset = int(offset_str[-4:-2])*60 + int(offset_str[-2:])
     if offset_str[0] == "-":
         offset = -offset
-    dt = naive_dt.replace(tzinfo=FixedOffset(offset))
+    return naive_dt.replace(tzinfo=FixedOffset(offset))
 
-    return dt
 
-def convert_bytes_sent(s):
-    if s == '-':
+def convert_bytes_sent(value):
+    if value == '-':
         return None
-    else:
-        return int(s)
+    return int(value)
+
 
 def generate_regex(format_string, var_regex, regexps):
     format_vars = re.findall(var_regex, format_string)
@@ -100,7 +357,9 @@ def generate_regex(format_string, var_regex, regexps):
 class NginxLogParser(object):
 
     def __init__(self):
-        format_string = '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" "$http_x_forwarded_for"\n'
+        format_string = '$remote_addr - $remote_user [$time_local] "$request"'\
+' $status $body_bytes_sent "$http_referer" "$http_user_agent"'\
+' "$http_x_forwarded_for"\n'
 
         var_regex = r'\$[a-z_]+'
         ip_num_regex = r'[0-9]{1,3}'
@@ -126,7 +385,7 @@ class NginxLogParser(object):
         else:
             return None
 
-        parsed = {k[1:]: v for k, v in six.iteritems(parsed) }
+        parsed = {k[1:]: v for k, v in six.iteritems(parsed)}
 
         field_types = {
             'status' : int,
@@ -143,8 +402,11 @@ class NginxLogParser(object):
 
         return parsed
 
+
 class JsonEventParser(object):
-    def parse(self, to_parse):
+
+    @staticmethod
+    def parse(to_parse):
         event = json.loads(to_parse)
         return event
 
@@ -152,7 +414,8 @@ class JsonEventParser(object):
 class GunicornLogParser(object):
 
     def __init__(self):
-        format_string = '''%({X-Forwarded-For}i)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"\n'''
+        format_string = '''%({X-Forwarded-For}i)s %(l)s %(u)s %(t)s "%(r)s"'\
+' %(s)s %(b)s "%(f)s" "%(a)s"\n'''
 
         var_regex = r'%\([^)]+\)s'
         ip_num_regex = r'[0-9]{1,3}'
@@ -217,9 +480,6 @@ class GunicornLogParser(object):
         return parsed
 
 
-# gunicorn_test_string = '''108.252.136.229 - - [09/Aug/2016:10:15:32 -0700] "GET / HTTP/1.0" 500 3840 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36"\n'''
-# nginx_test_string = '''183.129.160.229 - - [20/Aug/2016:03:34:59 +0000] "GET / HTTP/1.1" 444 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.11; rv:47.0) Gecko/20100101 Firefox/47.0" "-"\n'''
-
 def error_event(fname, key, reason, extra=None):
     now = datetime.now()
     body = {
@@ -236,8 +496,8 @@ def error_event(fname, key, reason, extra=None):
         '_source': body,
     }
 
-def generate_events(stream, key):
 
+def generate_events(stream, key):
     fname = os.path.basename(key)
     match = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8}).*\.gz', fname)
     if not match:
@@ -344,7 +604,6 @@ def sanitize_filename(fname):
 
 
 def main():
-    import sys
     root = sys.argv[1]
     key = sys.argv[2]
 
@@ -358,8 +617,8 @@ def main():
 
     try:
         with gzip.open(outname, 'wb') as out:
-            with open(os.path.join(root, key), mode='rb') as f:
-                gzfile = gzip.GzipFile(fileobj=f, mode='rb')
+            with open(os.path.join(root, key), mode='rb') as logfile:
+                gzfile = gzip.GzipFile(fileobj=logfile, mode='rb')
                 for event in generate_events(enumerate(gzfile), key):
                     # the elasticsearch serializer does have a
                     # a dumps method, but we don't use it
@@ -368,15 +627,13 @@ def main():
                     # not actually specified what encoding the
                     # log file is in. We were also getting
                     # invalid utf-8 sequences.
-                    s = json.dumps(event, default=serializer.default)
-                    out.write(s)
+                    out.write(json.dumps(event, default=serializer.default))
                     out.write('\n')
 
-    except Exception as e:
+    except Exception as err:
         if os.path.exists(outname):
             os.remove(outname)
-        raise e
-
+        raise err
 
 
 if __name__ == '__main__':

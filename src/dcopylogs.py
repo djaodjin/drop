@@ -26,7 +26,7 @@
 
 import argparse, datetime, json, logging, os, re, sys, time
 
-import boto
+import boto, six
 from pytz import utc
 
 __version__ = None
@@ -43,17 +43,34 @@ class JSONEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super(JSONEncoder, self).default(obj)
 
+class LastRunCache(object):
+    """
+    Cache for last run on a log file.
+    """
 
-def datetime_hook(json_dict):
-    for key, value in json_dict.items():
-        try:
-            json_dict[key] = datetime.datetime.strptime(
-                value, "%Y-%m-%dT%H:%M:%S.%f+00:00")
-            if json_dict[key].tzinfo is None:
-                json_dict[key] = json_dict[key].replace(tzinfo=utc)
-        except:
-            pass
-    return json_dict
+    def __init__(self, filename):
+        self.filename = filename
+        self.last_run_logs = {}
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.filename):
+            with open(self.filename) as last_run:
+                self.last_run_logs = json.load(
+                    last_run, object_hook=datetime_hook)
+
+    def save(self):
+        if not os.path.isdir(os.path.dirname(self.filename)):
+            os.makedirs(os.path.dirname(self.filename))
+        with open(self.filename, 'w') as last_run:
+            json.dump(self.last_run_logs, last_run, cls=JSONEncoder, indent=2)
+
+    def more_recent(self, logname, last_modified, update=False):
+        result = (not logname in self.last_run_logs
+            or self.last_run_logs[logname] < last_modified)
+        if result and update:
+            self.last_run_logs[logname] = last_modified
+        return result
 
 
 def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
@@ -93,6 +110,18 @@ def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
     if look:
         result = look.group(1)
     return result
+
+
+def datetime_hook(json_dict):
+    for key, value in list(six.iteritems(json_dict)):
+        try:
+            json_dict[key] = datetime.datetime.strptime(
+                value, "%Y-%m-%dT%H:%M:%S.%f+00:00")
+            if json_dict[key].tzinfo is None:
+                json_dict[key] = json_dict[key].replace(tzinfo=utc)
+        except:
+            pass
+    return json_dict
 
 
 def get_last_modified(item):
@@ -212,6 +241,36 @@ def list_updates(local_items, s3_items, logsuffix=None, prefix=None):
     return local_results, s3_results
 
 
+def download_updated_logs(local_update,
+                          bucket=None, s3_prefix=None, last_run=None):
+    """
+    Fetches log files which are on S3 and more recent that specified
+    in last_run.
+    """
+    downloaded = []
+    for item in sorted(local_update, key=get_last_modified):
+        keyname = item['Key']
+        filename = as_filename(keyname, prefix=s3_prefix)
+        if filename.startswith('/'):
+            filename = '.' + filename
+        logname = as_logname(filename)
+        if not last_run or last_run.more_recent(
+                logname, item['LastModified'], update=True):
+            s3_key = boto.s3.key.Key(bucket, keyname)
+            if s3_key.storage_class == 'STANDARD':
+                sys.stderr.write("download %s to %s\n" % (
+                    keyname, os.path.abspath(filename)))
+                if not os.path.isdir(os.path.dirname(filename)):
+                    os.makedirs(os.path.dirname(filename))
+                with open(filename, 'wb') as file_obj:
+                    s3_key.get_contents_to_file(file_obj)
+                    downloaded += [filename]
+            else:
+                sys.stderr.write("skip %s (on %s storage)\n" % (
+                    keyname, s3_key.storage_class))
+    return downloaded
+
+
 def main(args):
     parser = argparse.ArgumentParser(
         usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version '
@@ -283,51 +342,14 @@ def main(args):
                 s3_key.set_contents_from_file(file_obj, headers)
     else:
         # Download
-        downloads = {}
-        logs = {}
         if options.last_run and os.path.exists(options.last_run):
-            with open(options.last_run) as last_run:
-                last_run_logs = json.load(last_run, object_hook=datetime_hook)
+            last_run = LastRunCache(options.last_run)
         else:
-            last_run_logs = {}
-        for item in local_update:
-            keyname = item['Key']
-            filename = as_filename(keyname, prefix=s3_prefix)
-            if filename.startswith('/'):
-                filename = '.' + filename
-            s3_key = boto.s3.key.Key(bucket, keyname)
-            if s3_key.storage_class == 'STANDARD':
-                sys.stderr.write("download %s to %s\n" % (
-                    keyname, os.path.abspath(filename)))
-                if not os.path.isdir(os.path.dirname(filename)):
-                    os.makedirs(os.path.dirname(filename))
-                with open(filename, 'wb') as file_obj:
-                    s3_key.get_contents_to_file(file_obj)
-            else:
-                sys.stderr.write("skip %s (on %s storage)\n" % (
-                    keyname, s3_key.storage_class))
-        for item in sorted(list_local(lognames, prefix=local_prefix),
-                           key=get_last_modified):
-            filename = item['Key']
-            if filename.startswith('/'):
-                filename = '.' + filename
-            logname = as_logname(filename)
-            if not logname in logs or logs[logname] < item['LastModified']:
-                logs[logname] = item['LastModified']
-            if (not logname in last_run_logs
-                or last_run_logs[logname] < item['LastModified']):
-                if not logname in downloads:
-                    downloads[logname] = []
-                downloads[logname] += [filename]
-        for logname, last_modified in logs.iteritems():
-            if (not logname in last_run_logs
-                or last_run_logs[logname] < last_modified):
-                last_run_logs[logname] = last_modified
-        if options.last_run:
-            if not os.path.isdir(os.path.dirname(options.last_run)):
-                os.makedirs(os.path.dirname(options.last_run))
-            with open(options.last_run, 'w') as last_run:
-                json.dump(last_run_logs, last_run, cls=JSONEncoder, indent=2)
+            last_run = None
+        download_updated_logs(
+            local_update, bucket=bucket, s3_prefix=s3_prefix, last_run=last_run)
+        if last_run:
+            last_run.save()
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
