@@ -42,7 +42,7 @@ class monitSetup(setup.SetupTemplate):
 
         # XXX Monit wants to talk directly to the mail server and so far
         #     we are using ssmtp instead of a local maildrop.
-        monit_conf = os.path.join(context.SYSCONFDIR, 'monitrc')
+        monit_conf = os.path.join(context.value('etcDir'), 'monitrc')
         notify_email = context.value('notifyEmail')
         if notify_email:
             email_host = context.value('emailHost')

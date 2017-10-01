@@ -54,8 +54,8 @@ class cronSetup(SetupTemplate):
             # files here.
             return complete
 
-        anacrontab_conf = os.path.join(context.SYSCONFDIR, 'anacrontab')
-        crontab_conf = os.path.join(context.SYSCONFDIR, 'crontab')
+        anacrontab_conf = os.path.join(context.value('etcDir'), 'anacrontab')
+        crontab_conf = os.path.join(context.value('etcDir'), 'crontab')
         notify_email = context.value('notifyEmail')
         if notify_email:
             modify_config(anacrontab_conf,

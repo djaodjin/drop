@@ -41,7 +41,8 @@ class fail2banSetup(SetupTemplate):
             # files here.
             return complete
 
-        jail_conf = os.path.join(context.SYSCONFDIR, 'fail2ban', 'jail.conf')
+        jail_conf = os.path.join(
+            context.value('etcDir'), 'fail2ban', 'jail.conf')
         # XXX in filter.d/apache-badbots.conf:
         # ^<HOST> -.*"(GET|POST).*(\.php|\.asp|\.exe|\.pl).*HTTP.*".*$
         # jail.conf:
