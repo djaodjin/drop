@@ -71,6 +71,7 @@ Deploy and configure packages for running LDAP and SQL databases.
         <bin>psql</bin>
       </dep>
       <dep name="openldap-clients">
+        <bin>ldapadd</bin>
         <bin>ldapsearch</bin>
       </dep>
     </package>
@@ -78,12 +79,12 @@ Deploy and configure packages for running LDAP and SQL databases.
   <project name="openldap-servers">
     <package name="Fedora">
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-2.4.40-2.fc21.x86_64.rpm</url>
-        <sha1>e16090329f89360dc14b75e198b67786e8eac39c</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
+        <sha1>6f6428deee881efa18003482d5353587fbf35b5b</sha1>
       </fetch>
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-servers-2.4.40-2.fc21.x86_64.rpm</url>
-        <sha1>f6d6ac22ecf55da76aafb68cb92c1d503706ef4f</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-servers-2.4.44-10.fc25.x86_64.rpm</url>
+        <sha1>9a61279929f80cc16855e94dda2669daaf3715e3</sha1>
       </fetch>
       <dep name="libdb-utils">
         <lib>db</lib>
@@ -105,12 +106,12 @@ Deploy and configure packages for running LDAP and SQL databases.
   <project name="openldap-clients">
     <package name="Fedora">
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-2.4.40-2.fc21.x86_64.rpm</url>
-        <sha1>e16090329f89360dc14b75e198b67786e8eac39c</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
+        <sha1>6f6428deee881efa18003482d5353587fbf35b5b</sha1>
       </fetch>
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc21/x86_64/openldap-clients-2.4.40-2.fc21.x86_64.rpm</url>
-        <sha1>9ae4deb88c3e7a3f619a84b088d87a4b0adb8268</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-clients-2.4.44-10.fc25.x86_64.rpm</url>
+        <sha1>dbcfa8f4ceda5b31c17bcab5484f2de7c3aec8ff</sha1>
       </fetch>
     </package>
   </project>
