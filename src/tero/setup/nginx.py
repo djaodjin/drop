@@ -338,10 +338,13 @@ server {
                 if forwards:
                     last_forwards = forwards
 
+        # XXX disabled: Attempts to create wildcard certificate and can't
+        # remember why this is useful:
         # Forward all other https to last webapp configured.
         # This is useful for testing staged servers.
-        self.site_conf("stage", context, self.https_default_template,
-                       webapps=last_webapps, forwards=last_forwards)
+        if False:
+            self.site_conf("stage", context, self.https_default_template,
+                webapps=last_webapps, forwards=last_forwards)
 
         # Remove default server otherwise our config for intermediate nodes
         # with no domain names will be overridden.

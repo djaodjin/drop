@@ -57,7 +57,9 @@ Name of the machine hosting the LDAP server.
           <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
           <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
           <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
-          <PasswordAuthentication>no</PasswordAuthentication><!-- `yes` when using sally port -->
+          <!-- BE CAREFUL: Password authentication is enabled here only
+               when we use a sally port to access the web machines. -->
+          <PasswordAuthentication>no</PasswordAuthentication>
           <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <PermitTunnel>no</PermitTunnel>
           <X11Forwarding>no</X11Forwarding>
@@ -95,9 +97,13 @@ Name of the machine hosting the LDAP server.
           <port>443</port>
           <webapp>
             <path>/</path>
-            <port>8000</port>
+            <port>8020</port>
           </webapp>
         </extra>
+      </dep>
+      <dep name="certbot-nginx">
+        <!-- https://certbot.eff.org/#fedora24-nginx -->
+        <bin>certbot</bin>
       </dep>
       <dep name="docker">
         <bin>docker</bin>
