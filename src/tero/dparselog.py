@@ -316,9 +316,16 @@ def parse_date(dt_str):
     return naive_dt.replace(tzinfo=FixedOffset(offset))
 
 
+def split_on_comma(http_x_forwarded_for):
+    if http_x_forwarded_for == '-':
+        return []
+    ips = http_x_forwarded_for.split(',')
+    return [part.strip() for part in ips]
+
+
 def convert_bytes_sent(value):
     if value == '-':
-        return None
+        return 0
     return int(value)
 
 
@@ -355,10 +362,13 @@ def generate_regex(format_string, var_regex, regexps):
 
 
 class NginxLogParser(object):
+    """
+    We make sure nginx and gunicorn access logs have the same format.
+    """
 
     def __init__(self):
-        format_string = '$remote_addr - $remote_user [$time_local] "$request"'\
-' $status $body_bytes_sent "$http_referer" "$http_user_agent"'\
+        format_string = '$remote_addr $http_host $remote_user [$time_local]'\
+' "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"'\
 ' "$http_x_forwarded_for"\n'
 
         var_regex = r'\$[a-z_]+'
@@ -366,11 +376,14 @@ class NginxLogParser(object):
         regexps = {
             '$ip_num'               : r'[0-9]{1,3}',
             '$remote_addr'          : '\\.'.join([ip_num_regex] * 4),
-            '$remote_user'          : r'-',
+            '$http_host'            :
+                 # We cannot have parentheses in regex here?
+                 r'[a-z0-9.-]+|[a-z0-9.-]+:\d+?',
+            '$remote_user'          : r'[\w.@+-]+',
             '$time_local'           : r'[^\[\]]+',
             '$request'              : r'[^"]*',
             '$status'               : r'[0-9]{3}',
-            '$body_bytes_sent'      : r'[0-9]+',
+            '$body_bytes_sent'      : r'[0-9]+|-',
             '$http_referer'         : r'[^"]+',
             '$http_user_agent'      : r'[^"]*',
             '$http_x_forwarded_for' : r'[^"]+',
@@ -389,11 +402,19 @@ class NginxLogParser(object):
 
         field_types = {
             'status' : int,
-            'body_bytes_sent': int,
+            'body_bytes_sent': convert_bytes_sent,
             'time_local': parse_date,
+            'http_x_forwarded_for': split_on_comma
         }
-        for k, convert in six.iteritems(field_types):
-            parsed[k] = convert(parsed[k])
+        for key, convert in six.iteritems(field_types):
+            parsed[key] = convert(parsed[key])
+
+        if (parsed['http_x_forwarded_for']
+            and parsed['remote_addr'] in ['-', '127.0.0.1']):
+            # To simplify processing later on, we replace the direct IP
+            # the request is coming from (will be locahost for gunicorn
+            # behind nginx anyway) by the IP of the browser client.
+            parsed['remote_addr'] = parsed['http_x_forwarded_for'][0]
 
         request_regex = r'(?P<http_method>[A-Z]+) (?P<http_path>.*) HTTP/1.[01]'
         request_match = re.match(request_regex, parsed['request'])
@@ -404,80 +425,27 @@ class NginxLogParser(object):
 
 
 class JsonEventParser(object):
+    """
+    Application logs
+    """
 
     @staticmethod
     def parse(to_parse):
-        event = json.loads(to_parse)
+        try:
+            to_parse = to_parse[to_parse.find('{'):]
+            event = json.loads(to_parse)
+            field_types = {
+                'status' : int,
+                'body_bytes_sent': convert_bytes_sent,
+                'time_local': parse_date,
+                'http_x_forwarded_for': split_on_comma
+            }
+            for key, convert in six.iteritems(field_types):
+                if key in event:
+                    event[key] = convert(event[key])
+        except json.JSONDecodeError:
+            event = None
         return event
-
-
-class GunicornLogParser(object):
-
-    def __init__(self):
-        format_string = '''%({X-Forwarded-For}i)s %(l)s %(u)s %(t)s "%(r)s"'\
-' %(s)s %(b)s "%(f)s" "%(a)s"\n'''
-
-        var_regex = r'%\([^)]+\)s'
-        ip_num_regex = r'[0-9]{1,3}'
-
-        one_ip_regex = '\\.'.join([ip_num_regex] * 4)
-        two_ip_regex = r'%s, %s' % (one_ip_regex, one_ip_regex)
-        x_forwarded_for_regex = r'(?:%s|%s|-)' % (one_ip_regex, two_ip_regex)
-        regexps = {
-            '%({X-Forwarded-For}i)s': x_forwarded_for_regex,
-            '%(l)s': r'-',
-            '%(u)s': r'-',
-            '%(t)s': r'\[[^\]]+]',
-            '%(r)s': r'[A-Z]+ .* HTTP/1.[01]',
-            '%(s)s': r'[0-9]{3}',
-            '%(b)s': r'-|[0-9]+',
-            '%(f)s': r'[^"]+',
-            '%(a)s': r'[^"]+',
-        }
-
-
-        self.format_vars = re.findall(var_regex, format_string)
-        self.regex = generate_regex(format_string, var_regex, regexps)
-
-
-    def parse(self, to_parse):
-        match = self.regex.match(to_parse)
-        if match:
-            parsed = dict(zip(self.format_vars, match.groups()))
-        else:
-            return None
-
-        better_names = {
-            '%({X-Forwarded-For}i)s': 'http_x_forwarded_for',
-            '%(l)s': 'dash',
-            '%(u)s': 'username',
-            '%(t)s': 'time_local',
-            '%(r)s': 'request',
-            '%(s)s': 'status',
-            '%(b)s': 'body_bytes_sent',
-            '%(f)s': 'http_referer',
-            '%(a)s': 'http_user_agent',
-        }
-        parsed = {better_names[k] : v for k, v in six.iteritems(parsed)}
-
-        request_regex = r'(?P<http_method>[A-Z]+) (?P<http_path>.*) HTTP/1.[01]'
-        request_match = re.match(request_regex, parsed['request'])
-
-        forwarded_for_ips = parsed['http_x_forwarded_for'].split(', ')
-        parsed['http_x_forwarded_for_ips'] = forwarded_for_ips
-
-        if request_match:
-            parsed.update(request_match.groupdict())
-
-        field_types = {
-            'status' : int,
-            'body_bytes_sent': convert_bytes_sent,
-            'time_local': lambda s: parse_date(s[1:-1]),
-        }
-        for k, convert in six.iteritems(field_types):
-            parsed[k] = convert(parsed[k])
-
-        return parsed
 
 
 def error_event(fname, key, reason, extra=None):
@@ -526,10 +494,11 @@ def generate_events(stream, key):
     if log_folder == 'nginx':
         parser = NginxLogParser()
     elif log_folder == 'gunicorn':
-        if log_name == 'events':
-            parser = JsonEventParser()
+        parser = NginxLogParser()
+        if log_name == 'access':
+            parser = NginxLogParser()
         else:
-            parser = GunicornLogParser()
+            parser = JsonEventParser()
     else:
         sys.stderr.write("error: unknown log folder %s\n" % log_folder)
         yield error_event(fname, key, 'could not find parser for log folder',
