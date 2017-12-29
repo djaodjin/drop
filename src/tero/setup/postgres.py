@@ -37,7 +37,7 @@ class postgresql_serverSetup(SetupTemplate):
     backup_script = [
         "sudo -u postgres psql -U postgres -qAt -c 'select datname from"\
         " pg_database where datallowconn' | xargs -r -I X sudo -u postgres"\
-        " pg_dump -U postgres -C -f /var/backups/X.sql X",
+        " pg_dump -U postgres -C -f /var/lib/pgsql/backups/X.sql X",
         "chmod 600 /var/backups/*.sql"]
 
     def __init__(self, name, files, **kwargs):
@@ -92,6 +92,10 @@ class postgresql_serverSetup(SetupTemplate):
         pg_ident_conf = '/var/lib/pgsql/data/pg_ident.conf'
         pg_ident_conf = '/var/lib/pgsql/data/pg_ident.conf'
         pg_hba_conf = '/var/lib/pgsql/data/pg_hba.conf'
+
+        if not os.path.exists(postgresql_conf):
+            # /var/lib/pgsql/data will be empty unless we run initdb once.
+            shell_command(['/usr/bin/postgresql-setup', 'initdb'])
 
         listen_addresses = "'localhost'"
         for key, val in six.iteritems(

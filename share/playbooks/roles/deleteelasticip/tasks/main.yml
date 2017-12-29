@@ -1,7 +1,12 @@
 ---
 - include_vars: group_vars/dynamic
 
-- name: Release elastic IP for the web front
+- name: Release Elastic IP for the web front
   ec2_eip: state='present' public_ip="{{web_elastic_ip}}"
   when: web_elastic_ip is defined
+  ignore_errors: True
+
+- name: Release Elastic IP for the NAT gateway
+  ec2_eip: state='present' public_ip="{{nat_elastic_ip}}"
+  when: nat_elastic_ip is defined
   ignore_errors: True

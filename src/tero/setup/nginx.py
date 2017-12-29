@@ -166,7 +166,7 @@ server {
         root %(document_root)s;
 
         location / {
-            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @https-rewrite;
+            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
         }
 
         location @forward_to_%(app_name)s {
@@ -410,7 +410,7 @@ server {
         _, domain_info_path = setup.stageFile(domain_info, context)
         with open(domain_info_path, 'w') as domain_info_file:
             domain_info_file.write("US\nCalifornia\nSan Francisco\n"\
-                "Dummy Corp\n\n*.%(domain)s\nsupport@%(email)s\n\n" %
+                "Dummy Corp\n\n*.%(domain)s\nsupport@%(email)s\n\n\n" %
             {'domain': domain, 'email': 'root@localhost.localdomain'})
         setup.postinst.shellCommand([
             '[', '-f', wildcard_key_path, ']', '||', '/usr/bin/openssl',

@@ -1,15 +1,18 @@
 ---
-# XXX use action: ec2_eip instead? What about "vpc" params?
-# http://docs.ansible.com/ansible/ec2_eip_module.html
+# Requires Ansible v1.4 or higher
 
-- name: Allocate an elastic IP for the web front
-  local_action:
-     module: command
-       aws ec2 allocate-address --domain vpc
-  register: elasticip
+- name: allocate new elastic IPs for web servers
+  ec2_eip:
+    region: "{{aws_region}}"
+    in_vpc: yes
+  register: web_eip
 
-- set_fact:
-    elastic_ip: "{{ elasticip.stdout }}"
+- lineinfile: "dest=group_vars/dynamic regexp='^web_elastic_ip:' line='web_elastic_ip: {{web_eip.public_ip}}'"
 
-- lineinfile: "dest=group_vars/dynamic regexp='^web_elastic_ip:' line='web_elastic_ip: {{elastic_ip.PublicIp}}'"
+- name: Allocate a new Elastic IP for the NAT Gateway
+  ec2_eip:
+    region: "{{aws_region}}"
+    in_vpc: yes
+  register: nat_eip
 
+- lineinfile: "dest=group_vars/dynamic regexp='^nat_elastic_ip:' line='nat_elastic_ip: {{nat_eip.public_ip}}'"

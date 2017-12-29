@@ -14,29 +14,38 @@ rootDir=/var/www
 # Download and install packages that require authentication credentials
 /usr/bin/aws s3 cp s3://{{deployutils_bucket}}/identities/ami-web.ec2.internal / --recursive
 
+/usr/sbin/groupadd --gid 1001 djaoapp
+/usr/sbin/useradd --no-create-home --uid 1001 --gid 1001 djaoapp
+
 cd $rootDir
 packages=$(ls *.tar.bz2)
 if [ "X$packages" != "X" ] ; then
-    for package in packages ; do
+    for package in ${packages} ; do
         /usr/bin/tar jxf $package
     done
-    for dirname in $(find . -maxdepth 1 -type d) ; do
+    for dirname in $(find . -mindepth 1 -maxdepth 1 -type d | sed -e "s|^\./||") ; do
         appname="$dirname"
+        siteTop="$rootDir/$appname"
+        virtualenv -p python3 --system-site-packages ${siteTop}
+        echo "buildTop=$siteTop/build" > $dirname/dws.mk
+        echo "indexFile=$siteTop/reps/djaoapp/djaoapp.xml" >> $dirname/dws.mk
+        echo "removeIndexFile=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
         pushd $dirname/reps/$dirname
-        /usr/bin/python ../drop/src/tero/__init__.py make recurse
+        /usr/bin/python ../drop/src/tero/__init__.py --default make recurse
         popd
+        /usr/bin/chown -R djaoapp:djaoapp "$dirname"
     done
 fi
 
 # Install and configure publicly available packages
-siteTop="$rootDir/$appname"
 if [ "X$appname" == "X" ] ; then
+    siteTop="$rootDir"
     mkdir -p ${siteTop}/reps
     virtualenv -p python3 --system-site-packages ${siteTop}
     git clone {{remote_drop_repo}} ${siteTop}/reps/drop
 fi
 cd $siteTop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} reps/drop/share/profiles/webfront.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} -DwwwDomainName={{www_domain_name}} reps/drop/share/profiles/webfront.xml
 
 
 # Ansible will be waiting for this server to respond

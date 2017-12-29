@@ -1,18 +1,18 @@
----
-# Create the EC2 VPC security groups will be created into.
+# Create VPC and Subnets
+
+- include_vars: group_vars/dynamic
 
 - name: Create EC2 VPC
   local_action:
-     module: ec2_vpc
+     module: ec2_vpc_net
      state: present
-     cidr_block: {{vpc_cidr}}
-     resource_tags: { "Name":"{{tag_prefix}}vpc" }
+     cidr_block: "{{vpc_cidr}}"
+     name: "{{tag_prefix}}vpc"
      region: "{{aws_region}}"
-     wait: yes
   register: vpc_data
 
 - set_fact:
-    vpc_id: "{{vpc_data.vpc_id}}"
+    vpc_id: "{{vpc_data.vpc.id}}"
 
 - lineinfile: "dest=group_vars/dynamic regexp='^vpc_id:' line='vpc_id: {{vpc_id}}'"
 
@@ -20,13 +20,16 @@
   ec2_vpc_subnet:
     state: present
     region: "{{aws_region}}"
-    vpc_id: {{vpc_id}}
-    cidr: {{dbs_subnet_cidr}}
-    resource_tags:
-      Name: Database Subnet
+    vpc_id: "{{vpc_id}}"
+    az: "{{aws_zone}}"
+    cidr: "{{dbs_subnet_cidr}}"
+    resource_tags: { "Name":"{{tag_prefix}} Database Subnet" }
   register: dbs_subnet
 
-- lineinfile: "dest=group_vars/dynamic regexp='^dbs_subnet_id:' line='dbs_subnet_id: {{dbs_subnet.subnet_id}}'"
+- set_fact:
+    dbs_subnet_id: "{{dbs_subnet.subnet.id}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^dbs_subnet_id:' line='dbs_subnet_id: {{dbs_subnet_id}}'"
 
 - name: Create subnet for web servers
   ec2_vpc_subnet:
@@ -35,32 +38,10 @@
     vpc_id: "{{vpc_id}}"
     az: "{{aws_zone}}"
     cidr: "{{web_subnet_cidr}}"
-    resource_tags:
-      Name: Web Subnet
+    resource_tags: { "Name":"{{tag_prefix}} Web Subnet" }
   register: web_subnet
 
-- lineinfile: "dest=group_vars/dynamic regexp='^web_subnet_id:' line='web_subnet_id: {{web_subnet.subnet_id}}'"
+- set_fact:
+    web_subnet_id: "{{web_subnet.subnet.id}}"
 
-# Ensure that the VPC has an Internet Gateway.
-- name: Ensure that the VPC has an Internet Gateway
-  ec2_vpc_igw:
-    region: "{{aws_region}}"
-    vpc_id: {{vpc_id}}
-    state: present
-  register: igw
-
-# The Internet Gateway ID is can be accessed
-# via {{igw.gateway_id}} for use in setting up NATs etc.
-
-- name: Set up public subnet route table
-  ec2_vpc_route_table:
-    region: "{{aws_region}}"
-    vpc_id: {{vpc_id}}
-    tags:
-      Name: Public
-    subnets:
-      - "{{ web_subnet.subnet_id }}"
-    routes:
-      - dest: 0.0.0.0/0
-        gateway_id: "{{ igw.gateway_id }}"
-  register: public_route_table
+- lineinfile: "dest=group_vars/dynamic regexp='^web_subnet_id:' line='web_subnet_id: {{web_subnet_id}}'"

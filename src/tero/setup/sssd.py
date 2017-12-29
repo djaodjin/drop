@@ -43,7 +43,7 @@ class sssdSetup(SetupTemplate):
 
         sssd_conf = os.path.join(context.value('etcDir'), 'sssd', 'sssd.conf')
         ldapHost = context.value('ldapHost')
-        domain_parts = tuple(context.value('domainName').split('.'))
+        domain_parts = tuple(context.value('companyDomain').split('.'))
         ldapCertPath = os.path.join(context.value('etcDir'),
             'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {

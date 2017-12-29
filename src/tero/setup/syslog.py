@@ -33,10 +33,16 @@ class syslog_ngSetup(setup.SetupTemplate):
     syslog_te_config_template = """module syslog-ng 1.0;
 
 require {
+	type httpd_sys_content_t;
+	type kernel_t;
+	type init_t;
 	type syslogd_t;
 	type device_t;
+	class file read;
+	class unix_stream_socket { read write };
 	class sock_file { getattr unlink };
 	class lnk_file unlink;
+	class process execmem;
 }
 
 #============= syslogd_t ==============
@@ -44,6 +50,11 @@ require {
 allow syslogd_t device_t:lnk_file unlink;
 allow syslogd_t device_t:sock_file getattr;
 allow syslogd_t device_t:sock_file unlink;
+allow syslogd_t self:process execmem;
+
+#============= init_t ==============
+allow init_t httpd_sys_content_t:file read;
+allow init_t kernel_t:unix_stream_socket { read write };
 """
 
     def __init__(self, name, files, **kwargs):

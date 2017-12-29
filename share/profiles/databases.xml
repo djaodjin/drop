@@ -9,13 +9,13 @@ Deploy and configure packages for running LDAP and SQL databases.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <variable name="dbUser">
-      <description>User to access databases.</description>
-    </variable>
-    <variable name="dbPassword">
-      <description>Password for user to access databases.</description>
-    </variable>
     <package name="Fedora">
+      <variable name="dbUser">
+        <description>User to access databases.</description>
+      </variable>
+      <variable name="dbPassword">
+        <description>Password for user to access databases.</description>
+      </variable>
       <dep name="postgresql-server">
         <bin>postgres</bin>
         <listen_addresses>private-ip.local, localhost</listen_addresses>
@@ -60,7 +60,7 @@ Deploy and configure packages for running LDAP and SQL databases.
       <dep name="checkpolicy">
         <bin>checkmodule</bin>
       </dep>
-      <dep name="policycoreutils-python">
+      <dep name="policycoreutils-python-utils">
         <bin>semodule_package</bin>
       </dep>
       <dep name="fail2ban">
@@ -79,12 +79,12 @@ Deploy and configure packages for running LDAP and SQL databases.
   <project name="openldap-servers">
     <package name="Fedora">
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
-        <sha1>6f6428deee881efa18003482d5353587fbf35b5b</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-2.4.45-4.fc27.x86_64.rpm</url>
+        <sha1>918168af8ddafd92637ce45f37f30e42651591bc</sha1>
       </fetch>
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-servers-2.4.44-10.fc25.x86_64.rpm</url>
-        <sha1>9a61279929f80cc16855e94dda2669daaf3715e3</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-servers-2.4.45-4.fc27.x86_64.rpm</url>
+        <sha1>64630e969744f24cde204ccd632643583ca83d75</sha1>
       </fetch>
       <dep name="libdb-utils">
         <lib>db</lib>
@@ -106,12 +106,12 @@ Deploy and configure packages for running LDAP and SQL databases.
   <project name="openldap-clients">
     <package name="Fedora">
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
-        <sha1>6f6428deee881efa18003482d5353587fbf35b5b</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-2.4.45-4.fc27.x86_64.rpm</url>
+        <sha1>918168af8ddafd92637ce45f37f30e42651591bc</sha1>
       </fetch>
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-clients-2.4.44-10.fc25.x86_64.rpm</url>
-        <sha1>dbcfa8f4ceda5b31c17bcab5484f2de7c3aec8ff</sha1>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-clients-2.4.45-4.fc27.x86_64.rpm</url>
+        <sha1>596b88219e6bc87d58516e54875b6d0f949551dc</sha1>
       </fetch>
     </package>
   </project>

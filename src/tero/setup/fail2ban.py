@@ -24,6 +24,7 @@
 
 import os
 
+from tero import Error
 from tero.setup import SetupTemplate, modify_config
 
 
@@ -63,12 +64,16 @@ class fail2banSetup(SetupTemplate):
                     'port': 'http,https,smtp,ssmtp',
                     'filter': 'spamassassin',
                     'logpath': '/var/log/mail.log'}}
-        notify_email = context.value('notifyEmail')
-        if notify_email:
+        try:
+            notify_email = context.value('notifyEmail')
             jail_settings.update({
                 'destemail': notify_email,
                 'sender': notify_email
             })
+        except Error:
+            # We don't have an e-mail to send notification to
+            pass
+
         modify_config(jail_conf, settings=jail_settings, context=context)
         # XXX http://blog.darkseer.org/wordpress/?p=149
         # Add in /etc/fail2ban/filter.d/sshd.conf

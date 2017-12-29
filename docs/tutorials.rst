@@ -145,7 +145,7 @@ We run them in order:
 #
 # This script is intended to be run only once at the beginning of the project.
 
-    # Provisioning S3 bucket and Elastic IP (once globally)
+    # Provisioning S3 bucket and Elastic IPs (once globally)
     $ ansible-playbook -i $VIRTUAL_ENV/etc/ansible/hosts \
         aws-create-forever.yml
 

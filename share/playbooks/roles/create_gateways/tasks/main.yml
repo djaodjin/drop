@@ -1,0 +1,50 @@
+# Create the NAT gateway and routes from the private subnet to the public
+# Internet.
+
+- name: Create the NAT gateway by which private subnet connects to Internet
+  ec2_vpc_nat_gateway:
+    state: present
+    subnet_id: "{{web_subnet_id}}"
+    eip_address: "{{nat_elastic_ip}}"
+    if_exist_do_not_create: true
+  register: nat_gateway
+
+- debug:
+    msg: "nat_gateway: {{nat_gateway}}"
+
+# Ensure that the VPC has an Internet Gateway.
+- name: Ensure that the VPC has an Internet Gateway
+  ec2_vpc_igw:
+    region: "{{aws_region}}"
+    vpc_id: "{{vpc_id}}"
+    state: present
+  register: igw
+
+# The Internet Gateway ID is can be accessed
+# via {{igw.gateway_id}} for use in setting up NATs etc.
+
+- name: Set up public subnet route table
+  ec2_vpc_route_table:
+    region: "{{aws_region}}"
+    vpc_id: "{{vpc_id}}"
+    tags:
+      Name: Public
+    subnets:
+      - "{{ web_subnet_id }}"
+    routes:
+      - dest: 0.0.0.0/0
+        gateway_id: "{{ igw.gateway_id }}"
+  register: public_route_table
+
+- name: Set up NAT-protected route table
+  ec2_vpc_route_table:
+    region: "{{aws_region}}"
+    vpc_id: "{{vpc_id}}"
+    tags:
+      Name: Internal
+    subnets:
+      - "{{ dbs_subnet_id }}"
+    routes:
+      - dest: 0.0.0.0/0
+        gateway_id: "{{ nat_gateway.nat_gateway_id }}"
+  register: internal_route_table

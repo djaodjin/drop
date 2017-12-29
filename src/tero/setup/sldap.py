@@ -21,6 +21,7 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import binascii, os
 
@@ -83,8 +84,10 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
     def _update_crc32(self, pathname):
         with open(pathname) as new_config:
             lines = new_config.readlines()
-        lines[1] = '# CRC32 %08x\n' % (
-            binascii.crc32(''.join(lines[2:])) & 0xffffffff)
+        data = ''.join(lines[2:])
+        if hasattr(data, 'encode'):
+            data = data.encode('utf8')
+        lines[1] = '# CRC32 %08x\n' % (binascii.crc32(data) & 0xffffffff)
         with open(pathname, 'w') as new_config:
             new_config.write(''.join(lines))
 
@@ -96,7 +99,7 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
             # files here.
             return complete
         ldapHost = context.value('ldapHost')
-        company_domain = context.value('domainName')
+        company_domain = context.value('companyDomain')
         password_hash = context.value('ldapPasswordHash')
         priv_key = os.path.join(context.value('etcDir'),
             'pki', 'tls', 'private', '%s.key' % ldapHost)

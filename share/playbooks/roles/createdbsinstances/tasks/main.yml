@@ -27,7 +27,7 @@
     exact_count: 1
   register: dbs_server
 
-- name: Create databases EC2 instances
+- name: Attach volume to databases EC2 instance
   local_action:
     module: ec2
     instance: "{{ item.id }}"
