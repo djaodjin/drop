@@ -3,6 +3,7 @@
   connection: local
   gather_facts: False
   vars:
+    - backstage: "{{backstage_name | default(tag_prefix+'backstage')}}"
     - castle_gate: "{{castle_gate_name | default(tag_prefix+'castle-gate')}}"
     - courtyard: "{{courtyard_name | default(tag_prefix+'courtyard')}}"
     - kitchen_door: "{{kitchen_door_name | default(tag_prefix+'kitchen-door')}}"
@@ -10,6 +11,11 @@
     - watch_tower: "{{watch_tower_name | default(tag_prefix+'watch-tower')}}"
     - dbs_key: "{{dbs_key_name | default(key_name)}}"
   roles:
+    - create_instance_sally
+    - associate_sally
     - createdbsinstances
+    - associate_dbs
+    - create_instance_mail
+    - create_instance_backstage
+    - associate_backstage
     - createwebinstances
-#    - createinstances

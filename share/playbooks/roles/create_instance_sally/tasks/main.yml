@@ -24,12 +24,3 @@
   register: dev_servers
 
 - debug: msg="Connect to the kitchen-door with ssh -p {{ssh_port}} -i ~/.ssh/{{key_name}} -p {{ssh_port}} fedora@{{dev_servers.instances[0].public_dns}}"
-
-- route53:
-    command: create
-    zone: "{{tag_prefix}}ec2.internal."
-    record: "dev.{{tag_prefix}}ec2.internal."
-    private_zone: yes
-    type: A
-    value: "{{dev_servers.instances[0].private_ip}}"
-    overwrite: yes

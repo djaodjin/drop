@@ -4,8 +4,8 @@
 
 set -e
 
-# Mount encrypted volume with databases content as /var.
-mount /dev/xvdf /var
+# The encrypted volume with databases content is mounted as /var through
+# an entry in /etc/fstab (configured in the dbs AMI).
 
 # Install identities. Since we don't have Internet connection here, we copy
 # identities from the encrypted volume that was previously mounted.

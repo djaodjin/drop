@@ -34,12 +34,3 @@
     name: "{{dbs_volume_id}}"
     device_name: /dev/xvdf
   with_items: dbs_server.instances
-
-- route53:
-    command: create
-    zone: "{{tag_prefix}}ec2.internal."
-    record: "dbs.{{tag_prefix}}ec2.internal."
-    private_zone: yes
-    type: A
-    value: "{{dbs_server.instances[0].private_ip}}"
-    overwrite: yes

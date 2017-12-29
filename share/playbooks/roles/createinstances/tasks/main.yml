@@ -1,5 +1,0 @@
----
-- include_vars: group_vars/dynamic
-
-- include: kitchen-door.yml
-- include: courtyard.yml

@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+# Configuration of a backstage instance (based of web base AMI created
+# by the ``create_webfront_ami`` ansible role).
+
+set -x
+set -e
+
+# fetch identities
+aws s3 cp s3://{{deployutils_bucket}}/identities/backstage.{{tag_prefix}}ec2.internal / --recursive

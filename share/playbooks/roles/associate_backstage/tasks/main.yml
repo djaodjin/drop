@@ -1,0 +1,12 @@
+# Associate backstage instances to the internal DNS
+
+- include_vars: group_vars/dynamic
+
+- route53:
+    command: create
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "backstage.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{backstage_device_id}}"
+    overwrite: yes

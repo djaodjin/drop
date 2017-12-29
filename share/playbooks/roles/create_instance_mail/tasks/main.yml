@@ -1,20 +1,20 @@
 ---
-- name: Create worker EC2 instance
+- name: Create mail EC2 instance
   local_action:
     module: ec2
     key_name: "{{key_name}}"
-    group: "{{courtyard}}"
+    group: "{{watch_tower}}"
     instance_type: "{{instance_type}}"
-    instance_profile_name: "{{courtyard}}-profile"
+    instance_profile_name: "{{watch_tower}}-profile"
     image: "{{ami_id}}"
     region: "{{aws_region}}"
     wait: yes
-    user_data: "{{ lookup('template', '../templates/courtyard-cloud-init-script.j2') }}"
+    user_data: "{{ lookup('template', '../templates/watch-tower-cloud-init-script.j2') }}"
     instance_tags:
       prefix: "{{tag_prefix}}archi"
-      profile: "worker"
+      profile: "mail"
     count_tag:
       prefix: "{{tag_prefix}}archi"
-      profile: "worker"
+      profile: "mail"
     exact_count: 1
-  register: workers
+  register: mailers

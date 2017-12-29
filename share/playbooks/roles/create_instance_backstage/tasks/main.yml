@@ -1,0 +1,33 @@
+# Create the backstage instances responsible to keep things running.
+
+- include_vars: group_vars/dynamic
+
+- name: Create backstage EC2 instances
+  local_action:
+    module: ec2
+    region: "{{aws_region}}"
+    vpc_subnet_id: "{{dbs_subnet_id}}"
+    instance_profile_name: "{{backstage}}-profile"
+    group: "{{courtyard}}"
+    image: "{{web_ami_id}}"
+    instance_type: "t2.micro"
+    key_name: "{{key_name}}"
+    volumes:
+      - device_name: /dev/sda1
+        volume_size: 6
+        delete_on_termination: true
+    wait: yes
+    user_data: "{{ lookup('template', '../templates/backstage-cloud-init-script.j2') }}"
+    instance_tags:
+      prefix: "{{tag_prefix}}archi"
+      profile: "backstage"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "backstage"
+    exact_count: 1
+  register: backstage_servers
+
+- set_fact:
+    backstage_device_id: "{{backstage_servers.instances[0].id}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^backstage_device_id:' line='backstage_device_id: {{backstage_servers.instances[0].id}}'"
