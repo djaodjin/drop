@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2017, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,6 +27,7 @@
 """
 Restore databases from file dumps
 """
+from __future__ import unicode_literals
 
 import argparse, re, os, subprocess, sys, tempfile
 
@@ -48,13 +49,18 @@ def restore_ldap(filename, domain=None):
                     if not key in ('structuralObjectClass', 'entryUUID',
                         'creatorsName', 'createTimestamp', 'entryCSN',
                         'modifiersName', 'modifyTimestamp'):
-                        os.write(handle, "%s: %s\n" % (key, value))
+                        config_line = "%s: %s\n" % (key, value)
+                        if hasattr(config_line, 'encode'):
+                            config_line = config_line.encode('utf-8')
+                        os.write(handle, config_line)
                 else:
+                    if hasattr(line, 'encode'):
+                        line = line.encode('utf-8')
                     os.write(handle, line)
         os.close(handle)
         domain_dn = ',dc='.join(domain.split('.'))
-        cmd = ['ldapadd', '-x', '-H', 'ldap:///', '-f', tmpfilename,
-            '-D', 'cn=Manager,dc=%s' % domain_dn, '-W']
+        cmd = ['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
+               '-f', tmpfilename, '-D', 'cn=Manager,dc=%s' % domain_dn]
         sys.stdout.write("%s\n" % ' '.join(cmd))
         subprocess.check_call(cmd)
     finally:

@@ -32,6 +32,6 @@ virtualenv -p python3 --system-site-packages /tmp/ansible
 /tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=localhost -DcompanyDomain={{company_domain}} -DldapPasswordHash="{{ldapPasswordHash}}" -Dvpc_cidr={{vpc_cidr}} /tmp/ansible/reps/drop/share/profiles/databases.xml
 
 # Restore database from flat files
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/drestore.py --domainName={{company_domain}} /var/backups/*
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/drestore.py --domainName={{company_domain}} /var/backups/ldap/*.ldif /var/backups/pgsql/*.sql
 
 sudo -u fedora touch /home/fedora/.dbs-done

@@ -37,8 +37,8 @@ class postgresql_serverSetup(SetupTemplate):
     backup_script = [
         "sudo -u postgres psql -U postgres -qAt -c 'select datname from"\
         " pg_database where datallowconn' | xargs -r -I X sudo -u postgres"\
-        " pg_dump -U postgres -C -f /var/lib/pgsql/backups/X.sql X",
-        "chmod 600 /var/backups/*.sql"]
+        " pg_dump -U postgres -C -f /var/backups/pgsql/X.sql X",
+        "chmod 600 /var/backups/pgsql/*.sql"]
 
     def __init__(self, name, files, **kwargs):
         super(postgresql_serverSetup, self).__init__(name, files, **kwargs)
@@ -63,7 +63,7 @@ class postgresql_serverSetup(SetupTemplate):
         _, new_conf_path = stageFile(os.path.join(
             context.value('etcDir'), 'logrotate.d', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
-            new_conf.write("""/var/backups/*.sql
+            new_conf.write("""/var/backups/pgsql/*.sql
 {
     create 0600 root root
     daily
@@ -101,7 +101,8 @@ class postgresql_serverSetup(SetupTemplate):
         for key, val in six.iteritems(
                 self.managed['postgresql-server']['files']):
             if key == 'listen_addresses':
-                listen_addresses = "'%s'" % val
+                listen_addresses = ', '.join(
+                    ["'%s'" % address for address in val])
 
         modify_config(postgresql_conf,
             settings={'listen_addresses': listen_addresses},
@@ -192,8 +193,8 @@ class postgresqlSetup(SetupTemplate):
     'psql -e "GRANT ALL ON %s.* TO \'%s\'@\'localhost\' IDENTIFIED BY \'%s\'"'
              % (db_name, db_user, db_password))
         cron_add_entry('pg_backup_%(db_name)s' % {'db_name': db_name},
-'pg_dump -U postgres -C -f /var/db/pgsql/backups/%(db_name)s.sql %(db_name)s'\
-' && chmod 600 /var/db/pgsql/backups/%(db_name)s.sql' % {'db_name': db_name},
+'pg_dump -U postgres -C -f /var/backups/pgsql/%(db_name)s.sql %(db_name)s'\
+' && chmod 600 /var/backups/pgsql/%(db_name)s.sql' % {'db_name': db_name},
         context=context)
 
     def run(self, context):

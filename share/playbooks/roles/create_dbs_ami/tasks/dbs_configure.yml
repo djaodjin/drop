@@ -22,22 +22,23 @@
     region: "{{aws_region}}"
     zone: "{{aws_zone}}"
     assign_public_ip: yes
+    volumes:
+      - device_name: /dev/sdf
+        volume_type: gp2
+        volume_size: 20
+        encrypted: yes
+        region: "{{aws_region}}"
+        zone: "{{aws_zone}}"
     user_data: "{{ lookup('template', '../templates/dbs-cloud-init-script.j2') }}"
     wait: yes
   register: dbs_base
 
-- name: Create encrypted EBS volume to store databases
-  local_action:
-    module: ec2_vol
-    device_name: /dev/sdf
-    encrypted: yes
-    instance: "{{dbs_base.instance_ids}}"
-    region: "{{aws_region}}"
-    zone: "{{aws_zone}}"
-    volume_size: 20
-    volume_type: standard
-  register: dbs_volume
+- set_fact:
+    dbs_base_device_id: "{{dbs_base.instances[0].id}}"
 
 - lineinfile: "dest=group_vars/dynamic regexp='^dbs_base_device_id:' line='dbs_base_device_id: {{dbs_base.instances[0].id}}'"
 
-- lineinfile: "dest=group_vars/dynamic regexp='^dbs_volume_id:' line='dbs_volume_id: {{dbs_volume.volume_id}}'"
+- set_fact:
+    dbs_volume_id: "{{dbs_base.instances[0].volume_id}}"
+
+- lineinfile: "dest=group_vars/dynamic regexp='^dbs_volume_id:' line='dbs_volume_id: {{dbs_base.instances[0].volume_id}}'"

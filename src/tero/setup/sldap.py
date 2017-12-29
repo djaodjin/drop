@@ -31,8 +31,8 @@ from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 class openldap_serversSetup(SetupTemplate):
 
     backup_script = [
-        "slapcat -v -l /var/backups/people.ldif",
-        "chmod 600 /var/backups/people.ldif"]
+        "slapcat -v -l /var/backups/ldap/people.ldif",
+        "chmod 600 /var/backups/ldap/people.ldif"]
 
     def __init__(self, name, files, **kwargs):
         super(openldap_serversSetup, self).__init__(name, files, **kwargs)
@@ -56,7 +56,7 @@ class openldap_serversSetup(SetupTemplate):
         _, new_conf_path = stageFile(os.path.join(
             context.value('etcDir'), 'logrotate.d', 'ldap_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
-            new_conf.write("""/var/backups/people.ldif
+            new_conf.write("""/var/backups/ldap/people.ldif
 {
     create 0600 root root
     daily
@@ -127,21 +127,24 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
                'olcRootPW': '%s' % password_hash
             })
         self._update_crc32(new_config_path)
-        db_hdb_path = os.path.join(context.value('etcDir'),
-            'openldap', 'slapd.d', 'cn=config', 'olcDatabase={2}hdb.ldif')
-        _, new_config_path = stageFile(db_hdb_path, context)
-        modify_config(db_hdb_path,
-            sep=': ', enter_block_sep=None, exit_block_sep=None,
-            one_per_line=True, context=context, settings={
-               'olcSuffix': 'dc=%s,dc=%s' % domain_parts,
-               'olcRootDN': 'cn=Manager,dc=%s,dc=%s' % domain_parts,
-               'olcRootPW': '%s' % password_hash,
-               'olcAccess': [
-                   '{0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage by * break',
-                   '{0}to attrs=userPassword by self write by dn.base="cn=Manager,dc=%s,dc=%s" write by anonymous auth by * none' % domain_parts,
-                   '{1}to * by dn.base="cn=Manager,dc=%s,dc=%s" write by self write by * read"' % domain_parts]
-            })
-        self._update_crc32(new_config_path)
+        # XXX using hdb on Fedora27 with an encrypted EBS will lead
+        #     to a `BDB0126 mmap: Invalid argument` error. just delete the file!
+        for db_path in ['olcDatabase={2}hdb.ldif', 'olcDatabase={2}mdb.ldif']:
+            db_path = os.path.join(context.value('etcDir'),
+                'openldap', 'slapd.d', 'cn=config', db_path)
+            _, new_config_path = stageFile(db_path, context)
+            modify_config(db_path,
+                sep=': ', enter_block_sep=None, exit_block_sep=None,
+                one_per_line=True, context=context, settings={
+                    'olcSuffix': 'dc=%s,dc=%s' % domain_parts,
+                    'olcRootDN': 'cn=Manager,dc=%s,dc=%s' % domain_parts,
+                    'olcRootPW': '%s' % password_hash,
+                    'olcAccess': [
+                        '{0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage by * break',
+                        '{0}to attrs=userPassword by self write by dn.base="cn=Manager,dc=%s,dc=%s" write by anonymous auth by * none' % domain_parts,
+                        '{1}to * by dn.base="cn=Manager,dc=%s,dc=%s" write by self write by * read"' % domain_parts]
+                })
+            self._update_crc32(new_config_path)
 
         schema_path = os.path.join(context.value('etcDir'),
             'openldap', 'schema', 'openssh-ldap.ldif')
