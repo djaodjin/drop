@@ -4,7 +4,7 @@
 # The databases server will be hosted in a private subnet with no Internet
 # connectivity. We configure the databases server and load the initial
 # data onto an attached EBS volume here.
-# Later on, in the ``createdbsinstances``, the AMI and EBS volume will be
+# Later on, in the ``create_instance_dbs``, the AMI and EBS volume will be
 # used to boot the databases server into the private subnet.
 
 # We cannot attach EBS encrypted volumes to all types of instances. As well

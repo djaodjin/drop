@@ -1,0 +1,28 @@
+# Create the worker instances that contain business logic webapps
+
+- include_vars: group_vars/dynamic
+
+- name: Create worker EC2 instances
+  local_action:
+    module: ec2
+    region: "{{aws_region}}"
+    vpc_subnet_id: "{{dbs_subnet_id}}"
+    instance_profile_name: "{{courtyard}}-profile"
+    group: "{{courtyard}}"
+    image: "{{web_ami_id}}"
+    instance_type: "t2.medium"
+    key_name: "{{key_name}}"
+    volumes:
+      - device_name: /dev/sda1
+        volume_size: 6
+        delete_on_termination: true
+    wait: yes
+    user_data: "{{ lookup('template', '../templates/worker-cloud-init-script.j2') }}"
+    instance_tags:
+      prefix: "{{tag_prefix}}archi"
+      profile: "worker"
+    count_tag:
+      prefix: "{{tag_prefix}}archi"
+      profile: "worker"
+    exact_count: 1
+  register: worker_servers

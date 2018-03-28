@@ -1,0 +1,13 @@
+# Associate mail instance to the internal DNS
+
+- include_vars: group_vars/dynamic
+
+
+- route53:
+    command: create
+    zone: "{{tag_prefix}}ec2.internal."
+    record: "mail.{{tag_prefix}}ec2.internal."
+    private_zone: yes
+    type: A
+    value: "{{mail_server.instances[0].private_ip}}"
+    overwrite: yes

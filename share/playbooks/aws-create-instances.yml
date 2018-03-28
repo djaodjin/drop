@@ -13,9 +13,12 @@
   roles:
     - create_instance_sally
     - associate_sally
-    - createdbsinstances
+    - create_instance_dbs
     - associate_dbs
     - create_instance_mail
+    - associate_mail
     - create_instance_backstage
     - associate_backstage
-    - createwebinstances
+    - create_instance_workers
+    - create_instance_webfront
+    - associate_webfront

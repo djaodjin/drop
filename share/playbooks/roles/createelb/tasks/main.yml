@@ -1,0 +1,22 @@
+- local_action:
+    module: ec2_elb_lb
+    name: "webfront-elb"
+    state: present
+    zones:
+      - {{aws_zone}}
+    security_group_names:
+      - {{castle_gate}}
+    listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+        proxy_protocol: True
+      - protocol: https
+        load_balancer_port: 443
+        instance_port: 443
+
+- local_action:
+    module: ec2_elb
+    instance_id: "{{ ansible_ec2_instance_id }}"
+    ec2_elbs: "{{ item }}"
+    state: present

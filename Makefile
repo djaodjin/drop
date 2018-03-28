@@ -36,9 +36,11 @@
 
 srcTop        ?= ..
 installTop    ?= $(VIRTUAL_ENV)
+binDir        ?= $(installTop)/bin
 
 include $(srcTop)/drop/src/prefix.mk
 
+PYTHON        := $(binDir)/python
 
 shareItemDirs ?= $(shell cd $(srcDir)/share && find playbooks profiles -type d)
 
@@ -55,7 +57,7 @@ install:: $(srcDir)/src/prefix.mk \
 	$(installFiles) $(filter %.mk %.xsd,$^) $(shareDir)/dws
 
 install::
-	cd $(srcDir)/src && python setup.py --quiet build \
+	cd $(srcDir)/src && $(PYTHON) setup.py --quiet build \
 		-b $(CURDIR)/build install --prefix=$(DESTDIR)$(PREFIX)
 
 install:: $(foreach shareItemDir,$(shareItemDirs),$(wildcard $(srcDir)/share/$(shareItemDir)/*))
