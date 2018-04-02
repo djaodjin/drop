@@ -285,12 +285,15 @@ def upload_log(s3_location, filename, logsuffix=None):
     if not logsuffix:
         meta = boto.utils.get_instance_metadata()
         logsuffix = meta['instance-id']
+        if logsuffix.startswith('i-'):
+            logsuffix = logsuffix[1:]
     conn = boto.connect_s3()
-    bucket = conn.get_bucket(s3_bucket)
+    bucket = conn.get_bucket(s3_bucket, validate=False)
+        # `validate=False` to avoid requiring `s3:GetBucket` permission.
     s3_key = boto.s3.key.Key(bucket)
     s3_key.name = as_keyname(
         filename, logsuffix=logsuffix, prefix=s3_prefix)
-    sys.stderr.write("Upload %s ... to %s/%s\n"
-        % (filename, s3_location, s3_key.name))
+    sys.stderr.write("Upload %s ... to s3://%s/%s\n"
+        % (filename, s3_bucket, s3_key.name))
     with open(filename, 'rb') as file_obj:
         s3_key.set_contents_from_file(file_obj, headers)
