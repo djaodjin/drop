@@ -31,7 +31,10 @@ if [ "X$packages" != "X" ] ; then
         echo "indexFile=$siteTop/reps/djaoapp/djaoapp.xml" >> $dirname/dws.mk
         echo "removeIndexFile=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
         pushd $dirname/reps/$dirname
-        /usr/bin/python ../drop/src/tero/__init__.py --default make recurse
+        cd drop
+        make install
+        cd ..
+        ../../bin/dws --default make recurse
         popd
         /usr/bin/chown -R djaoapp:djaoapp "$dirname"
     done
