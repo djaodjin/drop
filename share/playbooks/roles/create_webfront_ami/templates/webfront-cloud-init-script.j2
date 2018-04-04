@@ -14,8 +14,8 @@ rootDir=/var/www
 # Download and install packages that require authentication credentials
 /usr/bin/aws s3 cp s3://{{deployutils_bucket}}/identities/ami-web.ec2.internal / --recursive
 
-/usr/sbin/groupadd --gid 1001 djaoapp
-/usr/sbin/useradd --no-create-home --uid 1001 --gid 1001 djaoapp
+[ $(/usr/bin/getent group djaoapp) ] || /usr/sbin/groupadd --gid 1001 djaoapp
+[ $(/usr/bin/getent passwd djaoapp) ] || /usr/sbin/useradd --no-create-home --uid 1001 --gid 1001 djaoapp
 
 cd $rootDir
 packages=$(ls *.tar.bz2)
@@ -45,7 +45,7 @@ if [ "X$appname" == "X" ] ; then
     git clone {{remote_drop_repo}} ${siteTop}/reps/drop
 fi
 cd $siteTop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DdomainName={{domain_name}} -DwwwDomainName={{www_domain_name}} reps/drop/share/profiles/webfront.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{domain_name}} -DwwwDomainName={{www_domain_name}} reps/drop/share/profiles/webfront.xml
 
 
 # Ansible will be waiting for this server to respond
