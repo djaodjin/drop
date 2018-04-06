@@ -2296,9 +2296,11 @@ class PipInstallStep(InstallStep):
         site_packages = None
         pip_version = subprocess.check_output(
             [pip, '-V']).decode(DEFAULT_ENCODING)
-        look = re.match(r'pip [0-9\.]+ from (\S+)', pip_version)
+        look = re.match(r'pip [0-9\.b]+ from (\S+)', pip_version)
         if look:
             site_packages = look.group(1)
+        else:
+            raise Error("cannot extract site-packages from '%s'" % pip_version)
         admin = False
         noexecute = False
         if os.stat(site_packages).st_uid != os.getuid():

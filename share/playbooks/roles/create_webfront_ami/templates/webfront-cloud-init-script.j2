@@ -28,13 +28,12 @@ if [ "X$packages" != "X" ] ; then
         siteTop="$rootDir/$appname"
         virtualenv -p python3 --system-site-packages ${siteTop}
         echo "buildTop=$siteTop/build" > $dirname/dws.mk
-        echo "indexFile=$siteTop/reps/djaoapp/djaoapp.xml" >> $dirname/dws.mk
-        echo "removeIndexFile=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
-        pushd $dirname/reps/$dirname
-        cd drop
+        echo "remoteIndexFile=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
+        pushd $siteTop/reps/drop
         make install
-        cd ..
+        cd $siteTop/reps/$dirname
         ../../bin/dws --default make recurse
+        ../../bin/dws --default make install
         popd
         /usr/bin/chown -R djaoapp:djaoapp "$dirname"
     done
