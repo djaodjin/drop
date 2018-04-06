@@ -3,7 +3,7 @@
 - name: Wait for configuration of EC2 instance completed
   wait_for:
     delay: 540
-    host: "{{webfront_base.instances[0].public_ip}}"
+    host: "{{webfront_base.instances[0].private_dns_name}}"
     port: 80
     state: started
 

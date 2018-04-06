@@ -20,4 +20,6 @@
 # Turn on when debugging:
 #- lineinfile: "dest=group_vars/dynamic regexp='^webfront_base_device_id:' line='webfront_base_device_id: {{webfront_base.instances[0].id}}'"
 
-- debug: msg="Connect to the ec2 instance with ssh -i ~/.ssh/{{key_name}} fedora@{{webfront_base.instances[0].public_ip}}"
+# AMIs are created through the build bot in a security group
+# that is not accessible from the public Internet.
+- debug: msg="Connect to the ec2 instance with ssh -i ~/.ssh/{{key_name}} fedora@{{webfront_base.instances[0].private_dns_name}}"

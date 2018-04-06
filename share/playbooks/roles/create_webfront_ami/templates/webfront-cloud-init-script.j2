@@ -29,7 +29,7 @@ if [ "X$packages" != "X" ] ; then
         virtualenv -p python3 --system-site-packages ${siteTop}
         echo "installTop=$siteTop" > $dirname/dws.mk
         echo "srcTop=$siteTop/reps" >> $dirname/dws.mk
-        echo "remoteIndexFile=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
+        echo "remoteIndex=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
         pushd $siteTop/reps/drop
         make install
         cd $siteTop/reps/$dirname
