@@ -9,7 +9,7 @@ appname=""
 rootDir=/var/www
 
 # Install necessary public packages to bootstrap configuration
-/usr/bin/dnf -y install awscli python-virtualenv
+/usr/bin/dnf -y install awscli make python-virtualenv
 
 # Download and install packages that require authentication credentials
 /usr/bin/aws s3 cp s3://{{deployutils_bucket}}/identities/ami-web.ec2.internal / --recursive
@@ -27,7 +27,8 @@ if [ "X$packages" != "X" ] ; then
         appname="$dirname"
         siteTop="$rootDir/$appname"
         virtualenv -p python3 --system-site-packages ${siteTop}
-        echo "buildTop=$siteTop/build" > $dirname/dws.mk
+        echo "installTop=$siteTop" > $dirname/dws.mk
+        echo "srcTop=$siteTop/reps" >> $dirname/dws.mk
         echo "remoteIndexFile=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
         pushd $siteTop/reps/drop
         make install

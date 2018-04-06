@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2018, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,11 +28,14 @@
 
 .DEFAULT_GOAL 	:=	all
 
+buildTop        ?= $(installTop)/build
+etcDir          ?= $(installTop)/etc
+
 # names of variables as expected by autoconf-like tools
-SYSCONFDIR		:=  $(etcDir)
-PREFIX			:=  $(installTop)
-LOCALSTATEDIR	:=  $(PREFIX)/var
-DATAROOTDIR		:=	$(PREFIX)/share
+PREFIX          := $(installTop)
+SYSCONFDIR      := $(etcDir)
+LOCALSTATEDIR   := $(PREFIX)/var
+DATAROOTDIR     := $(PREFIX)/share
 
 # Paths to "normalized" prerequisites
 binBuildDir 	:= 	$(buildTop)/bin
@@ -42,13 +45,13 @@ libBuildDir		:=	$(buildTop)/lib
 shareBuildDir	:=	$(buildTop)/share
 
 # Paths to installed file, ready to be packaged
-# These are defined here (and not in suffix.mk) because we do not always 
+# These are defined here (and not in suffix.mk) because we do not always
 # want to include suffix.mk to avoid overriding contrib/ specifics rules.
 buildInstallDir	:= 	$(CURDIR)/install
 buildUsrLocalDir:=	$(buildInstallDir)/usr/local
 
 
-# We cannot initialize dbldpkg to $(binBuildDir)/dbldpkg, 
+# We cannot initialize dbldpkg to $(binBuildDir)/dbldpkg,
 # else the drop package cannot be built. See comments associated
 # to searchPath() in dws.py
 dbldpkg			:=	dbldpkg
@@ -74,12 +77,8 @@ XSLTPROC    :=	xsltproc -xinclude 		\
 dwsmk		:=	dws.mk
 projindex	:=	dws.xml
 
-# \note For some reason when a '\' is inserted in the following line in order
-#       to keep a maximum of 80 characters per line, the sed command:
-#           sed -e 's,$$(srcDir),$(srcDir),g'
-#       complains about an extra '\n' character.
-#srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(shell pwd)))
-srcDir		?=	$(subst $(realpath $(buildTop))/,$(srcTop)/,$(realpath $(CURDIR)))
+# realpath on an empty directory will return ''.
+srcDir		?=	$(subst $(if $(realpath $(buildTop)),$(realpath $(buildTop)),$(buildTop))/,$(srcTop)/,$(realpath $(CURDIR)))
 objDir		:=	$(subst $(srcTop),$(buildTop),$(srcDir))
 logDir		:=	$(subst $(srcTop),$(siteTop)/log,$(srcDir))
 
