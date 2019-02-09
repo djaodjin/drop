@@ -34,7 +34,7 @@
 	done ; \
 	echo $$config)
 
-srcDir        ?= $(abspath $(dir $(filter Makefile,$(MAKEFILE_LIST))))
+srcDir        ?= $(abspath $(dir $(filter %Makefile,$(MAKEFILE_LIST))))
 installTop    ?= $(VIRTUAL_ENV)
 binDir        ?= $(installTop)/bin
 
