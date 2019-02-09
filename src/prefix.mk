@@ -67,6 +67,7 @@ JAR         :=	jar
 JAVAC       :=	javac
 LN_S        :=	/bin/ln -fs
 MXMLC       :=	mxmlc
+PYTHON      := $(binDir)/python
 SED         :=	sed
 SEMILLA     :=	semilla --themeDir $(themeDir)
 XSLTPROC    :=	xsltproc -xinclude 		\

@@ -124,7 +124,7 @@ install:: $(resources)
 # We set the actual version in the script here (through "make").
 # "make install" will copy the script in the bin directory.
 %: %.py
-	$(SED) -e "s,\$${libDir},$(libDir),g" -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
+	$(SED) -e "s,^#!/usr/bin/env python,#!$(PYTHON),g" -e "s,\$${libDir},$(libDir),g" -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
 	chmod 755 $@
 
 %: %.sh

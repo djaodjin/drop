@@ -16,6 +16,19 @@
 
 - lineinfile: "dest=group_vars/dynamic regexp='^vpc_id:' line='vpc_id: {{vpc_id}}'"
 
+- name: Create subnet for app containers servers
+  ec2_vpc_subnet:
+    state: present
+    region: "{{aws_region}}"
+    vpc_id: "{{vpc_id}}"
+    az: "{{aws_zone}}"
+    cidr: "{{app_subnet_cidr}}"
+    resource_tags: { "Name":"{{tag_prefix}} App containers Subnet" }
+  register: app_subnet
+
+- set_fact:
+    app_subnet_id: "{{app_subnet.subnet.id}}"
+
 - name: Create subnet for database servers
   ec2_vpc_subnet:
     state: present

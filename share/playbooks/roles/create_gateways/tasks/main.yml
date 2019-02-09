@@ -43,6 +43,7 @@
     tags:
       Name: Internal
     subnets:
+      - "{{ app_subnet_id }}"
       - "{{ dbs_subnet_id }}"
     routes:
       - dest: 0.0.0.0/0

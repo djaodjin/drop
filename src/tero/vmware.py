@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,6 +21,7 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import logging, os, re, shutil, subprocess, sys
 
@@ -88,13 +89,13 @@ class Backend(object):
                              stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT,
                              close_fds=True)
-        line = proc.stdout.readline()
+        line = proc.stdout.readline().decode('utf-8')
         while line != '':
             look = re.match(r'.*%s\.vmwarevm' % vm_name, line)
             if look != None:
                 vm_path = line
                 break
-            line = proc.stdout.readline()
+            line = proc.stdout.readline().decode('utf-8')
         proc.wait()
         if proc.returncode is not None and proc.returncode != 0:
             raise RuntimeError(
@@ -126,13 +127,13 @@ class Backend(object):
                              stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT,
                              close_fds=True)
-        line = cmd.stdout.readline()
+        line = cmd.stdout.readline().decode('utf-8')
         while line != '':
             look = re.match(r'.*%s\.vmwarevm' % vm_name, line)
             if look != None:
                 vm_path = line.strip()
                 break
-            line = cmd.stdout.readline()
+            line = cmd.stdout.readline().decode('utf-8')
         cmd.wait()
         if cmd.returncode != 0:
             raise subprocess.CalledProcessError(cmd.returncode, cmdline)
@@ -269,12 +270,12 @@ def ping_live_ip():
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT,
                            close_fds=True)
-    line = cmd.stdout.readline()
+    line = cmd.stdout.readline().decode('utf-8')
     while line != '':
         look = re.match(r'Nmap scan report for (\d+\.\d+\.\d+\.\d+)', line)
         if look != None:
             ips += [look.group(1)]
-        line = cmd.stdout.readline()
+        line = cmd.stdout.readline().decode('utf-8')
     return ips
 
 
@@ -317,7 +318,7 @@ def get_ip_by_mac(probing=False):
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT,
                                  close_fds=True)
-            line = cmd.stdout.readline()
+            line = cmd.stdout.readline().decode('utf-8')
             while line != '':
                 matched = \
                 r'.*\(%s\) at (\S+):(\S+):(\S+):(\S+):(\S+):(\S+) on vmnet8' \
@@ -334,7 +335,7 @@ def get_ip_by_mac(probing=False):
                         mac1, mac2, mac3, mac4, mac5)
                     ip_by_mac[mac] = ipaddr
                     break
-                line = cmd.stdout.readline()
+                line = cmd.stdout.readline().decode('utf-8')
             cmd.wait()
             # We don't check the return code here because if the ip address
             # is not in use, arp would return a positive exit code.
@@ -375,7 +376,7 @@ def list_vms():
     cmd = subprocess.Popen(cmdline,
                          stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT)
-    line = cmd.stdout.readline()
+    line = cmd.stdout.readline().decode('utf-8')
     while line != '':
         look = re.match(r'(.*)\.vmx', line)
         if look != None:
@@ -401,7 +402,7 @@ def list_vms():
                 VM_LIST += [(vm_name, ip_by_mac[mac], mac)]
             else:
                 VM_LIST += [(vm_name, 'unknown', mac)]
-        line = cmd.stdout.readline()
+        line = cmd.stdout.readline().decode('utf-8')
     cmd.wait()
     if cmd.returncode != 0:
         raise subprocess.CalledProcessError(cmd.returncode, cmdline)

@@ -1,10 +1,18 @@
 # Create and configure an EC2 instance as a base for web server AMIs.
+#
+# When there is more than one vpc, Ansible will fail with an error
+# "groupId cannot be empty" when `vpc_subnet_id` is not specified.
+# This also requires to add ec2:DescribeSubnets as Ansible will
+# try to derive the VPC from the subnet (`vpc_id = vpc.get_all_subnets(
+# subnet_ids=[vpc_subnet_id])[0].vpc_id`). Unfortunately there are no `vpc_id`
+# option to module ec2.
 
 - name: Create EC2 instance to setup front-end web server
   local_action:
     module: ec2
     key_name: "{{key_name}}"
     group: "{{courtyard}}"
+    vpc_subnet_id: "{{web_subnet_id}}"
     instance_profile_name: "{{courtyard}}-profile"
     instance_type: t2.micro
     image: "{{ami_id}}"

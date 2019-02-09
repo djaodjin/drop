@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,18 +34,16 @@
 	done ; \
 	echo $$config)
 
-srcTop        ?= ..
+srcDir        ?= $(abspath $(dir $(filter Makefile,$(MAKEFILE_LIST))))
 installTop    ?= $(VIRTUAL_ENV)
 binDir        ?= $(installTop)/bin
 
-include $(srcTop)/drop/src/prefix.mk
-
-PYTHON        := $(binDir)/python
+include $(srcDir)/src/prefix.mk
 
 shareItemDirs ?= $(shell cd $(srcDir)/share && find playbooks profiles -type d)
 
 scripts := dbldpkg dcopylogs dlogfilt dregress dservices dstamp \
-    dtero dtimeout dws duploades drundocker
+    dtero dtimeout dws duploades drundocker dissues
 manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \
