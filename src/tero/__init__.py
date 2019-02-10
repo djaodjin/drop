@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -2638,6 +2638,13 @@ class GitRepository(Repository):
             if not prefix.endswith(':') and not prefix.endswith(os.sep):
                 prefix = prefix + os.sep
             name = os.path.normpath(self.url).replace(prefix, '')
+            if name == self.url:
+                # The url is not inside `remoteSrcTop`,
+                # let's try `remoteSiteTop`.
+                prefix = context.value('remoteSiteTop')
+                if not prefix.endswith(':') and not prefix.endswith(os.sep):
+                    prefix = prefix + os.sep
+                name = os.path.normpath(self.url).replace(prefix, '')
         if name.endswith('.git'):
             name = name[:-4]
         local = context.src_dir(name)
