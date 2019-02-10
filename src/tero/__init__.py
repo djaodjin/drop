@@ -427,7 +427,7 @@ class Context(object):
                 if name == filtered:
                     # The url is not inside `remoteSrcTop`,
                     # let's try `remoteSiteTop`.
-                    prefix = context.value('remoteSiteTop')
+                    prefix = self.value('remoteSiteTop')
                     if not prefix.endswith(':') and not prefix.endswith(os.sep):
                         prefix = prefix + os.sep
                     name = os.path.normpath(filtered).replace(prefix, '')
