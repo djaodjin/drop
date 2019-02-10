@@ -423,8 +423,15 @@ class Context(object):
                 prefix = self.value('remoteSrcTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
-                self._index_file = \
-                    self.src_dir(os.path.normpath(filtered).replace(prefix, ''))
+                name = os.path.normpath(filtered).replace(prefix, '')
+                if name == filtered:
+                    # The url is not inside `remoteSrcTop`,
+                    # let's try `remoteSiteTop`.
+                    prefix = context.value('remoteSiteTop')
+                    if not prefix.endswith(':') and not prefix.endswith(os.sep):
+                        prefix = prefix + os.sep
+                    name = os.path.normpath(filtered).replace(prefix, '')
+                self._index_file = self.src_dir(name)
             else:
                 self._index_file = self.local_dir(self.value('remoteIndex'))
         return self._index_file
