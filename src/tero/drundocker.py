@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -32,21 +32,11 @@ import argparse, logging, os, re, time
 
 import boto3, paramiko, six
 from botocore.exceptions import ClientError
-from Crypto.PublicKey import RSA
 
 from . import shell_command
 
 LOGGER = logging.getLogger()
 DEFAULT_REGION = 'us-west-2'
-
-def pubkey(keypair):
-    key = RSA.importKey(keypair['KeyMaterial'])
-    return key.publickey().exportKey('OpenSSH')
-
-
-def privatekey(keypair):
-    key = RSA.importKey(keypair['KeyMaterial'])
-    return key.exportKey('PEM')
 
 
 def mkdirp_remote(sftp, path):
