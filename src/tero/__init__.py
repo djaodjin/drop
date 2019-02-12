@@ -4545,17 +4545,13 @@ def link_pat_path(name_pat, absolute_path, subdir, target=None):
                 subpath, 'lib%s.so' % clean_pat))
     if link_name is None:
         link_name, suffix = link_build_name(clean_pat, subdir, target)
-        if absolute_path and suffix and absolute_path.endswith(suffix):
-            # Interestingly absolute_path[:-0] returns an empty string.
-            link_path = absolute_path[:-len(suffix)]
-    # create links
+    # create links. at this point link_path and link_name are absolute.
     complete = True
     if link_path:
-        if not os.path.isfile(link_name):
+        if not os.path.exists(link_name):
             link_context(link_path, link_name)
-    else:
-        if not os.path.isfile(link_name):
-            complete = False
+    elif not os.path.isfile(link_name):
+        complete = False
     return complete
 
 
