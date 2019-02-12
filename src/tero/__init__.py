@@ -3972,45 +3972,55 @@ def find_git(context):
 
 
 def find_npm(context):
-    version = '0.10.35'
-    build_npm = os.path.join(context.value('buildTop'), 'bin', 'npm')
-    if not os.path.lexists(build_npm):
-        dbindex = IndexProjects(context, """<?xml version="1.0" ?>
-<projects>
-  <project name="nvm">
-    <repository>
-      <sync>https://github.com/creationix/nvm.git</sync>
-      <shell>
-export NVM_DIR=${buildTop}
-. ${srcTop}/nvm/nvm.sh
-nvm install %s
-      </shell>
-    </repository>
-  </project>
-</projects>
-""" % version)
-        executables, _, complete = find_bin(
-            [('node', None), ('npm', None)],
-            context.search_path('bin'), context.value('buildTop'))
-        if len(executables) == 0 or not executables[0][1]:
-            validate_controls(
-                BuildGenerator(['nvm'], [], force_update=True), dbindex)
-            prev = os.getcwd()
-            os.chdir(context.value('binDir'))
-            node = os.path.join(context.value('binDir'), 'node')
-            if not os.path.exists(node):
-                os.symlink('%s/v%s/bin/node' % (
-                    context.value('buildTop'), version), 'node')
-            npm = os.path.join(context.value('binDir'), 'npm')
-            if not os.path.exists(npm):
-                os.symlink('%s/v%s/bin/npm' % (
-                    context.value('buildTop'), version), 'npm')
-            os.chdir(prev)
+    try:
+        node_package = 'nodejs'
+        find_boot_bin('(node).*', package=node_package, context=context)
+        npm_package = 'npm'
+        find_boot_bin('(npm).*', package=npm_package, context=context)
+    except Exception:
+        # At this point major distributions have nodejs/npm packaged.
+        # We keep this code as a fallback.
+        log_info("warning: couldn't find node or npm as a native package,"\
+            " install from nvm...")
+        version = '6.16.0'
+        build_npm = os.path.join(context.value('buildTop'), 'bin', 'npm')
+        if not os.path.lexists(build_npm):
+            dbindex = IndexProjects(context, """<?xml version="1.0" ?>
+    <projects>
+      <project name="nvm">
+        <repository>
+          <sync>https://github.com/creationix/nvm.git</sync>
+          <shell>
+    export NVM_DIR=${buildTop}
+    . ${srcTop}/nvm/nvm.sh
+    nvm install %s
+          </shell>
+        </repository>
+      </project>
+    </projects>
+    """ % version)
             executables, _, complete = find_bin(
                 [('node', None), ('npm', None)],
                 context.search_path('bin'), context.value('buildTop'))
-        for name, absolute_path in executables:
-            link_pat_path(name, absolute_path, 'bin')
+            if len(executables) == 0 or not executables[0][1]:
+                validate_controls(
+                    BuildGenerator(['nvm'], [], force_update=True), dbindex)
+                prev = os.getcwd()
+                os.chdir(context.value('binDir'))
+                node = os.path.join(context.value('binDir'), 'node')
+                if not os.path.exists(node):
+                    os.symlink('%s/v%s/bin/node' % (
+                        context.value('buildTop'), version), 'node')
+                npm = os.path.join(context.value('binDir'), 'npm')
+                if not os.path.exists(npm):
+                    os.symlink('%s/v%s/bin/npm' % (
+                        context.value('buildTop'), version), 'npm')
+                os.chdir(prev)
+                executables, _, complete = find_bin(
+                    [('node', None), ('npm', None)],
+                    context.search_path('bin'), context.value('buildTop'))
+            for name, absolute_path in executables:
+                link_pat_path(name, absolute_path, 'bin')
     return os.path.join(context.bin_build_dir(), 'npm')
 
 
