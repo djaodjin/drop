@@ -2659,7 +2659,14 @@ class GitRepository(Repository):
         cwd = os.getcwd()
         git_executable = find_git(context)
         if not os.path.exists(os.path.join(local, '.git')):
-            shell_command([git_executable, 'clone', self.url, local])
+            try:
+                shell_command([git_executable, 'clone', self.url, local])
+            except Error:
+                # This might be a repo outside the remoteSrcTop. We thus
+                # try remoteSiteTop.
+                self.url = os.path.join(
+                    context.value('remoteSiteTop'), name + '.git')
+                shell_command([git_executable, 'clone', self.url, local])
             updated = True
         else:
             os.chdir(local)
@@ -4545,6 +4552,10 @@ def link_pat_path(name_pat, absolute_path, subdir, target=None):
                 subpath, 'lib%s.so' % clean_pat))
     if link_name is None:
         link_name, suffix = link_build_name(clean_pat, subdir, target)
+        if absolute_path and suffix and absolute_path.endswith(suffix):
+            if os.path.isdir(absolute_path[:-len(suffix)]):
+                # Interestingly absolute_path[:-0] returns an empty string.
+                link_path = absolute_path[:-len(suffix)]
     # create links. at this point link_path and link_name are absolute.
     complete = True
     if link_path:
