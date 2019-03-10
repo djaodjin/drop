@@ -443,7 +443,7 @@ class JsonEventParser(object):
             for key, convert in six.iteritems(field_types):
                 if key in event:
                     event[key] = convert(event[key])
-        except json.JSONDecodeError:
+        except ValueError:
             event = None
         return event
 
