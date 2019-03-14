@@ -69,10 +69,10 @@ except ImportError:
     from cStringIO import StringIO
 try:
     from urllib.request import Request, urlopen
-    from urllib.parse import urlparse
+    from urllib.parse import urlparse, urlunparse
 except ImportError:
     from urllib2 import Request, urlopen
-    from urlparse import urlparse
+    from urlparse import urlparse, urlunparse
 
 if PY3:
     def _iteritems(dct, **kw):
@@ -83,6 +83,11 @@ else:
 
 def _urlparse(location):
     return urlparse(location)
+
+
+def _urlunparse(parts):
+    return urlunparse(parts)
+
 
 def prompt(message):
     '''If the script is run through a ssh command, the message would not
@@ -420,17 +425,22 @@ class Context(object):
         if not hasattr(self, '_index_file'):
             filtered = filter_rep_ext(self.value('remoteIndex'))
             if filtered != self.value('remoteIndex'):
+                url_parts = _urlparse(filtered)
+                normallized_url = _urlunparse((
+                    url_parts.scheme, url_parts.netloc,
+                    os.path.normpath(url_parts.path), url_parts.params,
+                    url_parts.query, url_parts.fragment))
                 prefix = self.value('remoteSrcTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
-                name = os.path.normpath(filtered).replace(prefix, '')
+                name = normallized_url.replace(prefix, '')
                 if name == filtered:
                     # The url is not inside `remoteSrcTop`,
                     # let's try `remoteSiteTop`.
                     prefix = self.value('remoteSiteTop')
                     if not prefix.endswith(':') and not prefix.endswith(os.sep):
                         prefix = prefix + os.sep
-                    name = os.path.normpath(filtered).replace(prefix, '')
+                    name = normallized_url.replace(prefix, '')
                 self._index_file = self.src_dir(name)
             else:
                 self._index_file = self.local_dir(self.value('remoteIndex'))
@@ -2641,17 +2651,21 @@ class GitRepository(Repository):
         if not ':' in self.url and context:
             self.url = context.remote_src_path(self.url)
         if not name:
+            url_parts = _urlparse(self.url)
+            normallized_url = _urlunparse((url_parts.scheme, url_parts.netloc,
+                os.path.normpath(url_parts.path), url_parts.params,
+                url_parts.query, url_parts.fragment))
             prefix = context.value('remoteSrcTop')
             if not prefix.endswith(':') and not prefix.endswith(os.sep):
                 prefix = prefix + os.sep
-            name = os.path.normpath(self.url).replace(prefix, '')
-            if name == self.url:
+            name = normallized_url.replace(prefix, '')
+            if name == normallized_url:
                 # The url is not inside `remoteSrcTop`,
                 # let's try `remoteSiteTop`.
                 prefix = context.value('remoteSiteTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
-                name = os.path.normpath(self.url).replace(prefix, '')
+                name = normallized_url.replace(prefix, '')
         if name.endswith('.git'):
             name = name[:-4]
         local = context.src_dir(name)
