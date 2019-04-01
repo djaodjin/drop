@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,7 +24,7 @@
 
 import os, re, six
 
-from tero import APT_DISTRIBS, DNF_DISTRIBS, setup
+from tero import APT_DISTRIBS, REDHAT_DISTRIBS, setup
 
 
 class nginxSetup(setup.SetupTemplate):
@@ -291,7 +291,7 @@ server {
         if dist_host in APT_DISTRIBS:
             return os.path.join(
                 sysconfdir, 'nginx', 'sites-available', domain)
-        elif dist_host in DNF_DISTRIBS:
+        elif dist_host in REDHAT_DISTRIBS:
             return os.path.join(
                 sysconfdir, 'nginx', 'conf.d', domain + '.conf')
 

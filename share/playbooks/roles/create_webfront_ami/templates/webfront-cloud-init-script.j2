@@ -23,11 +23,12 @@ fi
 [ $(/usr/bin/getent passwd djaoapp) ] || /usr/sbin/useradd --no-create-home --uid 1001 --gid 1001 djaoapp
 
 cd $rootDir
-packages=$(ls *.tar.gz *.tar.bz2)
+shopt -s nullglob
+packages=$(echo "*.tar.gz *.tar.bz2")
 if [ "X$packages" != "X" ] ; then
     for package in ${packages} ; do
-        [ $package =~ *.tar.gz ] || /usr/bin/tar zxf $package
-        [ $package =~ *.tar.bz2 ] || /usr/bin/tar jxf $package
+        [[ $package == *.tar.gz ]] && /usr/bin/tar zxf $package
+        [[ $package == *.tar.bz2 ]] && /usr/bin/tar jxf $package
     done
     for dirname in $(find . -mindepth 1 -maxdepth 1 -type d | sed -e "s|^\./||") ; do
         siteTop="$rootDir/$dirname"

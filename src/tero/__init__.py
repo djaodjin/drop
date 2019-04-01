@@ -147,6 +147,7 @@ APT_DISTRIBS = ['Debian', 'Ubuntu']
 DNF_DISTRIBS = ['Fedora']
 PORT_DISTRIBS = ['Darwin']
 YUM_DISTRIBS = ['CentOS']
+REDHAT_DISTRIBS = DNF_DISTRIBS + YUM_DISTRIBS
 
 # Real uid and gid when the -u,--user and/or -g,--group command
 # line arguments are used.

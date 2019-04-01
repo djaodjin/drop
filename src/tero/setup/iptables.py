@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,7 +24,7 @@
 
 import os, six, stat
 
-from tero import APT_DISTRIBS, DNF_DISTRIBS, setup
+from tero import APT_DISTRIBS, REDHAT_DISTRIBS, setup
 
 
 class iptablesSetup(setup.SetupTemplate):
@@ -39,7 +39,7 @@ class iptablesSetup(setup.SetupTemplate):
     def conf_path(cls, dist_host, ip_type=IPV4, sysconfdir=None):
         if dist_host in APT_DISTRIBS:
             return os.path.join(sysconfdir, '%stables.conf' % ip_type)
-        elif dist_host in DNF_DISTRIBS:
+        elif dist_host in REDHAT_DISTRIBS:
             return os.path.join(sysconfdir, 'sysconfig', '%stables' % ip_type)
 
     def run(self, context):
