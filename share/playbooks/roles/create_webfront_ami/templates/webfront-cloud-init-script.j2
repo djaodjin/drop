@@ -5,14 +5,15 @@
 set -x
 set -e
 
-appname=""
 rootDir=/var/www
+VIRTUALENV_RUN="virtualenv --system-site-packages"
 
 # Install necessary public packages to bootstrap configuration
 if [ -f /usr/bin/dnf ]; then
     /usr/bin/dnf -y install awscli make python-virtualenv
+    VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
 else
-    /usr/bin/yum -y install awscli make python-virtualenv
+    /usr/bin/yum -y install awscli bzip2 make python-virtualenv
 fi
 
 # Download and install packages that require authentication credentials
@@ -22,15 +23,15 @@ fi
 [ $(/usr/bin/getent passwd djaoapp) ] || /usr/sbin/useradd --no-create-home --uid 1001 --gid 1001 djaoapp
 
 cd $rootDir
-packages=$(ls *.tar.bz2)
+packages=$(ls *.tar.gz *.tar.bz2)
 if [ "X$packages" != "X" ] ; then
     for package in ${packages} ; do
-        /usr/bin/tar jxf $package
+        [ $package =~ *.tar.gz ] || /usr/bin/tar zxf $package
+        [ $package =~ *.tar.bz2 ] || /usr/bin/tar jxf $package
     done
     for dirname in $(find . -mindepth 1 -maxdepth 1 -type d | sed -e "s|^\./||") ; do
-        appname="$dirname"
-        siteTop="$rootDir/$appname"
-        virtualenv -p python3 --system-site-packages ${siteTop}
+        siteTop="$rootDir/$dirname"
+        $VIRTUALENV_RUN ${siteTop}
         echo "installTop=$siteTop" > $dirname/dws.mk
         echo "srcTop=$siteTop/reps" >> $dirname/dws.mk
         echo "remoteIndex=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
@@ -42,15 +43,14 @@ if [ "X$packages" != "X" ] ; then
         popd
         /usr/bin/chown -R djaoapp:djaoapp "$dirname"
     done
-fi
-
-# Install and configure publicly available packages
-if [ "X$appname" == "X" ] ; then
+else
+    # defaults to downloading drop so we can install the webfront.xml profile.
     siteTop="$rootDir"
     mkdir -p ${siteTop}/reps
-    virtualenv -p python3 --system-site-packages ${siteTop}
+    $VIRTUALENV_RUN ${siteTop}
     git clone {{remote_drop_repo}} ${siteTop}/reps/drop
 fi
+
 cd $siteTop
 bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DwwwDomainName={{www_domain_name}} reps/drop/share/profiles/webfront.xml
 

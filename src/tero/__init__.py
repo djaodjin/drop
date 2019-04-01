@@ -144,8 +144,9 @@ INSTALL_DIRS = ['bin', 'include', 'lib', 'libexec', 'etc', 'share']
 
 # distributions per native package managers
 APT_DISTRIBS = ['Debian', 'Ubuntu']
-DNF_DISTRIBS = ['Fedora', 'CentOS']
+DNF_DISTRIBS = ['Fedora']
 PORT_DISTRIBS = ['Darwin']
+YUM_DISTRIBS = ['CentOS']
 
 # Real uid and gid when the -u,--user and/or -g,--group command
 # line arguments are used.
@@ -1519,7 +1520,7 @@ class HostPlatform(Variable):
                     version = open(version_path)
                     line = version.readline()
                     while line != '':
-                        for dist in APT_DISTRIBS + DNF_DISTRIBS:
+                        for dist in APT_DISTRIBS + DNF_DISTRIBS + YUM_DISTRIBS:
                             look = re.match('.*' + dist + '.*', line)
                             if look:
                                 self.value = dist
@@ -2391,13 +2392,6 @@ class DnfInstallStep(InstallStep):
 
     def install(self, managed, context):
         if managed:
-            # XXX Might not be the best place to do this,
-            # yet CentOS does not include basic tools such as fail2ban.
-            if context.host() == 'CentOS' and not os.path.exists(
-                '/etc/dnf.repos.d/epel.repo'):
-                shell_command(['rpm', '-Uvh',
-'https://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm'],
-                admin=True, noexecute=context.nonative)
             update_cmd, install_cmd = self.install_commands(managed, context)
             log_info("update, then run: %s" % ' '.join(install_cmd[0]),
                 context=context)
@@ -2418,6 +2412,64 @@ class DnfInstallStep(InstallStep):
         unmanaged = []
         try:
             filtered = shell_command(['dnf', 'info'] + self.managed,
+                pat=r'Name\s*:\s*(\S+)')
+            if filtered:
+                info = self.managed
+            else:
+                unmanaged = self.managed
+        except Error:
+            unmanaged = self.managed
+        return info, unmanaged
+
+
+class YumInstallStep(InstallStep):
+    ''' Install a prerequisite to a project through yum (Redhat-based).'''
+
+    def __init__(self, project_name, alt_names=None,
+                 versions=None, target=None):
+        super(YumInstallStep, self).__init__(project_name, alt_names=alt_names,
+            versions=versions, target=target)
+        self.priority = Step.install_native
+
+    @staticmethod
+    def install_commands(managed, context):
+        if managed:
+            admin = True
+            noexecute = context.nonative
+            return [
+                (['yum', '-y', 'update'], admin, noexecute),
+                (['yum', '-y', 'install'] + managed, admin, noexecute)]
+        return []
+
+    def install(self, managed, context):
+        if managed:
+            # XXX Might not be the best place to do this,
+            # yet CentOS does not include basic tools such as fail2ban.
+            if context.host() == 'CentOS' and not os.path.exists(
+                '/etc/yum.repos.d/epel.repo'):
+                shell_command(['rpm', '-Uvh',
+'https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm'],
+                admin=True, noexecute=context.nonative)
+            update_cmd, install_cmd = self.install_commands(managed, context)
+            log_info("update, then run: %s" % ' '.join(install_cmd[0]),
+                context=context)
+            shell_command(update_cmd[0],
+                admin=update_cmd[1], noexecute=update_cmd[2])
+            filtered = shell_command(install_cmd[0],
+                admin=install_cmd[1], noexecute=install_cmd[2],
+                pat='No package (.*) available')
+            if filtered:
+                look = re.match('No package (.*) available', filtered[0])
+                if look:
+                    unmanaged = look.group(1).split(' ')
+                    if unmanaged:
+                        raise Error("yum cannot install " + ' '.join(unmanaged))
+
+    def info(self):
+        info = []
+        unmanaged = []
+        try:
+            filtered = shell_command(['yum', 'info'] + self.managed,
                 pat=r'Name\s*:\s*(\S+)')
             if filtered:
                 info = self.managed
@@ -4047,7 +4099,7 @@ def find_npm(context):
 
 def find_pip(context):
     pip_package = None
-    if context.host() in DNF_DISTRIBS:
+    if context.host() in DNF_DISTRIBS + YUM_DISTRIBS:
         pip_package = 'python-pip'
     find_boot_bin('(pip).*', package=pip_package, context=context)
     return os.path.join(context.bin_build_dir(), 'pip')
@@ -4258,6 +4310,8 @@ def create_managed(project_name, versions=None, target=None):
         install_step = MacPortInstallStep(project_name, target=target)
     elif CONTEXT.host() in DNF_DISTRIBS:
         install_step = DnfInstallStep(project_name, target=target)
+    elif CONTEXT.host() in YUM_DISTRIBS:
+        install_step = YumInstallStep(project_name, target=target)
     else:
         install_step = None
     return install_step
@@ -4268,7 +4322,7 @@ def create_package_file(project_name, filenames):
         install_step = DpkgInstallStep(project_name, alt_names=filenames)
     elif CONTEXT.host() in PORT_DISTRIBS:
         install_step = DarwinInstallStep(project_name, alt_names=filenames)
-    elif CONTEXT.host() in DNF_DISTRIBS:
+    elif CONTEXT.host() in DNF_DISTRIBS + YUM_DISTRIBS:
         install_step = RpmInstallStep(project_name, alt_names=filenames)
     else:
         install_step = None
