@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# configure a stock Fedora to serve as a front-end web reverse proxy.
+# configure a stock CentOS or Fedora to serve as a session manager proxy.
 
 set -x
 set -e
@@ -9,7 +9,11 @@ appname=""
 rootDir=/var/www
 
 # Install necessary public packages to bootstrap configuration
-/usr/bin/dnf -y install awscli make python-virtualenv
+if [ -f /usr/bin/dnf ]; then
+    /usr/bin/dnf -y install awscli make python-virtualenv
+else
+    /usr/bin/yum -y install awscli make python-virtualenv
+fi
 
 # Download and install packages that require authentication credentials
 /usr/bin/aws s3 cp s3://{{deployutils_bucket}}/identities/ami-web.ec2.internal / --recursive
@@ -48,7 +52,7 @@ if [ "X$appname" == "X" ] ; then
     git clone {{remote_drop_repo}} ${siteTop}/reps/drop
 fi
 cd $siteTop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{domain_name}} -DwwwDomainName={{www_domain_name}} reps/drop/share/profiles/webfront.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DwwwDomainName={{www_domain_name}} reps/drop/share/profiles/webfront.xml
 
 
 # Ansible will be waiting for this server to respond
