@@ -44,6 +44,58 @@ if [ "X$packages" != "X" ] ; then
         popd
         /usr/bin/chown -R djaoapp:djaoapp "$dirname"
     done
+    siteTop=${rootDir}/djaoapp
+    if [ -d ${siteTop} ] ; then
+        # Install djagent
+        cd ${siteTop}/reps/djagent
+        ../../bin/dws --default make install
+        echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djagent
+        echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djagent
+        echo "QUEUE_URL=" >> ${siteTop}/etc/sysconfig/djagent
+        chmod 600 ${siteTop}/etc/sysconfig/djagent
+        chown djaoapp:djaoapp ${siteTop}/etc/sysconfig/djagent
+        cp ${siteTop}/etc/systemd/system/djagent.service /usr/lib/systemd/system
+        ../../bin/dws --default make install-selinux
+
+        # Configure djaoapp
+        echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djaoapp
+        echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djaoapp
+        chmod 600 ${siteTop}/etc/sysconfig/djaoapp
+        chown djaoapp:djaoapp ${siteTop}/etc/sysconfig/djaoapp
+        cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
+
+        # Rewrite nginx config file to avoid redirects loops because no https
+        [ ! -f /etc/nginx/conf.d/djaoapp.com.conf ] || rm -f /etc/nginx/conf.d/djaoapp.com.conf
+        cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
+        restorecon -rvF  ${siteTop}/reps/djaoapp/htdocs
+        cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf~
+        head -n 37 /etc/nginx/nginx.conf~ > /etc/nginx/nginx.conf
+        cat << EOF >> /etc/nginx/nginx.conf
+    upstream proxy_djaoapp {
+        server  127.0.0.1:8000;
+    }
+
+    server {
+        listen       80 default_server;
+        listen       [::]:80 default_server;
+        server_name  _;
+        root         /var/www/djaoapp/reps/djaoapp/htdocs;
+
+        location / {
+            try_files \\$uri/index.html \\$uri.html \\$uri @forward_to_djaoapp;
+        }
+
+        location @forward_to_djaoapp {
+            proxy_pass    http://proxy_djaoapp;
+            include       /etc/nginx/proxy_params;
+        }
+EOF
+        tail -42 /etc/nginx/nginx.conf~ >> /etc/nginx/nginx.conf
+        /usr/bin/systemctl enable djagent
+        /usr/bin/systemctl enable djaoapp
+        /usr/bin/systemctl start djagent
+        /usr/bin/systemctl start djaoapp
+    fi
 else
     # defaults to downloading drop so we can install the webfront.xml profile.
     siteTop="$rootDir"
@@ -58,5 +110,4 @@ bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}
 
 # Ansible will be waiting for this server to respond
 # before it continues with registering the AMI.
-echo "DONE" > index.html
-#/usr/bin/python3 -m http.server 80
+/usr/bin/systemctl restart nginx
