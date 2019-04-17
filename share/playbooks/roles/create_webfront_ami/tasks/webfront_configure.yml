@@ -25,8 +25,10 @@
 - set_fact:
     webfront_base_device_id: "{{webfront_base.instances[0].id}}"
 
-# Turn on when debugging:
-#- lineinfile: "dest=group_vars/dynamic regexp='^webfront_base_device_id:' line='webfront_base_device_id: {{webfront_base.instances[0].id}}'"
+# Writes the instance id so we can restart from the AMI creation phase in case
+# the wait loop times out before the instance is fully configured.
+- lineinfile: "dest=group_vars/dynamic regexp='^webfront_base_device_id:' line='webfront_base_device_id: {{webfront_base.instances[0].id}}'"
+- lineinfile: "dest=group_vars/dynamic regexp='^webfront_base_private_dns_name:' line='webfront_base_device_id: {{webfront_base.instances[0].private_dns_name}}'"
 
 # AMIs are created through the build bot in a security group
 # that is not accessible from the public Internet.

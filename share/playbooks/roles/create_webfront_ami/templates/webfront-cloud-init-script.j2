@@ -74,6 +74,10 @@ if [ -d ${siteTop} ] ; then
     chmod 600 ${siteTop}/etc/sysconfig/djaoapp
     chown djaoapp:djaoapp ${siteTop}/etc/sysconfig/djaoapp
     cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
+    # We make an initial sqlite3 database so the server renders a page
+    # instead of a 500 error when the AMI just booted with no configuration.
+    cd ${siteTop}/reps/djaoapp
+    ../../bin/python manage.py migrate --run-syncdb
 
     # Rewrite nginx config file to avoid redirects loops because no https
     [ ! -f /etc/nginx/conf.d/djaoapp.com.conf ] || rm -f /etc/nginx/conf.d/djaoapp.com.conf
@@ -93,7 +97,7 @@ if [ -d ${siteTop} ] ; then
         root         /var/www/djaoapp/reps/djaoapp/htdocs;
 
         location / {
-            try_files \\$uri/index.html \\$uri.html \\$uri @forward_to_djaoapp;
+            try_files \$uri/index.html \$uri.html \$uri @forward_to_djaoapp;
         }
 
         location @forward_to_djaoapp {
