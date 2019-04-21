@@ -140,7 +140,7 @@ def datetime_hook(json_dict):
                 json_dict[key] = json_dict[key].replace(tzinfo=utc)
         except:
             LOGGER.warning("%s: cannot convert '%s' to a datetime object." % (
-                key, value)
+                key, value))
     return json_dict
 
 
