@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,16 +21,16 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 from __future__ import unicode_literals
 
+import logging
 import gzip, itertools, json, re, os, os.path, sys, time
 from datetime import tzinfo, timedelta, datetime
 
 import boto, six
 from pytz import utc
 
-
+LOGGER = logging.getLogger(__name__)
 BOTO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 
@@ -139,7 +139,7 @@ def datetime_hook(json_dict):
             if json_dict[key].tzinfo is None:
                 json_dict[key] = json_dict[key].replace(tzinfo=utc)
         except:
-            pass
+            LOGGER.warning("cannot convert '%s' to a datetime object.")
     return json_dict
 
 
