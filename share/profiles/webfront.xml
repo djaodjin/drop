@@ -110,22 +110,22 @@ Name of the machine hosting the LDAP server.
       </dep>
       <!-- fonts used to generate PDFs -->
       <dep name="dejavu-sans-fonts">
-        <share>fonts/extras/dejavu-sans-fonts.ttf</share>
+        <share>fonts/dejavu/DejaVuSans.ttf</share>
       </dep>
       <dep name="dejavu-serif-fonts">
-        <share>fonts/extras/dejavu-serif-fonts.ttf</share>
+        <share>fonts/dejavu/DejaVuSerif.ttf</share>
       </dep>
       <dep name="dejavu-lgc-sans-fonts">
-        <share>fonts/extras/dejavu-lgc-sans-fonts.ttf</share>
+        <share>fonts/dejavu/DejaVuLGCSans.ttf</share>
       </dep>
       <dep name="dejavu-lgc-serif-fonts">
-        <share>fonts/extras/dejavu-lgc-serif-fonts.ttf</share>
+        <share>fonts/dejavu/DejaVuLGCSerif.ttf</share>
       </dep>
       <dep name="dejavu-sans-mono-fonts">
-        <share>fonts/extras/dejavu-sans-mono-fonts.ttf</share>
+        <share>fonts/dejavu/DejaVuSansMono.ttf</share>
       </dep>
       <dep name="dejavu-lgc-sans-mono-fonts">
-        <share>fonts/extras/dejavu-lgc-sans-mono-fonts.ttf</share>
+        <share>fonts/dejavu/DejaVuLGCSansMono.ttf</share>
       </dep>
       <!-- because we use this profile for jenkins workers -->
       <dep name="java-1.8.0-openjdk-headless">
