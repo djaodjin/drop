@@ -6,14 +6,16 @@ set -x
 set -e
 
 rootDir=/var/www
-VIRTUALENV_RUN="virtualenv --system-site-packages"
+VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
 
 # Install necessary public packages to bootstrap configuration
 if [ -f /usr/bin/dnf ]; then
     /usr/bin/dnf -y install awscli make python-virtualenv
-    VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
 else
+    /usr/bin/yum -y install epel-release
+    /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
     /usr/bin/yum -y install awscli bzip2 make python-virtualenv
+    VIRTUALENV_RUN="virtualenv -p python3.6 --system-site-packages"
 fi
 
 # Download and install packages that require authentication credentials
@@ -52,7 +54,7 @@ else
 fi
 
 cd $siteTop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DwwwDomainName={{www_domain_name}} reps/drop/share/profiles/webfront.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DdomainName={{domain_name}} reps/drop/share/profiles/webfront.xml
 
 # Extra configuation to start up djagent and djaoapp
 siteTop=${rootDir}/djaoapp

@@ -92,12 +92,12 @@ Name of the machine hosting the LDAP server.
       <!-- reverse proxy -->
       <dep name="nginx">
         <bin>nginx</bin>
-        <extra name="site-config/%(wwwDomainName)s.conf">
-          <domainName>%(wwwDomainName)s</domainName>
+        <extra name="conf.d/%(domainName)s.conf">
+          <domainName>%(domainName)s</domainName>
           <port>443</port>
           <webapp>
             <path>/</path>
-            <port>8020</port>
+            <port>8000</port>
           </webapp>
         </extra>
       </dep>
@@ -223,12 +223,12 @@ Name of the machine hosting the LDAP server.
       <!-- reverse proxy -->
       <dep name="nginx">
         <bin>nginx</bin>
-        <extra name="site-config/%(wwwDomainName)s.conf">
-          <domainName>%(wwwDomainName)s</domainName>
+        <extra name="conf.d/%(domainName)s.conf">
+          <domainName>%(domainName)s</domainName>
           <port>443</port>
           <webapp>
             <path>/</path>
-            <port>8020</port>
+            <port>8000</port>
           </webapp>
         </extra>
       </dep>

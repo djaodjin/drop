@@ -349,8 +349,8 @@ def main(args):
     # More often than not, the wesite for the product is different
     # from the corporate (LDAP, e-mail, etc.) domains.
     if ('domainName' in tero.CONTEXT.environ
-        and 'wwwDomainName' not in tero.CONTEXT.environ):
-        tero.CONTEXT.environ['wwwDomainName'] \
+        and 'companyDomain' not in tero.CONTEXT.environ):
+        tero.CONTEXT.environ['companyDomain'] \
             = tero.CONTEXT.environ['domainName']
 
     if 'PROJECT_NAME' in tero.CONTEXT.environ:
