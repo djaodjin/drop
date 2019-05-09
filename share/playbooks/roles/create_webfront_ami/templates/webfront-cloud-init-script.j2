@@ -15,7 +15,7 @@ else
     /usr/bin/yum -y install epel-release
     /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
     /usr/bin/yum -y install awscli bzip2 make python-virtualenv
-    VIRTUALENV_RUN="virtualenv -p python3.6 --system-site-packages"
+    VIRTUALENV_RUN="virtualenv -p python36 --system-site-packages"
 fi
 
 # Download and install packages that require authentication credentials
