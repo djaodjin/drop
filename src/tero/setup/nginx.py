@@ -306,6 +306,10 @@ server {
         last_webapps = ""
         last_forwards = ""
         remove_default_server = False
+        _, new_proxy_params = setup.stageFile(os.path.join(
+            context.value('etcDir'), 'nginx', 'proxy_params'), context=context)
+        with open(new_proxy_params, 'w') as proxy_params_file:
+            proxy_params_file.write(self.proxy_params_template)
         for name, vals in six.iteritems(self.managed['nginx']['files']):
             webapps = ""
             forwards = ""
@@ -389,10 +393,6 @@ server {
             conf_name = app_name
         document_root = os.path.join(
             os.sep, 'var', 'www', app_name, 'reps', app_name, 'htdocs')
-        _, new_proxy_params = setup.stageFile(os.path.join(
-            context.value('etcDir'), 'nginx', 'proxy_params'), context=context)
-        with open(new_proxy_params, 'w') as proxy_params_file:
-            proxy_params_file.write(self.proxy_params_template)
 
         certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
         key_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'private')

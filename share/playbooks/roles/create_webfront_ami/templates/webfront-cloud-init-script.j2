@@ -82,20 +82,17 @@ if [ -d ${siteTop} ] ; then
     ../../bin/python manage.py migrate --run-syncdb
 
     # Rewrite nginx config file to avoid redirects loops because no https
-    [ ! -f /etc/nginx/conf.d/djaoapp.com.conf ] || rm -f /etc/nginx/conf.d/djaoapp.com.conf
-    cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
-    restorecon -rvF  ${siteTop}/reps/djaoapp/htdocs
-    cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf~
-    head -n 37 /etc/nginx/nginx.conf~ > /etc/nginx/nginx.conf
-    cat << EOF >> /etc/nginx/nginx.conf
+    cat << EOF >> /etc/nginx/conf.d/proxy_djaoapp.conf
     upstream proxy_djaoapp {
         server  127.0.0.1:8000;
     }
-
+EOF
+    cat << EOF >> /etc/nginx/conf.d/djaoapp.com.conf
     server {
-        listen       80 default_server;
-        listen       [::]:80 default_server;
-        server_name  _;
+        listen       80;
+        listen       [::]:80;
+        server_name  {{domain_name}};
+
         root         /var/www/djaoapp/reps/djaoapp/htdocs;
 
         location / {
@@ -106,8 +103,19 @@ if [ -d ${siteTop} ] ; then
             proxy_pass    http://proxy_djaoapp;
             include       /etc/nginx/proxy_params;
         }
+
+        error_page 404 /404.html;
+            location = /40x.html {
+        }
+
+        error_page 500 502 503 504 /50x.html;
+            location = /50x.html {
+        }
+    }
 EOF
-    tail -42 /etc/nginx/nginx.conf~ >> /etc/nginx/nginx.conf
+
+    cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
+    restorecon -rvF  ${siteTop}/reps/djaoapp/htdocs
     /usr/bin/systemctl enable djagent
     /usr/bin/systemctl enable djaoapp
     /usr/bin/systemctl start djagent
