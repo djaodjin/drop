@@ -368,15 +368,18 @@ class NginxLogParser(object):
     """
 
     def __init__(self):
-        format_string = '$remote_addr $http_host $remote_user [$time_local]'\
+        format_string = '$remote_addr$load_balancer_addr $http_host $remote_user [$time_local]'\
 ' "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"'\
 ' "$http_x_forwarded_for"\n'
 
         var_regex = r'\$[a-z_]+'
-        ip_num_regex = r'[0-9]{1,3}'
+        ipv6_regex = r'(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}'
+        ipv4_regex = r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'
+        ip_num_regex = r'(?:%s)|(?:%s)' % (ipv4_regex, ipv6_regex)
+
         regexps = {
-            '$ip_num'               : r'[0-9]{1,3}',
-            '$remote_addr'          : '\\.'.join([ip_num_regex] * 4),
+            '$remote_addr'          : ip_num_regex,
+            '$load_balancer_addr'   : r'(?:,\s%s)*' % ip_num_regex,
             '$http_host'            :
                  # We cannot have parentheses in regex here?
                  r'[a-z0-9.-]+|[a-z0-9.-]+:\d+?',
