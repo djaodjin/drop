@@ -15,7 +15,7 @@ mkdir -p ${siteTop}/reps
 virtualenv -p python3 --system-site-packages ${siteTop}
 cd ${siteTop}
 git clone {{remote_drop_repo}} reps/drop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DsshPort={{ssh_port}} reps/drop/share/profiles/sally.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=ldaps.{{tag_prefix}}ec2.internal -DsshPort={{ssh_port}} reps/drop/share/profiles/sally.xml
 
 # Ansible will be waiting for this server to respond
 # before it continues with registering the AMI.

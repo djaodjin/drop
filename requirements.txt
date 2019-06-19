@@ -1,5 +1,5 @@
 ansible==2.6.0
-awscli==1.16.135
-boto3==1.9.126
+awscli==1.16.172
+boto3==1.9.171
 elasticsearch==2.4.0
 urllib3==1.24.1

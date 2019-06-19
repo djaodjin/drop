@@ -8,6 +8,9 @@ set -e
 rootDir=/var/www
 VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
 
+#XXX derive from /etc/redhat-release
+user=centos
+
 # Install necessary public packages to bootstrap configuration
 if [ -f /usr/bin/dnf ]; then
     /usr/bin/dnf -y install awscli make python-virtualenv
@@ -43,7 +46,7 @@ if [ "X$packages" != "X" ] ; then
         ../../bin/dws --default make recurse
         ../../bin/dws --default make install
         popd
-        /usr/bin/chown -R djaoapp:djaoapp "$dirname"
+        /usr/bin/chown -R ${user}:${user} "$dirname"
     done
 else
     # defaults to downloading drop so we can install the webfront.xml profile.
@@ -54,7 +57,7 @@ else
 fi
 
 cd $siteTop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DdomainName={{domain_name}} reps/drop/share/profiles/webfront.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=ldaps.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DdomainName={{domain_name}} reps/drop/share/profiles/webfront.xml
 
 # Extra configuation to start up djagent and djaoapp
 siteTop=${rootDir}/djaoapp

@@ -81,8 +81,17 @@ server {
             try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @https-rewrite;
         }
 
+#        location / {
+#            try_files /$subdomain$uri/index.html /$subdomain$uri.html /$subdomain$uri $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
+#        }
+
         location @https-rewrite {
             return 301 https://$http_host$request_uri;
+        }
+
+        location @forward_to_%(app_name)s {
+            proxy_pass    http://proxy_%(app_name)s;
+            include       /etc/nginx/proxy_params;
         }
 }
 
@@ -112,8 +121,17 @@ server {
             try_files $uri/index.html $uri.html $uri @https-rewrite;
         }
 
+#        location / {
+#            try_files $uri/index.html $uri.html $uri @forward_to_%(app_name)s;
+#        }
+
         location @https-rewrite {
-            return 301 https://$http_host$request_uri;
+           return 301 https://$http_host$request_uri;
+        }
+
+        location @forward_to_%(app_name)s {
+            proxy_pass    http://proxy_%(app_name)s;
+            include       /etc/nginx/proxy_params;
         }
 }
 
@@ -394,12 +412,16 @@ server {
         document_root = os.path.join(
             os.sep, 'var', 'www', app_name, 'reps', app_name, 'htdocs')
 
-        certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
-        key_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'private')
-        key_path = os.path.join(key_top, '%s.key' % domain)
-        cert_path = os.path.join(certs_top, '%s.crt' % domain)
-        wildcard_key_path = os.path.join(key_top, 'wildcard-%s.key' % domain)
-        wildcard_cert_path = os.path.join(certs_top, 'wildcard-%s.crt' % domain)
+        certs_top = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', 'live')
+        key_top = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'private', 'live')
+        key_path = os.path.join(key_top, domain, 'privkey.pem')
+        cert_path = os.path.join(certs_top, domain, 'fullchain.pem')
+        wildcard_key_path = os.path.join(
+            key_top, domain, 'wildcard-privkey.pem') # XXX change for subdomain?
+        wildcard_cert_path = os.path.join(
+            certs_top, domain, 'wildcard-fullchain.pem')
 
         # If no TLS certificate is present, we will create a self-signed one,
         # this in order to start nginx correctly.

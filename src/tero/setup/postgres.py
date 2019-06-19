@@ -130,7 +130,8 @@ class postgresql_serverSetup(SetupTemplate):
                         new_conf.write(line)
 
         # pg_hba
-        connections = [['postgres', 'postgres', vpc_cidr],
+        connections = [['all', 'postgres', vpc_cidr],
+                       # 'all' because we need to add a constraint on auth_user
                        ['all', pg_user, vpc_cidr]]
         old_conf_path, new_conf_path = stageFile(pg_hba_conf, context)
         with open(new_conf_path, 'w') as new_conf:

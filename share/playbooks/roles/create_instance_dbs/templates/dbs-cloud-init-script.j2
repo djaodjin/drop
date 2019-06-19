@@ -12,4 +12,4 @@ set -e
 cp -rf /var/pki /etc
 
 # Complete configuration with runtime information.
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=dbs.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DldapPasswordHash="{{ldapPasswordHash}}" -Dvpc_cidr={{vpc_cidr}} /tmp/ansible/reps/drop/share/profiles/databases.xml
+/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=ldaps.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DldapPasswordHash="{{ldapPasswordHash}}" -Dvpc_cidr={{vpc_cidr}} /tmp/ansible/reps/drop/share/profiles/databases.xml

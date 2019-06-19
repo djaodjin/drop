@@ -207,12 +207,12 @@ class openldap_clientsSetup(SetupTemplate):
             return complete
 
         ldapHost = context.value('ldapHost')
+        ldapCertPath = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         modify_config(os.path.join(context.value('etcDir'),
             'openldap', 'ldap.conf'), sep=' ', context=context,
             settings={
-                'TLS_CACERT': os.path.join(
-                    context.value('etcDir'), 'pki', 'tls', 'certs',
-                    '%s.crt' % ldapHost),
+                'TLS_CACERT': ldapCertPath,
                 'TLS_REQCERT': 'demand'})
 
         return complete
