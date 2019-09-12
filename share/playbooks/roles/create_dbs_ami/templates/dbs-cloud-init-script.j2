@@ -5,12 +5,24 @@
 set -x
 set -e
 
+siteTop=${HOME}/workspace
+
 # Install necessary packages to bootstrap configuration
-dnf -y update
-dnf -y install git python-virtualenv python-pip awscli python3-six
+VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
+if [ -f /usr/bin/dnf ]; then
+    /usr/bin/dnf -y install git-core python-virtualenv
+else
+    /usr/bin/yum -y install epel-release
+    # Without making the fast cache, python36 is sometimes not found on mirror
+    # (ex: mirrors.cat.pdx.edu)
+    /usr/bin/yum makecache fast
+    /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
+    /usr/bin/yum -y install bzip2 git-core python-virtualenv python36-six
+    VIRTUALENV_RUN="virtualenv -p python36 --system-site-packages"
+fi
 
 # Mount encrypted volume as /var after copying previous content over.
-if [ ! -d /var.old ] ; then
+if [ -e /dev/xvdf && ! -d /var.old ] ; then
     mkfs.ext4 -m 0 /dev/xvdf
     mkdir -p /mnt/encvol
     mount /dev/xvdf /mnt/encvol
@@ -27,11 +39,13 @@ fi
 aws s3 cp s3://{{deployutils_bucket}}/identities/dbs.{{tag_prefix}}ec2.internal / --recursive
 
 # Clone configuration scripts repository and setup the machine.
-mkdir -p /tmp/ansible/reps && cd /tmp/ansible/reps && git clone {{remote_drop_repo}}
-virtualenv -p python3 --system-site-packages /tmp/ansible
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=localhost -DcompanyDomain={{company_domain}} -DldapPasswordHash="{{ldapPasswordHash}}" -Dvpc_cidr={{vpc_cidr}} /tmp/ansible/reps/drop/share/profiles/databases.xml
+mkdir -p ${siteTop}/reps
+${VIRTUALENV_RUN} ${siteTop}
+cd ${siteTop}
+git clone {{remote_drop_repo}} reps/drop
+bin/python reps/drop/src/dservices.py -Dadmin=$USER -DetcDir=/etc -DldapHost=localhost -DcompanyDomain={{company_domain}} -DldapPasswordHash="{{ldapPasswordHash}}" -Dvpc_cidr={{vpc_cidr}} reps/drop/share/profiles/databases.xml
 
 # Restore database from flat files
-/tmp/ansible/bin/python /tmp/ansible/reps/drop/src/drestore.py --domainName={{company_domain}} /var/backups/ldap/*.ldif /var/backups/pgsql/*.sql
+bin/python reps/drop/src/drestore.py --domainName={{company_domain}} /var/backups/ldap/*.ldif /var/backups/pgsql/*.sql
 
-sudo -u fedora touch /home/fedora/.dbs-done
+sudo -u ${USER} touch /home/fedora/.dbs-done

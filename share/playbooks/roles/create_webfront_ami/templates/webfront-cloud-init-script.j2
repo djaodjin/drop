@@ -6,19 +6,19 @@ set -x
 set -e
 
 rootDir=/var/www
-VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
-
-#XXX derive from /etc/redhat-release
-user=centos
 
 # Install necessary public packages to bootstrap configuration
+VIRTUALENV_RUN="/usr/bin/virtualenv -p python3 --system-site-packages"
 if [ -f /usr/bin/dnf ]; then
     /usr/bin/dnf -y install awscli make python-virtualenv
 else
     /usr/bin/yum -y install epel-release
+    # Without making the fast cache, python36 is sometimes not found on mirror
+    # (ex: mirrors.cat.pdx.edu)
+    /usr/bin/yum makecache fast
     /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
     /usr/bin/yum -y install awscli bzip2 make python-virtualenv
-    VIRTUALENV_RUN="virtualenv -p python36 --system-site-packages"
+    VIRTUALENV_RUN="/usr/bin/virtualenv -p python36 --system-site-packages"
 fi
 
 # Download and install packages that require authentication credentials
@@ -41,19 +41,20 @@ if [ "X$packages" != "X" ] ; then
         echo "srcTop=$siteTop/reps" >> $dirname/dws.mk
         echo "remoteIndex=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
         pushd $siteTop/reps/drop
-        make install
+        /usr/bin/make install
         cd $siteTop/reps/$dirname
         ../../bin/dws --default make recurse
         ../../bin/dws --default make install
         popd
-        /usr/bin/chown -R ${user}:${user} "$dirname"
+        /usr/bin/chown -R ${USER}:${USER} "$dirname"
+        rm ${package}
     done
 else
     # defaults to downloading drop so we can install the webfront.xml profile.
     siteTop="$rootDir"
-    mkdir -p ${siteTop}/reps
+    /usr/bin/mkdir -p ${siteTop}/reps
     $VIRTUALENV_RUN ${siteTop}
-    git clone {{remote_drop_repo}} ${siteTop}/reps/drop
+    /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
 fi
 
 cd $siteTop
@@ -68,29 +69,37 @@ if [ -d ${siteTop} ] ; then
     echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djagent
     echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djagent
     echo "QUEUE_URL=" >> ${siteTop}/etc/sysconfig/djagent
-    chmod 600 ${siteTop}/etc/sysconfig/djagent
-    chown djaoapp:djaoapp ${siteTop}/etc/sysconfig/djagent
-    cp ${siteTop}/etc/systemd/system/djagent.service /usr/lib/systemd/system
+    /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djagent
+    /usr/bin/chown djaoapp:djaoapp ${siteTop}/etc/sysconfig/djagent
+    /usr/bin/cp ${siteTop}/etc/systemd/system/djagent.service /usr/lib/systemd/system
     ../../bin/dws --default make install-selinux
 
     # Configure djaoapp
     echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djaoapp
     echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djaoapp
-    chmod 600 ${siteTop}/etc/sysconfig/djaoapp
-    chown djaoapp:djaoapp ${siteTop}/etc/sysconfig/djaoapp
-    cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
+    /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djaoapp
+    # We make sure the .pid file can be created by gunicorn and systemd
+    # service can load.
+    /usr/bin/chown djaoapp:djaoapp ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run
+    /usr/bin/mkdir -p /var/log/gunicorn
+    /usr/bin/chown djaoapp:djaoapp /var/log/gunicorn
+    /usr/bin/rm -rf ${siteTop}/var/log/gunicorn
+    pushd ${siteTop}/var/log
+    /usr/bin/ln -s /var/log/gunicorn
+    popd
+    /usr/bin/cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
     # We make an initial sqlite3 database so the server renders a page
     # instead of a 500 error when the AMI just booted with no configuration.
     cd ${siteTop}/reps/djaoapp
     ../../bin/python manage.py migrate --run-syncdb
 
     # Rewrite nginx config file to avoid redirects loops because no https
-    cat << EOF >> /etc/nginx/conf.d/proxy_djaoapp.conf
+    /usr/bin/cat << EOF >> /etc/nginx/conf.d/proxy_djaoapp.conf
     upstream proxy_djaoapp {
         server  127.0.0.1:8000;
     }
 EOF
-    cat << EOF >> /etc/nginx/conf.d/djaoapp.com.conf
+    /usr/bin/cat << EOF >> /etc/nginx/conf.d/djaoapp.com.conf
     server {
         listen       80;
         listen       [::]:80;
@@ -117,14 +126,17 @@ EOF
     }
 EOF
 
-    cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
-    restorecon -rvF  ${siteTop}/reps/djaoapp/htdocs
+    /usr/bin/cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
+    /usr/sbin/restorecon -rvF  ${siteTop}/reps/djaoapp/htdocs
     /usr/bin/systemctl enable djagent
     /usr/bin/systemctl enable djaoapp
     /usr/bin/systemctl start djagent
     /usr/bin/systemctl start djaoapp
 fi
 
+# disable what we don't need
+/usr/bin/systemctl stop rpcbind
+/usr/bin/systemctl disable rpcbind
 
 # Ansible will be waiting for this server to respond
 # before it continues with registering the AMI.

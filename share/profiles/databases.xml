@@ -9,14 +9,14 @@ Deploy and configure packages for running LDAP and SQL databases.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <package name="Fedora">
+    <package name="CentOS">
       <variable name="dbUser">
         <description>User to access databases.</description>
       </variable>
       <variable name="dbPassword">
         <description>Password for user to access databases.</description>
       </variable>
-      <dep name="postgresql-server">
+      <dep name="postgresql96-server">
         <bin>postgres</bin>
         <listen_addresses>private-ip.local, localhost</listen_addresses>
       </dep>
@@ -67,7 +67,7 @@ Deploy and configure packages for running LDAP and SQL databases.
         <bin>fail2ban-client</bin>
       </dep>
       <!-- XXX Client tools so we can debug installation. -->
-      <dep name="postgresql">
+      <dep name="postgresql96">
         <bin>psql</bin>
       </dep>
       <dep name="openldap-clients">
@@ -75,8 +75,74 @@ Deploy and configure packages for running LDAP and SQL databases.
         <bin>ldapsearch</bin>
       </dep>
     </package>
+    <package name="Fedora">
+      <variable name="dbUser">
+        <description>User to access databases.</description>
+      </variable>
+      <variable name="dbPassword">
+        <description>Password for user to access databases.</description>
+      </variable>
+      <dep name="postgresql-server">
+        <bin>postgres</bin>
+        <listen_addresses>private-ip.local, localhost</listen_addresses>
+      </dep>
+      <dep name="iptables">
+        <bin>iptables</bin>
+        <port>22</port>
+        <port>636</port>
+        <port>5432</port>
+      </dep>
+      <dep name="openssh-server">
+        <bin>sshd</bin>
+        <extra name="/etc/ssh/sshd_config">
+          <PermitRootLogin>no</PermitRootLogin>
+          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
+          <PasswordAuthentication>no</PasswordAuthentication>
+          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+          <PermitTunnel>no</PermitTunnel>
+          <X11Forwarding>no</X11Forwarding>
+          <StrictModes>yes</StrictModes>
+          <IgnoreRhosts>yes</IgnoreRhosts>
+          <HostbasedAuthentication>no</HostbasedAuthentication>
+          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <PubkeyAuthentication>yes</PubkeyAuthentication>
+        </extra>
+      </dep>
+      <dep name="openldap-servers-with-openssl">
+        <bin>slapd</bin>
+      </dep>
+      <dep name="sssd">
+        <bin>sssd</bin>
+      </dep>
+      <!-- monitoring -->
+      <dep name="syslog-ng">
+        <bin>syslog-ng</bin>
+      </dep>
+      <dep name="syslog-ng-libdbi">
+        <lib>dbi</lib>
+      </dep>
+      <!-- We need both executables (checkmodule and semodule_package)
+           to update the syslog SELinux policy -->
+      <dep name="checkpolicy">
+        <bin>checkmodule</bin>
+      </dep>
+      <dep name="policycoreutils-python-utils">
+        <bin>semodule_package</bin>
+      </dep>
+      <dep name="fail2ban">
+        <bin>fail2ban-client</bin>
+      </dep>
+      <!-- XXX Client tools so we can debug installation. -->
+      <dep name="postgresql">
+        <bin>psql</bin>
+      </dep>
+      <dep name="openldap-clients-with-openssl">
+        <bin>ldapadd</bin>
+        <bin>ldapsearch</bin>
+      </dep>
+    </package>
   </project>
-  <project name="openldap-servers">
+  <project name="openldap-servers-with-openssl">
     <package name="Fedora">
       <fetch>
         <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-2.4.45-4.fc27.x86_64.rpm</url>
@@ -103,7 +169,7 @@ Deploy and configure packages for running LDAP and SQL databases.
       </dep>
     </package>
   </project>
-  <project name="openldap-clients">
+  <project name="openldap-clients-with-openssl">
     <package name="Fedora">
       <fetch>
         <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-2.4.45-4.fc27.x86_64.rpm</url>

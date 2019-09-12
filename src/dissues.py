@@ -24,11 +24,8 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 if __name__ == '__main__':
     import os, sys
-    from tero.dissues import download
-    if len(sys.argv) < 2:
-        sys.stderr.write('usage: %s repo_name ...\n')
-        sys.exit(1)
-    download(sys.argv[1:])
+    from tero.dissues import main
+    main(sys.argv)
+

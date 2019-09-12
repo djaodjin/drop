@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,7 @@ import argparse, re, os, sys
 
 import six
 
-from tero import Context, Variable
+from tero import Context, Variable, shell_command
 from tero.setup import (after_daemon_start, modify_config, postinst, stageFile,
     SetupTemplate)
 from tero.setup.cron import add_entry as cron_add_entry

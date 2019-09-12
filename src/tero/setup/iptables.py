@@ -49,6 +49,9 @@ class iptablesSetup(setup.SetupTemplate):
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
+        netifaces = [netiface for netiface in os.listdir('/sys/class/net')
+            if netiface not in ['lo']]
+        eth0 = netifaces[0]
         ports = []
         forwards = []
         for key, val in six.iteritems(self.managed['iptables']['files']):
@@ -58,7 +61,7 @@ class iptablesSetup(setup.SetupTemplate):
             elif key == 'forward':
                 for forward, _ in val:
                     orig, dest = forward.split(':')
-                    forwards += [(int(orig), int(dest))]
+                    forwards += [eth0, (int(orig), int(dest))]
 
         # We completely overwrite the iptables configuration for both
         # ipv4 and ipv6. We own it.
@@ -69,8 +72,9 @@ class iptablesSetup(setup.SetupTemplate):
             if forwards:
                 conf.write("""*nat
 %s
-COMMIT""" % '\n'.join([
-            "-I PREROUTING -i eth0 -p tcp --dport %d -j REDIRECT --to-port %d"
+COMMIT
+""" % '\n'.join([
+            "-I PREROUTING -i %s -p tcp --dport %d -j REDIRECT --to-port %d"
                 % forward for forward in forwards]))
             local_filter_rules = '\n'.join([
             '-A INPUT -m state --state NEW -m tcp -p tcp --dport %d -j ACCEPT'
@@ -102,8 +106,14 @@ COMMIT
                 ip_type=self.IPV6, sysconfdir=context.value('etcDir')),
             context=context)
         with open(new_conf_path, 'w') as conf:
-            conf.write("""
-*filter
+            if forwards:
+                conf.write("""*nat
+%s
+COMMIT
+""" % '\n'.join([
+            "-I PREROUTING -i %s -p tcp --dport %d -j REDIRECT --to-port %d"
+                % forward for forward in forwards]))
+            conf.write("""*filter
 :INPUT DROP [1000:900000]
 :FORWARD DROP [0:0]
 :LOGNDROP - [0:0]

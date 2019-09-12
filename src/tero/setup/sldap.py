@@ -170,10 +170,14 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
         postinst.shellCommand(['chmod', '640', priv_key])
         postinst.shellCommand(['chgrp', 'ldap', priv_key])
         postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
-        postinst.shellCommand(['chown', 'ldap:ldap',
-            config_path, db_config_path, db_hdb_path])
-        postinst.shellCommand(['chmod', '600',
-            config_path, db_config_path, db_hdb_path])
+
+        # Resets user and permissions
+        ldap_paths = [config_path, db_config_path]
+        for db_path in ['olcDatabase={2}hdb.ldif', 'olcDatabase={2}mdb.ldif']:
+            ldap_paths += [os.path.join(context.value('etcDir'),
+                'openldap', 'slapd.d', 'cn=config', db_path)]
+        postinst.shellCommand(['chown', 'ldap:ldap'] + ldap_paths)
+        postinst.shellCommand(['chmod', '600'] + ldap_paths)
 
         # We need to start the server before adding the schemas.
         postinst.shellCommand(['service', 'slapd', 'restart'])

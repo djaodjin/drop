@@ -5,17 +5,28 @@
 set -x
 set -e
 
-siteTop=/home/fedora/workspace
+siteTop=${HOME}/workspace
 
 # Install necessary packages to bootstrap configuration
-/usr/bin/dnf -y install git-core python-virtualenv
+VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
+if [ -f /usr/bin/dnf ]; then
+    /usr/bin/dnf -y install git-core python-virtualenv
+else
+    /usr/bin/yum -y install epel-release
+    # Without making the fast cache, python36 is sometimes not found on mirror
+    # (ex: mirrors.cat.pdx.edu)
+    /usr/bin/yum makecache fast
+    /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
+    /usr/bin/yum -y install bzip2 git-core python-virtualenv python36-six
+    VIRTUALENV_RUN="virtualenv -p python36 --system-site-packages"
+fi
 
 # Clone drop github repository in /tmp/ansible and run dservices scripts
 mkdir -p ${siteTop}/reps
-virtualenv -p python3 --system-site-packages ${siteTop}
+${VIRTUALENV_RUN} ${siteTop}
 cd ${siteTop}
 git clone {{remote_drop_repo}} reps/drop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=ldaps.{{tag_prefix}}ec2.internal -DsshPort={{ssh_port}} reps/drop/share/profiles/sally.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=ldaps.{{tag_prefix}}ec2.internal -DcompanyDomain={{company_domain}} -DsshPort={{ssh_port}} reps/drop/share/profiles/sally.xml
 
 # Ansible will be waiting for this server to respond
 # before it continues with registering the AMI.

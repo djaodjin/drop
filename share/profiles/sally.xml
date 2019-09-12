@@ -9,12 +9,12 @@ Installs and configures services used on SSH-accessible machines.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <package name="Fedora">
+    <package name="CentOS">
       <variable name="ldapHost">
         <description>
 Name of the machine hosting the LDAP server.
         </description>
-        <default>dbs.ec2.internal</default>
+        <default>ldaps.ec2.internal</default>
       </variable>
       <!-- Access control -->
       <dep name="iptables">
@@ -70,8 +70,69 @@ Name of the machine hosting the LDAP server.
         <bin>ssmtp</bin>
       </dep>
     </package>
+    <package name="Fedora">
+      <variable name="ldapHost">
+        <description>
+Name of the machine hosting the LDAP server.
+        </description>
+        <default>ldaps.ec2.internal</default>
+      </variable>
+      <!-- Access control -->
+      <dep name="iptables">
+        <bin>iptables</bin>
+        <forward>%(sshPort)s:22</forward>
+        <port>22</port>
+      </dep>
+      <dep name="authconfig">
+        <bin>authconfig</bin>
+      </dep>
+      <dep name="sssd">
+        <bin>sssd</bin>
+      </dep>
+      <dep name="openssh-ldap">
+        <libexec>.*/(openssh)/ssh-ldap-helper</libexec>
+      </dep>
+      <dep name="openssh-server">
+        <bin>sshd</bin>
+        <extra name="/etc/ssh/sshd_config">
+          <PermitRootLogin>no</PermitRootLogin>
+          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
+          <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
+          <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
+          <PasswordAuthentication>no</PasswordAuthentication>
+          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+          <PermitTunnel>no</PermitTunnel>
+          <X11Forwarding>no</X11Forwarding>
+          <StrictModes>yes</StrictModes>
+          <IgnoreRhosts>yes</IgnoreRhosts>
+          <HostbasedAuthentication>no</HostbasedAuthentication>
+          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <PubkeyAuthentication>yes</PubkeyAuthentication>
+        </extra>
+      </dep>
+      <dep name="openldap-clients-with-openssl">
+        <bin>ldapsearch</bin>
+      </dep>
+      <!-- monitoring -->
+      <dep name="syslog-ng">
+        <bin>syslog-ng</bin>
+      </dep>
+      <dep name="syslog-ng-libdbi">
+        <lib>dbi</lib>
+      </dep>
+      <dep name="policycoreutils-python-utils">
+        <!-- because we need to build a SELinux policy for syslog-ng -->
+        <bin>semodule_package</bin>
+      </dep>
+      <dep name="fail2ban">
+        <bin>fail2ban-client</bin>
+      </dep>
+      <dep name="ssmtp">
+        <bin>ssmtp</bin>
+      </dep>
+    </package>
   </project>
-  <project name="openldap-clients">
+  <project name="openldap-clients-with-openssl">
     <package name="Fedora">
       <fetch>
         <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
