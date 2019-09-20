@@ -17,8 +17,11 @@ else
     # (ex: mirrors.cat.pdx.edu)
     /usr/bin/yum makecache fast
     /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
-    /usr/bin/yum -y install bzip2 git-core python-virtualenv python36-six
+    /usr/bin/yum -y install bzip2 git-core python-virtualenv python36-six wget
     VIRTUALENV_RUN="virtualenv -p python36 --system-site-packages"
+    # We also need to install postgresql repos to find `postgresql96-server`
+    /usr/bin/wget https://download.postgresql.org/pub/repos/yum/9.6/redhat/rhel-7-x86_64/pgdg-centos96-9.6-3.noarch.rpm
+    /usr/bin/yum -y install pgdg-centos96-9.6-3.noarch.rpm
 fi
 
 # Mount encrypted volume as /var after copying previous content over.

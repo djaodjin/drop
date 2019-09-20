@@ -26,11 +26,20 @@ import argparse, configparser, datetime, json, logging, os, random, re, time
 
 import boto3
 import botocore.exceptions
+import jinja2
 import OpenSSL.crypto
 import six
 
 
 LOGGER = logging.getLogger(__name__)
+
+EC2_PENDING = 'pending'
+EC2_RUNNING = 'running'
+EC2_SHUTTING_DOWN = 'shutting-down'
+EC2_TERMINATED = 'terminated'
+EC2_STOPPING = 'stopping'
+EC2_STOPPED = 'stopped'
+
 NB_RETRIES = 2
 RETRY_WAIT_DELAY = 15
 
@@ -117,6 +126,18 @@ def _check_certificate(public_cert_content, priv_key_content,
         'issuer': public_cert.get_issuer().organizationName,
         'ends_at': not_after.isoformat()}})
     return result
+
+
+def _get_instance_profile(role_name, iam_client=None, region_name=None):
+    """
+    Returns the instance profile arn based of its name.
+    """
+    if not iam_client:
+        iam_client = boto3.client('iam', region_name=region_name)
+    resp = iam_client.get_instance_profile(
+        InstanceProfileName=role_name)
+    instance_profile_arn = resp['InstanceProfile']['Arn']
+    return instance_profile_arn
 
 
 def _get_listener(tag_prefix, region_name=None, elb_client=None):
@@ -306,7 +327,7 @@ def _store_certificate(fullchain, key, domain=None, tag_prefix=None,
     return result
 
 
-def create_elb(tag_prefix, web_subnet_by_zones, gate_sg_id,
+def create_elb(tag_prefix, web_subnet_by_zones, moat_sg_id,
                tls_priv_key=None, tls_fullchain_cert=None,
                region_name=None):
     """
@@ -317,7 +338,7 @@ def create_elb(tag_prefix, web_subnet_by_zones, gate_sg_id,
         Name='%s-elb' % tag_prefix,
         Subnets=list(web_subnet_by_zones.values()),
         SecurityGroups=[
-            gate_sg_id,
+            moat_sg_id,
         ],
         Scheme='internet-facing',
         Type='application',
@@ -496,9 +517,13 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                      'Value': "%s web subnet" % tag_prefix}])
             LOGGER.info("%s created web subnet %s in zone %s",
                         tag_prefix, web_subnet_id, zone_id)
-            resp = ec2_client.modify_subnet_attribute(
-                SubnetId=web_subnet_id,
-                MapPublicIpOnLaunch={'Value': False})
+            if idx > 0:
+                # We are going to associate `web_subnet_by_zones[zone_ids[0]]`
+                # to the Internet Gateway. Instances created in that subnet
+                # will need a public IP to communicate with rest of the world.
+                resp = ec2_client.modify_subnet_attribute(
+                    SubnetId=web_subnet_id,
+                    MapPublicIpOnLaunch={'Value': False})
     app_subnet_id = web_subnet_by_zones[zone_ids[0]]
 
     # Ensure that the VPC has an Internet Gateway.
@@ -634,13 +659,6 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
             DestinationCidrBlock='0.0.0.0/0',
             GatewayId=igw_id,
             RouteTableId=public_route_table_id)
-        resp = ec2_client.associate_route_table(
-            DryRun=dry_run,
-            RouteTableId=public_route_table_id,
-            SubnetId=app_subnet_id)
-        LOGGER.info(
-            "%s associated public route table %s to first web subnet %s",
-            tag_prefix, public_route_table_id, app_subnet_id)
 
     if not private_route_table_id:
         resp = ec2_client.create_route_table(
@@ -669,15 +687,31 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                         'Code', 'Unknown') == 'InvalidNatGatewayID.NotFound':
                     raise
             time.sleep(RETRY_WAIT_DELAY)
-    for idx, zone_id in enumerate(db_zone_ids):
-        dbs_subnet_id = dbs_subnet_by_zones[zone_id]
+    resp = ec2_client.associate_route_table(
+        DryRun=dry_run,
+        RouteTableId=public_route_table_id,
+        SubnetId=app_subnet_id)
+    LOGGER.info(
+        "%s associated public route table %s to first web subnet %s",
+        tag_prefix, public_route_table_id, app_subnet_id)
+    for idx, zone_id in enumerate(web_zone_ids[1:]):
+        web_subnet_id = web_subnet_by_zones[zone_id]
         resp = ec2_client.associate_route_table(
             DryRun=dry_run,
             RouteTableId=private_route_table_id,
-            SubnetId=dbs_subnet_id)
+            SubnetId=web_subnet_id)
         LOGGER.info(
-            "%s associated private route table %s to dbs subnet %s",
-            tag_prefix, private_route_table_id, dbs_subnet_id)
+            "%s associated private route table %s to web subnet %s",
+            tag_prefix, private_route_table_id, web_subnet_id)
+    for idx, zone_id in enumerate(db_zone_ids):
+        db_subnet_id = dbs_subnet_by_zones[zone_id]
+        resp = ec2_client.associate_route_table(
+            DryRun=dry_run,
+            RouteTableId=private_route_table_id,
+            SubnetId=db_subnet_id)
+        LOGGER.info(
+            "%s associated private route table %s to db subnet %s",
+            tag_prefix, private_route_table_id, db_subnet_id)
 
     # Create the ELB, proxies and databases security groups
     # The app security group (as the instance role) will be specific
@@ -818,40 +852,43 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
 
     # Create an Application ELB
     create_elb(
-        tag_prefix, web_subnet_by_zones, gate_sg_id,
+        tag_prefix, web_subnet_by_zones, moat_sg_id,
         tls_priv_key=tls_priv_key, tls_fullchain_cert=tls_fullchain_cert,
         region_name=region_name)
 
     # Create uploads and logs S3 buckets
+    # XXX need to force private.
     s3_logs_bucket = '%s-logs' % tag_prefix
     s3_uploads_bucket = '%s-uploads' % tag_prefix
     s3_client = boto3.client('s3')
-    try:
-        resp = s3_client.create_bucket(
-            ACL='private',
-            Bucket=s3_logs_bucket,
-            CreateBucketConfiguration={
-                'LocationConstraint': region_name
-            })
-        LOGGER.info("%s found/created S3 bucket for logs %s",
-            tag_prefix, s3_logs_bucket)
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
-            raise
-    try:
-        resp = s3_client.create_bucket(
-            ACL='private',
-            Bucket=s3_uploads_bucket,
-            CreateBucketConfiguration={
-                'LocationConstraint': region_name
-            })
-        LOGGER.info("%s found/created S3 bucket for uploads %s",
-            tag_prefix, s3_uploads_bucket)
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
-            raise
+    if s3_logs_bucket:
+        try:
+            resp = s3_client.create_bucket(
+                ACL='private',
+                Bucket=s3_logs_bucket,
+                CreateBucketConfiguration={
+                    'LocationConstraint': region_name
+                })
+            LOGGER.info("%s found/created S3 bucket for logs %s",
+                tag_prefix, s3_logs_bucket)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
+                raise
+    if s3_uploads_bucket:
+        try:
+            resp = s3_client.create_bucket(
+                ACL='private',
+                Bucket=s3_uploads_bucket,
+                CreateBucketConfiguration={
+                    'LocationConstraint': region_name
+                })
+            LOGGER.info("%s found/created S3 bucket for uploads %s",
+                tag_prefix, s3_uploads_bucket)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
+                raise
 
     # Creates encryption keys (KMS) in region
     kms_client = boto3.client('kms', region_name=region_name)
@@ -886,7 +923,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
         }))
         iam_client.put_role_policy(
             RoleName=gate_role,
-            PolicyName='SendsControlMessagesToAgent',
+            PolicyName='AgentCtrlMessages',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -908,8 +945,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                     ],
                     "Effect": "Allow",
                     "Resource": [
-                        "arn:aws:s3:::%s/*" % s3_logs_bucket,
-                        "arn:aws:s3:::%s" % s3_logs_bucket
+                        "arn:aws:s3:::%s/*" % s3_logs_bucket
                     ]
                 }]}))
         iam_client.put_role_policy(
@@ -920,9 +956,9 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                 "Statement": [{
                     "Action": [
                         "s3:GetObject",
-                        # XXX Without `s3:GetObjectAcl` and `s3:ListBucket`
-                        # cloud-init cannot run
-                        # `aws s3 cp s3://... / --recursive`
+                        # XXX Without `s3:ListBucket` (and `s3:GetObjectAcl`?)
+                        # we cannot do a recursive copy
+                        # (i.e. aws s3 cp ... --recursive)
                         "s3:GetObjectAcl",
                         "s3:ListBucket",
                         "s3:PutObject"
@@ -931,6 +967,14 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                     "Resource": [
                         "arn:aws:s3:::%s" % s3_uploads_bucket,
                         "arn:aws:s3:::%s/*" % s3_uploads_bucket
+                    ]
+                }, {
+                    "Action": [
+                        "s3:PutObject"
+                    ],
+                    "Effect": "Disallow",
+                    "Resource": [
+                        "arn:aws:s3:::%s/identities/" % s3_uploads_bucket
                     ]
                 }]}))
         LOGGER.info("%s created IAM role %s", tag_prefix, gate_role)
@@ -1093,7 +1137,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
         # allows SSH connection to instances for debugging
         if not kitchen_door_sg_id:
             resp = ec2_client.create_security_group(
-                Description='%s ELB' % tag_prefix,
+                Description='%s SSH access' % tag_prefix,
                 GroupName=kitchen_door_name,
                 VpcId=vpc_id,
                 DryRun=dry_run)
@@ -1270,9 +1314,398 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
         LOGGER.info("%s found rds db '%s'", tag_prefix, db_name)
 
 
-def create_target_group(region_name, app_id,
-                        tls_priv_key, tls_fullchain_cert, instance_id,
-                        vpc_id=None, listener_arn=None, tag_prefix=None):
+def create_app_resources(region_name, app_name, image_name,
+                         settings_location=None, settings_crypt_key=None,
+                         s3_logs_bucket=None, s3_uploads_bucket=None,
+                         ssh_key_name=None,
+                         app_subnet_id=None, vpc_id=None, vpc_cidr=None,
+                         tag_prefix=None):
+    """
+    Create the application servers
+    """
+    gate_name = '%s-castle-gate' % tag_prefix
+    kitchen_door_name = '%s-kitchen-door' % tag_prefix
+    app_sg_name = '%s-%s' % (tag_prefix, app_name)
+    if not s3_logs_bucket:
+        s3_logs_bucket = '%s-logs' % tag_prefix
+    if not s3_uploads_bucket:
+        s3_uploads_bucket = '%s-uploads' % tag_prefix
+
+    ec2_client = boto3.client('ec2', region_name=region_name)
+    resp = ec2_client.describe_instances(
+        Filters=[
+            {'Name': 'tag:Name', 'Values': [app_name]},
+            {'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
+    previous_instances_ids = []
+    for reserv in resp['Reservations']:
+        for instance in reserv['Instances']:
+            previous_instances_ids += [instance['InstanceId']]
+    if previous_instances_ids:
+        LOGGER.info("%s found already running '%s' on instances %s",
+            tag_prefix, app_name, previous_instances_ids)
+        return previous_instances_ids
+
+    # Create a Queue to communicate with the agent on the EC2 instance.
+    # Implementation Note:
+    #   strange but no exception thrown when queue already exists.
+    sqs = boto3.client('sqs', region_name=region_name)
+    resp = sqs.create_queue(QueueName=app_name)
+    queue_url = resp.get("QueueUrl")
+
+    search_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'templates')
+    template_loader = jinja2.FileSystemLoader(searchpath=search_path)
+    template_env = jinja2.Environment(loader=template_loader)
+    template = template_env.get_template("app-cloud-init-script.j2")
+    user_data = template.render(
+        settings_location=settings_location,
+        settings_crypt_key=settings_crypt_key,
+        queue_url=queue_url)
+
+    if not vpc_id:
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    if not app_subnet_id:
+        web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
+        resp = ec2_client.describe_availability_zones()
+        zone_ids = sorted([
+            zone['ZoneId'] for zone in resp['AvailabilityZones']])
+        web_subnet_by_zones = _get_subnet_by_zones(
+            web_subnet_cidrs, tag_prefix,
+            zone_ids=zone_ids, vpc_id=vpc_id, ec2_client=ec2_client)
+        # Use first valid subnet that does not require a public IP.
+        for zone_id in zone_ids[1:]:
+            subnet_id = web_subnet_by_zones[zone_id]
+            if subnet_id:
+                app_subnet_id = subnet_id
+                break
+
+    group_ids = _get_security_group_ids(
+        [app_sg_name, gate_name, kitchen_door_name], tag_prefix,
+        vpc_id=vpc_id, ec2_client=ec2_client)
+    app_sg_id = group_ids[0]
+    gate_sg_id = group_ids[1]
+    kitchen_door_sg_id = group_ids[2]
+    if not app_sg_id:
+        resp = ec2_client.create_security_group(
+            Description='%s %s' % (tag_prefix, app_name),
+            GroupName=app_sg_name,
+            VpcId=vpc_id)
+        app_sg_id = resp['GroupId']
+        LOGGER.info("%s created %s security group %s",
+            tag_prefix, app_sg_name, app_sg_id)
+    # app_sg_id allow rules
+    try:
+        resp = ec2_client.authorize_security_group_ingress(
+            DryRun=dry_run,
+            GroupId=app_sg_id,
+            IpPermissions=[{
+                'IpProtocol': 'tcp',
+                'FromPort': 80,
+                'ToPort': 80,
+                'UserIdGroupPairs': [{'GroupId': gate_sg_id}]
+            }])
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+            raise
+    try:
+        resp = ec2_client.authorize_security_group_ingress(
+            DryRun=dry_run,
+            GroupId=app_sg_id,
+            IpPermissions=[{
+                'IpProtocol': 'tcp',
+                'FromPort': 443,
+                'ToPort': 443,
+                'UserIdGroupPairs': [{'GroupId': gate_sg_id}]
+            }])
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+            raise
+    if ssh_key_name:
+        try:
+            resp = ec2_client.authorize_security_group_ingress(
+                DryRun=dry_run,
+                GroupId=app_sg_id,
+                IpPermissions=[{
+                    'IpProtocol': 'tcp',
+                    'FromPort': 22,
+                    'ToPort': 22,
+                    'UserIdGroupPairs': [{'GroupId': kitchen_door_sg_id}]
+                }])
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
+
+    app_role = app_sg_name
+    iam_client = boto3.client('iam')
+    try:
+        resp = iam_client.create_role(
+            RoleName=app_role,
+            AssumeRolePolicyDocument=json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "",
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "ec2.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }))
+        iam_client.put_role_policy(
+            RoleName=app_role,
+            PolicyName='AgentCtrlMessages',
+            PolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Action": [
+                        "sqs:ReceiveMessage",
+                        "sqs:DeleteMessage"
+                    ],
+                    "Effect": "Allow",
+                    "Resource": "*"
+                }]}))
+        iam_client.put_role_policy(
+            RoleName=app_role,
+            PolicyName='DeployContainer',
+            PolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": [
+                        "sts:AssumeRole"
+                    ],
+                    "Resource": [
+                        ecr_access_role_arn
+                    ]
+                }, {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ecr:GetAuthorizationToken",
+                        "ecr:BatchCheckLayerAvailability",
+                        "ecr:GetDownloadUrlForLayer",
+                        "ecr:BatchGetImage"
+                    ],
+                    "Resource": "*"
+                }]}))
+        iam_client.put_role_policy(
+            RoleName=app_role,
+            PolicyName='WriteslogsToStorage',
+            PolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Action": [
+                        "s3:PutObject"
+                    ],
+                    "Effect": "Allow",
+                    "Resource": [
+                        "arn:aws:s3:::%s/*" % s3_logs_bucket
+                    ]
+                }]}))
+        iam_client.put_role_policy(
+            RoleName=app_role,
+            PolicyName='AccessesUploadedDocuments',
+            PolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Action": [
+                        "s3:GetObject",
+                        # Without `s3:ListBucket` we cannot do a recursive copy
+                        # (i.e. aws s3 cp ... --recursive)
+                        # XXX Without `s3:GetObjectAcl` and `s3:ListBucket`
+                        # cloud-init cannot run
+                        # `aws s3 cp s3://... / --recursive`
+                        "s3:GetObjectAcl",
+                        "s3:ListBucket",
+                        "s3:PutObject"
+                    ],
+                    "Effect": "Allow",
+                    "Resource": [
+                        "arn:aws:s3:::%s" % s3_uploads_bucket,
+                        "arn:aws:s3:::%s/*" % s3_uploads_bucket
+                    ]
+                }, {
+                    "Action": [
+                        "s3:PutObject"
+                    ],
+                    "Effect": "Disallow",
+                    "Resource": [
+                        "arn:aws:s3:::%s/identities/" % s3_uploads_bucket
+                    ]
+                }]}))
+        LOGGER.info("%s created IAM role %s", tag_prefix, app_role)
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'EntityAlreadyExists':
+            raise
+        LOGGER.info("%s found IAM role %s", tag_prefix, app_role)
+
+    instance_profile_arn = _get_instance_profile(
+        app_role, iam_client=iam_client, region_name=region_name)
+    if not instance_profile_arn:
+        resp = iam_client.create_instance_profile(
+            InstanceProfileName=app_role)
+        instance_profile_arn = resp['InstanceProfile']['Arn']
+        LOGGER.info("%s created IAM instance profile '%s'",
+            tag_prefix, instance_profile_arn)
+        iam_client.add_role_to_instance_profile(
+            InstanceProfileName=app_role,
+            RoleName=app_role)
+        LOGGER.info("%s created IAM instance profile for %s: %s",
+            tag_prefix, app_role, instance_profile_arn)
+
+    # Find the ImageId
+    look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
+    aws_account_id = look.group(1)
+    resp = ec2_client.describe_images(
+        Filters=[
+            {'Name': 'name', 'Values': [image_name]},
+            {'Name': 'owner-id', 'Values': [aws_account_id]}])
+    if len(resp['Images']) != 1:
+        raise RuntimeError(
+            "Found more than one image named '%s' in account '%s'" % (
+                image_name, aws_account_id))
+    image_id = resp['Images'][0]['ImageId']
+
+    instance_ids = None
+    for _ in range(0, NB_RETRIES):
+        # The IAM instance profile take some time to be visible.
+        try:
+            # XXX adds encrypted volume
+            resp = ec2_client.run_instances(
+                ImageId=image_id,
+                KeyName=ssh_key_name,
+                InstanceType='t3.small',
+                MinCount=1,
+                MaxCount=1,
+                SubnetId=app_subnet_id,
+                # Cannot use `SecurityGroups` with `SubnetId` but can
+                # use `SecurityGroupIds`.
+                SecurityGroupIds=group_ids,
+                IamInstanceProfile={'Arn': instance_profile_arn},
+                TagSpecifications=[{
+                    'ResourceType': "instance",
+                    'Tags': [{
+                        'Key': 'Name',
+                        'Value': app_name
+                    }]}],
+                UserData=user_data)
+            instance_ids = [
+                instance['InstanceId'] for instance in resp['Instances']]
+            break
+        except botocore.exceptions.ClientError as err:
+            print("XXX err=%s, err.response=%s" % (err, err.response))
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidParameterValue':
+                raise
+            LOGGER.info("%s waiting for IAM instance profile %s to be"\
+                " operational ...", tag_prefix, instance_profile_arn)
+        time.sleep(RETRY_WAIT_DELAY)
+
+    LOGGER.info("%s started ec2 instances %s for '%s'",
+                tag_prefix, instance_ids, app_name)
+    return instance_ids
+
+
+def create_instances_webfront(region_name, app_name, image_name,
+                              identities_url=None, ssh_key_name=None,
+                              web_subnet_id=None, vpc_id=None, vpc_cidr=None,
+                              tag_prefix=None):
+    """
+    Create the proxy session server connected to the target group.
+    """
+    gate_name = '%s-castle-gate' % tag_prefix # XXX same as in `create_network`
+
+    ec2_client = boto3.client('ec2', region_name=region_name)
+    resp = ec2_client.describe_instances(
+        Filters=[
+            {'Name': 'tag:Name', 'Values': [app_name]},
+            {'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
+    previous_instances_ids = []
+    for reserv in resp['Reservations']:
+        for instance in reserv['Instances']:
+            previous_instances_ids += [instance['InstanceId']]
+    if previous_instances_ids:
+        LOGGER.info("%s found already running '%s' on instances %s",
+            tag_prefix, app_name, previous_instances_ids)
+        return previous_instances_ids
+
+    search_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'templates')
+    template_loader = jinja2.FileSystemLoader(searchpath=search_path)
+    template_env = jinja2.Environment(loader=template_loader)
+    template = template_env.get_template("web-cloud-init-script.j2")
+    user_data = template.render(identities_url=identities_url)
+
+    if not vpc_id:
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    if not web_subnet_id:
+        web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
+        resp = ec2_client.describe_availability_zones()
+        zone_ids = sorted([
+            zone['ZoneId'] for zone in resp['AvailabilityZones']])
+        web_subnet_by_zones = _get_subnet_by_zones(
+            web_subnet_cidrs, tag_prefix,
+            zone_ids=zone_ids, vpc_id=vpc_id, ec2_client=ec2_client)
+        # Use first valid subnet that does not require a public IP.
+        for zone_id in zone_ids[1:]:
+            subnet_id = web_subnet_by_zones[zone_id]
+            if subnet_id:
+                web_subnet_id = subnet_id
+                break
+
+    group_ids = _get_security_group_ids(
+        [gate_name], tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
+    instance_profile_arn = _get_instance_profile(gate_name)
+
+    # Find the ImageId
+    look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
+    aws_account_id = look.group(1)
+    resp = ec2_client.describe_images(
+        Filters=[
+            {'Name': 'name', 'Values': [image_name]},
+            {'Name': 'owner-id', 'Values': [aws_account_id]}])
+    if len(resp['Images']) != 1:
+        raise RuntimeError(
+            "Found more than one image named '%s' in account '%s'" % (
+                image_name, aws_account_id))
+    image_id = resp['Images'][0]['ImageId']
+
+    # XXX adds encrypted volume
+    resp = ec2_client.run_instances(
+        ImageId=image_id,
+        KeyName=ssh_key_name,
+        InstanceType='t3.small',
+        MinCount=1,
+        MaxCount=1,
+        SubnetId=web_subnet_id,
+        # Cannot use `SecurityGroups` with `SubnetId` but can
+        # use `SecurityGroupIds`.
+        SecurityGroupIds=group_ids,
+        IamInstanceProfile={'Arn': instance_profile_arn},
+        TagSpecifications=[{
+            'ResourceType': "instance",
+            'Tags': [{
+                'Key': 'Name',
+                'Value': app_name
+            }]}],
+        UserData=user_data)
+    instance_ids = [instance['InstanceId'] for instance in resp['Instances']]
+    LOGGER.info("%s started ec2 instances %s for '%s'",
+                tag_prefix, instance_ids, app_name)
+    return instance_ids
+
+
+def create_target_group(region_name, app_name,
+                        tls_priv_key, tls_fullchain_cert,
+                        image_name=None, identities_url=None, ssh_key_name=None,
+                        instance_ids=None,
+                        vpc_id=None, vpc_cidr=None,
+                        listener_arn=None, tag_prefix=None):
     """
     Create TargetGroup to forward HTTPS requests to application service.
     """
@@ -1282,9 +1715,9 @@ def create_target_group(region_name, app_id,
     # We attach the certificate to the load balancer listener
     resp = _store_certificate(tls_fullchain_cert, tls_priv_key,
         tag_prefix=tag_prefix, region_name=region_name)
-    valid_domains = (resp['ssl_certificate']['common_name']
-        + resp['ssl_certificate']['alt_names'])
     cert_location = resp['CertificateArn']
+    valid_domains = ([resp['ssl_certificate']['common_name']]
+        + resp['ssl_certificate']['alt_names'])
 
     elb_client = boto3.client('elbv2', region_name=region_name)
     if not listener_arn:
@@ -1299,31 +1732,48 @@ def create_target_group(region_name, app_id,
 
     # We create a listener rule to forward https requests to the app.
     resp = elb_client.create_target_group(
-        Name=app_id,
+        Name=app_name,
         Protocol='HTTPS',
         Port=443,
         VpcId=vpc_id,
-        TargetType='instance')
+        TargetType='instance',
+        HealthCheckEnabled=True,
+        HealthCheckProtocol='HTTP',
+        HealthCheckPort='80',
+        HealthCheckPath='/',
+        #HealthCheckIntervalSeconds=30,
+        #HealthCheckTimeoutSeconds=5,
+        #HealthyThresholdCount=5,
+        #UnhealthyThresholdCount=2,
+        Matcher={
+            'HttpCode': '200'
+        })
     target_group = resp.get('TargetGroups')[0].get('TargetGroupArn')
 
     rule_arn = None
     resp = elb_client.describe_rules(ListenerArn=listener_arn)
     for rule in resp['Rules']:
-        if rule['Conditions']['Field'] == 'host-header':
-            rule_valid_domains = [] + valid_domains
-            for rule_domain in rule['Conditions']['HostHeaderConfig']['Values']:
-                rule_valid_domains.remove(rule_domain)
-            if not rule_valid_domains:
-                rule_arn = rule['RuleArn']
-                break
+        for cond in rule['Conditions']:
+            if cond['Field'] == 'host-header':
+                rule_valid_domains = [] + valid_domains
+                for rule_domain in cond['HostHeaderConfig']['Values']:
+                    rule_valid_domains.remove(rule_domain)
+                if not rule_valid_domains:
+                    rule_arn = rule['RuleArn']
+                    break
     if rule_arn:
         LOGGER.info("%s found matching listener rule %s",
             tag_prefix, rule_arn)
     else:
         priority = 1
         for rule in resp['Rules']:
-            if rule['Priority'] >= priority:
-                priority = rule['Priority'] + 1
+            try:
+                rule_priority = int(rule['Priority'])
+                if rule_priority >= priority:
+                    priority = rule_priority + 1
+            except ValueError:
+                # When priority == 'default'
+                pass
         resp = elb_client.create_rule(
             ListenerArn=listener_arn,
             Priority=priority,
@@ -1340,20 +1790,78 @@ def create_target_group(region_name, app_id,
                     'TargetGroupArn': target_group,
                 }
             ])
-        rule_arn = resp['RuleArn']
+        rule_arn = resp['Rules'][0]['RuleArn']
         LOGGER.info("%s created matching listener rule %s",
             tag_prefix, rule_arn)
 
     # It is time to attach the instance that will respond to http requests
     # to the target group.
-    resp = elb_client.register_targets(
-        TargetGroupArn=target_group,
-        Targets=[{
-            'Id': instance_id, # XXX have to wait before registring target?
-            'Port': 443
-        }])
-    LOGGER.info("%s registered instance %s with listener rule %s",
-                tag_prefix, instance_id, rule_arn)
+    if not instance_ids:
+        instance_ids = create_instances_webfront(
+            region_name, app_name, image_name,
+            identities_url=identities_url, ssh_key_name=ssh_key_name,
+            vpc_id=vpc_id, vpc_cidr=vpc_cidr,
+            tag_prefix=tag_prefix)
+    if instance_ids:
+        for _ in range(0, NB_RETRIES):
+            # The EC2 instances take some time to be fully operational.
+            try:
+                resp = elb_client.register_targets(
+                    TargetGroupArn=target_group,
+                    Targets=[{
+                        'Id': instance_id,
+                        'Port': 443
+                    } for instance_id in instance_ids])
+                LOGGER.info("%s registers instances %s with target group %s",
+                    tag_prefix, instance_ids, target_group)
+                break
+            except botocore.exceptions.ClientError as err:
+                LOGGER.info("%s waiting for EC2 instances %s to be"\
+                    " in running state ...", tag_prefix, instance_ids)
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidTarget':
+                    raise
+            time.sleep(RETRY_WAIT_DELAY)
+
+
+def deploy_app_container(app_name, container_location,
+                         role_name=None, external_id=None, env=None,
+                         region_name=None, sqs_client=None):
+    """
+    Sends the message to the agent to (re-)deploy the Docker container.
+    """
+    queue_name = app_name
+    if not sqs_client:
+        sqs_client = boto3.client('sqs', region_name=region_name)
+    queue_url = sqs_client.get_queue_url(QueueName=queue_name).get('QueueUrl')
+    msg = {
+        'event': "deploy_container",
+        'app_name': app_name,
+        'container_location': container_location
+    }
+    if role_name:
+        msg.update({'role_name': role_name})
+    if external_id:
+        msg.update({'external_id': external_id})
+    if env:
+        msg.update({'env': env})
+    sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(msg))
+
+
+def upload_app_logs(app_name,
+                    region_name=None, sqs_client=None):
+    """
+    Sends the message to upload the container logs.
+    """
+    queue_name = app_name
+    if not sqs_client:
+        sqs_client = boto3.client('sqs', region_name=region_name)
+    queue_url = sqs_client.get_queue_url(QueueName=queue_name).get('QueueUrl')
+    msg = {
+        'event': "upload_logs",
+        'app_name': app_name
+    }
+    sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(msg))
 
 
 def main(input_args):
@@ -1423,18 +1931,46 @@ def main(input_args):
 
     # Create target groups for the applications.
     for app_name in config:
-        if app_name == 'default':
+        if app_name.lower() == 'default':
             continue
-        tls_priv_key_path = config[app_name]['tls_priv_key_path']
-        tls_fullchain_path = config[app_name]['tls_fullchain_path']
-        with open(tls_priv_key_path) as priv_key_file:
-            tls_priv_key = priv_key_file.read()
-        with open(tls_fullchain_path) as fullchain_file:
-            tls_fullchain_cert = fullchain_file.read()
-        create_target_group(
-            config['default']['region_name'],
-            app_name,
-            tls_priv_key_path,
-            tls_fullchain_path,
-            config[app_name]['instance_id'],
-            args.prefix)
+
+        if app_name.startswith(args.prefix):
+            tls_priv_key_path = config[app_name].get('tls_priv_key_path')
+            tls_fullchain_path = config[app_name].get('tls_fullchain_path')
+            if not tls_priv_key_path or not tls_fullchain_path:
+                tls_priv_key_path = config['default']['tls_priv_key_path']
+                tls_fullchain_path = config['default']['tls_fullchain_path']
+            with open(tls_priv_key_path) as priv_key_file:
+                tls_priv_key = priv_key_file.read()
+            with open(tls_fullchain_path) as fullchain_file:
+                tls_fullchain_cert = fullchain_file.read()
+            create_target_group(
+                config['default']['region_name'],
+                app_name,
+                tls_priv_key,
+                tls_fullchain_cert,
+                image_name=config[app_name]['image_name'],
+                identities_url=config[app_name]['identities_url'],
+                ssh_key_name=ssh_key_name,
+                vpc_cidr=config['default']['vpc_cidr'],
+                tag_prefix=args.prefix)
+        else:
+            create_app_resources(
+                config['default']['region_name'],
+                app_name,
+                image_name=config[app_name]['image_name'],
+                settings_location=config[app_name].get('settings_location'),
+                settings_crypt_key=config[app_name].get('settings_crypt_key'),
+                ssh_key_name=ssh_key_name,
+                vpc_cidr=config['default']['vpc_cidr'],
+                tag_prefix=args.prefix)
+
+            # Environment variables is an array of name/value.
+            env = json.loads(config[app_name].get('env', []))
+            deploy_app_container(
+                app_name,
+                config[app_name]['container_location'],
+                role_name=config[app_name].get('role_name'),
+                external_id=config[app_name].get('external_id'),
+                env=env,
+                region_name=config['default']['region_name'])

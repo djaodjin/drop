@@ -132,19 +132,20 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
         for db_path in ['olcDatabase={2}hdb.ldif', 'olcDatabase={2}mdb.ldif']:
             db_path = os.path.join(context.value('etcDir'),
                 'openldap', 'slapd.d', 'cn=config', db_path)
-            _, new_config_path = stageFile(db_path, context)
-            modify_config(db_path,
-                sep=': ', enter_block_sep=None, exit_block_sep=None,
-                one_per_line=True, context=context, settings={
-                    'olcSuffix': 'dc=%s,dc=%s' % domain_parts,
-                    'olcRootDN': 'cn=Manager,dc=%s,dc=%s' % domain_parts,
-                    'olcRootPW': '%s' % password_hash,
-                    'olcAccess': [
-                        '{0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage by * break',
-                        '{0}to attrs=userPassword by self write by dn.base="cn=Manager,dc=%s,dc=%s" write by anonymous auth by * none' % domain_parts,
-                        '{1}to * by dn.base="cn=Manager,dc=%s,dc=%s" write by self write by * read"' % domain_parts]
-                })
-            self._update_crc32(new_config_path)
+            if os.path.exists(db_path):
+                _, new_config_path = stageFile(db_path, context)
+                modify_config(db_path,
+                    sep=': ', enter_block_sep=None, exit_block_sep=None,
+                    one_per_line=True, context=context, settings={
+                        'olcSuffix': 'dc=%s,dc=%s' % domain_parts,
+                        'olcRootDN': 'cn=Manager,dc=%s,dc=%s' % domain_parts,
+                        'olcRootPW': '%s' % password_hash,
+                        'olcAccess': [
+                            '{0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage by * break',
+                            '{0}to attrs=userPassword by self write by dn.base="cn=Manager,dc=%s,dc=%s" write by anonymous auth by * none' % domain_parts,
+                            '{1}to * by dn.base="cn=Manager,dc=%s,dc=%s" write by self write by * read"' % domain_parts]
+                    })
+                self._update_crc32(new_config_path)
 
         schema_path = os.path.join(context.value('etcDir'),
             'openldap', 'schema', 'openssh-ldap.ldif')
@@ -174,8 +175,10 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
         # Resets user and permissions
         ldap_paths = [config_path, db_config_path]
         for db_path in ['olcDatabase={2}hdb.ldif', 'olcDatabase={2}mdb.ldif']:
-            ldap_paths += [os.path.join(context.value('etcDir'),
-                'openldap', 'slapd.d', 'cn=config', db_path)]
+            db_path = os.path.join(context.value('etcDir'),
+                'openldap', 'slapd.d', 'cn=config', db_path)
+            if os.path.exists(db_path):
+                ldap_paths += [db_path]
         postinst.shellCommand(['chown', 'ldap:ldap'] + ldap_paths)
         postinst.shellCommand(['chmod', '600'] + ldap_paths)
 

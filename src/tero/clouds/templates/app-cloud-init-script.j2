@@ -1,0 +1,21 @@
+#!/bin/bash
+#
+# Configuration of an app instance.
+
+set -x
+set -e
+
+siteTop=/var/www
+sysconfigFile=${siteTop}/djaoapp/etc/sysconfig/djagent
+
+# Configures the agent
+echo "SETTINGS_LOCATION={{settings_location}}" > ${sysconfigFile}
+echo "SETTINGS_CRYPT_KEY='{{settings_crypt_key}}'" >> ${sysconfigFile}
+echo "QUEUE_URL={{queue_url}}" >> ${sysconfigFile}
+chmod 600 ${sysconfigFile}
+
+# Restarts the agent
+/usr/bin/systemctl disable djaoapp.service
+/usr/bin/systemctl stop djaoapp.service
+/usr/bin/systemctl start djagent.service
+/usr/bin/systemctl enable djagent.service

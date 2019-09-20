@@ -1,0 +1,21 @@
+#!/bin/bash
+#
+# Configuration of a webfront instance (based of web base AMI created
+# by the create_web_base Ansible role).
+
+set -x
+set -e
+
+siteTop=/var/www
+
+# download keys, certificates, etc.
+aws s3 cp {{identities_url}} / --recursive
+chown -R $USER:$USER $siteTop/djaoapp/etc/sysconfig/*
+for domain in `ls /etc/pki/tls/certs/archive` ; do
+  mkdir -p /etc/pki/tls/certs/live/$domain
+  pushd /etc/pki/tls/certs/live/$domain
+  ln -s ../../archive/$domain/privkey.pem
+  ln -s ../../archive/$domain/fullchain.pem
+done
+
+# restart djaoapp, setup monit
