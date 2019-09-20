@@ -1,4 +1,4 @@
-ansible==2.6.0
+ansible==2.6.18
 awscli==1.16.172
 boto3==1.9.222
 elasticsearch==2.4.0
