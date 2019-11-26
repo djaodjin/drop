@@ -1,4 +1,4 @@
-# Copyright (c) 2015, DjaoDjin inc.
+# Copyright (c) 2019, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,10 @@ setup(name='drop',
     version=tero.__version__,
     author='DjaoDjin inc.',
     author_email='support@djaodjin.com',
-    packages=['tero', 'tero.setup'],
+    packages=[
+        'tero',
+        'tero.setup',
+        'tero.clouds'],
     url='https://github.com/djaodjin/drop/',
     download_url='https://github.com/djaodjin/drop/tarball/%s' \
         % tero.__version__,

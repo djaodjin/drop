@@ -128,15 +128,24 @@ def _check_certificate(public_cert_content, priv_key_content,
     return result
 
 
-def _get_instance_profile(role_name, iam_client=None, region_name=None):
+def _get_instance_profile(role_name, iam_client=None,
+                          region_name=None, tag_prefix=None):
     """
     Returns the instance profile arn based of its name.
     """
     if not iam_client:
         iam_client = boto3.client('iam', region_name=region_name)
-    resp = iam_client.get_instance_profile(
-        InstanceProfileName=role_name)
-    instance_profile_arn = resp['InstanceProfile']['Arn']
+    try:
+        resp = iam_client.get_instance_profile(
+            InstanceProfileName=role_name)
+        instance_profile_arn = resp['InstanceProfile']['Arn']
+        LOGGER.info("%s found IAM instance profile '%s'",
+            tag_prefix, instance_profile_arn)
+    except botocore.exceptions.ClientError as err:
+        instance_profile_arn = None
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'NoSuchEntity':
+            raise
     return instance_profile_arn
 
 
@@ -183,7 +192,7 @@ def _get_security_group_ids(group_names, tag_prefix,
     return group_ids
 
 
-def _get_storage_encryption_key(region_name, tag_prefix, kms_client=None):
+def _get_or_create_storage_enckey(region_name, tag_prefix, kms_client=None):
     kms_key_arn = None
     if not kms_client:
         kms_client = boto3.client('kms', region_name=region_name)
@@ -205,6 +214,12 @@ def _get_storage_encryption_key(region_name, tag_prefix, kms_client=None):
                 raise
         if kms_key_arn:
             break
+    if not kms_key_arn:
+        resp = kms_client.create_key(
+            Description='%s storage encrypt/decrypt' % tag_prefix,
+            Tags=[{'TagKey': "Prefix", 'TagValue': tag_prefix}])
+        kms_key_arn = resp['KeyMetadata']['KeyArn']
+        LOGGER.info("%s created KMS key %s", tag_prefix, kms_key_arn)
     return kms_key_arn
 
 
@@ -891,15 +906,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                 raise
 
     # Creates encryption keys (KMS) in region
-    kms_client = boto3.client('kms', region_name=region_name)
-    kms_key_arn = _get_storage_encryption_key(region_name, tag_prefix,
-        kms_client=kms_client)
-    if not kms_key_arn:
-        resp = kms_client.create_key(
-            Description='%s storage encrypt/decrypt' % tag_prefix,
-            Tags=[{'TagKey': "Prefix", 'TagValue': tag_prefix}])
-        kms_key_arn = resp['KeyMetadata']['KeyArn']
-        LOGGER.info("%s created KMS key %s", tag_prefix, kms_key_arn)
+    kms_key_arn = _get_or_create_storage_enckey(region_name, tag_prefix)
 
     # Create instance profiles
     gate_role = gate_name
@@ -1212,21 +1219,21 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
     - create a SQL database
     """
     LOGGER.info("Provisions datastores ...")
-    _, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
-
     ec2_client = boto3.client('ec2', region_name=region_name)
+
     vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    _, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
+    dbs_subnet_by_zones = _get_subnet_by_zones(dbs_subnet_cidrs,
+        tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
+    db_subnet_group_subnet_ids = list(dbs_subnet_by_zones.values())
 
     vault_name = '%s-vault' % tag_prefix
     group_ids = _get_security_group_ids(
         [vault_name], tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
     vault_sg_id = group_ids[0]
 
-    dbs_subnet_by_zones = _get_subnet_by_zones(dbs_subnet_cidrs,
-        tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
-
     if not kms_key_arn:
-        kms_key_arn = _get_storage_encryption_key(region_name, tag_prefix)
+        kms_key_arn = _get_or_create_storage_enckey(region_name, tag_prefix)
 
     rds_client = boto3.client('rds', region_name=region_name)
     db_param_group_name = tag_prefix
@@ -1259,7 +1266,7 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
     try:
         resp = rds_client.create_db_subnet_group(
             DBSubnetGroupName=db_subnet_group_name,
-            SubnetIds=list(dbs_subnet_by_zones.values()),
+            SubnetIds=db_subnet_group_subnet_ids,
             DBSubnetGroupDescription='%s db subnet group' % tag_prefix,
             Tags=[
                 {'Key': "Prefix", 'Value': tag_prefix},
@@ -1314,22 +1321,20 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
         LOGGER.info("%s found rds db '%s'", tag_prefix, db_name)
 
 
-def create_app_resources(region_name, app_name, image_name,
+def create_app_resources(region_name, app_name, ecr_access_role_arn,
+                         image_name,
                          settings_location=None, settings_crypt_key=None,
                          s3_logs_bucket=None, s3_uploads_bucket=None,
                          ssh_key_name=None,
                          app_subnet_id=None, vpc_id=None, vpc_cidr=None,
-                         tag_prefix=None):
+                         tag_prefix=None,
+                         dry_run=False):
     """
     Create the application servers
     """
     gate_name = '%s-castle-gate' % tag_prefix
     kitchen_door_name = '%s-kitchen-door' % tag_prefix
     app_sg_name = '%s-%s' % (tag_prefix, app_name)
-    if not s3_logs_bucket:
-        s3_logs_bucket = '%s-logs' % tag_prefix
-    if not s3_uploads_bucket:
-        s3_uploads_bucket = '%s-uploads' % tag_prefix
 
     ec2_client = boto3.client('ec2', region_name=region_name)
     resp = ec2_client.describe_instances(
@@ -1358,8 +1363,8 @@ def create_app_resources(region_name, app_name, image_name,
     template_env = jinja2.Environment(loader=template_loader)
     template = template_env.get_template("app-cloud-init-script.j2")
     user_data = template.render(
-        settings_location=settings_location,
-        settings_crypt_key=settings_crypt_key,
+        settings_location=settings_location if settings_location else "",
+        settings_crypt_key=settings_crypt_key if settings_crypt_key else "",
         queue_url=queue_url)
 
     if not vpc_id:
@@ -1492,51 +1497,52 @@ def create_app_resources(region_name, app_name, image_name,
                     ],
                     "Resource": "*"
                 }]}))
-        iam_client.put_role_policy(
-            RoleName=app_role,
-            PolicyName='WriteslogsToStorage',
-            PolicyDocument=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Action": [
-                        "s3:PutObject"
-                    ],
-                    "Effect": "Allow",
-                    "Resource": [
-                        "arn:aws:s3:::%s/*" % s3_logs_bucket
-                    ]
-                }]}))
-        iam_client.put_role_policy(
-            RoleName=app_role,
-            PolicyName='AccessesUploadedDocuments',
-            PolicyDocument=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Action": [
-                        "s3:GetObject",
-                        # Without `s3:ListBucket` we cannot do a recursive copy
-                        # (i.e. aws s3 cp ... --recursive)
-                        # XXX Without `s3:GetObjectAcl` and `s3:ListBucket`
-                        # cloud-init cannot run
-                        # `aws s3 cp s3://... / --recursive`
-                        "s3:GetObjectAcl",
-                        "s3:ListBucket",
-                        "s3:PutObject"
-                    ],
-                    "Effect": "Allow",
-                    "Resource": [
-                        "arn:aws:s3:::%s" % s3_uploads_bucket,
-                        "arn:aws:s3:::%s/*" % s3_uploads_bucket
-                    ]
-                }, {
-                    "Action": [
-                        "s3:PutObject"
-                    ],
-                    "Effect": "Disallow",
-                    "Resource": [
-                        "arn:aws:s3:::%s/identities/" % s3_uploads_bucket
-                    ]
-                }]}))
+        if s3_logs_bucket:
+            iam_client.put_role_policy(
+                RoleName=app_role,
+                PolicyName='WriteslogsToStorage',
+                PolicyDocument=json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Action": [
+                            "s3:PutObject"
+                        ],
+                        "Effect": "Allow",
+                        "Resource": [
+                            "arn:aws:s3:::%s/%s/var/log/*" % (
+                                s3_logs_bucket, app_name)
+                        ]
+                    }]}))
+        if s3_uploads_bucket:
+            iam_client.put_role_policy(
+                RoleName=app_role,
+                PolicyName='AccessesUploadedDocuments',
+                PolicyDocument=json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            # XXX Without `s3:GetObjectAcl` and `s3:ListBucket`
+                            # cloud-init cannot run a recursive copy
+                            # (i.e. `aws s3 cp s3://... / --recursive`)
+                            "s3:GetObjectAcl",
+                            "s3:ListBucket"
+                        ],
+                        "Effect": "Allow",
+                        "Resource": [
+                            "arn:aws:s3:::%s" % s3_uploads_bucket,
+                            "arn:aws:s3:::%s/*" % s3_uploads_bucket
+                        ]
+                    }, {
+                        "Action": [
+                            "s3:PutObject"
+                        ],
+                        "Effect": "Disallow",
+                        "Resource": [
+                            "arn:aws:s3:::%s/identities/" % s3_uploads_bucket
+                        ]
+                    }]}))
         LOGGER.info("%s created IAM role %s", tag_prefix, app_role)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
@@ -1545,7 +1551,8 @@ def create_app_resources(region_name, app_name, image_name,
         LOGGER.info("%s found IAM role %s", tag_prefix, app_role)
 
     instance_profile_arn = _get_instance_profile(
-        app_role, iam_client=iam_client, region_name=region_name)
+        app_role, iam_client=iam_client,
+        region_name=region_name, tag_prefix=tag_prefix)
     if not instance_profile_arn:
         resp = iam_client.create_instance_profile(
             InstanceProfileName=app_role)
@@ -1585,7 +1592,7 @@ def create_app_resources(region_name, app_name, image_name,
                 SubnetId=app_subnet_id,
                 # Cannot use `SecurityGroups` with `SubnetId` but can
                 # use `SecurityGroupIds`.
-                SecurityGroupIds=group_ids,
+                SecurityGroupIds=[app_sg_id],
                 IamInstanceProfile={'Arn': instance_profile_arn},
                 TagSpecifications=[{
                     'ResourceType': "instance",
@@ -1598,7 +1605,6 @@ def create_app_resources(region_name, app_name, image_name,
                 instance['InstanceId'] for instance in resp['Instances']]
             break
         except botocore.exceptions.ClientError as err:
-            print("XXX err=%s, err.response=%s" % (err, err.response))
             if not err.response.get('Error', {}).get(
                     'Code', 'Unknown') == 'InvalidParameterValue':
                 raise
@@ -1894,40 +1900,48 @@ def main(input_args):
 
     tls_priv_key = None
     tls_fullchain_cert = None
-    tls_priv_key_path = config['default']['tls_priv_key_path']
-    tls_fullchain_path = config['default']['tls_fullchain_path']
+    tls_priv_key_path = config['default'].get('tls_priv_key_path')
+    tls_fullchain_path = config['default'].get('tls_fullchain_path')
     if tls_priv_key_path and tls_fullchain_path:
         with open(tls_priv_key_path) as priv_key_file:
             tls_priv_key = priv_key_file.read()
         with open(tls_fullchain_path) as fullchain_file:
             tls_fullchain_cert = fullchain_file.read()
 
-    ssh_key_name = config['default']['ssh_key_name']
-    with open(os.path.join(os.getenv('HOME'), '.ssh', '%s.pub' % ssh_key_name),
-              'rb') as ssh_key_obj:
-        ssh_key_content = ssh_key_obj.read()
+    ssh_key_content = None
+    ssh_key_name = config['default'].get('ssh_key_name')
+    if ssh_key_name:
+        with open(os.path.join(os.getenv('HOME'),
+            '.ssh', '%s.pub' % ssh_key_name), 'rb') as ssh_key_obj:
+            ssh_key_content = ssh_key_obj.read()
 
-    db_zone_names = [zone_name.strip()
-        for zone_name in config['default']['dbs_zone_names'].split(',')]
-    create_network(
-        config['default']['region_name'],
-        config['default']['vpc_cidr'],
-        db_zone_names,
-        tls_priv_key=tls_priv_key,
-        tls_fullchain_cert=tls_fullchain_cert,
-        ssh_key_name=ssh_key_name,
-        ssh_key_content=ssh_key_content,
-        sally_ip=config['default']['sally_ip'],
-        tag_prefix=args.prefix,
-        dry_run=args.dry_run)
+    dbs_zone_names = config['default'].get('dbs_zone_names')
+    if dbs_zone_names:
+        dbs_zone_names = [
+            zone_name.strip() for zone_name in dbs_zone_names.split(',')]
+        create_network(
+            config['default']['region_name'],
+            config['default']['vpc_cidr'],
+            dbs_zone_names,
+            tls_priv_key=tls_priv_key,
+            tls_fullchain_cert=tls_fullchain_cert,
+            ssh_key_name=ssh_key_name,
+            ssh_key_content=ssh_key_content,
+            sally_ip=config['default'].get('sally_ip'),
+            tag_prefix=args.prefix,
+            dry_run=args.dry_run)
 
-    create_datastores(
-        config['default']['region_name'],
-        config['default']['vpc_cidr'],
-        db_zone_names,
-        config['default']['db_master_user'],
-        config['default']['db_master_password'],
-        args.prefix)
+        if ('db_master_user' in config['default'] and
+            'db_master_password' in config['default']):
+            storage_enckey = config['default'].get('storage_enckey')
+            create_datastores(
+                config['default']['region_name'],
+                config['default']['vpc_cidr'],
+                dbs_zone_names,
+                config['default']['db_master_user'],
+                config['default']['db_master_password'],
+                args.prefix,
+                kms_key_arn=storage_enckey)
 
     # Create target groups for the applications.
     for app_name in config:
@@ -1958,11 +1972,16 @@ def main(input_args):
             create_app_resources(
                 config['default']['region_name'],
                 app_name,
+                ecr_access_role_arn=config[app_name]['ecr_access_role_arn'],
                 image_name=config[app_name]['image_name'],
                 settings_location=config[app_name].get('settings_location'),
                 settings_crypt_key=config[app_name].get('settings_crypt_key'),
                 ssh_key_name=ssh_key_name,
-                vpc_cidr=config['default']['vpc_cidr'],
+                s3_logs_bucket=config['default'].get('s3_logs_bucket'),
+                s3_uploads_bucket=config[app_name].get('s3_uploads_bucket'),
+                app_subnet_id=config['default'].get('app_subnet_id'),
+                vpc_id=config['default'].get('vpc_id'),
+                vpc_cidr=config['default'].get('vpc_cidr'),
                 tag_prefix=args.prefix)
 
             # Environment variables is an array of name/value.
@@ -1974,3 +1993,8 @@ def main(input_args):
                 external_id=config[app_name].get('external_id'),
                 env=env,
                 region_name=config['default']['region_name'])
+
+
+if __name__ == '__main__':
+    import sys
+    main(sys.argv)

@@ -5,8 +5,7 @@
 set -x
 set -e
 
-siteTop=/var/www
-sysconfigFile=${siteTop}/djaoapp/etc/sysconfig/djagent
+sysconfigFile=/var/www/djaoapp/etc/sysconfig/djagent
 
 # Configures the agent
 echo "SETTINGS_LOCATION={{settings_location}}" > ${sysconfigFile}
