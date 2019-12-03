@@ -1356,7 +1356,7 @@ def create_app_resources(region_name, app_name, image_name,
     """
     Create the application servers
     """
-    tag_prefix = clean_tag_prefix(tag_prefix)
+    tag_prefix = _clean_tag_prefix(tag_prefix)
     gate_name = '%scastle-gate' % tag_prefix
     kitchen_door_name = '%skitchen-door' % tag_prefix
     app_sg_name = '%s%s' % (tag_prefix, app_name)
