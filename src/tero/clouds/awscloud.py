@@ -1321,8 +1321,8 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
         LOGGER.info("%s found rds db '%s'", tag_prefix, db_name)
 
 
-def create_app_resources(region_name, app_name, ecr_access_role_arn,
-                         image_name,
+def create_app_resources(region_name, app_name, image_name,
+                         ecr_access_role_arn=None,
                          settings_location=None, settings_crypt_key=None,
                          s3_logs_bucket=None, s3_uploads_bucket=None,
                          ssh_key_name=None,
@@ -1474,29 +1474,30 @@ def create_app_resources(region_name, app_name, ecr_access_role_arn,
                     "Effect": "Allow",
                     "Resource": "*"
                 }]}))
-        iam_client.put_role_policy(
-            RoleName=app_role,
-            PolicyName='DeployContainer',
-            PolicyDocument=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": [
-                        "sts:AssumeRole"
-                    ],
-                    "Resource": [
-                        ecr_access_role_arn
-                    ]
-                }, {
-                    "Effect": "Allow",
-                    "Action": [
-                        "ecr:GetAuthorizationToken",
-                        "ecr:BatchCheckLayerAvailability",
-                        "ecr:GetDownloadUrlForLayer",
-                        "ecr:BatchGetImage"
-                    ],
-                    "Resource": "*"
-                }]}))
+        if ecr_access_role_arn:
+            iam_client.put_role_policy(
+                RoleName=app_role,
+                PolicyName='DeployContainer',
+                PolicyDocument=json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Action": [
+                            "sts:AssumeRole"
+                        ],
+                        "Resource": [
+                            ecr_access_role_arn
+                        ]
+                    }, {
+                        "Effect": "Allow",
+                        "Action": [
+                            "ecr:GetAuthorizationToken",
+                            "ecr:BatchCheckLayerAvailability",
+                            "ecr:GetDownloadUrlForLayer",
+                            "ecr:BatchGetImage"
+                        ],
+                        "Resource": "*"
+                    }]}))
         if s3_logs_bucket:
             iam_client.put_role_policy(
                 RoleName=app_role,
@@ -1972,8 +1973,8 @@ def main(input_args):
             create_app_resources(
                 config['default']['region_name'],
                 app_name,
+                config[app_name]['image_name'],
                 ecr_access_role_arn=config[app_name]['ecr_access_role_arn'],
-                image_name=config[app_name]['image_name'],
                 settings_location=config[app_name].get('settings_location'),
                 settings_crypt_key=config[app_name].get('settings_crypt_key'),
                 ssh_key_name=ssh_key_name,
