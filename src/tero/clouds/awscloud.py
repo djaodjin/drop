@@ -128,11 +128,21 @@ def _check_certificate(public_cert_content, priv_key_content,
     return result
 
 
+def _clean_tag_prefix(tag_prefix):
+    if tag_prefix:
+        if not tag_prefix.endswith('-'):
+            tag_prefix = tag_prefix + '-'
+    else:
+        tag_prefix = ""
+    return tag_prefix
+
+
 def _get_instance_profile(role_name, iam_client=None,
                           region_name=None, tag_prefix=None):
     """
     Returns the instance profile arn based of its name.
     """
+    tag_prefix = _clean_tag_prefix(tag_prefix)
     if not iam_client:
         iam_client = boto3.client('iam', region_name=region_name)
     try:
@@ -150,10 +160,11 @@ def _get_instance_profile(role_name, iam_client=None,
 
 
 def _get_listener(tag_prefix, region_name=None, elb_client=None):
+    tag_prefix = _clean_tag_prefix(tag_prefix)
     if not elb_client:
         elb_client = boto3.client('elbv2', region_name=region_name)
     resp = elb_client.describe_load_balancers(
-        Names=['%s-elb' % tag_prefix], # XXX matching `create_load_balancer`
+        Names=['%selb' % tag_prefix], # XXX matching `create_load_balancer`
     )
     load_balancer = resp['LoadBalancers'][0]
     load_balancer_arn = load_balancer['LoadBalancerArn']
@@ -340,6 +351,19 @@ def _store_certificate(fullchain, key, domain=None, tag_prefix=None,
                 tag_prefix, result['ssl_certificate'], resp['CertificateArn'])
     result.update({'CertificateArn': resp['CertificateArn']})
     return result
+
+def is_aws_ecr(container_location):
+    """
+    return `True` if the container looks like it is stored in an AWS repository.
+    """
+    look = re.match(r'^https?://(.*)', container_location)
+    if look:
+        container_location_no_scheme = look.group(1)
+    else:
+        container_location_no_scheme = container_location
+    return bool(re.match(
+            r'^[0-9]+\.dkr\.ecr\.[a-z0-9\-]+\.amazonaws\.com\/.*',
+            container_location_no_scheme))
 
 
 def create_elb(tag_prefix, web_subnet_by_zones, moat_sg_id,
@@ -1332,9 +1356,10 @@ def create_app_resources(region_name, app_name, image_name,
     """
     Create the application servers
     """
-    gate_name = '%s-castle-gate' % tag_prefix
-    kitchen_door_name = '%s-kitchen-door' % tag_prefix
-    app_sg_name = '%s-%s' % (tag_prefix, app_name)
+    tag_prefix = clean_tag_prefix(tag_prefix)
+    gate_name = '%scastle-gate' % tag_prefix
+    kitchen_door_name = '%skitchen-door' % tag_prefix
+    app_sg_name = '%s%s' % (tag_prefix, app_name)
 
     ec2_client = boto3.client('ec2', region_name=region_name)
     resp = ec2_client.describe_instances(
@@ -1391,8 +1416,14 @@ def create_app_resources(region_name, app_name, image_name,
     gate_sg_id = group_ids[1]
     kitchen_door_sg_id = group_ids[2]
     if not app_sg_id:
+        if tag_prefix and tag_prefix.endswith('-'):
+            descr = '%s %s' % (tag_prefix[:-1], app_name)
+        elif tag_prefix:
+            descr = ('%s %s' % (tag_prefix, app_name)).strip()
+        else:
+            descr = app_name
         resp = ec2_client.create_security_group(
-            Description='%s %s' % (tag_prefix, app_name),
+            Description=descr,
             GroupName=app_sg_name,
             VpcId=vpc_id)
         app_sg_id = resp['GroupId']
@@ -1970,11 +2001,19 @@ def main(input_args):
                 vpc_cidr=config['default']['vpc_cidr'],
                 tag_prefix=args.prefix)
         else:
+            container_location = config[app_name].get('container_location')
+            if container_location and is_aws_ecr(container_location):
+                ecr_access_role_arn = config[app_name].get(
+                    'ecr_access_role_arn')
+                role_name = ecr_access_role_arn
+            else:
+                ecr_access_role_arn = None
+                role_name = config[app_name].get('container_access_token')
             create_app_resources(
                 config['default']['region_name'],
                 app_name,
                 config[app_name]['image_name'],
-                ecr_access_role_arn=config[app_name]['ecr_access_role_arn'],
+                ecr_access_role_arn=ecr_access_role_arn,
                 settings_location=config[app_name].get('settings_location'),
                 settings_crypt_key=config[app_name].get('settings_crypt_key'),
                 ssh_key_name=ssh_key_name,
@@ -1986,14 +2025,17 @@ def main(input_args):
                 tag_prefix=args.prefix)
 
             # Environment variables is an array of name/value.
-            env = json.loads(config[app_name].get('env', []))
-            deploy_app_container(
-                app_name,
-                config[app_name]['container_location'],
-                role_name=config[app_name].get('role_name'),
-                external_id=config[app_name].get('external_id'),
-                env=env,
-                region_name=config['default']['region_name'])
+            if container_location:
+                env = config[app_name].get('env')
+                if env:
+                    env = json.loads(env)
+                deploy_app_container(
+                    app_name,
+                    container_location,
+                    role_name=role_name,
+                    external_id=config[app_name].get('external_id'),
+                    env=env,
+                    region_name=config['default']['region_name'])
 
 
 if __name__ == '__main__':
