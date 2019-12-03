@@ -33,7 +33,13 @@ setup(name='drop',
     packages=[
         'tero',
         'tero.setup',
-        'tero.clouds'],
+        'tero.clouds'
+    ],
+    package_data={
+        'tero.clouds': [
+            'templates/*.j2'
+        ]
+    },
     url='https://github.com/djaodjin/drop/',
     download_url='https://github.com/djaodjin/drop/tarball/%s' \
         % tero.__version__,
