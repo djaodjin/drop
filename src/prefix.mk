@@ -147,6 +147,10 @@ _binDistUbuntu	=	$(project)_$(version)$(distExtUbuntu)
 _binDistFedora	=	$(project)-$(version)$(distExtFedora)
 binDist		=	$(_binDist$(distHost))
 
+
+DOCBOOK_SCHEMA := $(shareBuildDir)/schemas/docbook.xsd
+DOCBOOK_SCHEMA := $(shareBuildDir)/docbook-xsl/slides/schema/xsd/docbook.xsd
+
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
 htmlxsl		:=	$(shareBuildDir)/docbook-xsl/html/docbook.xsl
 foxsl		:=	$(shareBuildDir)/docbook-xsl/fo/docbook.xsl

@@ -325,7 +325,7 @@ validate: $(projindex)
 # schema taken from http://www.docbook.org/xml/5.0/xsd/docbook.xsd
 validbook: $(wildcard $(srcDir)/doc/*.book) \
 			$(wildcard $(srcDir)/doc/*.corp)
-	xmllint --noout --schema $(shareBuildDir)/schemas/docbook.xsd $^
+	xmllint --noout --schema $(DOCBOOK_SCHEMA) $^
 
 validxhtml: $(subst .book,.html,\
 		$(notdir $(wildcard $(srcDir)/doc/*.book)))
