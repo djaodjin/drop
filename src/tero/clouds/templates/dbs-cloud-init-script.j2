@@ -1,0 +1,56 @@
+#!/bin/bash
+#
+# databases machine
+
+set -x
+set -e
+
+siteTop=${HOME}/workspace
+
+# Install necessary packages to bootstrap configuration
+VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
+if [ -f /usr/bin/dnf ]; then
+    /usr/bin/dnf -y install git-core python-virtualenv awscli
+else
+    /usr/bin/yum -y install epel-release
+    # Without making the fast cache, python36 is sometimes not found on mirror
+    # (ex: mirrors.cat.pdx.edu)
+    /usr/bin/yum makecache fast
+    /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
+    /usr/bin/yum -y install bzip2 git-core python-virtualenv python36-six wget awscli
+    VIRTUALENV_RUN="virtualenv -p python3.6 --system-site-packages"
+    # We also need to install postgresql repos to find `postgresql11-server`
+    # XXX This does not seem necessary anymore
+    #/usr/bin/wget https://download.postgresql.org/pub/repos/yum/11/redhat/rhel-7-x86_64/pgdg-centos11-11-2.noarch.rpm
+    #/usr/bin/yum -y install pgdg-centos11-11-2.noarch.rpm
+fi
+
+# Mount encrypted volume as /var after copying previous content over.
+if [ -e /dev/xvdf && ! -d /var.old ] ; then
+    mkfs.ext4 -m 0 /dev/xvdf
+    mkdir -p /mnt/encvol
+    mount /dev/xvdf /mnt/encvol
+    cd /var && cp -ax * /mnt/encvol
+    cd /
+    umount /dev/xvdf
+    mv /var /var.old
+    mkdir -p /var
+    mount /dev/xvdf /var
+    restorecon -rvF /var
+else
+   echo "install databases storage on primary volume."
+fi
+
+# Install identities
+/usr/bin/aws s3 cp {{identities_url}} / --recursive
+
+# Clone configuration scripts repository and setup the machine.
+mkdir -p ${siteTop}/reps
+${VIRTUALENV_RUN} ${siteTop}
+cd ${siteTop}
+git clone {{remote_drop_repo}} reps/drop
+bin/python reps/drop/src/dservices.py -Dadmin=$USER -DetcDir=/etc -DcompanyDomain={{company_domain}} -DldapHost={{ldap_host}} -DldapPasswordHash="{{ldap_assword_hash}}" -Dvpc_cidr={{vpc_cidr}} reps/drop/share/profiles/databases.xml
+
+# Restore database from flat files
+bin/python reps/drop/src/drestore.py --domainName={{company_domain}} /var/backups/ldap/*.ldif /var/backups/pgsql/*.sql
+

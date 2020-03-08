@@ -34,10 +34,15 @@ from tero.setup.cron import add_entry as cron_add_entry
 
 class postgresql_serverSetup(SetupTemplate):
 
+    pgdata = '/var/lib/pgsql'
+    postgresql_setup = '/usr/bin/postgresql-setup'
+    pg_dump = '/usr/bin/pg_dump'
+
     backup_script = [
         "sudo -u postgres psql -U postgres -qAt -c 'select datname from"\
         " pg_database where datallowconn' | xargs -r -I X sudo -u postgres"\
-        " pg_dump -U postgres -C -f /var/backups/pgsql/X.sql X",
+        " %(pg_dump)s -U postgres -C -f /var/backups/pgsql/X.sql X" % {
+            'pg_dump': self.pg_dump},
         "chmod 600 /var/backups/pgsql/*.sql"]
 
     def __init__(self, name, files, **kwargs):
@@ -88,10 +93,9 @@ class postgresql_serverSetup(SetupTemplate):
 
         pg_user = context.value('dbUser')
         vpc_cidr = context.value('vpc_cidr')
-        postgresql_conf = '/var/lib/pgsql/data/postgresql.conf'
-        pg_ident_conf = '/var/lib/pgsql/data/pg_ident.conf'
-        pg_ident_conf = '/var/lib/pgsql/data/pg_ident.conf'
-        pg_hba_conf = '/var/lib/pgsql/data/pg_hba.conf'
+        postgresql_conf = os.path.join(self.pgdata, 'postgresql.conf')
+        pg_ident_conf = os.path.join(self.pgdata, 'pg_ident.conf')
+        pg_hba_conf = os.path.join(self.pgdata, 'pg_hba.conf')
 
         if not os.path.exists(postgresql_conf):
             # /var/lib/pgsql/data will be empty unless we run initdb once.
@@ -174,10 +178,21 @@ r'^host\s+(?P<db>\S+)\s+(?P<pg_user>\S+)\s+(?P<cidr>\S+)\s+(?P<method>\S+)',
                             'cidr': conn[2].ljust(16)})
 
         self.create_cron_conf(context)
-        postinst.shellCommand(['[ -d /var/lib/pgsql/data/base ] ||',
-            '/usr/bin/postgresql-setup', 'initdb'])
+        postinst.shellCommand(['[ -d %(pgdata)s/base ] ||' % {
+            'pgdata': self.pgdata }, self.postgresql_setup, 'initdb'])
 
         return complete
+
+
+class postgresql11_serverSetup(postgresql_serverSetup):
+
+    pgdata = '/var/lib/pgsql/11'
+    postgresql_setup = '/usr/pgsql-11/bin/postgresql-11-setup'
+    pg_dump = '/usr/pgsql-11/bin/pg_dump'
+
+    def __init__(self, name, files, **kwargs):
+        super(postgresql11_serverSetup, self).__init__(name, files, **kwargs)
+        self.daemons = ['postgresql-11']
 
 
 class postgresqlSetup(SetupTemplate):

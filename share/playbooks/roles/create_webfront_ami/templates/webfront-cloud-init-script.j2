@@ -16,7 +16,7 @@ else
     # Without making the fast cache, python36 is sometimes not found on mirror
     # (ex: mirrors.cat.pdx.edu)
     /usr/bin/yum makecache fast
-    /usr/bin/yum -y libselinux-python
+    /usr/bin/yum -y install libselinux-python
     /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
     /usr/bin/yum -y install awscli bzip2 make python-virtualenv
     VIRTUALENV_RUN="/usr/bin/virtualenv -p python3.6 --system-site-packages"

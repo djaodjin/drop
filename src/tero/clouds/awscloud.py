@@ -1,4 +1,4 @@
-# Copyright (c) 2019, Djaodjin Inc.
+# Copyright (c) 2020, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,12 +22,18 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import argparse, configparser, datetime, json, logging, os, random, re, time
+#pylint:disable=too-many-statements,too-many-locals,too-many-arguments
+#pylint:disable=too-many-lines
+
+import argparse, configparser, datetime, json, logging, os, re, time
 
 import boto3
 import botocore.exceptions
 import jinja2
 import OpenSSL.crypto
+from pyasn1.codec.der.decoder import decode as asn1_decoder
+from pyasn1_modules.rfc2459 import SubjectAltName
+from pyasn1.codec.native.encoder import encode as nat_encoder
 import six
 
 
@@ -90,9 +96,6 @@ def _check_certificate(public_cert_content, priv_key_content,
         extension = public_cert.get_extension(ext_idx)
         if extension.get_short_name().decode('utf-8') == 'subjectAltName':
             # data of the X509 extension, encoded as ASN.1
-            from pyasn1.codec.der.decoder import decode as asn1_decoder
-            from pyasn1_modules.rfc2459 import SubjectAltName
-            from pyasn1.codec.native.encoder import encode as nat_encoder
             decoded_alt_names, _ = asn1_decoder(
                 extension.get_data(), asn1Spec=SubjectAltName())
             for alt in nat_encoder(decoded_alt_names):
@@ -159,7 +162,7 @@ def _get_instance_profile(role_name, iam_client=None,
     return instance_profile_arn
 
 
-def _get_listener(tag_prefix, region_name=None, elb_client=None):
+def _get_load_balancer(tag_prefix, region_name=None, elb_client=None):
     tag_prefix = _clean_tag_prefix(tag_prefix)
     if not elb_client:
         elb_client = boto3.client('elbv2', region_name=region_name)
@@ -171,6 +174,18 @@ def _get_listener(tag_prefix, region_name=None, elb_client=None):
     load_balancer_dns = load_balancer['DNSName']
     LOGGER.info("%s found application load balancer %s available at %s",
         tag_prefix, load_balancer_arn, load_balancer_dns)
+    return load_balancer_arn, load_balancer_dns
+
+
+def _get_listener(tag_prefix, load_balancer_arn=None,
+                  elb_client=None, region_name=None):
+    tag_prefix = _clean_tag_prefix(tag_prefix)
+    if not elb_client:
+        elb_client = boto3.client('elbv2', region_name=region_name)
+    if not load_balancer_arn:
+        #pylint:disable=unused-variable
+        load_balancer_arn, load_balancer_dns = _get_load_balancer(
+            tag_prefix, region_name=region_name, elb_client=elb_client)
     resp = elb_client.describe_listeners(
         LoadBalancerArn=load_balancer_arn)
     for listener in resp['Listeners']:
@@ -179,28 +194,6 @@ def _get_listener(tag_prefix, region_name=None, elb_client=None):
     LOGGER.info("%s found HTTPS listener %s for %s",
         tag_prefix, https_listener_arn, load_balancer_arn)
     return https_listener_arn
-
-
-def _get_security_group_ids(group_names, tag_prefix,
-                            vpc_id=None, ec2_client=None, region_name=None):
-    """
-    Returns a list of VPC security Group IDs matching one-to-one
-    with the `group_names` passed as argument.
-    """
-    if not ec2_client:
-        ec2_client = boto3.client('ec2', region_name=region_name)
-    if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
-    resp = ec2_client.describe_security_groups(
-        Filters=[{'Name': "vpc-id", 'Values': [vpc_id]}])
-    group_ids = [None for _ in group_names]
-    for security_group in resp['SecurityGroups']:
-        for idx, group_name in enumerate(group_names):
-            if security_group['GroupName'] == group_name:
-                group_ids[idx] = security_group['GroupId']
-                LOGGER.info("%s found %s security group %s",
-                    tag_prefix, group_name, group_ids[idx])
-    return group_ids
 
 
 def _get_or_create_storage_enckey(region_name, tag_prefix, kms_client=None):
@@ -235,19 +228,31 @@ def _get_or_create_storage_enckey(region_name, tag_prefix, kms_client=None):
 
 
 def _get_subnet_by_zones(subnet_cidrs, tag_prefix,
-                         vpc_id=None, zone_ids=None,
+                         vpc_id=None,
+                         zone_ids=None, zone_names=None,
                          ec2_client=None, region_name=None):
     """
     Returns the subnet_id in which databases should be created.
+
+    If neither `zone_ids` nor `zone_names` are specified,
+    all zones are considered.
     """
     if not ec2_client:
         ec2_client = boto3.client('ec2', region_name=region_name)
     if not vpc_id:
         vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    zone_id_to_name = {}
     if not zone_ids:
         resp = ec2_client.describe_availability_zones()
-        zone_ids = sorted([
-            zone['ZoneId'] for zone in resp['AvailabilityZones']])
+        if zone_names:
+            zone_ids = sorted([
+                zone['ZoneId'] for zone in resp['AvailabilityZones']
+                if zone['ZoneName'] in zone_names])
+        else:
+            zone_ids = sorted([
+                zone['ZoneId'] for zone in resp['AvailabilityZones']])
+        zone_id_to_name = {zone['ZoneId']:zone['ZoneName']
+            for zone in resp['AvailabilityZones']}
     subnet_by_zones = {}
     for zone_id in zone_ids:
         resp = ec2_client.describe_subnets(Filters=[
@@ -257,13 +262,45 @@ def _get_subnet_by_zones(subnet_cidrs, tag_prefix,
             for subnet_cidr in subnet_cidrs:
                 if subnet['CidrBlock'] == subnet_cidr:
                     subnet_by_zones[zone_id] = subnet['SubnetId']
-                    LOGGER.info("%s found subnet %s in zone %s for cidr %s",
+                    LOGGER.info(
+                        "%s found subnet %s in zone %s (%s) for cidr %s",
                         tag_prefix, subnet_by_zones[zone_id], zone_id,
+                        zone_id_to_name.get(zone_id, 'ukwn'),
                         subnet_cidr)
                     break
             if (zone_id in subnet_by_zones and subnet_by_zones[zone_id]):
                 break
     return subnet_by_zones
+
+
+def _get_security_group_names(base_names, tag_prefix=None):
+    results = []
+    for base_name in base_names:
+        results += [(
+            '%s-%s' % (base_name, tag_prefix) if tag_prefix else base_name)]
+    return results
+
+
+def _get_security_group_ids(group_names, tag_prefix,
+                            vpc_id=None, ec2_client=None, region_name=None):
+    """
+    Returns a list of VPC security Group IDs matching one-to-one
+    with the `group_names` passed as argument.
+    """
+    if not ec2_client:
+        ec2_client = boto3.client('ec2', region_name=region_name)
+    if not vpc_id:
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    resp = ec2_client.describe_security_groups(
+        Filters=[{'Name': "vpc-id", 'Values': [vpc_id]}])
+    group_ids = [None for _ in group_names]
+    for security_group in resp['SecurityGroups']:
+        for idx, group_name in enumerate(group_names):
+            if security_group['GroupName'] == group_name:
+                group_ids[idx] = security_group['GroupId']
+                LOGGER.info("%s found %s security group %s",
+                    tag_prefix, group_name, group_ids[idx])
+    return group_ids
 
 
 def _get_vpc_id(tag_prefix, ec2_client=None, region_name=None):
@@ -281,21 +318,33 @@ def _get_vpc_id(tag_prefix, ec2_client=None, region_name=None):
     return vpc_id
 
 
-def _split_cidrs(vpc_cidr):
+def _split_cidrs(vpc_cidr, region_name=None):
     """
     Returns web and dbs subnets cidrs from a `vpc_cidr`.
     """
-    dot_parts, length = vpc_cidr.split('/')
+    dot_parts, length = vpc_cidr.split('/')  #pylint:disable=unused-variable
+
     dot_parts = dot_parts.split('.')
     cidr_prefix = '.'.join(dot_parts[:2])
-    web_subnet_cidrs = [
-        '%s.0.0/20' % cidr_prefix,
-        '%s.16.0/20' % cidr_prefix,
-        '%s.32.0/20' % cidr_prefix,
-        '%s.48.0/20' % cidr_prefix]
-    dbs_subnet_cidrs = [
-        '%s.64.0/20' % cidr_prefix,
-        '%s.128.0/20' % cidr_prefix]
+    if region_name and region_name == 'us-west-2':
+        # XXX 4 availability zones
+        web_subnet_cidrs = [
+            '%s.0.0/20' % cidr_prefix,
+            '%s.16.0/20' % cidr_prefix,
+            '%s.32.0/20' % cidr_prefix]
+        dbs_subnet_cidrs = [
+            '%s.48.16/28' % cidr_prefix]
+    else:
+        # XXX 4 availability zones
+        web_subnet_cidrs = [
+            '%s.0.0/20' % cidr_prefix,
+            '%s.16.0/20' % cidr_prefix,
+            '%s.32.0/20' % cidr_prefix,
+            '%s.48.0/20' % cidr_prefix]
+        # XXX We need 2 availability regions for RDS?
+        dbs_subnet_cidrs = [
+            '%s.64.0/20' % cidr_prefix,
+            '%s.128.0/20' % cidr_prefix]
     return web_subnet_cidrs, dbs_subnet_cidrs
 
 
@@ -366,15 +415,32 @@ def is_aws_ecr(container_location):
             container_location_no_scheme))
 
 
+def check_security_group(security_group):
+    for rule in security_group['IpPermissions']:
+        LOGGER.info("%s: from %d to %d (%s)", security_group['GroupName'],
+            rule['FromPort'], rule['ToPort'], str(rule))
+    print("XXX %s" % str(security_group['IpPermissionsEgress']))
+    for rule in security_group['IpPermissionsEgress']:
+        from_port = rule.get('FromPort')
+        to_port = rule.get('ToPort')
+        if from_port and to_port:
+            LOGGER.info("%s: from %d to %d (%s)", security_group['GroupName'],
+                from_port, to_port, str(rule))
+        else:
+            LOGGER.info("%s: %s", security_group['GroupName'], str(rule))
+
+
 def create_elb(tag_prefix, web_subnet_by_zones, moat_sg_id,
                tls_priv_key=None, tls_fullchain_cert=None,
-               region_name=None):
+               region_name=None, elb_name=None):
     """
     Creates the Application Load Balancer.
     """
+    if not elb_name:
+        elb_name = '%s-elb' % tag_prefix
     elb_client = boto3.client('elbv2', region_name=region_name)
     resp = elb_client.create_load_balancer(
-        Name='%s-elb' % tag_prefix,
+        Name=elb_name,
         Subnets=list(web_subnet_by_zones.values()),
         SecurityGroups=[
             moat_sg_id,
@@ -388,23 +454,30 @@ def create_elb(tag_prefix, web_subnet_by_zones, moat_sg_id,
     LOGGER.info("%s found/created application load balancer %s available at %s",
         tag_prefix, load_balancer_arn, load_balancer_dns)
 
-    resp = elb_client.create_listener(
-        LoadBalancerArn=load_balancer_arn,
-        Protocol='HTTP',
-        Port=80,
-        DefaultActions=[{
-            "Type": "redirect",
-            "RedirectConfig": {
-                "Protocol": "HTTPS",
-                "Port": "443",
-                "Host": "#{host}",
-                "Path": "/#{path}",
-                "Query": "#{query}",
-                "StatusCode": "HTTP_301"
-            }
-        }])
-    LOGGER.info("%s found/created application HTTP listener for %s",
-        tag_prefix, load_balancer_arn)
+    try:
+        resp = elb_client.create_listener(
+            LoadBalancerArn=load_balancer_arn,
+            Protocol='HTTP',
+            Port=80,
+            DefaultActions=[{
+                "Type": "redirect",
+                "RedirectConfig": {
+                    "Protocol": "HTTPS",
+                    "Port": "443",
+                    "Host": "#{host}",
+                    "Path": "/#{path}",
+                    "Query": "#{query}",
+                    "StatusCode": "HTTP_301"
+                }
+            }])
+        LOGGER.info("%s created HTTP application load balancer listener for %s",
+            tag_prefix, load_balancer_arn)
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'DuplicateListener':
+            raise
+        LOGGER.info("%s found HTTP application load balancer listener for %s",
+            tag_prefix, load_balancer_arn)
 
     # We will need a default TLS certificate for creating an HTTPS listener.
     default_cert_location = None
@@ -428,27 +501,37 @@ def create_elb(tag_prefix, web_subnet_by_zones, moat_sg_id,
             LOGGER.warning("default_cert_location is not set and there are no"\
                 " tls_priv_key and tls_fullchain_cert either.")
 
-    resp = elb_client.create_listener(
-        LoadBalancerArn=load_balancer_arn,
-        Protocol='HTTPS',
-        Port=443,
-        Certificates=[{'CertificateArn': default_cert_location}],
-        DefaultActions=[{
-            'Type': 'fixed-response',
-            'FixedResponseConfig': {
-                'MessageBody': '%s ELB' % tag_prefix,
-                'StatusCode': '200',
-                'ContentType': 'text/plain'
-            }
-        }])
-    LOGGER.info("%s found/created application load balancer listeners for %s",
-        tag_prefix, load_balancer_arn)
+    try:
+        resp = elb_client.create_listener(
+            LoadBalancerArn=load_balancer_arn,
+            Protocol='HTTPS',
+            Port=443,
+            Certificates=[{'CertificateArn': default_cert_location}],
+            DefaultActions=[{
+                'Type': 'fixed-response',
+                'FixedResponseConfig': {
+                    'MessageBody': '%s ELB' % tag_prefix,
+                    'StatusCode': '200',
+                    'ContentType': 'text/plain'
+                }
+            }])
+        LOGGER.info(
+            "%s created HTTPS application load balancer listener for %s",
+            tag_prefix, load_balancer_arn)
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'DuplicateListener':
+            raise
+        LOGGER.info("%s found HTTPS application load balancer listener for %s",
+            tag_prefix, load_balancer_arn)
 
 
-def create_network(region_name, vpc_cidr, dbs_zone_names,
+def create_network(region_name, vpc_cidr,
+                   web_zone_names, dbs_zone_names,
                    tls_priv_key=None, tls_fullchain_cert=None,
                    ssh_key_name=None, ssh_key_content=None,
                    sally_ip=None, tag_prefix=None,
+                   storage_enckey=None, s3_logs_bucket=None,
                    dry_run=False):
     """
     This function creates in a specified AWS region the network infrastructure
@@ -465,20 +548,34 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
     - adds permission to connect from SSH port to security groups
     - import SSH keys
     """
-    LOGGER.info("Provisions network ...")
-    web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
+#XXX    sg_tag_prefix = tag_prefix
+    elb_name = 'webfront-elb'
+    sg_tag_prefix = None
 
-    if not tag_prefix:
-        tag_prefix = [random.choice("abcdef")] + "".join(
-            [random.choice("abcdef0123456789") for i in range(4)])
+    LOGGER.info("Provisions network ...")
+    web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
+        vpc_cidr, region_name=region_name)
 
     ec2_client = boto3.client('ec2', region_name=region_name)
     resp = ec2_client.describe_availability_zones()
     zone_ids = sorted([zone['ZoneId'] for zone in resp['AvailabilityZones']])
+    zone_id_to_name = {
+        zone['ZoneId']:zone['ZoneName'] for zone in resp['AvailabilityZones']}
+
+    web_zone_ids = []
+    if web_zone_names:
+        for zone_name in web_zone_names:
+            for zone in resp['AvailabilityZones']:
+                if zone['ZoneName'] == zone_name:
+                    web_zone_ids += [zone['ZoneId']]
+                    break
+    else:
+        web_zone_ids = zone_ids[:len(web_subnet_cidrs)]
     LOGGER.info("%s web subnets use zone to cidr mapping: %s",
         tag_prefix,
-        {zone_id: web_subnet_cidrs[idx]
-         for idx, zone_id in enumerate(zone_ids)})
+        {zone_id_to_name[zone_id]: web_subnet_cidrs[idx]
+         for idx, zone_id in enumerate(web_zone_ids)})
+
     # makes sure the db_zone_ids is in the same order as the db_zone_names.
     db_zone_ids = []
     for zone_name in dbs_zone_names:
@@ -488,7 +585,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                 break
     LOGGER.info("%s dbs subnets use zone to cidr mapping: %s",
         tag_prefix,
-        {zone_id: dbs_subnet_cidrs[idx]
+        {zone_id_to_name[zone_id]: dbs_subnet_cidrs[idx]
          for idx, zone_id in enumerate(db_zone_ids)})
 
     # Create a VPC
@@ -537,7 +634,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
     web_subnet_by_zones = _get_subnet_by_zones(
         web_subnet_cidrs, tag_prefix,
         vpc_id=vpc_id, zone_ids=zone_ids, ec2_client=ec2_client)
-    for idx, zone_id in enumerate(zone_ids):
+    for idx, zone_id in enumerate(web_zone_ids):
         web_subnet_id = web_subnet_by_zones.get(zone_id, None)
         if not web_subnet_id:
             resp = ec2_client.create_subnet(
@@ -554,8 +651,8 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                     {'Key': "Prefix", 'Value': tag_prefix},
                     {'Key': "Name",
                      'Value': "%s web subnet" % tag_prefix}])
-            LOGGER.info("%s created web subnet %s in zone %s",
-                        tag_prefix, web_subnet_id, zone_id)
+            LOGGER.info("%s created web subnet %s in zone %s (%s)",
+                tag_prefix, web_subnet_id, zone_id, zone_id_to_name[zone_id])
             if idx > 0:
                 # We are going to associate `web_subnet_by_zones[zone_ids[0]]`
                 # to the Internet Gateway. Instances created in that subnet
@@ -605,7 +702,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                     if 'NAT gateway' in resp_tag['Value']:
                         nat_elastic_ip = resp_address['AllocationId']
                         break
-                    elif 'Sally' in resp_tag['Value']:
+                    if 'Sally' in resp_tag['Value']:
                         sally_elastic_ip = resp_address['AllocationId']
                         break
     if nat_elastic_ip:
@@ -642,6 +739,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
             tag_prefix, sally_elastic_ip)
 
     client_token = tag_prefix
+    # XXX shouldn't it be the first web subnet instead?
     resp = ec2_client.describe_nat_gateways(Filters=[
         {'Name': "subnet-id", 'Values': [app_subnet_id]},
         {'Name': "state", 'Values': ['pending', 'available']}])
@@ -675,11 +773,12 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                 LOGGER.info("%s found public route table %s",
                     tag_prefix, public_route_table_id)
                 break
-            elif ('NatGatewayId' in route and
+            if ('NatGatewayId' in route and
                   route['NatGatewayId'] == nat_gateway_id):
                 private_route_table_id = route_table['RouteTableId']
                 LOGGER.info("%s found private route table %s",
                     tag_prefix, private_route_table_id)
+
     if not public_route_table_id:
         resp = ec2_client.create_route_table(
             DryRun=dry_run,
@@ -726,46 +825,52 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                         'Code', 'Unknown') == 'InvalidNatGatewayID.NotFound':
                     raise
             time.sleep(RETRY_WAIT_DELAY)
-    resp = ec2_client.associate_route_table(
-        DryRun=dry_run,
-        RouteTableId=public_route_table_id,
-        SubnetId=app_subnet_id)
-    LOGGER.info(
-        "%s associated public route table %s to first web subnet %s",
-        tag_prefix, public_route_table_id, app_subnet_id)
-    for idx, zone_id in enumerate(web_zone_ids[1:]):
-        web_subnet_id = web_subnet_by_zones[zone_id]
+
+    associate_route_tables = False # XXX Bypass
+    if associate_route_tables:
         resp = ec2_client.associate_route_table(
             DryRun=dry_run,
-            RouteTableId=private_route_table_id,
-            SubnetId=web_subnet_id)
+            RouteTableId=public_route_table_id,
+            SubnetId=app_subnet_id)
         LOGGER.info(
-            "%s associated private route table %s to web subnet %s",
-            tag_prefix, private_route_table_id, web_subnet_id)
-    for idx, zone_id in enumerate(db_zone_ids):
-        db_subnet_id = dbs_subnet_by_zones[zone_id]
-        resp = ec2_client.associate_route_table(
-            DryRun=dry_run,
-            RouteTableId=private_route_table_id,
-            SubnetId=db_subnet_id)
-        LOGGER.info(
-            "%s associated private route table %s to db subnet %s",
-            tag_prefix, private_route_table_id, db_subnet_id)
+            "%s associated public route table %s to first web subnet %s",
+            tag_prefix, public_route_table_id, app_subnet_id)
+        for idx, zone_id in enumerate(web_zone_ids[1:]):
+            web_subnet_id = web_subnet_by_zones[zone_id]
+            resp = ec2_client.associate_route_table(
+                DryRun=dry_run,
+                RouteTableId=private_route_table_id,
+                SubnetId=web_subnet_id)
+            LOGGER.info(
+                "%s associated private route table %s to web subnet %s",
+                tag_prefix, private_route_table_id, web_subnet_id)
+        for idx, zone_id in enumerate(db_zone_ids):
+            db_subnet_id = dbs_subnet_by_zones[zone_id]
+            resp = ec2_client.associate_route_table(
+                DryRun=dry_run,
+                RouteTableId=private_route_table_id,
+                SubnetId=db_subnet_id)
+            LOGGER.info(
+                "%s associated private route table %s to db subnet %s",
+                tag_prefix, private_route_table_id, db_subnet_id)
 
     # Create the ELB, proxies and databases security groups
     # The app security group (as the instance role) will be specific
     # to the application.
-    moat_name = '%s-moat' % tag_prefix
-    vault_name = '%s-vault' % tag_prefix
-    gate_name = '%s-castle-gate' % tag_prefix
-    kitchen_door_name = '%s-kitchen-door' % tag_prefix
-    group_ids = _get_security_group_ids(
-        [moat_name, vault_name, gate_name, kitchen_door_name],
-         tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
-    moat_sg_id = group_ids[0]
-    vault_sg_id = group_ids[1]
-    gate_sg_id = group_ids[2]
-    kitchen_door_sg_id = group_ids[3]
+    moat_name, vault_name, gate_name, kitchen_door_name = \
+        _get_security_group_names([
+            'moat', 'vault', 'castle-gate', 'kitchen-door'],
+        tag_prefix=sg_tag_prefix)
+    moat_sg_id, vault_sg_id, gate_sg_id, kitchen_door_sg_id = \
+        _get_security_group_ids(
+            [moat_name, vault_name, gate_name, kitchen_door_name],
+            tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
+
+    update_moat_rules = (not moat_sg_id)
+    update_gate_rules = (not gate_sg_id)
+    update_vault_rules = (not vault_sg_id)
+    update_kitchen_door_rules = (not kitchen_door_sg_id)
+
     if not moat_sg_id:
         resp = ec2_client.create_security_group(
             Description='%s ELB' % tag_prefix,
@@ -793,112 +898,127 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
         vault_sg_id = resp['GroupId']
         LOGGER.info("%s created %s security group %s",
             tag_prefix, vault_name, vault_sg_id)
-    # moat allow rules
-    try:
-        resp = ec2_client.authorize_security_group_ingress(
-            DryRun=dry_run,
-            GroupId=moat_sg_id,
-            CidrIp='0.0.0.0/0',
-            IpProtocol='tcp',
-            FromPort=80,
-            ToPort=80)
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-            raise
-    try:
-        resp = ec2_client.authorize_security_group_ingress(
-            DryRun=dry_run,
-            GroupId=moat_sg_id,
-            CidrIp='0.0.0.0/0',
-            IpProtocol='tcp',
-            FromPort=443,
-            ToPort=443)
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-            raise
-    # castle-gate allow rules
-    try:
-        resp = ec2_client.authorize_security_group_ingress(
-            DryRun=dry_run,
-            GroupId=gate_sg_id,
-            IpPermissions=[{
-                'IpProtocol': 'tcp',
-                'FromPort': 80,
-                'ToPort': 80,
-                'UserIdGroupPairs': [{'GroupId': moat_sg_id}]
-            }])
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-            raise
-    try:
-        resp = ec2_client.authorize_security_group_ingress(
-            DryRun=dry_run,
-            GroupId=gate_sg_id,
-            IpPermissions=[{
-                'IpProtocol': 'tcp',
-                'FromPort': 443,
-                'ToPort': 443,
-                'UserIdGroupPairs': [{'GroupId': moat_sg_id}]
-            }])
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-            raise
-    try:
-        resp = ec2_client.authorize_security_group_egress(
-            DryRun=dry_run,
-            GroupId=gate_sg_id,
-            IpPermissions=[{
-                'IpProtocol': '-1',
-                'IpRanges': [{
-                    'CidrIp': '0.0.0.0/0',
-                }]}])
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-            raise
-    # vault allow rules
-    try:
-        resp = ec2_client.authorize_security_group_ingress(
-            DryRun=dry_run,
-            GroupId=vault_sg_id,
-            IpPermissions=[{
-                'IpProtocol': 'tcp',
-                'FromPort': 5432,
-                'ToPort': 5432,
-                'UserIdGroupPairs': [{'GroupId': gate_sg_id}]
-            }])
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-            raise
-    try:
-        resp = ec2_client.authorize_security_group_egress(
-            DryRun=dry_run,
-            GroupId=vault_sg_id,
-            IpPermissions=[{
-                'IpProtocol': '-1',
-                'IpRanges': [{
-                    'CidrIp': '0.0.0.0/0',
-                }]}])
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-            raise
+    # kitchen_door_sg_id: Kitchen door security group is created later on
+    # if we have ssh keys.
 
-    # Create an Application ELB
-    create_elb(
-        tag_prefix, web_subnet_by_zones, moat_sg_id,
-        tls_priv_key=tls_priv_key, tls_fullchain_cert=tls_fullchain_cert,
-        region_name=region_name)
+    resp = ec2_client.describe_security_groups(
+        DryRun=dry_run,
+        GroupIds=[moat_sg_id, vault_sg_id, gate_sg_id])
+    for security_group in resp['SecurityGroups']:
+        if security_group['GroupId'] == moat_sg_id:
+            # moat rules
+            check_security_group(security_group)
+        elif security_group['GroupId'] == gate_sg_id:
+            # castle-gate rules
+            check_security_group(security_group)
+        elif security_group['GroupId'] == vault_sg_id:
+            # vault rules
+            check_security_group(security_group)
+
+    # moat allow rules
+    if update_moat_rules:
+        try:
+            resp = ec2_client.authorize_security_group_ingress(
+                DryRun=dry_run,
+                GroupId=moat_sg_id,
+                CidrIp='0.0.0.0/0',
+                IpProtocol='tcp',
+                FromPort=80,
+                ToPort=80)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
+        try:
+            resp = ec2_client.authorize_security_group_ingress(
+                DryRun=dry_run,
+                GroupId=moat_sg_id,
+                CidrIp='0.0.0.0/0',
+                IpProtocol='tcp',
+                FromPort=443,
+                ToPort=443)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
+    if update_gate_rules:
+        # castle-gate allow rules
+        try:
+            resp = ec2_client.authorize_security_group_ingress(
+                DryRun=dry_run,
+                GroupId=gate_sg_id,
+                IpPermissions=[{
+                    'IpProtocol': 'tcp',
+                    'FromPort': 80,
+                    'ToPort': 80,
+                    'UserIdGroupPairs': [{'GroupId': moat_sg_id}]
+                }])
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
+        try:
+            resp = ec2_client.authorize_security_group_ingress(
+                DryRun=dry_run,
+                GroupId=gate_sg_id,
+                IpPermissions=[{
+                    'IpProtocol': 'tcp',
+                    'FromPort': 443,
+                    'ToPort': 443,
+                    'UserIdGroupPairs': [{'GroupId': moat_sg_id}]
+                }])
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
+        try:
+            resp = ec2_client.authorize_security_group_egress(
+                DryRun=dry_run,
+                GroupId=gate_sg_id,
+                IpPermissions=[{
+                    'IpProtocol': '-1',
+                    'IpRanges': [{
+                        'CidrIp': '0.0.0.0/0',
+                    }]}])
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
+    # vault allow rules
+    if update_vault_rules:
+        try:
+            resp = ec2_client.authorize_security_group_ingress(
+                DryRun=dry_run,
+                GroupId=vault_sg_id,
+                IpPermissions=[{
+                    'IpProtocol': 'tcp',
+                    'FromPort': 5432,
+                    'ToPort': 5432,
+                    'UserIdGroupPairs': [{'GroupId': gate_sg_id}]
+                }])
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
+        try:
+            resp = ec2_client.authorize_security_group_egress(
+                DryRun=dry_run,
+                GroupId=vault_sg_id,
+                IpPermissions=[{
+                    'IpProtocol': '-1',
+                    'IpRanges': [{
+                        'CidrIp': '0.0.0.0/0',
+                    }]}])
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                raise
 
     # Create uploads and logs S3 buckets
     # XXX need to force private.
-    s3_logs_bucket = '%s-logs' % tag_prefix
-    s3_uploads_bucket = '%s-uploads' % tag_prefix
+    if not s3_logs_bucket:
+        s3_logs_bucket = '%s-logs' % tag_prefix
+    s3_uploads_bucket = tag_prefix
     s3_client = boto3.client('s3')
     if s3_logs_bucket:
         try:
@@ -928,9 +1048,6 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
             if not err.response.get('Error', {}).get(
                     'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
                 raise
-
-    # Creates encryption keys (KMS) in region
-    kms_key_arn = _get_or_create_storage_enckey(region_name, tag_prefix)
 
     # Create instance profiles
     gate_role = gate_name
@@ -1023,7 +1140,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
         iam_client.add_role_to_instance_profile(
             InstanceProfileName=gate_role,
             RoleName=gate_role)
-        LOGGER.info("%s created IAM instance profile for %s: %s",
+        LOGGER.info("%s add IAM role to instance profile for %s: %s",
             tag_prefix, gate_role, iam_instance_profile)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
@@ -1061,8 +1178,30 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                     ],
                     "Effect": "Allow",
                     "Resource": [
-                        "arn:aws:s3:::%s/*" % s3_logs_bucket,
-                        "arn:aws:s3:::%s" % s3_logs_bucket
+                        "arn:aws:s3:::%s/*" % s3_logs_bucket
+                    ]
+                }]
+            }))
+        iam_client.put_role_policy(
+            RoleName=vault_role,
+            PolicyName='GetIdentities',
+            PolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Action": [
+                        "s3:ListBucket"
+                    ],
+                    "Effect": "Allow",
+                    "Resource": [
+                        "arn:aws:s3:::%s" % s3_uploads_bucket
+                    ]
+                }, {
+                    "Action": [
+                        "s3:GetObject"
+                    ],
+                    "Effect": "Allow",
+                    "Resource": [
+                        "arn:aws:s3:::%s/*" % s3_uploads_bucket
                     ]
                 }]
             }))
@@ -1082,7 +1221,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
         iam_client.add_role_to_instance_profile(
             InstanceProfileName=vault_role,
             RoleName=vault_role)
-        LOGGER.info("%s created IAM instance profile for %s: %s",
+        LOGGER.info("%s add IAM role to instance profile for %s: %s",
             tag_prefix, vault_role, iam_instance_profile)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
@@ -1166,6 +1305,7 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
                 tag_prefix, kitchen_door_role)
 
         # allows SSH connection to instances for debugging
+        update_kitchen_door_rules = (not kitchen_door_sg_id)
         if not kitchen_door_sg_id:
             resp = ec2_client.create_security_group(
                 Description='%s SSH access' % tag_prefix,
@@ -1176,173 +1316,301 @@ def create_network(region_name, vpc_cidr, dbs_zone_names,
             LOGGER.info("%s created %s security group %s",
                 tag_prefix, kitchen_door_name, kitchen_door_sg_id)
 
-        try:
-            resp = ec2_client.authorize_security_group_ingress(
-                DryRun=dry_run,
-                GroupId=kitchen_door_sg_id,
-                CidrIp='%s/32' % sally_ip,
-                IpProtocol='tcp',
-                FromPort=22,
-                ToPort=22)
-        except botocore.exceptions.ClientError as err:
-            if not err.response.get('Error', {}).get(
-                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-                raise
-        try:
-            resp = ec2_client.authorize_security_group_egress(
-                DryRun=dry_run,
-                GroupId=kitchen_door_sg_id,
-                IpPermissions=[{
-                    'IpProtocol': '-1',
-                    'IpRanges': [{
-                        'CidrIp': '0.0.0.0/0',
-                    }]}])
-        except botocore.exceptions.ClientError as err:
-            if not err.response.get('Error', {}).get(
-                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-                raise
-        try:
-            resp = ec2_client.authorize_security_group_ingress(
-                DryRun=dry_run,
-                GroupId=gate_sg_id,
-                IpPermissions=[{
-                    'IpProtocol': 'tcp',
-                    'FromPort': 22,
-                    'ToPort': 22,
-                    'UserIdGroupPairs': [{'GroupId': kitchen_door_sg_id}]
-                }])
-        except botocore.exceptions.ClientError as err:
-            if not err.response.get('Error', {}).get(
-                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-                raise
-        try:
-            resp = ec2_client.authorize_security_group_ingress(
-                DryRun=dry_run,
-                GroupId=vault_sg_id,
-                IpPermissions=[{
-                    'IpProtocol': 'tcp',
-                    'FromPort': 22,
-                    'ToPort': 22,
-                    'UserIdGroupPairs': [{'GroupId': kitchen_door_sg_id}]
-                }])
-        except botocore.exceptions.ClientError as err:
-            if not err.response.get('Error', {}).get(
-                    'Code', 'Unknown') == 'InvalidPermission.Duplicate':
-                raise
+        if update_kitchen_door_rules:
+            try:
+                resp = ec2_client.authorize_security_group_ingress(
+                    DryRun=dry_run,
+                    GroupId=kitchen_door_sg_id,
+                    CidrIp='%s/32' % sally_ip,
+                    IpProtocol='tcp',
+                    FromPort=22,
+                    ToPort=22)
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                    raise
+            try:
+                resp = ec2_client.authorize_security_group_egress(
+                    DryRun=dry_run,
+                    GroupId=kitchen_door_sg_id,
+                    IpPermissions=[{
+                        'IpProtocol': '-1',
+                        'IpRanges': [{
+                            'CidrIp': '0.0.0.0/0',
+                        }]}])
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                    raise
+            try:
+                resp = ec2_client.authorize_security_group_ingress(
+                    DryRun=dry_run,
+                    GroupId=gate_sg_id,
+                    IpPermissions=[{
+                        'IpProtocol': 'tcp',
+                        'FromPort': 22,
+                        'ToPort': 22,
+                        'UserIdGroupPairs': [{'GroupId': kitchen_door_sg_id}]
+                    }])
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                    raise
+            try:
+                resp = ec2_client.authorize_security_group_ingress(
+                    DryRun=dry_run,
+                    GroupId=vault_sg_id,
+                    IpPermissions=[{
+                        'IpProtocol': 'tcp',
+                        'FromPort': 22,
+                        'ToPort': 22,
+                        'UserIdGroupPairs': [{'GroupId': kitchen_door_sg_id}]
+                    }])
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidPermission.Duplicate':
+                    raise
+
+    # Creates encryption keys (KMS) in region
+    if not storage_enckey:
+        storage_enckey = _get_or_create_storage_enckey(region_name, tag_prefix)
+
+    # Create an Application ELB
+    create_elb(
+        tag_prefix, web_subnet_by_zones, moat_sg_id,
+        tls_priv_key=tls_priv_key, tls_fullchain_cert=tls_fullchain_cert,
+        region_name=region_name, elb_name=elb_name)
 
 
 
 def create_datastores(region_name, vpc_cidr, dbs_zone_names,
-                      db_master_user, db_master_password,
-                      tag_prefix, kms_key_arn=None):
+                      tag_prefix, storage_enckey=None,
+                      db_master_user=None, db_master_password=None,
+                      identities_url=None, s3_identities_bucket=None,
+                      image_name=None, ssh_key_name=None,
+                      app_name=None, company_domain=None,
+                      ldap_host=None, ldap_password_hash=None):
     """
     This function creates in a specified AWS region the disk storage (S3) and
     databases (SQL) to run a SaaS product. It will:
 
     - create S3 buckets for media uploads and write-only logs
     - create a SQL database
+
+    `vpc_cidr` is the network mask used for the private IPs.
+    `dbs_zone_names` contains the zones in which the SQL databases
+    will be hosted.
     """
+    native = True   # Use EC2 instances for SQL databases.
+    instance_type = 'm3.medium'
+    sg_tag_prefix = None
+
     LOGGER.info("Provisions datastores ...")
+    if not app_name:
+        app_name = '%s-dbs' % tag_prefix if tag_prefix else "dbs"
+    if not identities_url:
+        identities_url = "s3://%s/identities/%s" % (
+            s3_identities_bucket, app_name)
+
+    # XXX same vault_name as in `create_network`
+    vault_name = _get_security_group_names(
+        ['vault'], tag_prefix=sg_tag_prefix)[0]
     ec2_client = boto3.client('ec2', region_name=region_name)
 
     vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
-    _, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
+    _, dbs_subnet_cidrs = _split_cidrs(vpc_cidr, region_name=region_name)
     dbs_subnet_by_zones = _get_subnet_by_zones(dbs_subnet_cidrs,
         tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
     db_subnet_group_subnet_ids = list(dbs_subnet_by_zones.values())
 
-    vault_name = '%s-vault' % tag_prefix
     group_ids = _get_security_group_ids(
         [vault_name], tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
     vault_sg_id = group_ids[0]
 
-    if not kms_key_arn:
-        kms_key_arn = _get_or_create_storage_enckey(region_name, tag_prefix)
+    if not storage_enckey:
+        storage_enckey = _get_or_create_storage_enckey(region_name, tag_prefix)
 
-    rds_client = boto3.client('rds', region_name=region_name)
-    db_param_group_name = tag_prefix
-    try:
-        # aws rds describe-db-engine-versions --engine postgres \
-        #     --query "DBEngineVersions[].DBParameterGroupFamily"
-        rds_client.create_db_parameter_group(
-            DBParameterGroupName=db_param_group_name,
-            DBParameterGroupFamily='postgres9.6',
-            Description='%s parameter group for postgres9.6' % tag_prefix,
-            Tags=[
-                {'Key': "Prefix", 'Value': tag_prefix},
-                {'Key': "Name", 'Value': "%s-db-parameter-group" % tag_prefix}])
-        rds_client.modify_db_parameter_group(
-            DBParameterGroupName=db_param_group_name,
-            Parameters=[{
-                'ParameterName': "rds.force_ssl",
-                'ParameterValue': "1",
-                'ApplyMethod': "pending-reboot"}])
-        LOGGER.info("%s created rds db parameter group '%s'",
-                    tag_prefix, db_param_group_name)
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'DBParameterGroupAlreadyExists':
-            raise
-        LOGGER.info("%s found rds db parameter group '%s'",
-                    tag_prefix, db_param_group_name)
+    if not native:
+        # We are going to provision the SQL databases through RDS.
+        rds_client = boto3.client('rds', region_name=region_name)
+        db_param_group_name = tag_prefix
+        try:
+            # aws rds describe-db-engine-versions --engine postgres \
+            #     --query "DBEngineVersions[].DBParameterGroupFamily"
+            rds_client.create_db_parameter_group(
+                DBParameterGroupName=db_param_group_name,
+                DBParameterGroupFamily='postgres9.6',
+                Description='%s parameter group for postgres9.6' % tag_prefix,
+                Tags=[
+                    {'Key': "Prefix", 'Value': tag_prefix},
+                    {'Key': "Name",
+                     'Value': "%s-db-parameter-group" % tag_prefix}])
+            rds_client.modify_db_parameter_group(
+                DBParameterGroupName=db_param_group_name,
+                Parameters=[{
+                    'ParameterName': "rds.force_ssl",
+                    'ParameterValue': "1",
+                    'ApplyMethod': "pending-reboot"}])
+            LOGGER.info("%s created rds db parameter group '%s'",
+                        tag_prefix, db_param_group_name)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'DBParameterGroupAlreadyExists':
+                raise
+            LOGGER.info("%s found rds db parameter group '%s'",
+                        tag_prefix, db_param_group_name)
 
-    db_subnet_group_name = tag_prefix
-    try:
-        resp = rds_client.create_db_subnet_group(
-            DBSubnetGroupName=db_subnet_group_name,
-            SubnetIds=db_subnet_group_subnet_ids,
-            DBSubnetGroupDescription='%s db subnet group' % tag_prefix,
-            Tags=[
-                {'Key': "Prefix", 'Value': tag_prefix},
-                {'Key': "Name", 'Value': "%s-db-subnet-group" % tag_prefix}])
-        LOGGER.info("%s created rds db subnet group '%s'",
-                    tag_prefix, db_subnet_group_name)
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'DBSubnetGroupAlreadyExists':
-            raise
-        LOGGER.info("%s found rds db subnet group '%s'",
-                    tag_prefix, db_subnet_group_name)
+        db_subnet_group_name = tag_prefix
+        try:
+            resp = rds_client.create_db_subnet_group(
+                DBSubnetGroupName=db_subnet_group_name,
+                SubnetIds=db_subnet_group_subnet_ids,
+                DBSubnetGroupDescription='%s db subnet group' % tag_prefix,
+                Tags=[
+                    {'Key': "Prefix", 'Value': tag_prefix},
+                    {'Key': "Name",
+                     'Value': "%s-db-subnet-group" % tag_prefix}])
+            LOGGER.info("%s created rds db subnet group '%s'",
+                        tag_prefix, db_subnet_group_name)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'DBSubnetGroupAlreadyExists':
+                raise
+            LOGGER.info("%s found rds db subnet group '%s'",
+                        tag_prefix, db_subnet_group_name)
 
-    db_name = tag_prefix
-    try:
-        resp = rds_client.create_db_instance(
-            DBName=db_name,
-            DBInstanceIdentifier=tag_prefix,
-            AllocatedStorage=20,
-            DBInstanceClass='db.t3.medium',
-            Engine='postgres',
-            # aws rds describe-db-engine-versions --engine postgres
-            EngineVersion='9.6.14',
-            MasterUsername=db_master_user,
-            MasterUserPassword=db_master_password,
-            VpcSecurityGroupIds=[vault_sg_id],
-            AvailabilityZone=dbs_zone_names[0],
-            DBSubnetGroupName=db_subnet_group_name,
-            DBParameterGroupName=db_param_group_name,
-            BackupRetentionPeriod=30,
-            #XXX? CharacterSetName='string',
-            #StorageType='string', defaults to 'gp2'
-            StorageEncrypted=True,
-            KmsKeyId=kms_key_arn,
-            #XXX MonitoringInterval=123,
-            #XXX MonitoringRoleArn='string',
-            #XXX EnableIAMDatabaseAuthentication=True|False,
-            #XXX EnablePerformanceInsights=True|False,
-            #XXX PerformanceInsightsKMSKeyId='string',
-            #XXX PerformanceInsightsRetentionPeriod=123,
-            #XXX EnableCloudwatchLogsExports=['string'],
-            #XXX DeletionProtection=True|False,
-            #XXX MaxAllocatedStorage=123
-            Tags=[
-                {'Key': "Prefix", 'Value': tag_prefix},
-                {'Key': "Name", 'Value': "%s-db" % tag_prefix}])
-        LOGGER.info("%s created rds db '%s'", tag_prefix, db_name)
-    except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'DBInstanceAlreadyExists':
-            raise
-        LOGGER.info("%s found rds db '%s'", tag_prefix, db_name)
+        db_name = tag_prefix
+        try:
+            resp = rds_client.create_db_instance(
+                DBName=db_name,
+                DBInstanceIdentifier=tag_prefix,
+                AllocatedStorage=20,
+                DBInstanceClass='db.t3.medium',
+                Engine='postgres',
+                # aws rds describe-db-engine-versions --engine postgres
+                EngineVersion='9.6.14',
+                MasterUsername=db_master_user,
+                MasterUserPassword=db_master_password,
+                VpcSecurityGroupIds=[vault_sg_id],
+                AvailabilityZone=dbs_zone_names[0],
+                DBSubnetGroupName=db_subnet_group_name,
+                DBParameterGroupName=db_param_group_name,
+                BackupRetentionPeriod=30,
+                #XXX? CharacterSetName='string',
+                #StorageType='string', defaults to 'gp2'
+                StorageEncrypted=True,
+                KmsKeyId=storage_enckey,
+                #XXX MonitoringInterval=123,
+                #XXX MonitoringRoleArn='string',
+                #XXX EnableIAMDatabaseAuthentication=True|False,
+                #XXX EnablePerformanceInsights=True|False,
+                #XXX PerformanceInsightsKMSKeyId='string',
+                #XXX PerformanceInsightsRetentionPeriod=123,
+                #XXX EnableCloudwatchLogsExports=['string'],
+                #XXX DeletionProtection=True|False,
+                #XXX MaxAllocatedStorage=123
+                Tags=[
+                    {'Key': "Prefix", 'Value': tag_prefix},
+                    {'Key': "Name", 'Value': "%s-db" % tag_prefix}])
+            print("XXX [create_db_instance] resp=%s" % str(resp))
+            LOGGER.info("%s created rds db '%s'", tag_prefix, db_name)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'DBInstanceAlreadyExists':
+                raise
+            LOGGER.info("%s found rds db '%s'", tag_prefix, db_name)
+        return db_name # XXX do we have an aws id?
+    else:
+        # We are going to provision the SQL databases as EC2 instances
+        resp = ec2_client.describe_instances(
+            Filters=[
+                {'Name': 'tag:Name', 'Values': [app_name]},
+                {'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
+        previous_instances_ids = []
+        for reserv in resp['Reservations']:
+            for instance in reserv['Instances']:
+                previous_instances_ids += [instance['InstanceId']]
+        if previous_instances_ids:
+            LOGGER.info("%s found already running '%s' on instances %s",
+                tag_prefix, app_name, previous_instances_ids)
+            return previous_instances_ids
+
+        search_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'templates')
+        template_loader = jinja2.FileSystemLoader(searchpath=search_path)
+        template_env = jinja2.Environment(loader=template_loader)
+        template = template_env.get_template("dbs-cloud-init-script.j2")
+        user_data = template.render(
+            identities_url=identities_url,
+            remote_drop_repo="https://github.com/djaodjin/drop.git",
+            company_domain=company_domain,
+            ldapHost=ldap_host,
+            ldapPasswordHash=ldap_password_hash,
+            vpc_cidr=vpc_cidr)
+
+        # Find the ImageId
+        instance_profile_arn = _get_instance_profile(vault_name)
+        image_id = image_name
+        if not image_name.startswith('ami-'):
+            look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
+            aws_account_id = look.group(1)
+            resp = ec2_client.describe_images(
+                Filters=[
+                    {'Name': 'name', 'Values': [image_name]},
+                    {'Name': 'owner-id', 'Values': [aws_account_id]}])
+            if len(resp['Images']) != 1:
+                raise RuntimeError(
+                    "Found more than one image named '%s' in account '%s'" % (
+                        image_name, aws_account_id))
+            image_id = resp['Images'][0]['ImageId']
+
+        # XXX adds encrypted volume
+        block_devices = [
+            {
+                'DeviceName': '/dev/sda1',
+                #'VirtualName': 'string',
+        # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html
+                'Ebs': {
+                    'DeleteOnTermination': False,
+                    #'Iops': 100, # 'not supported for gp2'
+                    #'SnapshotId': 'string',
+                    'VolumeSize': 20,
+                    'VolumeType': 'gp2'
+                },
+                #'NoDevice': 'string'
+            },
+        ]
+        if storage_enckey:
+            for block_device in block_devices:
+                block_device['Ebs'].update({
+                    'KmsKeyId': storage_enckey,
+                    'Encrypted': True
+                })
+        resp = ec2_client.run_instances(
+            BlockDeviceMappings=block_devices,
+            ImageId=image_id,
+            KeyName=ssh_key_name,
+            InstanceType=instance_type,
+            MinCount=1,
+            MaxCount=1,
+            SubnetId=db_subnet_group_subnet_ids[0],
+            # Cannot use `SecurityGroups` with `SubnetId` but can
+            # use `SecurityGroupIds`.
+            SecurityGroupIds=group_ids,
+            IamInstanceProfile={'Arn': instance_profile_arn},
+            TagSpecifications=[{
+                'ResourceType': "instance",
+                'Tags': [{
+                    'Key': 'Name',
+                    'Value': app_name
+                }]}],
+            UserData=user_data)
+        instance_ids = [
+            instance['InstanceId'] for instance in resp['Instances']]
+        LOGGER.info("%s started ec2 instances %s for '%s'",
+                    tag_prefix, instance_ids, app_name)
+        return instance_ids
+
 
 
 def create_app_resources(region_name, app_name, image_name,
@@ -1352,6 +1620,7 @@ def create_app_resources(region_name, app_name, image_name,
                          ssh_key_name=None,
                          app_subnet_id=None, vpc_id=None, vpc_cidr=None,
                          tag_prefix=None,
+                         hosted_zone_id=None,
                          dry_run=False):
     """
     Create the application servers
@@ -1365,11 +1634,22 @@ def create_app_resources(region_name, app_name, image_name,
     resp = ec2_client.describe_instances(
         Filters=[
             {'Name': 'tag:Name', 'Values': [app_name]},
-            {'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
+            {'Name': 'instance-state-name',
+             'Values': [EC2_RUNNING, EC2_STOPPED, EC2_PENDING]}])
+
+    stopped_instances_ids = []
     previous_instances_ids = []
     for reserv in resp['Reservations']:
         for instance in reserv['Instances']:
             previous_instances_ids += [instance['InstanceId']]
+            if instance['State']['Name'] == EC2_STOPPED:
+                stopped_instances_ids += [instance['InstanceId']]
+    if stopped_instances_ids:
+        ec2_client.start_instances(
+            InstanceIds=stopped_instances_ids,
+            DryRun=dry_run)
+        LOGGER.info("%s restarted instances %s for '%s'",
+            tag_prefix, stopped_instances_ids, app_name)
     if previous_instances_ids:
         LOGGER.info("%s found already running '%s' on instances %s",
             tag_prefix, app_name, previous_instances_ids)
@@ -1395,7 +1675,9 @@ def create_app_resources(region_name, app_name, image_name,
     if not vpc_id:
         vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
     if not app_subnet_id:
-        web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
+        #pylint:disable=unused-variable
+        web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
+            vpc_cidr, region_name=region_name)
         resp = ec2_client.describe_availability_zones()
         zone_ids = sorted([
             zone['ZoneId'] for zone in resp['AvailabilityZones']])
@@ -1611,6 +1893,7 @@ def create_app_resources(region_name, app_name, image_name,
     image_id = resp['Images'][0]['ImageId']
 
     instance_ids = None
+    instances = None
     for _ in range(0, NB_RETRIES):
         # The IAM instance profile take some time to be visible.
         try:
@@ -1633,8 +1916,8 @@ def create_app_resources(region_name, app_name, image_name,
                         'Value': app_name
                     }]}],
                 UserData=user_data)
-            instance_ids = [
-                instance['InstanceId'] for instance in resp['Instances']]
+            instances = resp['Instances']
+            instance_ids = [instance['InstanceId'] for instance in instances]
             break
         except botocore.exceptions.ClientError as err:
             if not err.response.get('Error', {}).get(
@@ -1646,11 +1929,178 @@ def create_app_resources(region_name, app_name, image_name,
 
     LOGGER.info("%s started ec2 instances %s for '%s'",
                 tag_prefix, instance_ids, app_name)
+
+    # Associates an internal domain name to the instance
+    update_dns_record = True
+    if update_dns_record:
+        hosted_zone = None
+        default_hosted_zone = None
+        hosted_zone_name = 'ec2.internal.'
+        route53 = boto3.client('route53')
+        if hosted_zone_id:
+            hosted_zone = route53.get_hosted_zone(Id=hosted_zone_id)
+        else:
+            hosted_zones_resp = route53.list_hosted_zones()
+            hosted_zones = hosted_zones_resp.get('HostedZones')
+            for hzone in hosted_zones:
+                if hzone.get('Name').startswith(region_name):
+                    hosted_zone = hzone
+                    break
+                if hzone.get('Name') == hosted_zone_name:
+                    default_hosted_zone = hzone
+        if hosted_zone:
+            hosted_zone_name = hosted_zone.get('Name')
+            LOGGER.info("found hosted zone %s", hosted_zone_name)
+        else:
+            hosted_zone_id = default_hosted_zone.get('Id')
+            LOGGER.info(
+                "cannot find hosted zone for region %s, defaults to %s",
+                region_name, hosted_zone_name)
+
+        host_name = "%(app_name)s.%(hosted_zone_name)s" % {
+            'app_name': app_name, 'hosted_zone_name': hosted_zone_name}
+        LOGGER.info("update DNS record for %s ...", host_name)
+        route53.change_resource_record_sets(
+            HostedZoneId=hosted_zone_id,
+            ChangeBatch={'Changes': [{
+                'Action': 'UPSERT',
+                'ResourceRecordSet': {
+                    'Name': host_name,
+                    'Type': 'A',
+                    # 'Region': DEFAULT_REGION
+                    'TTL': 60,
+                    'ResourceRecords': [
+                        {'Value': instance.private_ip_address}
+                        for instance in instances]
+                }}]})
+
+    return instance_ids
+
+#XXX deprecated...
+def create_instances_dbs(region_name, app_name, image_name,
+                         identities_url=None, ssh_key_name=None,
+                         storage_enckey=None,
+                         dbs_subnet_id=None, vpc_id=None, vpc_cidr=None,
+                         tag_prefix=None):
+    """
+    Create the SQL databases server.
+    """
+    instance_type = 'm3.medium'
+    sg_tag_prefix = None
+
+    # XXX same vault_name as in `create_network`
+    vault_name = _get_security_group_names(
+        ['vault'], tag_prefix=sg_tag_prefix)[0]
+
+    ec2_client = boto3.client('ec2', region_name=region_name)
+    resp = ec2_client.describe_instances(
+        Filters=[
+            {'Name': 'tag:Name', 'Values': [app_name]},
+            {'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
+    previous_instances_ids = []
+    for reserv in resp['Reservations']:
+        for instance in reserv['Instances']:
+            previous_instances_ids += [instance['InstanceId']]
+    if previous_instances_ids:
+        LOGGER.info("%s found already running '%s' on instances %s",
+            tag_prefix, app_name, previous_instances_ids)
+        return previous_instances_ids
+
+    search_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'templates')
+    template_loader = jinja2.FileSystemLoader(searchpath=search_path)
+    template_env = jinja2.Environment(loader=template_loader)
+    template = template_env.get_template("dbs-cloud-init-script.j2")
+    user_data = template.render(identities_url=identities_url)
+
+    if not vpc_id:
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    if not dbs_subnet_id:
+        #pylint:disable=unused-variable
+        web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
+            vpc_cidr, region_name=region_name)
+        resp = ec2_client.describe_availability_zones()
+        zone_ids = sorted([
+            zone['ZoneId'] for zone in resp['AvailabilityZones']])
+        dbs_subnet_by_zones = _get_subnet_by_zones(
+            dbs_subnet_cidrs, tag_prefix,
+            zone_ids=zone_ids, vpc_id=vpc_id, ec2_client=ec2_client)
+        # Use first valid subnet that does not require a public IP.
+        for zone_id in zone_ids[1:]:
+            subnet_id = dbs_subnet_by_zones[zone_id]
+            if subnet_id:
+                dbs_subnet_id = subnet_id
+                break
+
+    group_ids = _get_security_group_ids(
+        [vault_name], tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
+    instance_profile_arn = _get_instance_profile(vault_name)
+
+    # Find the ImageId
+    image_id = image_name
+    if not image_name.startswith('ami-'):
+        look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
+        aws_account_id = look.group(1)
+        resp = ec2_client.describe_images(
+            Filters=[
+                {'Name': 'name', 'Values': [image_name]},
+                {'Name': 'owner-id', 'Values': [aws_account_id]}])
+        if len(resp['Images']) != 1:
+            raise RuntimeError(
+                "Found more than one image named '%s' in account '%s'" % (
+                    image_name, aws_account_id))
+        image_id = resp['Images'][0]['ImageId']
+
+    # XXX adds encrypted volume
+    block_devices = [
+        {
+            #'DeviceName': '/dev/sda1',
+            #'VirtualName': 'string',
+    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html
+            'Ebs': {
+                'DeleteOnTermination': False,
+                'Iops': 100,
+                #'SnapshotId': 'string',
+                'VolumeSize': 20,
+                'VolumeType': 'gp2'
+            },
+            #'NoDevice': 'string'
+        },
+    ]
+    if storage_enckey:
+        for block_device in block_devices:
+            block_device['Ebs'].update({
+                'KmsKeyId': storage_enckey,
+                'Encrypted': True
+            })
+    resp = ec2_client.run_instances(
+        BlockDeviceMappings=block_devices,
+        ImageId=image_id,
+        KeyName=ssh_key_name,
+        InstanceType=instance_type,
+        MinCount=1,
+        MaxCount=1,
+        SubnetId=dbs_subnet_id,
+        # Cannot use `SecurityGroups` with `SubnetId` but can
+        # use `SecurityGroupIds`.
+        SecurityGroupIds=group_ids,
+        IamInstanceProfile={'Arn': instance_profile_arn},
+        TagSpecifications=[{
+            'ResourceType': "instance",
+            'Tags': [{
+                'Key': 'Name',
+                'Value': app_name
+            }]}],
+        UserData=user_data)
+    instance_ids = [instance['InstanceId'] for instance in resp['Instances']]
+    LOGGER.info("%s started ec2 instances %s for '%s'",
+                tag_prefix, instance_ids, app_name)
     return instance_ids
 
 
 def create_instances_webfront(region_name, app_name, image_name,
                               identities_url=None, ssh_key_name=None,
+                              storage_enckey=None,
                               web_subnet_id=None, vpc_id=None, vpc_cidr=None,
                               tag_prefix=None):
     """
@@ -1682,7 +2132,9 @@ def create_instances_webfront(region_name, app_name, image_name,
     if not vpc_id:
         vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
     if not web_subnet_id:
-        web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(vpc_cidr)
+        #pylint:disable=unused-variable
+        web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
+            vpc_cidr, region_name=region_name)
         resp = ec2_client.describe_availability_zones()
         zone_ids = sorted([
             zone['ZoneId'] for zone in resp['AvailabilityZones']])
@@ -1701,17 +2153,19 @@ def create_instances_webfront(region_name, app_name, image_name,
     instance_profile_arn = _get_instance_profile(gate_name)
 
     # Find the ImageId
-    look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
-    aws_account_id = look.group(1)
-    resp = ec2_client.describe_images(
-        Filters=[
-            {'Name': 'name', 'Values': [image_name]},
-            {'Name': 'owner-id', 'Values': [aws_account_id]}])
-    if len(resp['Images']) != 1:
-        raise RuntimeError(
-            "Found more than one image named '%s' in account '%s'" % (
-                image_name, aws_account_id))
-    image_id = resp['Images'][0]['ImageId']
+    image_id = image_name
+    if not image_name.startswith('ami-'):
+        look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
+        aws_account_id = look.group(1)
+        resp = ec2_client.describe_images(
+            Filters=[
+                {'Name': 'name', 'Values': [image_name]},
+                {'Name': 'owner-id', 'Values': [aws_account_id]}])
+        if len(resp['Images']) != 1:
+            raise RuntimeError(
+                "Found more than one image named '%s' in account '%s'" % (
+                    image_name, aws_account_id))
+        image_id = resp['Images'][0]['ImageId']
 
     # XXX adds encrypted volume
     resp = ec2_client.run_instances(
@@ -1737,70 +2191,70 @@ def create_instances_webfront(region_name, app_name, image_name,
                 tag_prefix, instance_ids, app_name)
     return instance_ids
 
-
-def create_target_group(region_name, app_name,
-                        tls_priv_key, tls_fullchain_cert,
-                        image_name=None, identities_url=None, ssh_key_name=None,
-                        instance_ids=None,
-                        vpc_id=None, vpc_cidr=None,
-                        listener_arn=None, tag_prefix=None):
+def create_domain_forward(region_name, app_name, valid_domains=None,
+                          tls_priv_key=None, tls_fullchain_cert=None,
+                          listener_arn=None, target_group=None,
+                          tag_prefix=None):
     """
-    Create TargetGroup to forward HTTPS requests to application service.
+    Create the rules in the load-balancer necessary to forward
+    requests for a domain to a specified target group.
     """
-    if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix)
-
     # We attach the certificate to the load balancer listener
-    resp = _store_certificate(tls_fullchain_cert, tls_priv_key,
-        tag_prefix=tag_prefix, region_name=region_name)
-    cert_location = resp['CertificateArn']
-    valid_domains = ([resp['ssl_certificate']['common_name']]
-        + resp['ssl_certificate']['alt_names'])
+    cert_location = None
+    if not valid_domains:
+        resp = _store_certificate(tls_fullchain_cert, tls_priv_key,
+            tag_prefix=tag_prefix, region_name=region_name)
+        cert_location = resp['CertificateArn']
+        valid_domains = ([resp['ssl_certificate']['common_name']]
+            + resp['ssl_certificate']['alt_names'])
 
     elb_client = boto3.client('elbv2', region_name=region_name)
+    #pylint:disable=unused-variable
+    load_balancer_arn, load_balancer_dns = _get_load_balancer(
+        tag_prefix, region_name=region_name, elb_client=elb_client)
     if not listener_arn:
-        listener_arn = _get_listener(
-            tag_prefix, elb_client=elb_client)
+        listener_arn = _get_listener(tag_prefix,
+            load_balancer_arn=load_balancer_arn, elb_client=elb_client,
+            region_name=region_name)
 
     # We add the certificate matching the domain such that we can answer
     # requests for the domain over https.
-    resp = elb_client.add_listener_certificates(
-        ListenerArn=listener_arn,
-        Certificates=[{'CertificateArn': cert_location}])
+    if cert_location:
+        resp = elb_client.add_listener_certificates(
+            ListenerArn=listener_arn,
+            Certificates=[{'CertificateArn': cert_location}])
+
+    if not target_group:
+        resp = elb_client.describe_target_groups(
+            LoadBalancerArn=load_balancer_arn,
+            Names=[app_name])
+        target_group = resp.get('TargetGroups')[0].get('TargetGroupArn')
 
     # We create a listener rule to forward https requests to the app.
-    resp = elb_client.create_target_group(
-        Name=app_name,
-        Protocol='HTTPS',
-        Port=443,
-        VpcId=vpc_id,
-        TargetType='instance',
-        HealthCheckEnabled=True,
-        HealthCheckProtocol='HTTP',
-        HealthCheckPort='80',
-        HealthCheckPath='/',
-        #HealthCheckIntervalSeconds=30,
-        #HealthCheckTimeoutSeconds=5,
-        #HealthyThresholdCount=5,
-        #UnhealthyThresholdCount=2,
-        Matcher={
-            'HttpCode': '200'
-        })
-    target_group = resp.get('TargetGroups')[0].get('TargetGroupArn')
-
     rule_arn = None
     resp = elb_client.describe_rules(ListenerArn=listener_arn)
+    candidates = set([])
     for rule in resp['Rules']:
         for cond in rule['Conditions']:
             if cond['Field'] == 'host-header':
-                rule_valid_domains = [] + valid_domains
                 for rule_domain in cond['HostHeaderConfig']['Values']:
-                    rule_valid_domains.remove(rule_domain)
-                if not rule_valid_domains:
-                    rule_arn = rule['RuleArn']
-                    break
+                    if rule_domain in valid_domains:
+                        candidates |= set([rule['RuleArn']])
+    if len(candidates) > 1:
+        LOGGER.error("%s found multiple rule candidates matching domains %s",
+            tag_prefix, candidates)
+    if len(candidates) == 1:
+        rule_arn = list(candidates)[0]
     if rule_arn:
-        LOGGER.info("%s found matching listener rule %s",
+        elb_client.modify_rule(
+            RuleArn=rule_arn,
+            Actions=[
+                {
+                    'Type': 'forward',
+                    'TargetGroupArn': target_group,
+                }
+            ])
+        LOGGER.info("%s found and modified matching listener rule %s",
             tag_prefix, rule_arn)
     else:
         priority = 1
@@ -1832,6 +2286,37 @@ def create_target_group(region_name, app_name,
         LOGGER.info("%s created matching listener rule %s",
             tag_prefix, rule_arn)
 
+
+def create_target_group(region_name, app_name, instance_ids=None,
+                        image_name=None, identities_url=None, ssh_key_name=None,
+                        vpc_id=None, vpc_cidr=None, tag_prefix=None):
+    """
+    Create TargetGroup to forward HTTPS requests to application service.
+    """
+    if not vpc_id:
+        vpc_id = _get_vpc_id(tag_prefix)
+
+    elb_client = boto3.client('elbv2', region_name=region_name)
+
+    resp = elb_client.create_target_group(
+        Name=app_name,
+        Protocol='HTTPS',
+        Port=443,
+        VpcId=vpc_id,
+        TargetType='instance',
+        HealthCheckEnabled=True,
+        HealthCheckProtocol='HTTP',
+        HealthCheckPort='80',
+        HealthCheckPath='/',
+        #HealthCheckIntervalSeconds=30,
+        #HealthCheckTimeoutSeconds=5,
+        #HealthyThresholdCount=5,
+        #UnhealthyThresholdCount=2,
+        Matcher={
+            'HttpCode': '200'
+        })
+    target_group = resp.get('TargetGroups')[0].get('TargetGroupArn')
+
     # It is time to attach the instance that will respond to http requests
     # to the target group.
     if not instance_ids:
@@ -1860,6 +2345,8 @@ def create_target_group(region_name, app_name,
                         'Code', 'Unknown') == 'InvalidTarget':
                     raise
             time.sleep(RETRY_WAIT_DELAY)
+
+    return target_group
 
 
 def deploy_app_container(app_name, container_location,
@@ -1913,6 +2400,10 @@ def main(input_args):
         default=False,
         help='Do not create resources')
     parser.add_argument(
+        '--skip-create-network', action='store_true',
+        default=False,
+        help='Assume network resources have already been provisioned')
+    parser.add_argument(
         '--prefix', action='store',
         default=None,
         help='prefix used to tag the resources created.')
@@ -1947,40 +2438,68 @@ def main(input_args):
             '.ssh', '%s.pub' % ssh_key_name), 'rb') as ssh_key_obj:
             ssh_key_content = ssh_key_obj.read()
 
+    tag_prefix = args.prefix
+# XXX
+#    if not tag_prefix:
+#        tag_prefix = [random.choice("abcdef")] + "".join(
+#            [random.choice("abcdef0123456789") for i in range(4)])
+
+    storage_enckey = config['default'].get('storage_enckey')
+    web_zone_names = config['default'].get('web_zone_names')
     dbs_zone_names = config['default'].get('dbs_zone_names')
+
+    if web_zone_names:
+        web_zone_names = [
+            zone_name.strip() for zone_name in web_zone_names.split(',')]
+    else:
+        web_zone_names = []
     if dbs_zone_names:
         dbs_zone_names = [
             zone_name.strip() for zone_name in dbs_zone_names.split(',')]
+    else:
+        dbs_zone_names = []
+
+    if not args.skip_create_network:
         create_network(
             config['default']['region_name'],
             config['default']['vpc_cidr'],
+            web_zone_names,
             dbs_zone_names,
             tls_priv_key=tls_priv_key,
             tls_fullchain_cert=tls_fullchain_cert,
             ssh_key_name=ssh_key_name,
             ssh_key_content=ssh_key_content,
             sally_ip=config['default'].get('sally_ip'),
-            tag_prefix=args.prefix,
+            storage_enckey=storage_enckey,
+            s3_logs_bucket=config['default'].get('s3_logs_bucket'),
+            tag_prefix=tag_prefix,
             dry_run=args.dry_run)
 
-        if ('db_master_user' in config['default'] and
-            'db_master_password' in config['default']):
-            storage_enckey = config['default'].get('storage_enckey')
-            create_datastores(
-                config['default']['region_name'],
-                config['default']['vpc_cidr'],
-                dbs_zone_names,
-                config['default']['db_master_user'],
-                config['default']['db_master_password'],
-                args.prefix,
-                kms_key_arn=storage_enckey)
+    if (('db_master_user' in config['default'] and
+        'db_master_password' in config['default']) or
+        'dbs_identities_url' in config['default']):
+        create_datastores(
+            config['default']['region_name'],
+            config['default']['vpc_cidr'],
+            dbs_zone_names,
+            tag_prefix=tag_prefix,
+            storage_enckey=storage_enckey,
+            db_master_user=config['default'].get('db_master_user'),
+            db_master_password=config['default'].get('db_master_password'),
+            identities_url=config['default'].get('dbs_identities_url'),
+            s3_identities_bucket=config['default'].get('s3_identities_bucket'),
+            company_domain=config['default'].get('company_domain'),
+            ldap_host=config['default'].get('ldap_host'),
+            ldap_password_hash=config['default'].get('ldap_password_hash'),
+            image_name=config['default']['image_name'],
+            ssh_key_name=ssh_key_name)
 
     # Create target groups for the applications.
     for app_name in config:
         if app_name.lower() == 'default':
             continue
 
-        if app_name.startswith(args.prefix):
+        if tag_prefix and app_name.startswith(tag_prefix):
             tls_priv_key_path = config[app_name].get('tls_priv_key_path')
             tls_fullchain_path = config[app_name].get('tls_fullchain_path')
             if not tls_priv_key_path or not tls_fullchain_path:
@@ -1993,13 +2512,17 @@ def main(input_args):
             create_target_group(
                 config['default']['region_name'],
                 app_name,
-                tls_priv_key,
-                tls_fullchain_cert,
                 image_name=config[app_name]['image_name'],
                 identities_url=config[app_name]['identities_url'],
                 ssh_key_name=ssh_key_name,
                 vpc_cidr=config['default']['vpc_cidr'],
-                tag_prefix=args.prefix)
+                tag_prefix=tag_prefix)
+            create_domain_forward(
+                config['default']['region_name'],
+                app_name,
+                tls_priv_key=tls_priv_key,
+                tls_fullchain_cert=tls_fullchain_cert,
+                tag_prefix=tag_prefix)
         else:
             container_location = config[app_name].get('container_location')
             if container_location and is_aws_ecr(container_location):
@@ -2022,7 +2545,13 @@ def main(input_args):
                 app_subnet_id=config['default'].get('app_subnet_id'),
                 vpc_id=config['default'].get('vpc_id'),
                 vpc_cidr=config['default'].get('vpc_cidr'),
-                tag_prefix=args.prefix)
+                tag_prefix=tag_prefix)
+            create_domain_forward(
+                config['default']['region_name'],
+                app_name,
+                tls_priv_key=tls_priv_key,
+                tls_fullchain_cert=tls_fullchain_cert,
+                tag_prefix=tag_prefix)
 
             # Environment variables is an array of name/value.
             if container_location:
