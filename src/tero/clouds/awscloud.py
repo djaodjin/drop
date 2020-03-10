@@ -1185,6 +1185,21 @@ def create_network(region_name, vpc_cidr,
         }))
         iam_client.put_role_policy(
             RoleName=vault_role,
+            PolicyName='DatabasesBackup',
+            PolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Action": [
+                        "s3:PutObject"
+                    ],
+                    "Effect": "Allow",
+                    "Resource": [
+                        "arn:aws:s3:::%s/var/migrate/*" % s3_logs_bucket
+                    ]
+                }]
+            }))
+        iam_client.put_role_policy(
+            RoleName=vault_role,
             PolicyName='WriteslogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
@@ -1195,7 +1210,7 @@ def create_network(region_name, vpc_cidr,
                     ],
                     "Effect": "Allow",
                     "Resource": [
-                        "arn:aws:s3:::%s/*" % s3_logs_bucket
+                        "arn:aws:s3:::%s/var/log/*" % s3_logs_bucket
                     ]
                 }]
             }))
@@ -1639,16 +1654,19 @@ def create_app_resources(region_name, app_name, image_name,
                          s3_logs_bucket=None, s3_uploads_bucket=None,
                          ssh_key_name=None,
                          app_subnet_id=None, vpc_id=None, vpc_cidr=None,
-                         tag_prefix=None,
+                         app_prefix=None,
+                         session_prefix=None,
                          hosted_zone_id=None,
                          dry_run=False):
     """
     Create the application servers
     """
-    tag_prefix = _clean_tag_prefix(tag_prefix)
-    gate_name = '%scastle-gate' % tag_prefix
-    kitchen_door_name = '%skitchen-door' % tag_prefix
-    app_sg_name = '%s%s' % (tag_prefix, app_name)
+    session_prefix = _clean_tag_prefix(session_prefix)
+    gate_name, kitchen_door_name = _get_security_group_names([
+        'castle-gate', 'kitchen-door'], tag_prefix=session_prefix)
+    app_prefix = _clean_tag_prefix(app_prefix)
+    app_sg_name = _get_security_group_names([
+        app_name], tag_prefix=app_prefix)[0]
 
     ec2_client = boto3.client('ec2', region_name=region_name)
     resp = ec2_client.describe_instances(
@@ -1669,10 +1687,10 @@ def create_app_resources(region_name, app_name, image_name,
             InstanceIds=stopped_instances_ids,
             DryRun=dry_run)
         LOGGER.info("%s restarted instances %s for '%s'",
-            tag_prefix, stopped_instances_ids, app_name)
+            app_prefix, stopped_instances_ids, app_name)
     if previous_instances_ids:
         LOGGER.info("%s found already running '%s' on instances %s",
-            tag_prefix, app_name, previous_instances_ids)
+            app_prefix, app_name, previous_instances_ids)
         return previous_instances_ids
 
     # Create a Queue to communicate with the agent on the EC2 instance.
@@ -1693,7 +1711,7 @@ def create_app_resources(region_name, app_name, image_name,
         queue_url=queue_url)
 
     if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+        vpc_id = _get_vpc_id(session_prefix, ec2_client=ec2_client,
             region_name=region_name)
     if not app_subnet_id:
         #pylint:disable=unused-variable
@@ -1703,7 +1721,7 @@ def create_app_resources(region_name, app_name, image_name,
         zone_ids = sorted([
             zone['ZoneId'] for zone in resp['AvailabilityZones']])
         web_subnet_by_zones = _get_subnet_by_zones(
-            web_subnet_cidrs, tag_prefix,
+            web_subnet_cidrs, session_prefix,
             zone_ids=zone_ids, vpc_id=vpc_id, ec2_client=ec2_client)
         # Use first valid subnet that does not require a public IP.
         for zone_id in zone_ids[1:]:
@@ -1713,16 +1731,19 @@ def create_app_resources(region_name, app_name, image_name,
                 break
 
     group_ids = _get_security_group_ids(
-        [app_sg_name, gate_name, kitchen_door_name], tag_prefix,
+        [app_sg_name], app_prefix,
         vpc_id=vpc_id, ec2_client=ec2_client)
     app_sg_id = group_ids[0]
-    gate_sg_id = group_ids[1]
-    kitchen_door_sg_id = group_ids[2]
+    group_ids = _get_security_group_ids(
+        [gate_name, kitchen_door_name], session_prefix,
+        vpc_id=vpc_id, ec2_client=ec2_client)
+    gate_sg_id = group_ids[0]
+    kitchen_door_sg_id = group_ids[1]
     if not app_sg_id:
-        if tag_prefix and tag_prefix.endswith('-'):
-            descr = '%s %s' % (tag_prefix[:-1], app_name)
-        elif tag_prefix:
-            descr = ('%s %s' % (tag_prefix, app_name)).strip()
+        if app_prefix and app_prefix.endswith('-'):
+            descr = '%s %s' % (app_prefix[:-1], app_name)
+        elif app_prefix:
+            descr = ('%s %s' % (app_prefix, app_name)).strip()
         else:
             descr = app_name
         resp = ec2_client.create_security_group(
@@ -1731,7 +1752,7 @@ def create_app_resources(region_name, app_name, image_name,
             VpcId=vpc_id)
         app_sg_id = resp['GroupId']
         LOGGER.info("%s created %s security group %s",
-            tag_prefix, app_sg_name, app_sg_id)
+            app_prefix, app_sg_name, app_sg_id)
     # app_sg_id allow rules
     try:
         resp = ec2_client.authorize_security_group_ingress(
@@ -1878,27 +1899,27 @@ def create_app_resources(region_name, app_name, image_name,
                             "arn:aws:s3:::%s/identities/" % s3_uploads_bucket
                         ]
                     }]}))
-        LOGGER.info("%s created IAM role %s", tag_prefix, app_role)
+        LOGGER.info("%s created IAM role %s", app_prefix, app_role)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
                 'Code', 'Unknown') == 'EntityAlreadyExists':
             raise
-        LOGGER.info("%s found IAM role %s", tag_prefix, app_role)
+        LOGGER.info("%s found IAM role %s", app_prefix, app_role)
 
     instance_profile_arn = _get_instance_profile(
         app_role, iam_client=iam_client,
-        region_name=region_name, tag_prefix=tag_prefix)
+        region_name=region_name, tag_prefix=app_prefix)
     if not instance_profile_arn:
         resp = iam_client.create_instance_profile(
             InstanceProfileName=app_role)
         instance_profile_arn = resp['InstanceProfile']['Arn']
         LOGGER.info("%s created IAM instance profile '%s'",
-            tag_prefix, instance_profile_arn)
+            app_prefix, instance_profile_arn)
         iam_client.add_role_to_instance_profile(
             InstanceProfileName=app_role,
             RoleName=app_role)
         LOGGER.info("%s created IAM instance profile for %s: %s",
-            tag_prefix, app_role, instance_profile_arn)
+            app_prefix, app_role, instance_profile_arn)
 
     # Find the ImageId
     look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
@@ -1945,11 +1966,11 @@ def create_app_resources(region_name, app_name, image_name,
                     'Code', 'Unknown') == 'InvalidParameterValue':
                 raise
             LOGGER.info("%s waiting for IAM instance profile %s to be"\
-                " operational ...", tag_prefix, instance_profile_arn)
+                " operational ...", app_prefix, instance_profile_arn)
         time.sleep(RETRY_WAIT_DELAY)
 
     LOGGER.info("%s started ec2 instances %s for '%s'",
-                tag_prefix, instance_ids, app_name)
+                app_prefix, instance_ids, app_name)
 
     # Associates an internal domain name to the instance
     update_dns_record = True
@@ -2598,7 +2619,7 @@ def main(input_args):
                 app_subnet_id=config['default'].get('app_subnet_id'),
                 vpc_id=config['default'].get('vpc_id'),
                 vpc_cidr=config['default'].get('vpc_cidr'),
-                tag_prefix=tag_prefix)
+                session_prefix=tag_prefix)
             create_domain_forward(
                 region_name,
                 app_name,
