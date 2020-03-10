@@ -1965,6 +1965,9 @@ def create_app_resources(region_name, app_name, image_name,
                     'Tags': [{
                         'Key': 'Name',
                         'Value': app_name
+                    }, {
+                        'Key': 'Prefix',
+                        'Value': app_prefix
                     }]}],
                 UserData=user_data)
             instances = resp['Instances']
@@ -2021,7 +2024,7 @@ def create_app_resources(region_name, app_name, image_name,
                     # 'Region': DEFAULT_REGION
                     'TTL': 60,
                     'ResourceRecords': [
-                        {'Value': instance.private_ip_address}
+                        {'Value': instance['PrivateIpAddress']}
                         for instance in instances]
                 }}]})
 
