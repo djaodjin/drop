@@ -1935,8 +1935,8 @@ def create_app_resources(region_name, app_name, image_name,
         iam_client.add_role_to_instance_profile(
             InstanceProfileName=app_role,
             RoleName=app_role)
-        LOGGER.info("%s created IAM instance profile for %s: %s",
-            app_prefix, app_role, instance_profile_arn)
+        LOGGER.info("%s added IAM instance profile %s to role %s",
+            app_prefix, instance_profile_arn, app_role)
 
     # Find the ImageId
     image_id = _get_image_id(
@@ -1992,7 +1992,8 @@ def create_app_resources(region_name, app_name, image_name,
         hosted_zone_name = 'ec2.internal.'
         route53 = boto3.client('route53')
         if hosted_zone_id:
-            hosted_zone = route53.get_hosted_zone(Id=hosted_zone_id)
+            hosted_zone = route53.get_hosted_zone(
+                Id=hosted_zone_id)['HostedZone']
         else:
             hosted_zones_resp = route53.list_hosted_zones()
             hosted_zones = hosted_zones_resp.get('HostedZones')
@@ -2003,7 +2004,7 @@ def create_app_resources(region_name, app_name, image_name,
                 if hzone.get('Name') == hosted_zone_name:
                     default_hosted_zone = hzone
         if hosted_zone:
-            hosted_zone_name = hosted_zone.get('Name')
+            hosted_zone_name = hosted_zone['Name']
             LOGGER.info("found hosted zone %s", hosted_zone_name)
         else:
             hosted_zone_id = default_hosted_zone.get('Id')
