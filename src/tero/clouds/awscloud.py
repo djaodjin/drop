@@ -140,6 +140,33 @@ def _clean_tag_prefix(tag_prefix):
     return tag_prefix
 
 
+def _get_image_id(image_name, instance_profile_arn=None,
+                  ec2_client=None, region_name=None):
+    """
+    Finds an image_id from its name.
+    """
+    image_id = image_name
+    if not image_name.startswith('ami-'):
+        if not instance_profile_arn:
+            raise RuntimeError("instance_profile_arn must be defined when"\
+                " image_name is not already an id.")
+        look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
+        aws_account_id = look.group(1)
+        if not ec2_client:
+            ec2_client = boto3.client('ec2', region_name=region_name)
+        resp = ec2_client.describe_images(
+            Filters=[
+                {'Name': 'name', 'Values': [image_name]},
+                {'Name': 'owner-id', 'Values': [aws_account_id]}])
+        if len(resp['Images']) != 1:
+            raise RuntimeError(
+                "Found more than one image named '%s' in account '%s': %s" % (
+                    image_name, aws_account_id,
+                    [image['ImageId'] for image in resp['Images']]))
+        image_id = resp['Images'][0]['ImageId']
+    return image_id
+
+
 def _get_instance_profile(role_name, iam_client=None,
                           region_name=None, tag_prefix=None):
     """
@@ -308,7 +335,7 @@ def _get_security_group_ids(group_names, tag_prefix,
     for group_id, group_name in zip(group_ids, group_names):
         if group_id:
             LOGGER.info("%s found %s security group %s",
-                tag_prefix, group_name, group_ids[idx])
+                tag_prefix, group_name, group_id)
         else:
             LOGGER.warning("%s cannot find security group %s",
                 tag_prefix, group_name)
@@ -1585,19 +1612,9 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
 
         # Find the ImageId
         instance_profile_arn = _get_instance_profile(vault_name)
-        image_id = image_name
-        if not image_name.startswith('ami-'):
-            look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
-            aws_account_id = look.group(1)
-            resp = ec2_client.describe_images(
-                Filters=[
-                    {'Name': 'name', 'Values': [image_name]},
-                    {'Name': 'owner-id', 'Values': [aws_account_id]}])
-            if len(resp['Images']) != 1:
-                raise RuntimeError(
-                    "Found more than one image named '%s' in account '%s'" % (
-                        image_name, aws_account_id))
-            image_id = resp['Images'][0]['ImageId']
+        image_id = _get_image_id(
+            image_name, instance_profile_arn=instance_profile_arn,
+            ec2_client=ec2_client, region_name=region_name)
 
         # XXX adds encrypted volume
         block_devices = [
@@ -1922,17 +1939,9 @@ def create_app_resources(region_name, app_name, image_name,
             app_prefix, app_role, instance_profile_arn)
 
     # Find the ImageId
-    look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
-    aws_account_id = look.group(1)
-    resp = ec2_client.describe_images(
-        Filters=[
-            {'Name': 'name', 'Values': [image_name]},
-            {'Name': 'owner-id', 'Values': [aws_account_id]}])
-    if len(resp['Images']) != 1:
-        raise RuntimeError(
-            "Found more than one image named '%s' in account '%s'" % (
-                image_name, aws_account_id))
-    image_id = resp['Images'][0]['ImageId']
+    image_id = _get_image_id(
+        image_name, instance_profile_arn=instance_profile_arn,
+        ec2_client=ec2_client, region_name=region_name)
 
     instance_ids = None
     instances = None
