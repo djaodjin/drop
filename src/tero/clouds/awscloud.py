@@ -163,11 +163,14 @@ def _get_instance_profile(role_name, iam_client=None,
 
 
 def _get_load_balancer(tag_prefix, region_name=None, elb_client=None):
+    elb_name = 'webfront-elb'
     tag_prefix = _clean_tag_prefix(tag_prefix)
+    if not elb_name:
+        elb_name = '%selb' % tag_prefix
     if not elb_client:
         elb_client = boto3.client('elbv2', region_name=region_name)
     resp = elb_client.describe_load_balancers(
-        Names=['%selb' % tag_prefix], # XXX matching `create_load_balancer`
+        Names=[elb_name], # XXX matching `create_load_balancer`
     )
     load_balancer = resp['LoadBalancers'][0]
     load_balancer_arn = load_balancer['LoadBalancerArn']
@@ -240,7 +243,8 @@ def _get_subnet_by_zones(subnet_cidrs, tag_prefix,
     if not ec2_client:
         ec2_client = boto3.client('ec2', region_name=region_name)
     if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+            region_name=region_name)
     zone_id_to_name = {}
     if not zone_ids:
         resp = ec2_client.describe_availability_zones()
@@ -274,10 +278,10 @@ def _get_subnet_by_zones(subnet_cidrs, tag_prefix,
 
 
 def _get_security_group_names(base_names, tag_prefix=None):
+    tag_prefix = _clean_tag_prefix(tag_prefix)
     results = []
     for base_name in base_names:
-        results += [(
-            '%s-%s' % (base_name, tag_prefix) if tag_prefix else base_name)]
+        results += ['%s%s' % (tag_prefix, base_name)]
     return results
 
 
@@ -290,7 +294,8 @@ def _get_security_group_ids(group_names, tag_prefix,
     if not ec2_client:
         ec2_client = boto3.client('ec2', region_name=region_name)
     if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+            region_name=region_name)
     resp = ec2_client.describe_security_groups(
         Filters=[{'Name': "vpc-id", 'Values': [vpc_id]}])
     group_ids = [None for _ in group_names]
@@ -298,8 +303,13 @@ def _get_security_group_ids(group_names, tag_prefix,
         for idx, group_name in enumerate(group_names):
             if security_group['GroupName'] == group_name:
                 group_ids[idx] = security_group['GroupId']
-                LOGGER.info("%s found %s security group %s",
-                    tag_prefix, group_name, group_ids[idx])
+    for group_id, group_name in zip(group_ids, group_names):
+        if group_id:
+            LOGGER.info("%s found %s security group %s",
+                tag_prefix, group_name, group_ids[idx])
+        else:
+            LOGGER.warning("%s cannot find security group %s",
+                tag_prefix, group_name)
     return group_ids
 
 
@@ -432,12 +442,16 @@ def check_security_group(security_group):
 
 def create_elb(tag_prefix, web_subnet_by_zones, moat_sg_id,
                tls_priv_key=None, tls_fullchain_cert=None,
-               region_name=None, elb_name=None):
+               region_name=None):
     """
     Creates the Application Load Balancer.
     """
+    if region_name == 'us-west-2':
+        # XXX temporary while name are being rationalized
+        elb_name = 'webfront-elb'
+    tag_prefix = _clean_tag_prefix(tag_prefix)
     if not elb_name:
-        elb_name = '%s-elb' % tag_prefix
+        elb_name = '%selb' % tag_prefix
     elb_client = boto3.client('elbv2', region_name=region_name)
     resp = elb_client.create_load_balancer(
         Name=elb_name,
@@ -548,9 +562,9 @@ def create_network(region_name, vpc_cidr,
     - adds permission to connect from SSH port to security groups
     - import SSH keys
     """
-#XXX    sg_tag_prefix = tag_prefix
-    elb_name = 'webfront-elb'
-    sg_tag_prefix = None
+    sg_tag_prefix = tag_prefix
+    if region_name == 'us-west-2':
+        sg_tag_prefix = None
 
     LOGGER.info("Provisions network ...")
     web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
@@ -589,7 +603,8 @@ def create_network(region_name, vpc_cidr,
          for idx, zone_id in enumerate(db_zone_ids)})
 
     # Create a VPC
-    vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+        region_name=region_name)
     if not vpc_id:
         resp = ec2_client.create_vpc(
             DryRun=dry_run,
@@ -1379,7 +1394,7 @@ def create_network(region_name, vpc_cidr,
     create_elb(
         tag_prefix, web_subnet_by_zones, moat_sg_id,
         tls_priv_key=tls_priv_key, tls_fullchain_cert=tls_fullchain_cert,
-        region_name=region_name, elb_name=elb_name)
+        region_name=region_name)
 
 
 
@@ -1403,7 +1418,9 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
     """
     native = True   # Use EC2 instances for SQL databases.
     instance_type = 'm3.medium'
-    sg_tag_prefix = None
+    sg_tag_prefix = tag_prefix
+    if region_name == 'us-west-2':
+        sg_tag_prefix = None
 
     LOGGER.info("Provisions datastores ...")
     if not app_name:
@@ -1417,7 +1434,8 @@ def create_datastores(region_name, vpc_cidr, dbs_zone_names,
         ['vault'], tag_prefix=sg_tag_prefix)[0]
     ec2_client = boto3.client('ec2', region_name=region_name)
 
-    vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+    vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+        region_name=region_name)
     _, dbs_subnet_cidrs = _split_cidrs(vpc_cidr, region_name=region_name)
     dbs_subnet_by_zones = _get_subnet_by_zones(dbs_subnet_cidrs,
         tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
@@ -1673,7 +1691,8 @@ def create_app_resources(region_name, app_name, image_name,
         queue_url=queue_url)
 
     if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+            region_name=region_name)
     if not app_subnet_id:
         #pylint:disable=unused-variable
         web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
@@ -1986,7 +2005,9 @@ def create_instances_dbs(region_name, app_name, image_name,
     Create the SQL databases server.
     """
     instance_type = 'm3.medium'
-    sg_tag_prefix = None
+    sg_tag_prefix = tag_prefix
+    if region_name == 'us-west-2':
+        sg_tag_prefix = None
 
     # XXX same vault_name as in `create_network`
     vault_name = _get_security_group_names(
@@ -2014,7 +2035,8 @@ def create_instances_dbs(region_name, app_name, image_name,
     user_data = template.render(identities_url=identities_url)
 
     if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+            region_name=region_name)
     if not dbs_subnet_id:
         #pylint:disable=unused-variable
         web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
@@ -2106,7 +2128,13 @@ def create_instances_webfront(region_name, app_name, image_name,
     """
     Create the proxy session server connected to the target group.
     """
-    gate_name = '%s-castle-gate' % tag_prefix # XXX same as in `create_network`
+    instance_type = 't3.micro'
+    sg_tag_prefix = tag_prefix
+    if region_name == 'us-west-2':
+        sg_tag_prefix = None
+
+    gate_name = _get_security_group_names(
+        ['castle-gate'], tag_prefix=sg_tag_prefix)[0]
 
     ec2_client = boto3.client('ec2', region_name=region_name)
     resp = ec2_client.describe_instances(
@@ -2130,7 +2158,8 @@ def create_instances_webfront(region_name, app_name, image_name,
     user_data = template.render(identities_url=identities_url)
 
     if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client)
+        vpc_id = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
+            region_name=region_name)
     if not web_subnet_id:
         #pylint:disable=unused-variable
         web_subnet_cidrs, dbs_subnet_cidrs = _split_cidrs(
@@ -2171,7 +2200,7 @@ def create_instances_webfront(region_name, app_name, image_name,
     resp = ec2_client.run_instances(
         ImageId=image_id,
         KeyName=ssh_key_name,
-        InstanceType='t3.small',
+        InstanceType=instance_type,
         MinCount=1,
         MaxCount=1,
         SubnetId=web_subnet_id,
@@ -2184,12 +2213,16 @@ def create_instances_webfront(region_name, app_name, image_name,
             'Tags': [{
                 'Key': 'Name',
                 'Value': app_name
+            }, {
+                'Key': 'Prefix',
+                'Value': tag_prefix
             }]}],
         UserData=user_data)
     instance_ids = [instance['InstanceId'] for instance in resp['Instances']]
     LOGGER.info("%s started ec2 instances %s for '%s'",
                 tag_prefix, instance_ids, app_name)
     return instance_ids
+
 
 def create_domain_forward(region_name, app_name, valid_domains=None,
                           tls_priv_key=None, tls_fullchain_cert=None,
@@ -2201,7 +2234,7 @@ def create_domain_forward(region_name, app_name, valid_domains=None,
     """
     # We attach the certificate to the load balancer listener
     cert_location = None
-    if not valid_domains:
+    if not valid_domains and tls_fullchain_cert and tls_priv_key:
         resp = _store_certificate(tls_fullchain_cert, tls_priv_key,
             tag_prefix=tag_prefix, region_name=region_name)
         cert_location = resp['CertificateArn']
@@ -2226,7 +2259,6 @@ def create_domain_forward(region_name, app_name, valid_domains=None,
 
     if not target_group:
         resp = elb_client.describe_target_groups(
-            LoadBalancerArn=load_balancer_arn,
             Names=[app_name])
         target_group = resp.get('TargetGroups')[0].get('TargetGroupArn')
 
@@ -2294,7 +2326,7 @@ def create_target_group(region_name, app_name, instance_ids=None,
     Create TargetGroup to forward HTTPS requests to application service.
     """
     if not vpc_id:
-        vpc_id = _get_vpc_id(tag_prefix)
+        vpc_id = _get_vpc_id(tag_prefix, region_name=region_name)
 
     elb_client = boto3.client('elbv2', region_name=region_name)
 
@@ -2316,6 +2348,8 @@ def create_target_group(region_name, app_name, instance_ids=None,
             'HttpCode': '200'
         })
     target_group = resp.get('TargetGroups')[0].get('TargetGroupArn')
+    LOGGER.info("%s found/created target group %s for %s",
+        tag_prefix, target_group, app_name)
 
     # It is time to attach the instance that will respond to http requests
     # to the target group.
@@ -2404,6 +2438,14 @@ def main(input_args):
         default=False,
         help='Assume network resources have already been provisioned')
     parser.add_argument(
+        '--skip-create-datastores', action='store_true',
+        default=False,
+        help='Assume data stores have already been provisioned')
+    parser.add_argument(
+        '--region', action='store',
+        default=None,
+        help='AWS Region to configure')
+    parser.add_argument(
         '--prefix', action='store',
         default=None,
         help='prefix used to tag the resources created.')
@@ -2420,6 +2462,10 @@ def main(input_args):
         LOGGER.info("[%s]", section)
         for key, val in config.items(section):
             LOGGER.info("%s = %s", key, val)
+
+    region_name = args.region
+    if not region_name:
+        region_name = config['default'].get('region_name')
 
     tls_priv_key = None
     tls_fullchain_cert = None
@@ -2461,7 +2507,7 @@ def main(input_args):
 
     if not args.skip_create_network:
         create_network(
-            config['default']['region_name'],
+            region_name,
             config['default']['vpc_cidr'],
             web_zone_names,
             dbs_zone_names,
@@ -2475,11 +2521,12 @@ def main(input_args):
             tag_prefix=tag_prefix,
             dry_run=args.dry_run)
 
-    if (('db_master_user' in config['default'] and
+    if (not args.skip_create_datastores and
+        (('db_master_user' in config['default'] and
         'db_master_password' in config['default']) or
-        'dbs_identities_url' in config['default']):
+        'dbs_identities_url' in config['default'])):
         create_datastores(
-            config['default']['region_name'],
+            region_name,
             config['default']['vpc_cidr'],
             dbs_zone_names,
             tag_prefix=tag_prefix,
@@ -2503,26 +2550,30 @@ def main(input_args):
             tls_priv_key_path = config[app_name].get('tls_priv_key_path')
             tls_fullchain_path = config[app_name].get('tls_fullchain_path')
             if not tls_priv_key_path or not tls_fullchain_path:
-                tls_priv_key_path = config['default']['tls_priv_key_path']
-                tls_fullchain_path = config['default']['tls_fullchain_path']
-            with open(tls_priv_key_path) as priv_key_file:
-                tls_priv_key = priv_key_file.read()
-            with open(tls_fullchain_path) as fullchain_file:
-                tls_fullchain_cert = fullchain_file.read()
+                tls_priv_key_path = config['default'].get('tls_priv_key_path')
+                tls_fullchain_path = config['default'].get('tls_fullchain_path')
+            tls_priv_key = None
+            tls_fullchain_cert = None
+            if tls_priv_key_path and tls_fullchain_path:
+                with open(tls_priv_key_path) as priv_key_file:
+                    tls_priv_key = priv_key_file.read()
+                with open(tls_fullchain_path) as fullchain_file:
+                    tls_fullchain_cert = fullchain_file.read()
             create_target_group(
-                config['default']['region_name'],
+                region_name,
                 app_name,
                 image_name=config[app_name]['image_name'],
                 identities_url=config[app_name]['identities_url'],
                 ssh_key_name=ssh_key_name,
                 vpc_cidr=config['default']['vpc_cidr'],
                 tag_prefix=tag_prefix)
-            create_domain_forward(
-                config['default']['region_name'],
-                app_name,
-                tls_priv_key=tls_priv_key,
-                tls_fullchain_cert=tls_fullchain_cert,
-                tag_prefix=tag_prefix)
+            if tls_fullchain_cert and tls_priv_key:
+                create_domain_forward(
+                    region_name,
+                    app_name,
+                    tls_priv_key=tls_priv_key,
+                    tls_fullchain_cert=tls_fullchain_cert,
+                    tag_prefix=tag_prefix)
         else:
             container_location = config[app_name].get('container_location')
             if container_location and is_aws_ecr(container_location):
@@ -2533,7 +2584,7 @@ def main(input_args):
                 ecr_access_role_arn = None
                 role_name = config[app_name].get('container_access_token')
             create_app_resources(
-                config['default']['region_name'],
+                region_name,
                 app_name,
                 config[app_name]['image_name'],
                 ecr_access_role_arn=ecr_access_role_arn,
@@ -2547,7 +2598,7 @@ def main(input_args):
                 vpc_cidr=config['default'].get('vpc_cidr'),
                 tag_prefix=tag_prefix)
             create_domain_forward(
-                config['default']['region_name'],
+                region_name,
                 app_name,
                 tls_priv_key=tls_priv_key,
                 tls_fullchain_cert=tls_fullchain_cert,
@@ -2564,7 +2615,7 @@ def main(input_args):
                     role_name=role_name,
                     external_id=config[app_name].get('external_id'),
                     env=env,
-                    region_name=config['default']['region_name'])
+                    region_name=region_name)
 
 
 if __name__ == '__main__':

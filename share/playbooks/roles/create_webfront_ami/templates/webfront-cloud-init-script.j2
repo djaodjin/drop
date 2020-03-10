@@ -138,6 +138,8 @@ fi
 # disable what we don't need
 /usr/bin/systemctl stop rpcbind
 /usr/bin/systemctl disable rpcbind
+/usr/bin/systemctl stop postfix.service
+/usr/bin/systemctl disable postfix.service
 
 # Ansible will be waiting for this server to respond
 # before it continues with registering the AMI.

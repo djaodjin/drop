@@ -90,11 +90,11 @@ class openssh_serverSetup(SetupTemplate):
         with open(new_config_path, 'w') as new_config:
             new_config.write(
 """#!/bin/sh
-if [ "$1" == "fedora" ] ; then
+if [ "$1" == "%(user)s" ] ; then
     exit 1
 fi
 exec /usr/libexec/openssh/ssh-ldap-helper -s "$1"
-""")
+""" % {'user': "centos"})
         postinst.shellCommand(['chmod', '755', config_path])
         postinst.shellCommand(['chmod', '644', self.ldap_conf])
         return complete

@@ -38,6 +38,7 @@ class nginxSetup(setup.SetupTemplate):
 %(webapps)s
 server {
         listen          80 default_server;
+        listen       [::]:80 default_server;
         server_name     _;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
@@ -57,6 +58,7 @@ server {
 %(webapps)s
 server {
         listen          80;
+        listen       [::]:80;
         server_name     ~^((?<subdomain>[a-zA-Z0-9-]+)\.)%(domain_re)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
@@ -97,6 +99,7 @@ server {
 
 server {
         listen          80;
+        listen       [::]:80;
         server_name     %(domain)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
@@ -137,10 +140,10 @@ server {
 
 # Forward to a canonical domain so that statistics are computed accurately.
 server {
-        listen       443;
+        listen       443 ssl;
+        listen       [::]:443 ssl;
         server_name  www.%(domain)s;
 
-        ssl                  on;
         ssl_certificate      %(cert_path)s;
         ssl_certificate_key  %(key_path)s;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
@@ -156,13 +159,13 @@ server {
 }
 
 server {
-        listen       443;
+        listen       443 ssl;
+        listen       [::]:443 ssl;
         server_name  ~^((?<subdomain>[a-zA-Z0-9-]+)\.)%(domain_re)s$;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
 
-        ssl                  on;
         ssl_certificate      %(wildcard_cert_path)s;
         ssl_certificate_key  %(wildcard_key_path)s;
         ssl_session_timeout  5m;
@@ -200,13 +203,13 @@ server {
 }
 
 server {
-        listen       443;
+        listen       443 ssl;
+        listen       [::]:443 ssl;
         server_name  %(domain)s;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
 
-        ssl                  on;
         ssl_certificate      %(cert_path)s;
         ssl_certificate_key  %(key_path)s;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
@@ -242,13 +245,13 @@ server {
     https_default_template = """# All default https request end here.
 
 server {
-        listen       443;
+        listen       443 ssl;
+        listen       [::]:443 ssl;
         server_name  _;
 
         access_log /var/log/nginx/%(domain)s-access.log main;
         error_log  /var/log/nginx/%(domain)s-error.log;
 
-        ssl                  on;
         ssl_certificate      %(wildcard_cert_path)s;
         ssl_certificate_key  %(wildcard_key_path)s;
         ssl_session_timeout  5m;
