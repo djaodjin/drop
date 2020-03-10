@@ -163,7 +163,9 @@ def _get_instance_profile(role_name, iam_client=None,
 
 
 def _get_load_balancer(tag_prefix, region_name=None, elb_client=None):
-    elb_name = 'webfront-elb'
+    elb_name = None
+    if region_name == 'us-west-2':
+        elb_name = 'webfront-elb'
     tag_prefix = _clean_tag_prefix(tag_prefix)
     if not elb_name:
         elb_name = '%selb' % tag_prefix
