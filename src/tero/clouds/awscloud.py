@@ -35,6 +35,8 @@ from pyasn1.codec.der.decoder import decode as asn1_decoder
 from pyasn1_modules.rfc2459 import SubjectAltName
 from pyasn1.codec.native.encoder import encode as nat_encoder
 import six
+#pylint:disable=import-error
+from six.moves.urllib.parse import urlparse
 
 
 LOGGER = logging.getLogger(__name__)
@@ -439,6 +441,15 @@ def _store_certificate(fullchain, key, domain=None, tag_prefix=None,
                 tag_prefix, result['ssl_certificate'], resp['CertificateArn'])
     result.update({'CertificateArn': resp['CertificateArn']})
     return result
+
+
+def get_bucket_prefix(location):
+    bucket_name = None
+    prefix = None
+    if location and location.startswith('s3://'):
+        _, bucket_name, prefix = urlparse(location)[:3]
+    return bucket_name, prefix
+
 
 def is_aws_ecr(container_location):
     """
@@ -1725,6 +1736,7 @@ def create_app_resources(region_name, app_name, image_name,
     user_data = template.render(
         settings_location=settings_location if settings_location else "",
         settings_crypt_key=settings_crypt_key if settings_crypt_key else "",
+        logs_storage_location="s3://%s" % s3_logs_bucket,
         queue_url=queue_url)
 
     if not vpc_id:

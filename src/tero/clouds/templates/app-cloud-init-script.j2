@@ -8,9 +8,8 @@ set -e
 sysconfigFile=/var/www/djaoapp/etc/sysconfig/djagent
 
 # Configures the agent
-echo "SETTINGS_LOCATION={{settings_location}}" > ${sysconfigFile}
-echo "SETTINGS_CRYPT_KEY='{{settings_crypt_key}}'" >> ${sysconfigFile}
-echo "QUEUE_URL={{queue_url}}" >> ${sysconfigFile}
+echo "QUEUE_URL={{queue_url}}" > ${sysconfigFile}
+echo "LOGS_STORAGE_LOCATION={{logs_storage_location}}" >> ${sysconfigFile}
 chmod 600 ${sysconfigFile}
 
 # Restarts the agent
