@@ -178,21 +178,24 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
     results = []
     s3_resource = boto3.resource('s3')
     for logname in lognames:
-        dirname = os.path.dirname(logname)
+        logprefix = os.path.splitext(logname)[0].lstrip('/')
         if prefix:
-            dirname = prefix + dirname
-        for s3_key in s3_resource.Bucket(bucket).objects.filter(Prefix=dirname):
-            if as_logname(s3_key.name, prefix=prefix) == logname:
-                look = re.match(r'\S+-(\d\d\d\d\d\d\d\d)\.gz', s3_key.name)
+            logprefix = "%s/%s" % (prefix.strip('/') + logprefix)
+        for s3_key in s3_resource.Bucket(bucket).objects.filter(
+                Prefix=logprefix):
+            logkey = as_logname(s3_key.key, prefix=prefix)
+            if logname.startswith('/'):
+                logkey = '/' + logkey
+            if logkey == logname:
+                look = re.match(r'\S+-(\d\d\d\d\d\d\d\d)\.gz', s3_key.key)
                 if time_from_logsuffix and look:
                     last_modified = datetime.datetime.strptime(
                         look.group(1), "%Y%m%d")
                 else:
-                    last_modified = datetime.datetime(*time.strptime(
-                        s3_key.last_modified, BOTO_DATETIME_FORMAT)[0:6])
+                    last_modified = s3_key.last_modified
                 if last_modified.tzinfo is None:
                     last_modified = last_modified.replace(tzinfo=utc)
-                results += [{"Key": s3_key.name, "LastModified": last_modified}]
+                results += [{"Key": s3_key.key, "LastModified": last_modified}]
     return results
 
 
@@ -281,9 +284,9 @@ def upload_log(s3_location, filename, logsuffix=None):
     Upload a local log file to an S3 bucket. If logsuffix is ``None``,
     the instance-id will be automatically added as a suffix in the log filename.
     """
-    headers = {'Content-Type': 'text/plain'}
+    headers = {'ContentType': 'text/plain'}
     if filename.endswith('.gz'):
-        headers.update({'Content-Encoding': 'gzip'})
+        headers.update({'ContentEncoding': 'gzip'})
     parts = s3_location[5:].split('/')
     s3_bucket = parts[0]
     s3_prefix = '/'.join(parts[1:])
@@ -294,7 +297,7 @@ def upload_log(s3_location, filename, logsuffix=None):
         if logsuffix.startswith('i-'):
             logsuffix = logsuffix[1:]
     keyname = as_keyname(
-        filename, logsuffix=logsuffix, prefix=s3_prefix)
+        filename, logsuffix=logsuffix, prefix=s3_prefix)[1:]
     sys.stderr.write("Upload %s ... to s3://%s/%s\n"
         % (filename, s3_bucket, keyname))
     s3_client = boto3.client('s3')
