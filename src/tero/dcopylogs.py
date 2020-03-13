@@ -78,6 +78,12 @@ class LastRunCache(object):
 
 
 def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
+    """
+    The keyname returned is in a format as expected by AWS S3
+    (i.e. no leading '/') whether `filename` is an absolute path or
+    a subdirectory of the current path.
+    """
+    filename = filename.lstrip('/')
     result = filename
     if ext.startswith('.'):
         ext = ext[1:]
@@ -86,7 +92,7 @@ def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
         if look:
             result = look.group(1) + logsuffix + look.group(2)
     if prefix:
-        result = prefix + result
+        result = "%s/%s" % (prefix.strip('/') + result)
     return result
 
 
@@ -169,9 +175,9 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
     with their timestamp.
 
     Example:
-    [{ "Key": "/var/log/nginx/www.example.com.log-20160106.gz",
+    [{ "Key": "var/log/nginx/www.example.com.log-0ce5c29636da94d4c-20160106.gz",
        "LastModified": "Mon, 06 Jan 2016 00:00:00 UTC"},
-     { "Key": "/var/log/nginx/www.example.com.log-20160105.gz",
+     { "Key": "var/log/nginx/www.example.com.log-0ce5c29636da94d4c-20160105.gz",
        "LastModified": "Mon, 05 Jan 2016 00:00:00 UTC"},
     ]
     """
@@ -297,7 +303,7 @@ def upload_log(s3_location, filename, logsuffix=None):
         if logsuffix.startswith('i-'):
             logsuffix = logsuffix[1:]
     keyname = as_keyname(
-        filename, logsuffix=logsuffix, prefix=s3_prefix)[1:]
+        filename, logsuffix=logsuffix, prefix=s3_prefix)
     sys.stderr.write("Upload %s ... to s3://%s/%s\n"
         % (filename, s3_bucket, keyname))
     s3_client = boto3.client('s3')
