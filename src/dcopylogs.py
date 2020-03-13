@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2018, Djaodjin Inc.
+# Copyright (c) 2020, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,14 +26,9 @@
 
 import argparse, logging, os, sys
 
-import boto
-
-
-__version__ = None
 
 LOGGER = logging.getLogger(__name__)
 
-BOTO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 def main(args):
     #pylint:disable=too-many-locals
@@ -82,39 +77,29 @@ def main(args):
             "Download rotated logs for %s from %s under prefix '%s'\n"
             % (' '.join(lognames), s3_location, s3_prefix))
 
-    conn = boto.connect_s3()
-    bucket = conn.get_bucket(s3_bucket)
     local_prefix = '.' if not to_s3 else None
     local_update, s3_update = list_updates(
         list_local(lognames, prefix=local_prefix, list_all=options.list_all),
-        list_s3(bucket, lognames, prefix=s3_prefix,
+        list_s3(s3_bucket, lognames, prefix=s3_prefix,
                 time_from_logsuffix=(not to_s3)),
         logsuffix=logsuffix, prefix=s3_prefix)
 
     if to_s3:
         # Upload
-        headers = {
-            'Content-Type': 'text/plain',
-            'Content-Encoding': 'gzip'}
         for item in s3_update:
             filename = item['Key']
-            s3_key = boto.s3.key.Key(bucket)
-            s3_key.name = as_keyname(
-                filename, logsuffix=logsuffix, prefix=s3_prefix)
-            sys.stderr.write("Upload %s ... to %s/%s\n"
-                % (filename, s3_location, s3_key.name))
-            with open(filename, 'rb') as file_obj:
-                s3_key.set_contents_from_file(file_obj, headers)
+            upload_log(s3_location, filename, logsuffix=logsuffix)
     else:
         # Download
         if options.last_run and os.path.exists(options.last_run):
             last_run = LastRunCache(options.last_run)
         else:
             last_run = None
-        download_updated_logs(
-            local_update, bucket=bucket, s3_prefix=s3_prefix, last_run=last_run)
+        download_updated_logs(local_update,
+            bucket=s3_bucket, s3_prefix=s3_prefix, last_run=last_run)
         if last_run:
             last_run.save()
+    return 0
 
 
 if __name__ == '__main__':
@@ -125,7 +110,8 @@ if __name__ == '__main__':
             os.path.dirname(os.path.dirname(bin_path)), 'lib',
             'python%d.%d' % (sys.version_info[0], sys.version_info[1]),
             'site-packages')]
+    from tero import __version__
     from tero.dcopylogs import (LastRunCache, list_updates, list_local,
-        list_s3, as_keyname, download_updated_logs)
+        list_s3, download_updated_logs, upload_log)
 
     sys.exit(main(sys.argv))

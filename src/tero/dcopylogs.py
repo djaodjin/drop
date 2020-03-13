@@ -24,7 +24,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import datetime, json, logging, os, re, sys, time
+import datetime, decimal, json, logging, os, re, sys, time
 
 import boto3, boto.utils, six
 from pytz import utc
@@ -42,7 +42,7 @@ class JSONEncoder(json.JSONEncoder):
         # parameter is called `o` in json.JSONEncoder.
         if hasattr(obj, 'isoformat'):
             return obj.isoformat()
-        elif isinstance(obj, decimal.Decimal):
+        if isinstance(obj, decimal.Decimal):
             return float(obj)
         return super(JSONEncoder, self).default(obj)
 
@@ -176,11 +176,12 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
     ]
     """
     results = []
+    s3_resource = boto3.resource('s3')
     for logname in lognames:
         dirname = os.path.dirname(logname)
         if prefix:
             dirname = prefix + dirname
-        for s3_key in bucket.list(dirname):
+        for s3_key in s3_resource.Bucket(bucket).objects.filter(Prefix=dirname):
             if as_logname(s3_key.name, prefix=prefix) == logname:
                 look = re.match(r'\S+-(\d\d\d\d\d\d\d\d)\.gz', s3_key.name)
                 if time_from_logsuffix and look:
