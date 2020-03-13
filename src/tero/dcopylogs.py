@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2016, Djaodjin Inc.
+# Copyright (c) 2020, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,9 +24,9 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import argparse, datetime, json, logging, os, re, sys, time
+import datetime, json, logging, os, re, sys, time
 
-import boto, boto.utils, six
+import boto3, boto.utils, six
 from pytz import utc
 
 __version__ = None
@@ -38,10 +38,14 @@ BOTO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 class JSONEncoder(json.JSONEncoder):
 
-    def default(self, obj):
+    def default(self, obj): #pylint: disable=method-hidden
+        # parameter is called `o` in json.JSONEncoder.
         if hasattr(obj, 'isoformat'):
             return obj.isoformat()
+        elif isinstance(obj, decimal.Decimal):
+            return float(obj)
         return super(JSONEncoder, self).default(obj)
+
 
 class LastRunCache(object):
     """
@@ -248,6 +252,7 @@ def download_updated_logs(local_update,
     in last_run.
     """
     downloaded = []
+    s3_resource = boto3.resource('s3')
     for item in sorted(local_update, key=get_last_modified):
         keyname = item['Key']
         filename = as_filename(keyname, prefix=s3_prefix)
@@ -256,15 +261,14 @@ def download_updated_logs(local_update,
         logname = as_logname(filename)
         if not last_run or last_run.more_recent(
                 logname, item['LastModified'], update=True):
-            s3_key = boto.s3.key.Key(bucket, keyname)
+            s3_key = s3_resource.Object(bucket, keyname)
             if s3_key.storage_class == 'STANDARD':
                 sys.stderr.write("download %s to %s\n" % (
                     keyname, os.path.abspath(filename)))
                 if not os.path.isdir(os.path.dirname(filename)):
                     os.makedirs(os.path.dirname(filename))
-                with open(filename, 'wb') as file_obj:
-                    s3_key.get_contents_to_file(file_obj)
-                    downloaded += [filename]
+                s3_key.download_file(filename)
+                downloaded += [filename]
             else:
                 sys.stderr.write("skip %s (on %s storage)\n" % (
                     keyname, s3_key.storage_class))
@@ -283,17 +287,14 @@ def upload_log(s3_location, filename, logsuffix=None):
     s3_bucket = parts[0]
     s3_prefix = '/'.join(parts[1:])
     if not logsuffix:
+        # https://github.com/boto/boto3/issues/313
         meta = boto.utils.get_instance_metadata()
         logsuffix = meta['instance-id']
         if logsuffix.startswith('i-'):
             logsuffix = logsuffix[1:]
-    conn = boto.connect_s3()
-    bucket = conn.get_bucket(s3_bucket, validate=False)
-        # `validate=False` to avoid requiring `s3:GetBucket` permission.
-    s3_key = boto.s3.key.Key(bucket)
-    s3_key.name = as_keyname(
+    keyname = as_keyname(
         filename, logsuffix=logsuffix, prefix=s3_prefix)
     sys.stderr.write("Upload %s ... to s3://%s/%s\n"
-        % (filename, s3_bucket, s3_key.name))
-    with open(filename, 'rb') as file_obj:
-        s3_key.set_contents_from_file(file_obj, headers)
+        % (filename, s3_bucket, keyname))
+    s3_client = boto3.client('s3')
+    s3_client.upload_file(filename, s3_bucket, keyname, ExtraArgs=headers)
