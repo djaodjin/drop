@@ -242,7 +242,7 @@ def list_updates(local_items, s3_items, logsuffix=None, prefix=None):
         s3_index[as_filename(s3_val['Key'],
             logsuffix=logsuffix, prefix=prefix)] = s3_val
     for local_val in local_items:
-        local_key = local_val['Key']
+        local_key = local_val['Key'].lstrip('/')
         s3_val = s3_index.get(local_key, None)
         if s3_val:
             s3_datetime = s3_val['LastModified']
