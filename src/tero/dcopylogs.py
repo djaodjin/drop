@@ -186,7 +186,7 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
     for logname in lognames:
         logprefix = os.path.splitext(logname)[0].lstrip('/')
         if prefix:
-            logprefix = "%s/%s" % (prefix.strip('/') + logprefix)
+            logprefix = "%s/%s" % (prefix.strip('/'), logprefix)
         for s3_key in s3_resource.Bucket(bucket).objects.filter(
                 Prefix=logprefix):
             logkey = as_logname(s3_key.key, prefix=prefix)
