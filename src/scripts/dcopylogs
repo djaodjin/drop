@@ -84,8 +84,7 @@ def main(args):
         _, s3_update = list_updates(
             list_local(lognames, prefix=local_prefix,
                        list_all=options.list_all),
-            list_s3(s3_bucket, lognames, prefix=s3_prefix,
-                    time_from_logsuffix=True),
+            list_s3(s3_bucket, lognames, prefix=s3_prefix),
             logsuffix=logsuffix, prefix=s3_prefix)
         for item in s3_update:
             filename = item['Key']
@@ -99,7 +98,8 @@ def main(args):
         download_updated_logs(lognames,
             local_prefix=local_prefix, logsuffix=logsuffix,
             bucket=s3_bucket, s3_prefix=s3_prefix,
-            last_run=last_run, list_all=options.list_all)
+            last_run=last_run, list_all=options.list_all,
+            time_from_logsuffix=True)
         if last_run:
             last_run.save()
     return 0
