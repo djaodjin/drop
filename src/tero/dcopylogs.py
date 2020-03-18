@@ -24,16 +24,14 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import datetime, decimal, json, logging, os, re, sys, time
+import datetime, decimal, json, logging, os, re, sys
 
-import boto3, boto.utils, six
+import boto3, requests, six
 from pytz import utc
 
 __version__ = None
 
 LOGGER = logging.getLogger(__name__)
-
-BOTO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 
 class JSONEncoder(json.JSONEncoder):
@@ -130,7 +128,8 @@ def datetime_hook(json_dict):
             if json_dict[key].tzinfo is None:
                 json_dict[key] = json_dict[key].replace(tzinfo=utc)
         except:
-            pass
+            LOGGER.warning("%s: cannot convert '%s' to a datetime object.",
+                key, value)
     return json_dict
 
 
@@ -255,12 +254,22 @@ def list_updates(local_items, s3_items, logsuffix=None, prefix=None):
     return local_results, s3_results
 
 
-def download_updated_logs(local_update,
-                          bucket=None, s3_prefix=None, last_run=None):
+def download_updated_logs(lognames,
+                          local_prefix=None, logsuffix=None,
+                          bucket=None, s3_prefix=None,
+                          last_run=None, list_all=False,
+                          time_from_logsuffix=False):
     """
     Fetches log files which are on S3 and more recent that specified
-    in last_run.
+    in last_run and returns a list of filenames.
     """
+    #pylint:disable=too-many-arguments,too-many-locals
+    local_update, _ = list_updates(
+        list_local(lognames, prefix=local_prefix, list_all=list_all),
+        list_s3(bucket, lognames, prefix=s3_prefix,
+            time_from_logsuffix=time_from_logsuffix),
+        logsuffix=logsuffix, prefix=s3_prefix)
+
     downloaded = []
     s3_resource = boto3.resource('s3')
     for item in sorted(local_update, key=get_last_modified):
@@ -282,6 +291,20 @@ def download_updated_logs(local_update,
             else:
                 sys.stderr.write("skip %s (on %s storage)\n" % (
                     keyname, s3_key.storage_class))
+
+    # It is possible some files were already downloaded as part of a previous
+    # run so we construct the list of recent files here.
+    downloaded = []
+    for item in sorted(list_local(lognames,
+                prefix=local_prefix, list_all=False), key=get_last_modified):
+        keyname = item['Key']
+        filename = as_filename(keyname, prefix=s3_prefix)
+        if filename.startswith('/'):
+            filename = '.' + filename
+        logname = as_logname(filename)
+        if not last_run or last_run.more_recent(
+                logname, item['LastModified'], update=True):
+            downloaded += [filename]
     return downloaded
 
 
@@ -298,8 +321,8 @@ def upload_log(s3_location, filename, logsuffix=None):
     s3_prefix = '/'.join(parts[1:])
     if not logsuffix:
         # https://github.com/boto/boto3/issues/313
-        meta = boto.utils.get_instance_metadata()
-        logsuffix = meta['instance-id']
+        resp = requests.get('http://instance-data/latest/meta-data/instance-id')
+        logsuffix = resp.text
         if logsuffix.startswith('i-'):
             logsuffix = logsuffix[1:]
     keyname = as_keyname(

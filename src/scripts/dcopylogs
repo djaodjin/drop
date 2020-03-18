@@ -78,14 +78,14 @@ def main(args):
             % (' '.join(lognames), s3_location, s3_prefix))
 
     local_prefix = '.' if not to_s3 else None
-    local_update, s3_update = list_updates(
-        list_local(lognames, prefix=local_prefix, list_all=options.list_all),
-        list_s3(s3_bucket, lognames, prefix=s3_prefix,
-                time_from_logsuffix=(not to_s3)),
-        logsuffix=logsuffix, prefix=s3_prefix)
-
     if to_s3:
         # Upload
+        _, s3_update = list_updates(
+            list_local(lognames, prefix=local_prefix,
+                       list_all=options.list_all),
+            list_s3(s3_bucket, lognames, prefix=s3_prefix,
+                    time_from_logsuffix=True),
+            logsuffix=logsuffix, prefix=s3_prefix)
         for item in s3_update:
             filename = item['Key']
             upload_log(s3_location, filename, logsuffix=logsuffix)
@@ -95,8 +95,10 @@ def main(args):
             last_run = LastRunCache(options.last_run)
         else:
             last_run = None
-        download_updated_logs(local_update,
-            bucket=s3_bucket, s3_prefix=s3_prefix, last_run=last_run)
+        download_updated_logs(lognames,
+            local_prefix=local_prefix, logsuffix=logsuffix,
+            bucket=s3_bucket, s3_prefix=s3_prefix,
+            last_run=last_run, list_all=options.list_all)
         if last_run:
             last_run.save()
     return 0

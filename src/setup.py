@@ -40,6 +40,13 @@ setup(name='drop',
             'templates/*.j2'
         ]
     },
+    scripts=[
+        'scripts/dbldpkg',
+        'scripts/dcloud',
+        'scripts/dcopylogs',
+        'scripts/dstamp',
+        'scripts/dtimeout'
+    ],
     url='https://github.com/djaodjin/drop/',
     download_url='https://github.com/djaodjin/drop/tarball/%s' \
         % tero.__version__,

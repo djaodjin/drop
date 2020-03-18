@@ -1,4 +1,4 @@
-# Copyright (c) 2019, DjaoDjin inc.
+# Copyright (c) 2020, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -42,8 +42,7 @@ include $(srcDir)/src/prefix.mk
 
 shareItemDirs ?= $(shell cd $(srcDir)/share && find playbooks profiles -type d)
 
-scripts := dbldpkg dcopylogs dlogfilt dregress dservices dstamp \
-    dtero dtimeout dws duploades drundocker dissues
+scripts := dws dtero
 manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \

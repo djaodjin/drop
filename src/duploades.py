@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2020, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,8 +39,7 @@ from ansible.executor.task_queue_manager import TaskQueueManager
 from ansible.inventory import Inventory
 from ansible.parsing.dataloader import DataLoader
 from ansible.vars import VariableManager
-import boto, boto.s3.key, boto.exception
-import boto3
+import botocorecore, boto3
 from elasticsearch import Elasticsearch
 import elasticsearch.helpers
 from pprint import pprint
@@ -181,16 +180,16 @@ def sync(log_paths, es, location=None, db=None, force=False):
             s3_prefix = log_url.path
             if s3_prefix.startswith('/'):
                 s3_prefix = s3_prefix[1:]
-            if conn is None:
-                conn = boto.connect_s3()
-            bucket = conn.get_bucket(s3_bucket)
+            s3_resource = boto3.resource('s3')
             if not log_paths:
-                keys = bucket.list(prefix=s3_prefix)
+                keys = s3_resource.Bucket(s3_bucket).objects.filter(
+                    Prefix=s3_prefix)
             else:
-                keys = [bucket.get_key(path) for path in log_paths]
+                keys = [s3_resource.Object(s3_bucket, path)
+                    for path in log_paths]
 
     for key in keys:
-        if isinstance(key, boto.s3.key.Key):
+        if isinstance(key, s3_resource.Object):
             name = key.key
         else:
             name = key
@@ -205,13 +204,13 @@ def sync(log_paths, es, location=None, db=None, force=False):
         if not finished:
             sys.stderr.write('uploading %s...\n' % name)
 
-            if isinstance(key, boto.s3.key.Key):
+            if isinstance(key, s3_resource.Object):
                 try:
                     with tempfile.TemporaryFile() as temp_file:
                         key.get_contents_to_file(temp_file)
                         temp_file.seek(0)
                         (successes, errors) = sync_fileobj(temp_file, es, name)
-                except boto.exception.S3ResponseError as err:
+                except botocore.exceptions.ClientError as err:
                     # We might get an InvalidObjectState if the file
                     # has been moved to Glacier already.
                     (successes, errors) = (0, [str(err)])
