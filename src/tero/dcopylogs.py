@@ -92,7 +92,7 @@ def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
         if look:
             result = look.group(1) + logsuffix + look.group(2)
     if prefix:
-        result = "%s/%s" % (prefix.strip('/') + result)
+        result = "%s/%s" % (prefix.strip('/'), result)
     return result
 
 
