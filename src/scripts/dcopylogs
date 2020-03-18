@@ -64,18 +64,19 @@ def main(args):
 
     lognames = options.lognames
     logsuffix = options.logsuffix
-    parts = options.location[5:].split('/')
+    s3_location = options.location
+    parts = s3_location[5:].split('/')
     s3_bucket = parts[0]
-    s3_location = 's3://' + s3_bucket
     s3_prefix = '/'.join(parts[1:])
     to_s3 = not options.download
     if to_s3:
-        sys.stderr.write("Upload rotated logs for %s to %s under prefix '%s'\n"
-            % (' '.join(lognames), s3_location, s3_prefix))
+        sys.stderr.write(
+            "Upload rotated logs for %s to bucket '%s' under prefix '%s'\n"
+            % (' '.join(lognames), s3_bucket, s3_prefix))
     else:
         sys.stderr.write(
-            "Download rotated logs for %s from %s under prefix '%s'\n"
-            % (' '.join(lognames), s3_location, s3_prefix))
+            "Download rotated logs for %s from bucket '%s' under prefix '%s'\n"
+            % (' '.join(lognames), s3_bucket, s3_prefix))
 
     local_prefix = '.' if not to_s3 else None
     if to_s3:

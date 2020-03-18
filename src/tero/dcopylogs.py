@@ -103,10 +103,9 @@ def as_filename(key_name, logsuffix=None, prefix=None, ext='.log'):
         if look:
             result = look.group(1) + look.group(2)
     if prefix is not None:
-        #if not prefix.endswith('/'):
-        #    prefix = prefix + '/'
         if result.startswith(prefix):
             result = result[len(prefix):]
+        result = result.lstrip('/')
     return result
 
 
