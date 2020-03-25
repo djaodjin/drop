@@ -121,12 +121,15 @@ def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
 
 def datetime_hook(json_dict):
     for key, value in list(six.iteritems(json_dict)):
-        try:
-            json_dict[key] = datetime.datetime.strptime(
-                value, "%Y-%m-%dT%H:%M:%S.%f+00:00")
-            if json_dict[key].tzinfo is None:
-                json_dict[key] = json_dict[key].replace(tzinfo=utc)
-        except:
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%f+00:00", "%Y-%m-%dT%H:%M:%S+00:00"):
+            try:
+                json_dict[key] = datetime.datetime.strptime(value, fmt)
+                if json_dict[key].tzinfo is None:
+                    json_dict[key] = json_dict[key].replace(tzinfo=utc)
+                break
+            except ValueError:
+                pass
+        if not isinstance(json_dict[key], datetime.datetime):
             LOGGER.warning("%s: cannot convert '%s' to a datetime object.",
                 key, value)
     return json_dict
