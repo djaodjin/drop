@@ -283,7 +283,7 @@ def download_updated_logs(lognames,
         if not last_run or last_run.more_recent(
                 logname, item['LastModified'], update=True):
             s3_key = s3_resource.Object(bucket, keyname)
-            if s3_key.storage_class == 'STANDARD':
+            if not s3_key.storage_class or s3_key.storage_class == 'STANDARD':
                 sys.stderr.write("download %s to %s\n" % (
                     keyname, os.path.abspath(filename)))
                 if not os.path.isdir(os.path.dirname(filename)):
