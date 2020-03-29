@@ -21,12 +21,14 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import datetime, logging
-import gzip, itertools, json, re, os, os.path, sys
+import argparse, datetime, gzip, itertools, json, logging, re, os, os.path, sys
 
 import six
+
+from tero import __version__
 
 
 LOGGER = logging.getLogger(__name__)
@@ -107,7 +109,6 @@ def generate_regex(format_string, var_regex, regexps):
     )
 
     full_regex = ''.join(full_regex_pieces[:])
-
     return re.compile(full_regex)
 
 
@@ -117,9 +118,11 @@ class NginxLogParser(object):
     """
 
     def __init__(self):
-        format_string = '$remote_addr$load_balancer_addr $http_host $remote_user [$time_local]'\
-' "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"'\
-' "$http_x_forwarded_for"\n'
+        format_string = '$remote_addr$load_balancer_addr $http_host'\
+            ' $remote_user [$time_local]'\
+            ' "$request" $status $body_bytes_sent'\
+            ' "$http_referer" "$http_user_agent"'\
+            ' "$http_x_forwarded_for"'
 
         var_regex = r'\$[a-z_]+'
         ipv6_regex = r'(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}'
@@ -218,9 +221,9 @@ def error_event(fname, key, reason, extra=None):
     }
 
 
-def generate_events(stream, key):
+def generate_events(fileobj, key):
     fname = os.path.basename(key)
-    match = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8}).*\.gz', fname)
+    match = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8})(\.gz)?', fname)
     if not match:
         sys.stderr.write('warning: "%s" is not a log file?' % fname)
         yield error_event(fname, key, 'log filename didnt match regexp')
@@ -259,10 +262,13 @@ def generate_events(stream, key):
                            'log_date': log_date})
         return
 
+    LOGGER.debug("using parser %s", parser)
     error_count = 0
     ok_count = 0
-    for i, line in stream:
-        line = line.decode('ascii', errors='replace')
+    for idx, line in enumerate(fileobj.readlines()):
+        if hasattr(line, 'decode'):
+            line = line.decode('ascii', errors='replace')
+        line = line.strip()
 
         total_count = ok_count + error_count
         if total_count > 100 and (float(error_count)/total_count) > 0.8:
@@ -287,7 +293,7 @@ def generate_events(stream, key):
 
         if event is None:
             sys.stderr.write(
-                "error: parsing '%s' in '%s'\n" % (repr(line), log_folder))
+                "error: parsing '%s' in '%s'\n" % (line, log_folder))
             yield error_event(fname, key, 'could not parse log line',
                               {'line': line,
                                'log_date': log_date,})
@@ -295,10 +301,8 @@ def generate_events(stream, key):
             continue
 
         ok_count += 1
-        _id = '%s:%d' % (key, i)
+        _id = '%s:%d' % (key, idx)
         event.update({
-            's3_key' : key,
-            's3_bucket' : 'djaodjin',
             'log_name': log_name,
         })
         if log_type is not None:
@@ -323,38 +327,36 @@ def sanitize_filename(fname):
     return fname
 
 
-def main():
-    root = sys.argv[1]
-    key = sys.argv[2]
+def main(args):
+    parser = argparse.ArgumentParser(
+        usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version '
+        + str(__version__))
+    parser.add_argument('--version', action='version',
+        version='%(prog)s ' + str(__version__))
+    parser.add_argument('lognames', metavar='lognames', nargs='+',
+        help="log files to parse")
 
-    outname = 'tmp/%s' % sanitize_filename(key)
-    if os.path.exists(outname):
-        sys.stderr.write("'%s' already done\n" % str(outname))
-        sys.exit(0)
+    options = parser.parse_args(args)
+    if len(options.lognames) < 1:
+        sys.stderr.write("error: not enough arguments")
+        parser.print_help()
+        return 1
 
-    from elasticsearch.serializer import JSONSerializer
     serializer = JSONSerializer()
-
-    try:
-        with gzip.open(outname, 'wb') as out:
-            with open(os.path.join(root, key), mode='rb') as logfile:
-                gzfile = gzip.GzipFile(fileobj=logfile, mode='rb')
-                for event in generate_events(enumerate(gzfile), key):
-                    # the elasticsearch serializer does have a
-                    # a dumps method, but we don't use it
-                    # because it turns off json.dumps' ensure_ascii
-                    # we want to enforce ascii because it's
-                    # not actually specified what encoding the
-                    # log file is in. We were also getting
-                    # invalid utf-8 sequences.
-                    out.write(json.dumps(event, default=serializer.default))
-                    out.write('\n')
-
-    except Exception as err:
-        if os.path.exists(outname):
-            os.remove(outname)
-        raise err
+    for logname in options.lognames:
+        with open(logname) as logfile:
+            for event in generate_events(logfile, logname):
+                # the elasticsearch serializer does have a
+                # a dumps method, but we don't use it
+                # because it turns off json.dumps' ensure_ascii
+                # we want to enforce ascii because it's
+                # not actually specified what encoding the
+                # log file is in. We were also getting
+                # invalid utf-8 sequences.
+                sys.stdout.write(json.dumps(event, default=serializer.default))
+                sys.stdout.write('\n')
 
 
 if __name__ == '__main__':
-    main()
+    from elasticsearch.serializer import JSONSerializer
+    main(sys.argv[1:])
