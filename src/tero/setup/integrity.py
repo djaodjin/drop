@@ -24,7 +24,7 @@
 
 import getpass, os, socket, sys
 
-import tero, tero.stamp
+import tero, tero.dstamp
 
 
 def check_permissions(paths, owner, group, mode):
@@ -48,7 +48,7 @@ def create_archives(backup_dir, backup_tops):
                           '-C', os.path.dirname(backup_top),
                           '--exclude', 'build/',
                           basename])
-    tero.stamp.cleanup_aged_files(backup_dir)
+    tero.dstamp.cleanup_aged_files(backup_dir)
 
 
 def fingerprint_fs(context, log_path_prefix, exclude_tops=None):
