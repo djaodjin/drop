@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2020, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,7 +24,7 @@
 
 import getpass, os, socket, sys
 
-import dstamp, tero
+import tero, tero.stamp
 
 
 def check_permissions(paths, owner, group, mode):
@@ -48,8 +48,7 @@ def create_archives(backup_dir, backup_tops):
                           '-C', os.path.dirname(backup_top),
                           '--exclude', 'build/',
                           basename])
-    # TODO dstamp hasn't been moved into the tero package yet.
-    dstamp.cleanUpAgedFiles(backup_dir)
+    tero.stamp.cleanup_aged_files(backup_dir)
 
 
 def fingerprint_fs(context, log_path_prefix, exclude_tops=None):

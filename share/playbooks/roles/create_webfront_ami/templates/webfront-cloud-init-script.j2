@@ -88,6 +88,13 @@ if [ -d ${siteTop} ] ; then
     pushd ${siteTop}/var/log
     /usr/bin/ln -s /var/log/gunicorn
     popd
+    # Insures we can upload themes
+    /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/.cache
+    /usr/bin/chown djaoapp:djaoapp ${siteTop}/reps/djaoapp/htdocs ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
+    # and that nginx can access the static assets
+    /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' '${siteTop}/reps/djaoapp/htdocs(.*)'
+    /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp
+
     /usr/bin/cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
     # We make an initial sqlite3 database so the server renders a page
     # instead of a 500 error when the AMI just booted with no configuration.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2019, DjaoDjin inc.
+# Copyright (c) 2020, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -710,6 +710,10 @@ class Context(object):
             # For pure Python modules, we are only looking into the virtualenv.
             return candidates
         candidates += os.environ['PATH'].split(':')
+        for pgsql_version in [11, 12]:
+            pgsql_path = "/usr/pgsql-%d/bin" % pgsql_version
+            if os.path.exists(pgsql_path):
+                candidates += [pgsql_path]
         dirs = []
         for path in candidates:
             base = os.path.dirname(path)
@@ -2260,8 +2264,8 @@ class NpmInstallStep(InstallStep):
             admin = False
             noexecute = False
             return [([self._manager(context), 'install', '-g',
-                '--cache', os.path.join(context.value('installTop'), '.npm'),
-                '--tmp', os.path.join(context.value('installTop'), 'tmp'),
+                '--cache', os.path.join(context.value('buildTop'), '.npm'),
+                '--tmp', os.path.join(context.value('buildTop'), 'tmp'),
                 '--prefix', context.value('installTop')] + packages,
                 admin, noexecute)]
         return []
@@ -2528,7 +2532,9 @@ class MakeStep(BuildStep):
                 # and other little tools like hostname, date, etc.
                 shell_command(cmdline + context.targets + context.overrides,
                     search_path=[context.bin_build_dir()]
-                              + context.search_path('bin'))
+                              + context.search_path('bin'),
+                    node_path=["%s/node_modules"  % context.value('libDir')]
+                              + os.getenv('NODE_PATH', "").split(':'))
             self.updated = True
 
 
@@ -2552,7 +2558,9 @@ class ShellStep(BuildStep):
             script.close()
             shell_command(['sh', '-x', '-e', script.name],
                 search_path=[context.bin_build_dir()]
-                          + context.search_path('bin'))
+                          + context.search_path('bin'),
+                node_path=["%s/node_modules"  % context.value('libDir')]
+                          + os.getenv('NODE_PATH', "").split(':'))
             os.remove(script.name)
             self.updated = True
 
@@ -4819,8 +4827,8 @@ def search_back_to_root(filename, root=os.sep):
     return dirname, os.path.join(cur_dir, filename)
 
 
-def shell_command(execute, admin=False, search_path=None, pat=None,
-    noexecute=False, nolog=None):
+def shell_command(execute, admin=False, search_path=None, node_path=None,
+    pat=None, noexecute=False, nolog=None):
     '''Execute a shell command and throws an exception when the command fails.
     sudo is used when *admin* is True.
     the text output is filtered and returned when pat exists.
@@ -4852,6 +4860,8 @@ def shell_command(execute, admin=False, search_path=None, pat=None,
         cmdline = execute
     if search_path:
         env['PATH'] = ':'.join(search_path)
+    if node_path:
+        env['NODE_PATH'] = ':'.join(node_path)
     log_cmdline = ""
     for cmdline_item in cmdline:
         if log_cmdline:
