@@ -181,10 +181,12 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
                 ldap_paths += [db_path]
         postinst.shellCommand(['chown', 'ldap:ldap'] + ldap_paths)
         postinst.shellCommand(['chmod', '600'] + ldap_paths)
+        # XXX seems necessary after executing on CentOS7?
+        postinst.shellCommand(['chown', '-R', 'ldap:ldap', '/var/lib/ldap'])
 
         # We need to start the server before adding the schemas.
-        postinst.shellCommand(['service', 'slapd', 'restart'])
-        postinst.shellCommand(['systemctl', 'enable', 'slapd.service'])
+        postinst.serviceRestart('slapd')
+        postinst.serviceEnable('slapd')
         postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
             '-f', '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
         postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
