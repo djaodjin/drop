@@ -299,7 +299,11 @@ def main(args, settings_path=None):
     parser.add_argument('-p', '--password', dest='password', default='vagrant')
     parser.add_argument('-k', '--keyfile', dest='keyfile',
         default=os.path.join(os.getenv('HOME'), '.ssh/vagrant_rsa'))
-    build_subcommands_parser(parser, sys.modules[__name__])
+    if args and args[0].endswith('dintegrity'):
+        from .setup import integrity
+        build_subcommands_parser(parser, integrity)
+    else:
+        build_subcommands_parser(parser, sys.modules[__name__])
 
     if len(args) <= 1:
         parser.print_help()
@@ -312,9 +316,10 @@ def main(args, settings_path=None):
     global CLOUD_BACKEND
     CLOUD_BACKEND = _load_backend('tero.%s.Backend' % options.cloud)
 
-    if not settings_path:
-        settings_path = '/etc/tero/config'
-    settings = imp.load_source('settings', settings_path)
+    if not settings_path and os.path.exists('/etc/tero/config'):
+            settings_path = '/etc/tero/config'
+    if settings_path:
+        settings = imp.load_source('settings', settings_path)
 
     # Filter out options with are not part of the function prototype.
     func_args = filter_subcommand_args(options.func, options)

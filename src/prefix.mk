@@ -1,4 +1,4 @@
-# Copyright (c) 2018, DjaoDjin inc.
+# Copyright (c) 2020, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,19 +28,23 @@
 
 .DEFAULT_GOAL   := all
 
+binDir          ?= $(installTop)/bin
 buildTop        ?= $(installTop)/build
 etcDir          ?= $(installTop)/etc
+includeDir      ?= $(installTop)/include
+libDir          ?= $(installTop)/lib
+shareDir        ?= $(installTop)/share
 
 # names of variables as expected by autoconf-like tools
 PREFIX          := $(installTop)
 SYSCONFDIR      := $(etcDir)
 LOCALSTATEDIR   := $(PREFIX)/var
-DATAROOTDIR     := $(PREFIX)/share
+DATAROOTDIR     := $(shareDir)
 
 # Paths to "normalized" prerequisites
 binBuildDir     := $(buildTop)/bin
-includeBuildDir := $(buildTop)/include
 etcBuildDir     := $(buildTop)/etc
+includeBuildDir := $(buildTop)/include
 libBuildDir     := $(buildTop)/lib
 shareBuildDir   := $(buildTop)/share
 

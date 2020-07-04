@@ -75,9 +75,13 @@ except ImportError:
     from urlparse import urlparse, urlunparse
 
 if PY3:
+    string_types = str,
+
     def _iteritems(dct, **kw):
         return iter(dct.items(**kw))
 else:
+    string_types = basestring,
+
     def _iteritems(dct, **kw):
         return dct.iteritems(**kw)
 
@@ -4855,6 +4859,8 @@ def shell_command(execute, admin=False, search_path=None, node_path=None,
                 cmdline = cmdline + ['-A']
             else:
                 cmdline += ['-n']
+        if isinstance(admin, string_types):
+            cmdline += ['-u', admin]
         cmdline += execute
     else:
         cmdline = execute
