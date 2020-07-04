@@ -298,6 +298,7 @@ def find_apps(root_dir):
     for app_name in os.listdir(root_dir):
         python_version = None
         python = os.path.join(root_dir, app_name, 'bin', 'python')
+        # find python version
         if os.path.exists(python):
             cmdline = [python, '--version']
             freeze_output = subprocess.check_output(cmdline)
@@ -311,15 +312,19 @@ def find_apps(root_dir):
             'dependencies': {
                 'python': python_version,
             }}})
+        # find python prerequisites
         pip = os.path.join(root_dir, app_name, 'bin', 'pip')
-        cmdline = [pip, 'freeze']
-        output_lines = tero.shell_command(cmdline, pat=r'.*')
-        for line in output_lines:
-            look = re.match(r'(\S+)==(\S+)', line)
-            if look:
-                prerequisite = look.group(1)
-                version = look.group(2)
-                apps[app_name]['dependencies'].update({prerequisite: version})
+        if os.path.exists(pip):
+            cmdline = [pip, 'freeze']
+            output_lines = tero.shell_command(cmdline, pat=r'.*')
+            for line in output_lines:
+                look = re.match(r'(\S+)==(\S+)', line)
+                if look:
+                    prerequisite = look.group(1)
+                    version = look.group(2)
+                    apps[app_name]['dependencies'].update({
+                        prerequisite: version})
+        # find process PID
         pid_path = os.path.join(
             root_dir, app_name, 'var', 'run', '%s.pid' % app_name)
         if os.path.exists(pid_path):
