@@ -406,6 +406,7 @@ def find_meminfo(dist_host):
     """
     List information about memory usage
     """
+    tero.log_info("cat /proc/meminfo")
     with open('/proc/meminfo') as meminfo_file:
         for line in meminfo_file.readlines():
             sys.stdout.write(line)

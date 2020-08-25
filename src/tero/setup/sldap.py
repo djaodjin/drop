@@ -172,6 +172,13 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
         postinst.shellCommand(['chgrp', 'ldap', priv_key])
         postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
 
+        sysconfig_path = os.path.join(
+            context.value('etcDir'), 'sysconfig', 'slapd')
+        _, new_sysconfig_path = stageFile(sysconfig_path, context)
+        modify_config(sysconfig_path, context=context, settings={
+               'SLAPD_URLS': "ldaps:/// ldap:/// ldapi:///"
+            })
+
         # Resets user and permissions
         ldap_paths = [config_path, db_config_path]
         for db_path in ['olcDatabase={2}hdb.ldif', 'olcDatabase={2}mdb.ldif']:

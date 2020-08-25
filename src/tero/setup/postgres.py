@@ -135,10 +135,16 @@ class postgresql_serverSetup(SetupTemplate):
                 #ssl_ecdh_curve = 'prime256v1'
                 #ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL' # allowed SSL ciphers
                 })
-            if os.path.exists(dh_params):
-                postgresql_conf_settings.update({
-                    'ssl_dh_params_file': "'%s'" % dh_params,
-                })
+                if os.path.exists(dh_params):
+                    postgresql_conf_settings.update({
+                        'ssl_dh_params_file': "'%s'" % dh_params,
+                    })
+                postinst.shellCommand([
+                    'chown', 'root:postgres', db_ssl_key_file])
+                postinst.shellCommand([
+                    'chmod', '640', db_ssl_key_file])
+                postinst.shellCommand([
+                    'chmod', '755', os.path.dirname(db_ssl_key_file)])
         modify_config(postgresql_conf,
             settings=postgresql_conf_settings,
             sep=' = ', context=context)

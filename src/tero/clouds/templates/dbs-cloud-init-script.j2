@@ -18,15 +18,18 @@ else
     /usr/bin/yum makecache fast
     /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
     /usr/bin/yum -y install bzip2 git-core python-virtualenv python36-six wget awscli
-    VIRTUALENV_RUN="virtualenv -p python3.6 --system-site-packages"
     # We also need to install postgresql repos to find `postgresql11-server`
-    # XXX This does not seem necessary anymore
-    #/usr/bin/wget https://download.postgresql.org/pub/repos/yum/11/redhat/rhel-7-x86_64/pgdg-centos11-11-2.noarch.rpm
-    #/usr/bin/yum -y install pgdg-centos11-11-2.noarch.rpm
+    /usr/bin/wget https://download.postgresql.org/pub/repos/yum/11/redhat/rhel-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    /usr/bin/yum -y install pgdg-redhat-repo-latest.noarch.rpm
+    # disable services that should have never been started
+    /usr/bin/systemctl disable rpcbind.service rpcbind.socket
+    /usr/bin/systemctl stop rpcbind.service rpcbind.socket
+    /usr/bin/systemctl disable postfix.service
+    /usr/bin/systemctl stop postfix.service
 fi
 
 # Mount encrypted volume as /var after copying previous content over.
-if [ -e /dev/xvdf && ! -d /var.old ] ; then
+if [ -e /dev/xvdf -a ! -d /var.old ] ; then
     mkfs.ext4 -m 0 /dev/xvdf
     mkdir -p /mnt/encvol
     mount /dev/xvdf /mnt/encvol
@@ -49,8 +52,15 @@ mkdir -p ${siteTop}/reps
 ${VIRTUALENV_RUN} ${siteTop}
 cd ${siteTop}
 git clone {{remote_drop_repo}} reps/drop
-bin/python reps/drop/src/dservices.py -Dadmin=$USER -DetcDir=/etc -DcompanyDomain={{company_domain}} -DldapHost={{ldap_host}} -DldapPasswordHash="{{ldap_assword_hash}}" -Dvpc_cidr={{vpc_cidr}} reps/drop/share/profiles/databases.xml
+DB_PASSWORD='{{db_password}}'
+DB_MASTER_PASSWORD='{{db_master_password}}'
+LDAP_HASHED_PASSWORD='{{ldap_hashed_password}}'
+bin/python reps/drop/src/dservices.py -Dadmin=$USER -DetcDir=/etc -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}" -DldapPasswordHash="$LDAP_HASHED_PASSWORD" -Dvpc_cidr="{{vpc_cidr}}" reps/drop/share/profiles/databases.xml
+/usr/bin/psql -c "ALTER USER postgres PASSWORD '$DB_MASTER_PASSWORD';"
+/usr/bin/psql -c "CREATE ROLE {{db_user}} LOGIN PASSWORD '$DB_PASSWORD';"
 
 # Restore database from flat files
-bin/python reps/drop/src/drestore.py --domainName={{company_domain}} /var/backups/ldap/*.ldif /var/backups/pgsql/*.sql
-
+chown -R postgres:postgres /var/migrate/pgsql/dumps
+LDIF_DUMPS=`find /var/migrate/ldap/dumps -name '*.ldif' -print`
+PGSQL_DUMPS=`find /var/migrate/pgsql/dumps -name '*.sql' -o -name '*.sql.gz' -print`
+bin/python reps/drop/src/drestore.py --domainName="{{company_domain}}" $LDIF_DUMPS $PGSQL_DUMPS

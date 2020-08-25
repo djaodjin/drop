@@ -38,8 +38,8 @@ def restore_ldap(filename, domain=None):
     """
     Restore a LDAP database from file.
     """
-    handle, tmpfilename = tempfile.mkstemp(dir=os.path.dirname(filename))
-    try:
+    with tempfile.NamedTemporaryFile(dir=os.path.dirname(filename)) as tmpfile:
+        tmpfilename = tmpfile.name
         with open(filename) as backup:
             for line in backup.readlines():
                 look = re.match('^(\S+): (.*)', line)
@@ -52,26 +52,33 @@ def restore_ldap(filename, domain=None):
                         config_line = "%s: %s\n" % (key, value)
                         if hasattr(config_line, 'encode'):
                             config_line = config_line.encode('utf-8')
-                        os.write(handle, config_line)
+                        tmpfile.write(config_line)
                 else:
                     if hasattr(line, 'encode'):
                         line = line.encode('utf-8')
-                    os.write(handle, line)
-        os.close(handle)
+                    tmpfile.write(line)
         domain_dn = ',dc='.join(domain.split('.'))
         cmd = ['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
                '-f', tmpfilename, '-D', 'cn=Manager,dc=%s' % domain_dn]
         sys.stdout.write("%s\n" % ' '.join(cmd))
         subprocess.check_call(cmd)
-    finally:
-        os.remove(tmpfilename)
 
 
-def restore_postgresql(filename):
+def restore_postgresql(filename, drop_if_exists=True):
     """
     Restore a PostgresQL database from file.
     """
-    cmd = ['sudo', '-u', 'postgres', 'psql', '-f', filename]
+    if drop_if_exists:
+        db_name = os.path.basename(filename).split('.')[0]
+        cmd = ['sudo', '-u', 'postgres', 'psql', '-c',
+            'DROP DATABASE IF EXISTS %s;' % db_name]
+        sys.stdout.write("%s\n" % ' '.join(cmd))
+        subprocess.check_call(cmd)
+    if filename.endswith('.gz'):
+        cmd = ['sh', '-c',
+            "sudo -u postgres gunzip -c %s | sudo -u postgres psql" % filename]
+    else:
+        cmd = ['sudo', '-u', 'postgres', 'psql', '-f', filename]
     sys.stdout.write("%s\n" % ' '.join(cmd))
     subprocess.check_call(cmd)
 
@@ -101,7 +108,7 @@ def main(args):
     for filename in options.filenames:
         if filename.endswith('.ldif'):
             restore_ldap(filename, domain=options.domain)
-        elif filename.endswith('.sql'):
+        elif filename.endswith('.sql') or filename.endswith('.sql.gz'):
             restore_postgresql(filename)
         else:
             sys.stderr.write(

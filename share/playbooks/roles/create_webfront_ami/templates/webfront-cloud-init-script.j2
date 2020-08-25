@@ -18,7 +18,7 @@ else
     /usr/bin/yum makecache fast
     /usr/bin/yum -y install libselinux-python
     /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
-    /usr/bin/yum -y install awscli bzip2 make python-virtualenv
+    /usr/bin/yum -y install awscli bzip2 make python-virtualenv python-boto3
     VIRTUALENV_RUN="/usr/bin/virtualenv -p python3.6 --system-site-packages"
 fi
 
@@ -64,6 +64,13 @@ bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost=ldaps.{{tag_prefi
 # Extra configuation to start up djagent and djaoapp
 siteTop=${rootDir}/djaoapp
 if [ -d ${siteTop} ] ; then
+    # Install dcopylogs into /usr/local/bin
+    mv ${siteTop}/dws.mk ${siteTop}/dws.disable
+    cd ${siteTop}/reps/drop
+    make install installTop=/usr/local PYTHON=python
+    mv ${siteTop}/dws.disable ${siteTop}/dws.mk
+    # Insures dcopylogs can upload the logs to S3
+    setsebool -P nis_enabled 1
     # Install djagent
     cd ${siteTop}/reps/djagent
     ../../bin/dws --default make install
@@ -89,7 +96,7 @@ if [ -d ${siteTop} ] ; then
     /usr/bin/ln -s /var/log/gunicorn
     popd
     # Insures we can upload themes
-    /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/.cache
+    /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
     /usr/bin/chown djaoapp:djaoapp ${siteTop}/reps/djaoapp/htdocs ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
     # and that nginx can access the static assets
     /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' '${siteTop}/reps/djaoapp/htdocs(.*)'

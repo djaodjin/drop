@@ -219,6 +219,7 @@ class SetupTemplate(SetupStep):
 
     '''Step responsible to configure part of the system (daemons, jobs,
     utilities) to provide a specifc service.'''
+    daemons = []
 
     def __init__(self, name, files, versions=None, target=None):
         '''
@@ -226,7 +227,6 @@ class SetupTemplate(SetupStep):
         will need to be restarted when configuration files are modified.
         '''
         super(SetupTemplate, self).__init__(name, files, versions, target)
-        self.daemons = []
 
     def run(self, context):
         complete = super(SetupTemplate, self).run(context)

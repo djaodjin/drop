@@ -14,8 +14,23 @@ chown -R $USER:$USER $siteTop/djaoapp/etc/sysconfig/*
 for domain in `ls /etc/pki/tls/certs/archive` ; do
   mkdir -p /etc/pki/tls/certs/live/$domain
   pushd /etc/pki/tls/certs/live/$domain
-  ln -s ../../archive/$domain/privkey.pem
-  ln -s ../../archive/$domain/fullchain.pem
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain.pem
+done
+for domain in `ls /etc/letsencrypt/archive` ; do
+  mkdir -p /etc/letsencrypt/live/$domain
+  pushd /etc/letsencrypt/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey1.pem privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain1.pem fullchain.pem
+  [ -e cert.pem ] || ln -s ../../archive/$domain/cert1.pem cert.pem
+  [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
 done
 
-# restart djaoapp, setup monit
+# cron notifications
+alternatives --set mta /usr/sbin/sendmail.ssmtp
+
+# restart services whose configuration has been altered
+/usr/bin/systemctl force-reload systemd-journald
+/usr/bin/systemctl restart nginx.service
+/usr/bin/systemctl restart djaoapp.service
+/usr/bin/systemctl restart djagent.service

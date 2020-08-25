@@ -58,6 +58,12 @@ Deploy and configure packages for running LDAP and SQL databases.
       <dep name="syslog-ng-libdbi">
         <lib>dbi</lib>
       </dep>
+      <dep name="monit">
+        <bin>monit</bin>
+      </dep>
+      <dep name="ssmtp">
+        <bin>ssmtp</bin>
+      </dep>
       <!-- We need both executables (checkmodule and semodule_package)
            to update the syslog SELinux policy -->
       <dep name="checkpolicy">
