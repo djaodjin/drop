@@ -448,6 +448,16 @@ def get_bucket_prefix(location):
     return bucket_name, prefix
 
 
+def get_regions(ec2_client=None):
+    """
+    Returns a list of names of regions available
+    """
+    if not ec2_client:
+        ec2_client = boto3.client('ec2')
+    resp = ec2_client.describe_regions()
+    return [region['RegionName'] for region in resp.get('Regions', [])]
+
+
 def is_aws_ecr(container_location):
     """
     return `True` if the container looks like it is stored in an AWS repository.

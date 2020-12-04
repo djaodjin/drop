@@ -221,10 +221,24 @@ def error_event(fname, key, reason, extra=None):
     }
 
 
+def parse_logname(filename):
+    host = None
+    log_name = None
+    instance_id = None
+    log_date = None
+    look = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8})(\.gz)?', filename)
+    if look:
+        host = look.group('host')
+        log_name = look.group('log_name')
+        instance_id = look.group('instance_id')
+        log_date = datetime.datetime.strptime(look.group('log_date'), '%Y%m%d')
+    return host, log_name, instance_id, log_date
+
+
 def generate_events(fileobj, key):
     fname = os.path.basename(key)
-    match = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8})(\.gz)?', fname)
-    if not match:
+    host, log_name, instance_id, log_date = parse_logname(fname)
+    if not log_name:
         sys.stderr.write('warning: "%s" is not a log file?' % fname)
         yield error_event(fname, key, 'log filename didnt match regexp')
         return
@@ -241,10 +255,7 @@ def generate_events(fileobj, key):
     else:
         log_type = None
 
-    log_date = datetime.datetime.strptime(match.group('log_date'), '%Y%m%d')
-    log_name = match.group('log_name')
-
-    index = 'logs-%s' % (match.group('log_date'))
+    index = 'logs-%s' % log_date.strftime('%Y%m%d')
     doc_type = 'log'
 
     if log_folder == 'nginx':
@@ -308,7 +319,12 @@ def generate_events(fileobj, key):
         if log_type is not None:
             event['log_type'] = log_type
 
-        event.update(match.groupdict())
+        event.update({
+            'host': host,
+            'log_name': log_name,
+            'instance_id': instance_id,
+            'log_date': log_date.strftime('%Y%m%d')
+        })
 
         yield {
             '_id': _id,
