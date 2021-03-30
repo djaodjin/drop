@@ -126,7 +126,7 @@ log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
         _, err500_template_path = stageFile(
             os.path.join(
                 os.path.dirname("/etc/syslog-ng/conf.d"),
-                err500_template.name),
+                err500_template.filename),
             context)
         with open(err500_template_path, 'w') as err500_template_file:
             err500_template_file.write(err500_template.template)
