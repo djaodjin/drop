@@ -88,7 +88,7 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
         }
     }
 
-    500err_template = { 
+    err500_template = { 
             'filename': 'docker.conf',
             'comment': 'Syslog-ng filters for catching 500 errors',
             'template': """filter f_docker { program("docker") or tags("docker"); };
@@ -123,13 +123,13 @@ log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
             ['rm', '-f', '/etc/systemd/system/syslog.service'])
 
         #Install 500 error filter config for docker.log
-        _, 500err_template_path = stageFile(
+        _, err500_template_path = stageFile(
             os.path.join(
                 os.path.dirname("/etc/syslog-ng/conf.d"),
-                500err_template.name),
+                err500_template.name),
             context)
-        with open(500err_template_path, 'w') as 500err_template_file:
-            500err_template_file.write(500err_template.template)
+        with open(err500_template_path, 'w') as err500_template_file:
+            err500_template_file.write(err500_template.template)
         
         # Configure SELinux to run syslog-ng and run logrotate executables
         for te_template in te_templates:
