@@ -140,7 +140,6 @@ log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
                 syslog_te_file.write(te_template.template)
             setup.postinst.install_selinux_module(syslog_te,
                 te_template.comment)
-            setup.postinst.shellCommand(['systemctl', 'reload', 'syslog-ng']
-
+            setup.postinst.shellCommand(['systemctl', 'reload', 'syslog-ng'])
 
         return complete
