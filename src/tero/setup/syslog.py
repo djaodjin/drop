@@ -31,10 +31,10 @@ from tero.setup import stageFile
 class syslog_ngSetup(setup.SetupTemplate):
 
     te_templates = { 
-        syslog_te_config_template = {
-            filename = 'syslog-ng.te',
-            comment = 'Configure SELinux to run syslog-ng.',
-            template = """module syslog-ng 1.0;
+        'syslog_te_config_template': {
+            'filename': 'syslog-ng.te',
+            'comment': 'Configure SELinux to run syslog-ng.',
+            'template': """module syslog-ng 1.0;
 
 require {
 	type httpd_sys_content_t;
@@ -61,10 +61,10 @@ allow init_t httpd_sys_content_t:file read;
 allow init_t kernel_t:unix_stream_socket { read write };
 """
         },
-        syslog_domaintrans_logrotate_template = {
-            filename = 'syslog-domaintrans-logrotate.te',
-            comment = 'Configure SELinux to allow syslog-ng to run logrotate in a destination hook.',
-            template = """module syslog-domaintrans-logrotate 2.0;
+        'syslog_domaintrans_logrotate_template': {
+            'filename': 'syslog-domaintrans-logrotate.te',
+            'comment': 'Configure SELinux to allow syslog-ng to run logrotate in a destination hook.',
+            'template':  """module syslog-domaintrans-logrotate 2.0;
 
 require {
 	type syslogd_t;
@@ -89,9 +89,9 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
     }
 
     500err_template = { 
-            filename = 'docker.conf',
-            comment = 'Syslog-ng filters for catching 500 errors',
-            template = """filter f_docker { program("docker") or tags("docker"); };
+            'filename': 'docker.conf',
+            'comment': 'Syslog-ng filters for catching 500 errors',
+            'template': """filter f_docker { program("docker") or tags("docker"); };
 filter f_5xxERR-hook { filter(f_docker) and message("HTTP\/.{3,20}[[:space:]]5[[:digit:]]{2}[[:space:]]"); };
 
 destination d_docker { file("/var/log/docker.log"); };
@@ -100,6 +100,7 @@ destination d_5xxERR-hook { program("/usr/local/bin/logrotatehook-500error.sh");
 log { source(s_sys); filter(f_docker); destination(d_docker); };
 log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
 """
+    }
 
     def __init__(self, name, files, **kwargs):
         super(syslog_ngSetup, self).__init__(name, files, **kwargs)
