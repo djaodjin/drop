@@ -133,12 +133,12 @@ log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
         # Configure SELinux to run syslog-ng and run logrotate executables
         for te_template in self.te_templates:
             syslog_te = os.path.join(
-                os.path.dirname(setup.postinst.postinst_run_path), te_template["filename"])
+                os.path.dirname(setup.postinst.postinst_run_path), self.te_templates[te_template]['filename'])
             _, syslog_te_path = stageFile(syslog_te, context)
             with open(syslog_te_path, 'w') as syslog_te_file:
-                syslog_te_file.write(te_template['template'])
+                syslog_te_file.write(self.te_templates[te_template]['template'])
             setup.postinst.install_selinux_module(syslog_te,
-                te_template['comment'])
+                self.te_templates[te_template]['comment'])
             setup.postinst.shellCommand(['systemctl', 'reload', 'syslog-ng'])
 
         return complete
