@@ -89,9 +89,9 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
     }
 
     err500_template = { 
-            'filename': 'docker.conf',
-            'comment': 'Syslog-ng filters for catching 500 errors',
-            'template': """filter f_docker { program("docker") or tags("docker"); };
+        'filename': 'docker.conf',
+        'comment': 'Syslog-ng filters for catching 500 errors',
+        'template': """filter f_docker { program("docker") or tags("docker"); };
 filter f_5xxERR-hook { filter(f_docker) and message("HTTP\/.{3,20}[[:space:]]5[[:digit:]]{2}[[:space:]]"); };
 
 destination d_docker { file("/var/log/docker.log"); };
