@@ -107,7 +107,7 @@ tt=`stat -c %Y -`;while :;do [ $((`date +%s` - `stat -c %Y -`)) -le 30 ] && nn="
         # Install logrotate config file for docker.log
         for templ in self.logrotate_templates:
             _, asset_path = stageFile(os.path.join(
-                    os.path.dirname(self.logrotate_templates[templ]['filepath'],self.logrotate_templates[templ]['filename'])),context)
+                    os.path.dirname(self.logrotate_templates[templ]['filepath']), self.logrotate_templates[templ]['filename']), context)
             with open(asset_path, 'w') as asset_file:
                 asset_file.write(self.logrotate_templates[templ]['template'])
 
