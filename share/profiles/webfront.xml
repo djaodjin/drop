@@ -83,8 +83,8 @@ Name of the machine hosting the LDAP server.
       <dep name="logrotate">
         <bin>logrotate</bin>
       </dep>
-      <dep name="pgrep">
-        <bin>procps-ng</bin>
+      <dep name="procps-ng">
+        <bin>pgrep</bin>
       </dep>
       <dep name="fail2ban">
         <bin>fail2ban-client</bin>
