@@ -32,7 +32,7 @@ class logrotateSetup(setup.SetupTemplate):
 
     logrotate_templates = {
         'logrotate_docker_log_template': {
-                'filepath': '/etc/logrotate.d',
+                'filepath': '/etc/logrotate.d/',
                 'filename': 'docker',
                 'template': """/var/log/docker.log {
     create 0600 root root
@@ -58,7 +58,7 @@ class logrotateSetup(setup.SetupTemplate):
 """
         },
         'logrotatehook_500_err_sh_template': {
-                'filepath': '/usr/local/bin',
+                'filepath': '/usr/local/bin/',
                 'filename': 'logrotatehook-500error.sh',
                 'template': """#!/bin/sh
 #
