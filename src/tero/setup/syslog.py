@@ -125,7 +125,7 @@ log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
         #Install 500 error filter config for docker.log
         _, err500_template_path = stageFile(
             os.path.join(
-                os.path.dirname("/etc/syslog-ng/conf.d"), self.err500_template['filename']),
+                '/etc/syslog-ng/conf.d', self.err500_template['filename']),
             context)
         with open(err500_template_path, 'w') as err500_template_file:
             err500_template_file.write(self.err500_template['template'])
