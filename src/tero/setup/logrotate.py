@@ -94,7 +94,7 @@ tt=`stat -c %Y -`;while :;do [ $((`date +%s` - `stat -c %Y -`)) -le 30 ] && nn="
 
     def __init__(self, name, files, **kwargs):
         super(logrotateSetup, self).__init__(name, files, **kwargs)
-        self.daemons = ['logrotate']
+        self.daemons = []
 
     def run(self, context):
         complete = super(logrotateSetup, self).run(context)
