@@ -111,4 +111,6 @@ tt=`stat -c %Y -`;while :;do [ $((`date +%s` - `stat -c %Y -`)) -le 30 ] && nn="
             with open(asset_path, 'w') as asset_file:
                 asset_file.write(self.logrotate_templates[templ]['template'])
 
+        setup.postinst.shellCommand(['chmod', '0755', '/usr/local/bin/logrotatehook-500error.sh'])
+
         return complete
