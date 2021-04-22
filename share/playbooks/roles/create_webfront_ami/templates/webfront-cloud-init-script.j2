@@ -37,7 +37,7 @@ if [ "X$packages" != "X" ] ; then
         siteTop="$rootDir/$dirname"
         [[ $package == *.tar.gz ]] && /usr/bin/tar zxf $package
         [[ $package == *.tar.bz2 ]] && /usr/bin/tar jxf $package
-        $VIRTUALENV_RUN ${siteTop}
+        [ -f ${siteTop}/bin/activate ] || $VIRTUALENV_RUN ${siteTop}
         echo "installTop=$siteTop" > $dirname/dws.mk
         echo "srcTop=$siteTop/reps" >> $dirname/dws.mk
         echo "remoteIndex=$siteTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk

@@ -2320,12 +2320,14 @@ class PipInstallStep(InstallStep):
         # In most cases, when installing through pip, we should be running
         # under virtualenv.
         pip = find_pip(context)
+        version = None
         site_packages = None
         pip_version = subprocess.check_output(
             [pip, '-V']).decode(DEFAULT_ENCODING)
-        look = re.match(r'pip [0-9\.b]+ from (\S+)', pip_version)
+        look = re.match(r'pip ([0-9\.b]+) from (\S+)', pip_version)
         if look:
-            site_packages = look.group(1)
+            version = [int(val) for val in look.group(1).split('.')]
+            site_packages = look.group(2)
         else:
             raise Error("cannot extract site-packages from '%s'" % pip_version)
         admin = False
@@ -2333,12 +2335,16 @@ class PipInstallStep(InstallStep):
         if os.stat(site_packages).st_uid != os.getuid():
             admin = True
             noexecute = context.nonative
+        commands = []
+        if version < 20:
+            commands += [([pip, 'install', '--upgrade', 'pip'],
+                admin, noexecute)]
         if packages:
-            return [([pip, '--log-file', os.path.join(
+            commands += [([pip, '--log-file', os.path.join(
                 context.value('buildTop'), 'pip.log'),
-            '--cache-dir', context.obj_dir('.cache/pip'),
-            'install'] + packages, admin, noexecute)]
-        return []
+                '--cache-dir', context.obj_dir('.cache/pip'),
+                'install'] + packages, admin, noexecute)]
+        return commands
 
     def info(self):
         info = []

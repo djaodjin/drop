@@ -2906,13 +2906,14 @@ def create_instances_dbs(region_name, app_name, image_name,
 
 def create_instances_webfront(region_name, app_name, image_name,
                               identities_url=None, ssh_key_name=None,
-                              storage_enckey=None,
+                              storage_enckey=None, instance_type=None,
                               web_subnet_id=None, vpc_id=None, vpc_cidr=None,
                               tag_prefix=None):
     """
     Create the proxy session server connected to the target group.
     """
-    instance_type = 't3.micro'
+    if not instance_type:
+        instance_type = 't3.micro'
     sg_tag_prefix = tag_prefix
 
     gate_name = _get_security_group_names(
@@ -2950,7 +2951,7 @@ def create_instances_webfront(region_name, app_name, image_name,
             app_subnet_cidrs, tag_prefix,
             vpc_id=vpc_id, ec2_client=ec2_client)
         # Use first valid subnet that does not require a public IP.
-        web_subnet_id = next(app_subnet_by_cidrs.values())['SubnetId']
+        web_subnet_id = next(iter(app_subnet_by_cidrs.values()))['SubnetId']
 
     group_ids = _get_security_group_ids(
         [gate_name], tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
@@ -3106,7 +3107,9 @@ def create_domain_forward(region_name, app_name, valid_domains=None,
 
 def create_target_group(region_name, app_name, instance_ids=None,
                         image_name=None, identities_url=None, ssh_key_name=None,
-                        vpc_id=None, vpc_cidr=None, tag_prefix=None):
+                        instance_type=None,
+                        subnet_id=None, vpc_id=None, vpc_cidr=None,
+                        tag_prefix=None):
     """
     Create TargetGroup to forward HTTPS requests to application service.
     """
@@ -3142,7 +3145,8 @@ def create_target_group(region_name, app_name, instance_ids=None,
         instance_ids = create_instances_webfront(
             region_name, app_name, image_name,
             identities_url=identities_url, ssh_key_name=ssh_key_name,
-            vpc_id=vpc_id, vpc_cidr=vpc_cidr,
+            instance_type=instance_type,
+            web_subnet_id=subnet_id, vpc_id=vpc_id, vpc_cidr=vpc_cidr,
             tag_prefix=tag_prefix)
     if instance_ids:
         for _ in range(0, NB_RETRIES):
@@ -3319,6 +3323,10 @@ def main(input_args):
                 identities_url=config[app_name].get('identities_url'),
                 image_name=config[app_name].get(
                     'image_name', config['default'].get('image_name')),
+                instance_type=config[app_name].get(
+                    'instance_type', config['default'].get('instance_type')),
+                subnet_id=config[app_name].get(
+                    'subnet_id', config['default'].get('subnet_id')),
                 vpc_cidr=config['default']['vpc_cidr'],
                 tag_prefix=tag_prefix)
             if tls_fullchain_cert and tls_priv_key:

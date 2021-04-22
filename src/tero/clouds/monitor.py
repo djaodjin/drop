@@ -322,8 +322,8 @@ def search_site_log_storage(log_location, domains,
     for domain, app_names in six.iteritems(domains):
         for app_name in app_names:
             app_results = list_logs(
-                log_location + '%(app_name)s/var/log/gunicorn', [app_name],
-                lognames=['app'],
+                log_location + '%(app_name)s' % {
+                    'app_name': app_name}, [app_name], lognames=['app'],
                 start_at=start_at, ends_at=ends_at, s3_client=s3_client)
             log_results[domain].update(app_results[app_name])
 
