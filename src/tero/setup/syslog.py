@@ -30,7 +30,11 @@ from tero.setup import stageFile
 
 class syslog_ngSetup(setup.SetupTemplate):
 
-    syslog_te_config_template = """module syslog-ng 1.0;
+    te_templates = { 
+        'syslog_te_config_template': {
+            'filename': 'syslog-ng.te',
+            'comment': 'Configure SELinux to run syslog-ng.',
+            'template': """module syslog-ng 1.0;
 
 require {
 	type httpd_sys_content_t;
@@ -56,6 +60,47 @@ allow syslogd_t self:process execmem;
 allow init_t httpd_sys_content_t:file read;
 allow init_t kernel_t:unix_stream_socket { read write };
 """
+        },
+        'syslog_domaintrans_logrotate_template': {
+            'filename': 'syslog-domaintrans-logrotate.te',
+            'comment': 'Configure SELinux to allow syslog-ng to run logrotate in a destination hook.',
+            'template':  """module syslog-domaintrans-logrotate 2.0;
+
+require {
+	type syslogd_t;
+	type logrotate_exec_t;
+	type logrotate_t;
+	class process { transition signal sigchld };
+	class file { execute getattr open read };
+	class fifo_file { read ioctl getattr};
+}
+
+#============= syslogd_t ==============
+
+allow syslogd_t logrotate_t:process { transition signal };
+allow syslogd_t logrotate_exec_t:file { execute getattr open read };
+type_transition syslogd_t logrotate_exec_t : process logrotate_t;
+
+#============= logrotate_t ==============
+allow logrotate_t syslogd_t:process sigchld;
+allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
+"""
+        }
+    }
+
+    err500_template = { 
+        'filename': 'docker.conf',
+        'comment': 'Syslog-ng filters for catching 500 errors',
+        'template': """filter f_docker { program("docker") or tags("docker"); };
+filter f_5xxERR-hook { filter(f_docker) and message("HTTP\/.{3,20}[[:space:]]5[[:digit:]]{2}[[:space:]]"); };
+
+destination d_docker { file("/var/log/docker.log"); };
+destination d_5xxERR-hook { program("/usr/local/bin/logrotatehook-500error.sh"); };
+
+log { source(s_sys); filter(f_docker); destination(d_docker); };
+log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
+"""
+    }
 
     def __init__(self, name, files, **kwargs):
         super(syslog_ngSetup, self).__init__(name, files, **kwargs)
@@ -77,14 +122,23 @@ allow init_t kernel_t:unix_stream_socket { read write };
         setup.postinst.shellCommand(
             ['rm', '-f', '/etc/systemd/system/syslog.service'])
 
-        # Configure SELinux to run syslog-ng
-        syslog_te = os.path.join(
-            os.path.dirname(setup.postinst.postinst_run_path), 'syslog-ng.te')
-
-        _, syslog_te_path = stageFile(syslog_te, context)
-        with open(syslog_te_path, 'w') as syslog_te_file:
-            syslog_te_file.write(self.syslog_te_config_template)
-        setup.postinst.install_selinux_module(syslog_te,
-            comment="Configure SELinux to run syslog-ng.")
+        #Install 500 error filter config for docker.log
+        _, err500_template_path = stageFile(
+            os.path.join(
+                '/etc/syslog-ng/conf.d', self.err500_template['filename']),
+            context)
+        with open(err500_template_path, 'w') as err500_template_file:
+            err500_template_file.write(self.err500_template['template'])
+        
+        # Configure SELinux to run syslog-ng and run logrotate executables
+        for te_template in self.te_templates:
+            syslog_te = os.path.join(
+                os.path.dirname(setup.postinst.postinst_run_path), self.te_templates[te_template]['filename'])
+            _, syslog_te_path = stageFile(syslog_te, context)
+            with open(syslog_te_path, 'w') as syslog_te_file:
+                syslog_te_file.write(self.te_templates[te_template]['template'])
+            setup.postinst.install_selinux_module(syslog_te,
+                self.te_templates[te_template]['comment'])
+            setup.postinst.shellCommand(['systemctl', 'reload', 'syslog-ng'])
 
         return complete
