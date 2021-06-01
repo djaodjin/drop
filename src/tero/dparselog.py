@@ -27,6 +27,7 @@ from __future__ import unicode_literals
 import argparse, datetime, gzip, itertools, json, logging, re, os, os.path, sys
 
 import six
+import pytz
 
 from tero import __version__
 
@@ -232,6 +233,8 @@ def parse_logname(filename):
         log_name = look.group('log_name')
         instance_id = look.group('instance_id')
         log_date = datetime.datetime.strptime(look.group('log_date'), '%Y%m%d')
+        if log_date.tzinfo is None:
+            log_date = log_date.replace(tzinfo=pytz.utc)
     return host, log_name, instance_id, log_date
 
 

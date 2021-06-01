@@ -200,7 +200,6 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
         #   domain-logname.log-instanceid-yyyymmdd.gz
         domain, logname, instance_id, at_date = parse_logname(
             os.path.basename(logmeta['Key']))
-        at_date = datetime_or_now(at_date)
         if at_date:
             if start_at <= at_date and at_date < ends_at:
                 try:
@@ -211,8 +210,9 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                     LOGGER.info("skip %s, %s, %s, %s (on domain or logname)" % (
                         domain, logname, instance_id, at_date.isoformat()))
             else:
-                LOGGER.info("skip %s, %s, %s, %s (on date)" % (
-                    domain, logname, instance_id, at_date.isoformat()))
+                LOGGER.info("skip %s, '%s' <= '%s' < '%s' (on date)" % (
+                    logmeta['Key'], start_at.isoformat(), at_date.isoformat(),
+                    ends_at.isoformat()))
         else:
             LOGGER.info("err  %s" % logmeta['Key'])
 
