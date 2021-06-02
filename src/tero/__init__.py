@@ -150,7 +150,7 @@ INSTALL_DIRS = ['bin', 'include', 'lib', 'libexec', 'etc', 'share']
 APT_DISTRIBS = ['Debian', 'Ubuntu']
 DNF_DISTRIBS = ['Fedora']
 PORT_DISTRIBS = ['Darwin']
-YUM_DISTRIBS = ['CentOS']
+YUM_DISTRIBS = ['CentOS', 'Amazon']
 REDHAT_DISTRIBS = DNF_DISTRIBS + YUM_DISTRIBS
 
 # Real uid and gid when the -u,--user and/or -g,--group command
@@ -2033,6 +2033,7 @@ class InstallStep(SetupStep):
                     % (managed, context.host(), self.name))
 
     def install(self, managed, context):
+        log_info("(PATH=%s) cwd=%s" % (os.getenv('PATH'), os.getcwd()))
         for cmdline, admin, noexecute in self.install_commands(
                 managed, context):
             shell_command(cmdline, admin=admin, noexecute=noexecute)
