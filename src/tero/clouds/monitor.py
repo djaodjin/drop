@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Djaodjin Inc.
+# Copyright (c) 2021, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -37,6 +37,19 @@ from ..dparselog import parse_logname
 
 LOGGER = logging.getLogger(__name__)
 
+def as_datetime(dtime_at=None):
+    if isinstance(dtime_at, six.string_types):
+        look = re.match(
+            r'(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$', dtime_at)
+        if look:
+            kwargs = {key: int(val) for key, val in look.groupdict().items()}
+            dtime_at = datetime.datetime(**kwargs)
+        else:
+            dtime_at = None
+    if dtime_at and dtime_at.tzinfo is None:
+        dtime_at = dtime_at.replace(tzinfo=pytz.utc)
+    return dtime_at
+
 
 def datetime_or_now(dtime_at=None):
     if isinstance(dtime_at, six.string_types):
@@ -74,21 +87,6 @@ def list_logs(log_location, domains, lognames=['access', 'error'],
 
     domains contains the logs we expect to find.
     """
-    if start_at:
-        start_at = datetime_or_now(start_at)
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-        else:
-            ends_at = start_at + datetime.timedelta(1)
-    else:
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-            start_at = ends_at - datetime.timedelta(1)
-        else:
-            start_at = datetime_or_now(ends_at)
-            start_at = datetime.datetime(
-                start_at.year, start_at.month, start_at.day)
-            ends_at = start_at + datetime.timedelta(1)
     search = {domain: {logname: [] for logname in lognames}
         for domain in domains}
     if not s3_client:
@@ -96,6 +94,7 @@ def list_logs(log_location, domains, lognames=['access', 'error'],
     _, bucket_name, prefix = urlparse(log_location)[:3]
     if prefix.startswith('/'):
         prefix = prefix[1:]
+    LOGGER.info("list logs at s3://%s/%s" % (bucket_name, prefix))
     resp = s3_client.list_objects_v2(
         Bucket=bucket_name,
         Prefix=prefix)
@@ -128,41 +127,80 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
     }
     """
     if start_at:
-        start_at = datetime_or_now(start_at)
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-        else:
-            ends_at = start_at + datetime.timedelta(1)
-    else:
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-            start_at = ends_at - datetime.timedelta(1)
-        else:
-            start_at = datetime_or_now(ends_at)
-            start_at = datetime.datetime(
-                start_at.year, start_at.month, start_at.day)
-            ends_at = start_at + datetime.timedelta(1)
-    backup = 'db'
+        start_at = as_datetime(start_at)
+    if ends_at:
+        ends_at = as_datetime(ends_at)
+    name = 'db'
     for logmeta in logmetas:
+        at_date = None
         # db backup files have the following name pattern:
         #   db_name.sql.gz
         look = re.match(r'(?P<db_name>\S+)\.sql-(?P<instance_id>[^-]+)\.gz',
             os.path.basename(logmeta['Key']))
         if look:
-            db_name = look.group('db_name')
+            domain = look.group('db_name')
             instance_id = look.group('instance_id')
             at_date = datetime_or_now(logmeta['LastModified'])
-            if start_at <= at_date and at_date < ends_at:
-                try:
-                    search[db_name][backup] += [(at_date, instance_id)]
-                    LOGGER.info("add  %s, %s, %s, %s" % (
-                        db_name, backup, instance_id, at_date.isoformat()))
-                except KeyError:
-                    LOGGER.info("skip %s, %s, %s, %s (on db_name or backup)" % (
-                        db_name, backup, instance_id, at_date.isoformat()))
+        if at_date:
+            if start_at:
+                if start_at <= at_date:
+                    if ends_at:
+                        if at_date < ends_at:
+                            try:
+                                search[domain][name] += [
+                                    (at_date, instance_id)]
+                                LOGGER.info("add  %s, %s, %s, %s" % (
+                                    domain, name, instance_id,
+                                    at_date.isoformat()))
+                            except KeyError:
+                                LOGGER.info(
+                                "skip %s, %s, %s, %s (on domain or dbname)" % (
+                                domain, name, instance_id,
+                                at_date.isoformat()))
+                        else:
+                            LOGGER.info(
+                                "skip %s, '%s' <= '%s' < '%s' (on date)" % (
+                                logmeta['Key'], start_at.isoformat(),
+                                at_date.isoformat(), ends_at.isoformat()))
+                    else:
+                        try:
+                            search[domain][name] += [
+                                (at_date, instance_id)]
+                            LOGGER.info("add  %s, %s, %s, %s" % (
+                                domain, name, instance_id,
+                                at_date.isoformat()))
+                        except KeyError:
+                            LOGGER.info(
+                            "skip %s, %s, %s, %s (on domain or dbname)" % (
+                            domain, name, instance_id,
+                            at_date.isoformat()))
+                else:
+                    LOGGER.info("skip %s, '%s' <= '%s' (on date)" % (
+                        logmeta['Key'],
+                        start_at.isoformat(), at_date.isoformat()))
+            elif ends_at:
+                if at_date < ends_at:
+                    try:
+                        search[domain][name] += [(at_date, instance_id)]
+                        LOGGER.info("add  %s, %s, %s, %s" % (
+                            domain, name, instance_id, at_date.isoformat()))
+                    except KeyError:
+                        LOGGER.info(
+                            "skip %s, %s, %s, %s (on domain or dbname)" % (
+                            domain, name, instance_id, at_date.isoformat()))
+                else:
+                    LOGGER.info("skip %s, '%s' < '%s' (on date)" % (
+                        logmeta['Key'],
+                        at_date.isoformat(), ends_at.isoformat()))
             else:
-                LOGGER.info("skip %s, %s, %s, %s (on date)" % (
-                    db_name, backup, instance_id, at_date.isoformat()))
+                try:
+                    search[domain][name] += [(at_date, instance_id)]
+                    LOGGER.info("add  %s, %s, %s, %s" % (
+                        domain, name, instance_id, at_date.isoformat()))
+                except KeyError:
+                    LOGGER.info(
+                        "skip %s, %s, %s, %s (on domain or dbname)" % (
+                        domain, name, instance_id, at_date.isoformat()))
         else:
             LOGGER.info("err  %s" % logmeta['Key'])
 
@@ -181,38 +219,74 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
     }
     """
     if start_at:
-        start_at = datetime_or_now(start_at)
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-        else:
-            ends_at = start_at + datetime.timedelta(1)
-    else:
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-            start_at = ends_at - datetime.timedelta(1)
-        else:
-            start_at = datetime_or_now(ends_at)
-            start_at = datetime.datetime(
-                start_at.year, start_at.month, start_at.day)
-            ends_at = start_at + datetime.timedelta(1)
+        start_at = as_datetime(start_at)
+    if ends_at:
+        ends_at = as_datetime(ends_at)
     for logmeta in logmetas:
         # Log files have the following name pattern:
-        #   domain-logname.log-instanceid-yyyymmdd.gz
-        domain, logname, instance_id, at_date = parse_logname(
+        #   domain-name.log-instanceid-yyyymmdd.gz
+        domain, name, instance_id, at_date = parse_logname(
             os.path.basename(logmeta['Key']))
         if at_date:
-            if start_at <= at_date and at_date < ends_at:
-                try:
-                    search[domain][logname] += [(at_date, instance_id)]
-                    LOGGER.info("add  %s, %s, %s, %s" % (
-                        domain, logname, instance_id, at_date.isoformat()))
-                except KeyError:
-                    LOGGER.info("skip %s, %s, %s, %s (on domain or logname)" % (
-                        domain, logname, instance_id, at_date.isoformat()))
+            if start_at:
+                if start_at <= at_date:
+                    if ends_at:
+                        if at_date < ends_at:
+                            try:
+                                search[domain][name] += [
+                                    (at_date, instance_id)]
+                                LOGGER.info("add  %s, %s, %s, %s" % (
+                                    domain, name, instance_id,
+                                    at_date.isoformat()))
+                            except KeyError:
+                                LOGGER.info(
+                                "skip %s, %s, %s, %s (on domain or logname)" % (
+                                domain, name, instance_id,
+                                at_date.isoformat()))
+                        else:
+                            LOGGER.info(
+                                "skip %s, '%s' <= '%s' < '%s' (on date)" % (
+                                logmeta['Key'], start_at.isoformat(),
+                                at_date.isoformat(), ends_at.isoformat()))
+                    else:
+                        try:
+                            search[domain][name] += [
+                                (at_date, instance_id)]
+                            LOGGER.info("add  %s, %s, %s, %s" % (
+                                domain, name, instance_id,
+                                at_date.isoformat()))
+                        except KeyError:
+                            LOGGER.info(
+                            "skip %s, %s, %s, %s (on domain or logname)" % (
+                            domain, name, instance_id,
+                            at_date.isoformat()))
+                else:
+                    LOGGER.info("skip %s, '%s' <= '%s' (on date)" % (
+                        logmeta['Key'],
+                        start_at.isoformat(), at_date.isoformat()))
+            elif ends_at:
+                if at_date < ends_at:
+                    try:
+                        search[domain][name] += [(at_date, instance_id)]
+                        LOGGER.info("add  %s, %s, %s, %s" % (
+                            domain, name, instance_id, at_date.isoformat()))
+                    except KeyError:
+                        LOGGER.info(
+                            "skip %s, %s, %s, %s (on domain or logname)" % (
+                            domain, name, instance_id, at_date.isoformat()))
+                else:
+                    LOGGER.info("skip %s, '%s' < '%s' (on date)" % (
+                        logmeta['Key'],
+                        at_date.isoformat(), ends_at.isoformat()))
             else:
-                LOGGER.info("skip %s, '%s' <= '%s' < '%s' (on date)" % (
-                    logmeta['Key'], start_at.isoformat(), at_date.isoformat(),
-                    ends_at.isoformat()))
+                try:
+                    search[domain][name] += [(at_date, instance_id)]
+                    LOGGER.info("add  %s, %s, %s, %s" % (
+                        domain, name, instance_id, at_date.isoformat()))
+                except KeyError:
+                    LOGGER.info(
+                        "skip %s, %s, %s, %s (on domain or logname)" % (
+                        domain, name, instance_id, at_date.isoformat()))
         else:
             LOGGER.info("err  %s" % logmeta['Key'])
 
@@ -227,21 +301,6 @@ def search_db_storage(log_location, domains,
 
         { domain: [db_name, ...] }
     """
-    if start_at:
-        start_at = datetime_or_now(start_at)
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-        else:
-            ends_at = start_at + datetime.timedelta(1)
-    else:
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-            start_at = ends_at - datetime.timedelta(1)
-        else:
-            start_at = datetime_or_now(ends_at)
-            start_at = datetime.datetime(
-                start_at.year, start_at.month, start_at.day)
-            ends_at = start_at + datetime.timedelta(1)
     if not log_location.endswith('/'):
         log_location += '/'
 
@@ -297,21 +356,6 @@ def search_site_log_storage(log_location, domains,
 
         { domain: [app_name, ...] }
     """
-    if start_at:
-        start_at = datetime_or_now(start_at)
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-        else:
-            ends_at = start_at + datetime.timedelta(1)
-    else:
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-            start_at = ends_at - datetime.timedelta(1)
-        else:
-            start_at = datetime_or_now(ends_at)
-            start_at = datetime.datetime(
-                start_at.year, start_at.month, start_at.day)
-            ends_at = start_at + datetime.timedelta(1)
     if not log_location.endswith('/'):
         log_location += '/'
     # nginx assets proxys
@@ -340,21 +384,6 @@ def search_proxy_log_storage(log_location, domains,
 
         { domain: [app_name, ...] }
     """
-    if start_at:
-        start_at = datetime_or_now(start_at)
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-        else:
-            ends_at = start_at + datetime.timedelta(1)
-    else:
-        if ends_at:
-            ends_at = datetime_or_now(ends_at)
-            start_at = ends_at - datetime.timedelta(1)
-        else:
-            start_at = datetime_or_now(ends_at)
-            start_at = datetime.datetime(
-                start_at.year, start_at.month, start_at.day)
-            ends_at = start_at + datetime.timedelta(1)
     if not log_location.endswith('/'):
         log_location += '/'
 
