@@ -82,7 +82,7 @@ Add a postgresql database
 
     $ diff -u ~/.aws/djaoapp
     [default]
-    # ImageID for CentOS 7 in __region_name__
+    # ImageID for AWS Linux in __region_name__
     +image_name = ami-******
 
     +[dbs-1]
@@ -111,3 +111,24 @@ Add an application container
     [djaodjin]
     instance_type = t3a.medium
     app_subnet_id = ???
+
+
+Create a webfront AMI
+~~~~~~~~~~~~~~~~~~~~~
+
+The webfront AMI is used as a base for all proxy instances.
+
+1. Create a djaoapp.tar.bz2 package and upload it to
+s3://__identities_bucket__/identities/__region_name__/djaoapp-__tag_name__/var/www/djaoapp.tar.bz2
+
+2. Create config
+
+    $ cat ~/.aws/djaoapp
+    ...
+    [djaoapp-*tag*]
+    identities_url = s3://__identities_bucket__/identities/__region_name__/djaoapp-__tag_name__
+    ami = 1
+
+3. Run cloud.py
+
+    $ python src/tero/clouds/awscloud.py --skip-create-network --dry-run

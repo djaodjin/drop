@@ -9,7 +9,7 @@ Maintenance scripts for the front-end session manager proxy.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <package name="CentOS">
+    <package name="RedHat">
       <variable name="domainName">
         <description>Domain name for the web server being configured.</description>
       </variable>
@@ -17,7 +17,7 @@ Maintenance scripts for the front-end session manager proxy.
         <description>
 Name of the machine hosting the LDAP server.
         </description>
-        <default>dbs.ec2.internal</default>
+        <default>ldaps.ec2.internal</default>
       </variable>
       <variable name="notifyEmail">
         <description>Email to send notification to about the state of the machine.</description>
@@ -154,7 +154,7 @@ Name of the machine hosting the LDAP server.
         <description>
 Name of the machine hosting the LDAP server.
         </description>
-        <default>dbs.ec2.internal</default>
+        <default>ldaps.ec2.internal</default>
       </variable>
       <variable name="notifyEmail">
         <description>Email to send notification to about the state of the machine.</description>

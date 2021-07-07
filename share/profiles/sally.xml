@@ -9,7 +9,7 @@ Installs and configures services used on SSH-accessible machines.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <package name="CentOS">
+    <package name="RedHat">
       <variable name="ldapHost">
         <description>
 Name of the machine hosting the LDAP server.

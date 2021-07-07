@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Djaodjin Inc.
+# Copyright (c) 2021, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,14 +28,12 @@
 import argparse, configparser, datetime, json, logging, os, re, time
 from collections import OrderedDict
 
-import boto3
+import boto3, jinja2, requests, six
 import botocore.exceptions
-import jinja2
 import OpenSSL.crypto
 from pyasn1.codec.der.decoder import decode as asn1_decoder
 from pyasn1_modules.rfc2459 import SubjectAltName
 from pyasn1.codec.native.encoder import encode as nat_encoder
-import six
 #pylint:disable=import-error
 from six.moves.urllib.parse import urlparse
 
@@ -150,25 +148,41 @@ def _get_image_id(image_name, instance_profile_arn=None,
     """
     Finds an image_id from its name.
     """
+    owners = []
+    filters = []
     image_id = image_name
-    if not image_name.startswith('ami-'):
+    if not image_name:
+        # Amazon has its own Linux distribution that is largely binary
+        # compatible with Red Hat Enterprise Linux.
+        image_name = 'amzn2-ami-hvm-2.0.????????.?-x86_64-gp2'
+        owners = ['amazon']
+        filters = [
+            {'Name': 'name', 'Values': [image_name]},
+        ]
+    elif not image_name.startswith('ami-'):
         if not instance_profile_arn:
             raise RuntimeError("instance_profile_arn must be defined when"\
                 " image_name is not already an id.")
         look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
-        aws_account_id = look.group(1)
+        owners = [look.group(1)]
+        filters = [
+            {'Name': 'name', 'Values': [image_name]},
+        ]
+
+    if filters:
         if not ec2_client:
             ec2_client = boto3.client('ec2', region_name=region_name)
-        resp = ec2_client.describe_images(
-            Filters=[
-                {'Name': 'name', 'Values': [image_name]},
-                {'Name': 'owner-id', 'Values': [aws_account_id]}])
-        if len(resp['Images']) != 1:
-            raise RuntimeError(
-                "Found more than one image named '%s' in account '%s': %s" % (
-                    image_name, aws_account_id,
-                    [image['ImageId'] for image in resp['Images']]))
-        image_id = resp['Images'][0]['ImageId']
+        resp = ec2_client.describe_images(Owners=owners, Filters=filters)
+        images = sorted(resp['Images'], key= lambda item: item['CreationDate'],
+            reverse=True)
+        if len(images) > 1:
+            LOGGER.warning(
+                "Found more than one image named '%s' in account '%s',"\
+                " picking the first one out of %s" % (
+                    image_name, owners,
+                    [(image['CreationDate'], image['ImageId'])
+                     for image in images]))
+        image_id = images[0]['ImageId']
     return image_id
 
 
@@ -2358,6 +2372,34 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
     return instance_ids
 
 
+def create_ami_webfront(region_name, app_name, instance_id, ssh_key_name=None,
+                        sally_ip=None, sally_key_file=None, sally_port=None):
+    """
+    Create an AMI from a running EC2 instance
+    """
+    if not sally_key_file:
+        sally_key_file = ssh_key_name
+    if not sally_port:
+        sally_port = 22
+    instance_domain = None
+    ec2_client = boto3.client('ec2', region_name=region_name)
+    resp = ec2_client.describe_instances(
+        InstanceIds=[instance_id])
+    for reserv in resp['Reservations']:
+        for instance in reserv['Instances']:
+            instance_domain = instance['PrivateDnsName']
+            LOGGER.info("connect to %s with: ssh -o ProxyCommand='ssh -i %s -p %d -q -W %%h:%%p %s' -i $HOME/.ssh/%s_rsa ec2-user@%s",
+                instance['InstanceId'], sally_key_file, sally_port, sally_ip,
+                ssh_key_name, instance_domain)
+            break
+
+    try:
+        requests.get('http://%s/' % instance_domain, timeout=5)
+        resp = client.create_image(InstanceId=instance_id, Name=app_name)
+        LOGGER.info("creating image '%s'", resp['ImageId'])
+    except requests.exceptions.Timeout as err:
+        LOGGER.error(err)
+
 
 def create_app_resources(region_name, app_name, image_name,
                          instance_type='t3a.small',
@@ -2516,7 +2558,7 @@ def create_app_resources(region_name, app_name, image_name,
                     'Code', 'Unknown') == 'InvalidPermission.Duplicate':
                 raise
 
-    app_role = app_sg_name
+    app_role = app_name
     iam_client = boto3.client('iam')
     try:
         resp = iam_client.create_role(
@@ -2719,7 +2761,7 @@ def create_app_resources(region_name, app_name, image_name,
                 LOGGER.info("%s waiting for IAM instance profile %s to be"\
                     " operational ...", tag_prefix, instance_profile_arn)
             time.sleep(RETRY_WAIT_DELAY)
-        LOGGER.info("%s started ec2 instances %s for '%s'",
+        LOGGER.info("%s started instances %s for '%s'",
                     tag_prefix, instance_ids, app_name)
 
     # Associates an internal domain name to the instance
@@ -2727,7 +2769,7 @@ def create_app_resources(region_name, app_name, image_name,
     if update_dns_record:
         hosted_zone = None
         default_hosted_zone = None
-        hosted_zone_name = 'ec2.internal.'
+        hosted_zone_name = '%s.internal.' % region_name
         route53 = boto3.client('route53')
         if hosted_zone_id:
             hosted_zone = route53.get_hosted_zone(
@@ -2843,19 +2885,9 @@ def create_instances_dbs(region_name, app_name, image_name,
                 tag_prefix, vault_name))
 
     # Find the ImageId
-    image_id = image_name
-    if not image_name.startswith('ami-'):
-        look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
-        aws_account_id = look.group(1)
-        resp = ec2_client.describe_images(
-            Filters=[
-                {'Name': 'name', 'Values': [image_name]},
-                {'Name': 'owner-id', 'Values': [aws_account_id]}])
-        if len(resp['Images']) != 1:
-            raise RuntimeError(
-                "Found more than one image named '%s' in account '%s'" % (
-                    image_name, aws_account_id))
-        image_id = resp['Images'][0]['ImageId']
+    image_id = _get_image_id(
+        image_name, instance_profile_arn=instance_profile_arn,
+        ec2_client=ec2_client, region_name=region_name)
 
     # XXX adds encrypted volume
     block_devices = [
@@ -2905,7 +2937,9 @@ def create_instances_dbs(region_name, app_name, image_name,
 
 
 def create_instances_webfront(region_name, app_name, image_name,
-                              identities_url=None, ssh_key_name=None,
+                              identities_url=None, company_domain=None,
+                              ldap_host=None, domain_name=None,
+                              ssh_key_name=None,
                               storage_enckey=None, instance_type=None,
                               web_subnet_id=None, vpc_id=None, vpc_cidr=None,
                               tag_prefix=None):
@@ -2938,7 +2972,12 @@ def create_instances_webfront(region_name, app_name, image_name,
     template_loader = jinja2.FileSystemLoader(searchpath=search_path)
     template_env = jinja2.Environment(loader=template_loader)
     template = template_env.get_template("web-cloud-init-script.j2")
-    user_data = template.render(identities_url=identities_url)
+    user_data = template.render(
+        identities_url=identities_url,
+        remote_drop_repo="https://github.com/djaodjin/drop.git",
+        company_domain=company_domain,
+        domain_name=domain_name,
+        ldap_host=ldap_host)
 
     if not vpc_id:
         vpc_id, _ = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
@@ -2966,19 +3005,9 @@ def create_instances_webfront(region_name, app_name, image_name,
                 tag_prefix, gate_name))
 
     # Find the ImageId
-    image_id = image_name
-    if not image_name.startswith('ami-'):
-        look = re.match(r'arn:aws:iam::(\d+):', instance_profile_arn)
-        aws_account_id = look.group(1)
-        resp = ec2_client.describe_images(
-            Filters=[
-                {'Name': 'name', 'Values': [image_name]},
-                {'Name': 'owner-id', 'Values': [aws_account_id]}])
-        if len(resp['Images']) != 1:
-            raise RuntimeError(
-                "Found more than one image named '%s' in account '%s'" % (
-                    image_name, aws_account_id))
-        image_id = resp['Images'][0]['ImageId']
+    image_id = _get_image_id(
+        image_name, instance_profile_arn=instance_profile_arn,
+        ec2_client=ec2_client, region_name=region_name)
 
     # XXX adds encrypted volume
     resp = ec2_client.run_instances(
@@ -3312,30 +3341,68 @@ def main(input_args):
                     tls_priv_key = priv_key_file.read()
                 with open(tls_fullchain_path) as fullchain_file:
                     tls_fullchain_cert = fullchain_file.read()
+
+            # Create the EC2 instances
             instance_ids = config[app_name].get('instance_ids')
             if instance_ids:
                 instance_ids = instance_ids.split(',')
-            create_target_group(
-                region_name,
-                app_name,
-                instance_ids=instance_ids,
-                ssh_key_name=ssh_key_name,
-                identities_url=config[app_name].get('identities_url'),
-                image_name=config[app_name].get(
-                    'image_name', config['default'].get('image_name')),
-                instance_type=config[app_name].get(
-                    'instance_type', config['default'].get('instance_type')),
-                subnet_id=config[app_name].get(
-                    'subnet_id', config['default'].get('subnet_id')),
-                vpc_cidr=config['default']['vpc_cidr'],
-                tag_prefix=tag_prefix)
-            if tls_fullchain_cert and tls_priv_key:
-                create_domain_forward(
+            else:
+                instance_ids = create_instances_webfront(
                     region_name,
                     app_name,
-                    tls_priv_key=tls_priv_key,
-                    tls_fullchain_cert=tls_fullchain_cert,
+                    image_name=config[app_name].get(
+                    'image_name', config['default'].get('image_name')),
+                    identities_url=config[app_name].get('identities_url'),
+                    company_domain=config[app_name].get('company_domain',
+                        config['default'].get('company_domain')),
+                    ldap_host=config[app_name].get('ldap_host',
+                        config['default'].get('ldap_host')),
+                    domain_name=config[app_name].get('domain_name',
+                        config['default'].get('domain_name')),
+                    ssh_key_name=ssh_key_name,
+                    instance_type=config[app_name].get(
+                        'instance_type', config['default'].get('instance_type')),
+                    web_subnet_id=config[app_name].get(
+                        'subnet_id', config['default'].get('subnet_id')),
+                    vpc_cidr=config['default']['vpc_cidr'],
+                    vpc_id=config['default'].get('vpc_id'),
                     tag_prefix=tag_prefix)
+
+            if config[app_name].get('ami'):
+                # If we are creating an AMI
+                create_ami_webfront(
+                    region_name,
+                    app_name,
+                    instance_ids[0],
+                    ssh_key_name=ssh_key_name,
+                    sally_ip=config['default'].get('sally_ip'),
+                    sally_key_file=config['default'].get('sally_key_file'),
+                    sally_port=config['default'].get('sally_port'))
+            else:
+                # If we are not creating an AMI, then let's connect
+                # the instances to the load-balancer.
+                create_target_group(
+                    region_name,
+                    app_name,
+                    instance_ids=instance_ids,
+                    ssh_key_name=ssh_key_name,
+                    identities_url=config[app_name].get('identities_url'),
+                    image_name=config[app_name].get(
+                        'image_name', config['default'].get('image_name')),
+                    instance_type=config[app_name].get(
+                        'instance_type', config['default'].get('instance_type')),
+                    subnet_id=config[app_name].get(
+                        'subnet_id', config['default'].get('subnet_id')),
+                    vpc_cidr=config['default']['vpc_cidr'],
+                    vpc_id=config['default'].get('vpc_id'),
+                    tag_prefix=tag_prefix)
+                if tls_fullchain_cert and tls_priv_key:
+                    create_domain_forward(
+                        region_name,
+                        app_name,
+                        tls_priv_key=tls_priv_key,
+                        tls_fullchain_cert=tls_fullchain_cert,
+                        tag_prefix=tag_prefix)
 
         elif app_name.startswith('dbs-'):
             create_datastores(
@@ -3354,8 +3421,10 @@ def main(input_args):
                 s3_identities_bucket=config[app_name].get(
                     's3_identities_bucket',
                     config['default'].get('s3_identities_bucket')),
-                company_domain=config[app_name].get('company_domain'),
-                ldap_host=config[app_name].get('ldap_host'),
+                company_domain=config[app_name].get('company_domain',
+                    config['default'].get('company_domain')),
+                ldap_host=config[app_name].get('ldap_host',
+                    config['default'].get('ldap_host')),
                 ldap_hashed_password=config[app_name].get(
                     'ldap_hashed_password'),
                 image_name=config[app_name].get(
@@ -3379,7 +3448,7 @@ def main(input_args):
                 region_name,
                 app_name,
                 config[app_name].get(
-                    'image_name', config['default']['image_name']),
+                    'image_name', config['default'].get('image_name')),
                 instance_type=config[app_name].get(
                     'instance_type', 't3a.small'),
                 storage_enckey=storage_enckey,

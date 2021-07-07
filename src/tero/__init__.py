@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -150,8 +150,13 @@ INSTALL_DIRS = ['bin', 'include', 'lib', 'libexec', 'etc', 'share']
 APT_DISTRIBS = ['Debian', 'Ubuntu']
 DNF_DISTRIBS = ['Fedora']
 PORT_DISTRIBS = ['Darwin']
-YUM_DISTRIBS = ['CentOS', 'Amazon']
+YUM_DISTRIBS = ['Amazon', 'CentOS', 'RedHat']
 REDHAT_DISTRIBS = DNF_DISTRIBS + YUM_DISTRIBS
+ALIAS_DISTRIBS = {
+    'CentOS': 'RedHat',
+    'Amazon': 'RedHat',
+    'Ubuntu': 'Debian'
+}
 
 # Real uid and gid when the -u,--user and/or -g,--group command
 # line arguments are used.
@@ -1815,9 +1820,13 @@ class Alternates(Dependency):
     def prerequisites(self, tags):
         prereqs = []
         for tag in tags:
-            if tag in self.by_tags:
-                for dep in self.by_tags[tag]:
-                    prereqs += dep.prerequisites(tags)
+            deps = self.by_tags.get(tag, [])
+            if not deps:
+                alias = ALIAS_DISTRIBS.get(tag)
+                if alias:
+                    deps = self.by_tags.get(alias, [])
+            for dep in deps:
+                prereqs += dep.prerequisites(tags)
         return prereqs
 
 

@@ -9,7 +9,7 @@ Deploy and configure packages for running LDAP and SQL databases.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <package name="CentOS">
+    <package name="RedHat">
       <variable name="dbHost">
         <description>Hostname for the pgsql server</description>
       </variable>
