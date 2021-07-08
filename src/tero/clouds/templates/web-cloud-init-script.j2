@@ -8,6 +8,7 @@ set -e
 
 rootDir=/var/www
 USER=djaoapp
+OWNER=ec2-user
 
 # Install necessary public packages to bootstrap configuration
 if [ -f /usr/bin/dnf ]; then
@@ -16,7 +17,13 @@ if [ -f /usr/bin/dnf ]; then
 else
     if [ ! -f /usr/bin/python3 ]; then
         if [ ! -d /etc/yum.repos.d/epel.repo ]; then
-            [ "$(grep "CentOS" /etc/system-release)" == "" ] || /usr/bin/yum -y install epel-release
+            if [ "$(grep "CentOS" /etc/system-release)" == "" ]; then
+                # We have to enable the EPEL repo to install podofo.
+                amazon-linux-extras install epel -y
+            else
+                /usr/bin/yum -y install epel-release
+                OWNER=centos
+            fi
         fi
         # Without making the fast cache, python36 is sometimes not found on mirror
         # (ex: mirrors.cat.pdx.edu)
@@ -35,7 +42,6 @@ VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 # update required ownership
 [ $(/usr/bin/getent group $USER) ] || /usr/sbin/groupadd --gid 1001 $USER
 [ $(/usr/bin/getent passwd $USER) ] || /usr/sbin/useradd --no-create-home --uid 1001 --gid 1001 $USER
-[ -d $rootDir/djaoapp/etc/sysconfig ] && chown -R $USER:$USER $rootDir/djaoapp/etc/sysconfig/*
 # recreates links for TLS certificates
 for domain in `ls /etc/pki/tls/certs/archive` ; do
   mkdir -p /etc/pki/tls/certs/live/$domain
@@ -52,7 +58,7 @@ for domain in `ls /etc/letsencrypt/archive` ; do
   [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
 done
 
-siteTop=${rootDir}/${USER}
+siteTop=${rootDir}/djaoapp
 cd $rootDir
 shopt -s nullglob
 packages=$(echo "*.tar.gz *.tar.bz2")
@@ -77,7 +83,7 @@ if [ "X$packages" != "X" ] ; then
         ../../bin/dws --default make recurse
         ../../bin/dws --default make install
         popd
-        /usr/bin/chown -R ${USER}:${USER} "$dirname"
+        /usr/bin/chown -R ${OWNER}:${OWNER} "$dirname"
         rm ${package}
     done
 else
@@ -90,7 +96,7 @@ else
 fi
 
 cd $siteTop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc -DldapHost={{ldap_host}} -DcompanyDomain={{company_domain}} -DdomainName={{domain_name}} reps/drop/share/profiles/webfront.xml
+bin/python reps/drop/src/dservices.py -DetcDir=/etc{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} reps/drop/share/profiles/webfront.xml
 
 # Extra configuation to start up djagent and djaoapp
 if [ -d ${siteTop} ] ; then
@@ -112,7 +118,7 @@ if [ -d ${siteTop} ] ; then
         echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djagent
         echo "QUEUE_URL=" >> ${siteTop}/etc/sysconfig/djagent
         /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djagent
-        /usr/bin/chown $USER:$USER ${siteTop}/etc/sysconfig/djagent
+        /usr/bin/chown ${OWNER}:${OWNER} ${siteTop}/etc/sysconfig/djagent
         /usr/bin/cp ${siteTop}/etc/systemd/system/djagent.service /usr/lib/systemd/system
         ../../bin/dws --default make install-selinux
         /usr/bin/systemctl enable djagent
@@ -125,16 +131,16 @@ if [ -d ${siteTop} ] ; then
         /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djaoapp
         # We make sure the .pid file can be created by gunicorn and systemd
         # service can load.
-        /usr/bin/chown $USER:$USER ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run
+        /usr/bin/chown ${OWNER}:${OWNER} ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run
         /usr/bin/mkdir -p /var/log/gunicorn
-        /usr/bin/chown $USER:$USER /var/log/gunicorn
+        /usr/bin/chown ${USER}:${USER} /var/log/gunicorn
         /usr/bin/rm -rf ${siteTop}/var/log/gunicorn
         pushd ${siteTop}/var/log
         /usr/bin/ln -s /var/log/gunicorn
         popd
         # Insures we can upload themes
         /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
-        /usr/bin/chown $USER:$USER ${siteTop}/reps/djaoapp/htdocs ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
+        /usr/bin/chown ${USER}:${USER} ${siteTop}/reps/djaoapp/htdocs ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
         # and that nginx can access the static assets
         /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' '${siteTop}/reps/djaoapp/htdocs(.*)'
         /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp

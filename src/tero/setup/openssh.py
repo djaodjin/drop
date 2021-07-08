@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
+import logging, os
 
 import six
 
@@ -50,39 +50,63 @@ class openssh_serverSetup(SetupTemplate):
 
     def run(self, context):
         complete = super(openssh_serverSetup, self).run(context)
+        if not complete:
+            # As long as the default setup cannot find all prerequisite
+            # executable, libraries, etc. we cannot update configuration
+            # files here.
+            return complete
+
+        settings = {}
+
+        # Optionally configure LDAP
+        config_ldap = False
         ldapHost = context.value('ldapHost')
-        domain_parts = tuple(context.value('companyDomain').split('.'))
+        companyDomain = context.value('companyDomain')
+        if ldapHost and companyDomain:
+            config_ldap = True
+            domain_parts = tuple(companyDomain.split('.'))
+            if len(domain_parts) < 2:
+                logging.warning('companyDomain(%s) cannot be split in 2 parts.'\
+                    ' skipping openssh/LDAP configuration.', companyDomain)
+                config_ldap = False
+
+        ldapCertPath = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
+        if config_ldap:
+            settings.update({
+                'AuthorizedKeysCommand': '/usr/libexec/openssh/ssh-ldap-wrapper',
+                'AuthorizedKeysCommandUser': 'nobody'
+            })
+            names = {
+                'ldapHost': ldapHost,
+                'domainNat': domain_parts[0],
+                'domainTop': domain_parts[1],
+                'ldapCertPath': ldapCertPath
+            }
+            modify_config(self.ldap_conf,
+                settings={
+                    'URI': 'ldaps://%(ldapHost)s' % names,
+                    'BASE': 'ou=people,dc=%(domainNat)s,dc=%(domainTop)s' % names,
+                    'TLS_CACERT': ldapCertPath,
+                    'TLS_REQCERT': 'demand',
+                    'TIMELIMIT': '15',
+                    'TIMEOUT': '20'
+                }, sep=' ', context=context)
+            postinst.shellCommand(['chmod', '644', self.ldap_conf])
+
         banner = os.path.join(context.value('etcDir'), 'issue.net')
         _, new_banner_path = stageFile(
             banner, context=context)
         with open(new_banner_path, 'w') as new_banner:
             new_banner.write(
                 'This server is private property. Authorized use only.\n')
-        settings = {'Banner': banner}
+        settings.update({'Banner': banner})
         for key, vals in six.iteritems(
                 self.managed['openssh-server']['files']):
             if key == self.sshd_conf:
                 settings.update(vals[0][0])
         modify_config(self.sshd_conf,
             settings=settings, sep=' ', context=context)
-
-        ldapCertPath = os.path.join(context.value('etcDir'),
-            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
-        names = {
-            'ldapHost': ldapHost,
-            'domainNat': domain_parts[0],
-            'domainTop': domain_parts[1],
-            'ldapCertPath': ldapCertPath
-        }
-        modify_config(self.ldap_conf,
-            settings={
-                'URI': 'ldaps://%(ldapHost)s' % names,
-                'BASE': 'ou=people,dc=%(domainNat)s,dc=%(domainTop)s' % names,
-                'TLS_CACERT': ldapCertPath,
-                'TLS_REQCERT': 'demand',
-                'TIMELIMIT': '15',
-                'TIMEOUT': '20'
-            }, sep=' ', context=context)
 
         config_path = os.path.join(
             '/usr', 'libexec', 'openssh', 'ssh-ldap-wrapper')
@@ -96,5 +120,4 @@ fi
 exec /usr/libexec/openssh/ssh-ldap-helper -s "$1"
 """ % {'user': "centos"})
         postinst.shellCommand(['chmod', '755', config_path])
-        postinst.shellCommand(['chmod', '644', self.ldap_conf])
         return complete

@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
+import logging, os
 
 from tero.setup import stageFile, postinst, SetupTemplate
 
@@ -41,9 +41,20 @@ class sssdSetup(SetupTemplate):
             # files here.
             return complete
 
-        sssd_conf = os.path.join(context.value('etcDir'), 'sssd', 'sssd.conf')
         ldapHost = context.value('ldapHost')
-        domain_parts = tuple(context.value('companyDomain').split('.'))
+        companyDomain = context.value('companyDomain')
+        if not (ldapHost and companyDomain):
+            logging.warning('ldapHost(%s) or companyDomain(%s) are undefined.'\
+                ' skipping configuration of sssd.',
+                ldapHost, companyDomain)
+            return complete
+
+        domain_parts = tuple(companyDomain.split('.'))
+        if len(domain_parts) < 2:
+            logging.warning('companyDomain(%s) cannot be split in 2 parts.',
+                companyDomain)
+            return complete
+
         ldapCertPath = os.path.join(context.value('etcDir'),
             'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         names = {
@@ -52,6 +63,8 @@ class sssdSetup(SetupTemplate):
             'domainTop': domain_parts[1],
             'ldapCertPath': ldapCertPath
         }
+
+        sssd_conf = os.path.join(context.value('etcDir'), 'sssd', 'sssd.conf')
         _, new_config_path = stageFile(sssd_conf, context)
         with open(new_config_path, 'w') as new_config:
             new_config.write("""[sssd]

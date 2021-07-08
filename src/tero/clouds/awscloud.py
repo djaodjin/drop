@@ -369,6 +369,9 @@ def _get_vpc_id(tag_prefix, ec2_client=None, region_name=None):
 def _split_cidrs(vpc_cidr, zones=None, ec2_client=None, region_name=None):
     """
     Returns web and dbs subnets cidrs from a `vpc_cidr`.
+
+    requires:
+      - DescribeAvailabilityZones
     """
     if not zones:
         if not ec2_client:
@@ -1923,7 +1926,16 @@ def create_network(region_name, vpc_cidr, tag_prefix,
         LOGGER.info("%s found IAM instance profile for %s",
             tag_prefix, vault_role)
 
-    if ssh_key_name and ssh_key_content:
+    if ssh_key_name:
+        if not ssh_key_content:
+            ssh_key_path = os.path.join(os.getenv('HOME'),
+                '.ssh', '%s.pub' % ssh_key_name)
+            if os.path.exists(ssh_key_path):
+                with open(ssh_key_path, 'rb') as ssh_key_obj:
+                    ssh_key_content = ssh_key_obj.read()
+            else:
+                LOGGER.warning("%s no content for SSH key %s",
+                    tag_prefix, ssh_key_name)
         # import SSH keys
         try:
             resp = ec2_client.import_key_pair(
@@ -2361,7 +2373,8 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
                 'Key': 'Name',
                 'Value': app_name
             }]}],
-        UserData=user_data)
+        UserData=user_data,
+        DryRun=dry_run)
     instance_ids = [
         instance['InstanceId'] for instance in resp['Instances']]
 
@@ -2378,7 +2391,7 @@ def create_ami_webfront(region_name, app_name, instance_id, ssh_key_name=None,
     Create an AMI from a running EC2 instance
     """
     if not sally_key_file:
-        sally_key_file = ssh_key_name
+        sally_key_file = '$HOME/.ssh/%s' % ssh_key_name
     if not sally_port:
         sally_port = 22
     instance_domain = None
@@ -2388,7 +2401,7 @@ def create_ami_webfront(region_name, app_name, instance_id, ssh_key_name=None,
     for reserv in resp['Reservations']:
         for instance in reserv['Instances']:
             instance_domain = instance['PrivateDnsName']
-            LOGGER.info("connect to %s with: ssh -o ProxyCommand='ssh -i %s -p %d -q -W %%h:%%p %s' -i $HOME/.ssh/%s_rsa ec2-user@%s",
+            LOGGER.info("connect to %s with: ssh -o ProxyCommand='ssh -i %s -p %d -q -W %%h:%%p %s' -i $HOME/.ssh/%s ec2-user@%s",
                 instance['InstanceId'], sally_key_file, sally_port, sally_ip,
                 ssh_key_name, instance_domain)
             break
@@ -2458,8 +2471,17 @@ def create_app_resources(region_name, app_name, image_name,
     # Implementation Note:
     #   strange but no exception thrown when queue already exists.
     sqs = boto3.client('sqs', region_name=region_name)
-    resp = sqs.create_queue(QueueName=app_name)
-    queue_url = resp.get("QueueUrl")
+    if not dry_run:
+        resp = sqs.create_queue(QueueName=app_name)
+        queue_url = resp.get("QueueUrl")
+    else:
+        queue_url = \
+            'https://dry-run-sqs.%(region_name)s.amazonaws.com/%(app_name)s' % {
+            'region_name': region_name,
+            'app_name': app_name
+        }
+        LOGGER.warning(
+            "(dryrun) queue not created. queue_url set to %s", queue_url)
 
     if instance_ids:
         # If instances are running and there is a message queue,
@@ -2509,7 +2531,8 @@ def create_app_resources(region_name, app_name, image_name,
         resp = ec2_client.create_security_group(
             Description=descr,
             GroupName=app_sg_name,
-            VpcId=vpc_id)
+            VpcId=vpc_id,
+            DryRun=dry_run)
         app_sg_id = resp['GroupId']
         LOGGER.info("%s created %s security group %s",
             tag_prefix, app_sg_name, app_sg_id)
@@ -2561,105 +2584,107 @@ def create_app_resources(region_name, app_name, image_name,
     app_role = app_name
     iam_client = boto3.client('iam')
     try:
-        resp = iam_client.create_role(
-            RoleName=app_role,
-            AssumeRolePolicyDocument=json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "Service": "ec2.amazonaws.com"
-                    },
-                    "Action": "sts:AssumeRole"
-                }
-            ]
-        }))
-        iam_client.put_role_policy(
-            RoleName=app_role,
-            PolicyName='AgentCtrlMessages',
-            PolicyDocument=json.dumps({
+        if not dry_run:
+            resp = iam_client.create_role(
+                RoleName=app_role,
+                AssumeRolePolicyDocument=json.dumps({
                 "Version": "2012-10-17",
-                "Statement": [{
-                    "Action": [
-                        "sqs:ReceiveMessage",
-                        "sqs:DeleteMessage"
-                    ],
-                    "Effect": "Allow",
-                    "Resource": "*"
-                }]}))
-        if ecr_access_role_arn:
+                "Statement": [
+                    {
+                        "Sid": "",
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "ec2.amazonaws.com"
+                        },
+                        "Action": "sts:AssumeRole"
+                    }
+                ]
+            }))
             iam_client.put_role_policy(
                 RoleName=app_role,
-                PolicyName='DeployContainer',
+                PolicyName='AgentCtrlMessages',
                 PolicyDocument=json.dumps({
                     "Version": "2012-10-17",
                     "Statement": [{
-                        "Effect": "Allow",
                         "Action": [
-                            "sts:AssumeRole"
+                            "sqs:ReceiveMessage",
+                            "sqs:DeleteMessage"
                         ],
-                        "Resource": [
-                            ecr_access_role_arn
-                        ]
-                    }, {
                         "Effect": "Allow",
-                        "Action": [
-                            "ecr:GetAuthorizationToken",
-                            "ecr:BatchCheckLayerAvailability",
-                            "ecr:GetDownloadUrlForLayer",
-                            "ecr:BatchGetImage"
-                        ],
                         "Resource": "*"
                     }]}))
-        if s3_logs_bucket:
-            iam_client.put_role_policy(
-                RoleName=app_role,
-                PolicyName='WriteslogsToStorage',
-                PolicyDocument=json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Action": [
-                            "s3:PutObject"
-                        ],
-                        "Effect": "Allow",
-                        "Resource": [
-                            "arn:aws:s3:::%s/%s/var/log/*" % (
-                                s3_logs_bucket, app_name)
-                        ]
-                    }]}))
-        if s3_uploads_bucket:
-            iam_client.put_role_policy(
-                RoleName=app_role,
-                PolicyName='AccessesUploadedDocuments',
-                PolicyDocument=json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:PutObject",
-                            # XXX Without `s3:GetObjectAcl` and `s3:ListBucket`
-                            # cloud-init cannot run a recursive copy
-                            # (i.e. `aws s3 cp s3://... / --recursive`)
-                            "s3:GetObjectAcl",
-                            "s3:ListBucket"
-                        ],
-                        "Effect": "Allow",
-                        "Resource": [
-                            "arn:aws:s3:::%s" % s3_uploads_bucket,
-                            "arn:aws:s3:::%s/*" % s3_uploads_bucket
-                        ]
-                    }, {
-                        "Action": [
-                            "s3:PutObject"
-                        ],
-                        "Effect": "Disallow",
-                        "Resource": [
-                            "arn:aws:s3:::%s/identities/" % s3_uploads_bucket
-                        ]
-                    }]}))
-        LOGGER.info("%s created IAM role %s", tag_prefix, app_role)
+            if ecr_access_role_arn:
+                iam_client.put_role_policy(
+                    RoleName=app_role,
+                    PolicyName='DeployContainer',
+                    PolicyDocument=json.dumps({
+                        "Version": "2012-10-17",
+                        "Statement": [{
+                            "Effect": "Allow",
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Resource": [
+                                ecr_access_role_arn
+                            ]
+                        }, {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchCheckLayerAvailability",
+                                "ecr:GetDownloadUrlForLayer",
+                                "ecr:BatchGetImage"
+                            ],
+                            "Resource": "*"
+                        }]}))
+            if s3_logs_bucket:
+                iam_client.put_role_policy(
+                    RoleName=app_role,
+                    PolicyName='WriteslogsToStorage',
+                    PolicyDocument=json.dumps({
+                        "Version": "2012-10-17",
+                        "Statement": [{
+                            "Action": [
+                                "s3:PutObject"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                "arn:aws:s3:::%s/%s/var/log/*" % (
+                                    s3_logs_bucket, app_name)
+                            ]
+                        }]}))
+            if s3_uploads_bucket:
+                iam_client.put_role_policy(
+                    RoleName=app_role,
+                    PolicyName='AccessesUploadedDocuments',
+                    PolicyDocument=json.dumps({
+                        "Version": "2012-10-17",
+                        "Statement": [{
+                            "Action": [
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                # XXX Without `s3:GetObjectAcl` and `s3:ListBucket`
+                                # cloud-init cannot run a recursive copy
+                                # (i.e. `aws s3 cp s3://... / --recursive`)
+                                "s3:GetObjectAcl",
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                "arn:aws:s3:::%s" % s3_uploads_bucket,
+                                "arn:aws:s3:::%s/*" % s3_uploads_bucket
+                            ]
+                        }, {
+                            "Action": [
+                                "s3:PutObject"
+                            ],
+                            "Effect": "Disallow",
+                            "Resource": [
+                                "arn:aws:s3:::%s/identities/" % s3_uploads_bucket
+                            ]
+                        }]}))
+        LOGGER.info("%s%s created IAM role %s",
+            "(dryrun) " if dry_run else "", tag_prefix, app_role)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
                 'Code', 'Unknown') == 'EntityAlreadyExists':
@@ -2672,15 +2697,18 @@ def create_app_resources(region_name, app_name, image_name,
         LOGGER.info("%s found IAM instance profile '%s'",
             tag_prefix, instance_profile_arn)
     else:
-        resp = iam_client.create_instance_profile(
-            InstanceProfileName=app_role)
-        instance_profile_arn = resp['InstanceProfile']['Arn']
-        LOGGER.info("%s created IAM instance profile '%s'",
-            tag_prefix, instance_profile_arn)
-        iam_client.add_role_to_instance_profile(
-            InstanceProfileName=app_role,
-            RoleName=app_role)
-        LOGGER.info("%s added IAM instance profile %s to role %s",
+        if not dry_run:
+            resp = iam_client.create_instance_profile(
+                InstanceProfileName=app_role)
+            instance_profile_arn = resp['InstanceProfile']['Arn']
+        LOGGER.info("%s%s created IAM instance profile '%s'",
+            "(dryrun) " if dry_run else "", tag_prefix, instance_profile_arn)
+        if not dry_run:
+            iam_client.add_role_to_instance_profile(
+                InstanceProfileName=app_role,
+                RoleName=app_role)
+        LOGGER.info("%s%s added IAM instance profile %s to role %s",
+            "(dryrun) " if dry_run else "",
             tag_prefix, instance_profile_arn, app_role)
 
     # Find the ImageId
@@ -2749,7 +2777,8 @@ def create_app_resources(region_name, app_name, image_name,
                             'Value': app_prefix
                         }]
                     }],
-                    UserData=user_data)
+                    UserData=user_data,
+                    DryRun=dry_run)
                 instances = resp['Instances']
                 instance_ids = [
                     instance['InstanceId'] for instance in instances]
@@ -2937,12 +2966,18 @@ def create_instances_dbs(region_name, app_name, image_name,
 
 
 def create_instances_webfront(region_name, app_name, image_name,
-                              identities_url=None, company_domain=None,
-                              ldap_host=None, domain_name=None,
+                              identities_url=None,
+                              company_domain=None,
+                              ldap_host=None,
+                              domain_name=None,
                               ssh_key_name=None,
-                              storage_enckey=None, instance_type=None,
-                              web_subnet_id=None, vpc_id=None, vpc_cidr=None,
-                              tag_prefix=None):
+                              storage_enckey=None,
+                              instance_type=None,
+                              web_subnet_id=None,
+                              vpc_id=None,
+                              vpc_cidr=None,
+                              tag_prefix=None,
+                              dry_run=False):
     """
     Create the proxy session server connected to the target group.
     """
@@ -3009,8 +3044,31 @@ def create_instances_webfront(region_name, app_name, image_name,
         image_name, instance_profile_arn=instance_profile_arn,
         ec2_client=ec2_client, region_name=region_name)
 
-    # XXX adds encrypted volume
+    block_devices = [
+        {
+            # `DeviceName` is required and must match expected name otherwise
+            # an extra disk is created.
+            'DeviceName': '/dev/xvda',
+            'Ebs': {
+                'DeleteOnTermination': True,
+    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html
+                'VolumeType': 'gp2',
+                #'Iops' is not supported for `gp2`.
+                'VolumeSize': 8,
+            },
+        },
+    ]
+    if storage_enckey:
+        # XXX Haven't been able to use the key we created but the default
+        #     aws/ebs is OK...
+        for block_device in block_devices:
+            block_device['Ebs'].update({
+                'KmsKeyId': storage_enckey,
+                'Encrypted': True
+            })
+
     resp = ec2_client.run_instances(
+        BlockDeviceMappings=block_devices,
         ImageId=image_id,
         KeyName=ssh_key_name,
         InstanceType=instance_type,
@@ -3030,7 +3088,8 @@ def create_instances_webfront(region_name, app_name, image_name,
                 'Key': 'Prefix',
                 'Value': tag_prefix
             }]}],
-        UserData=user_data)
+        UserData=user_data,
+        DryRun=dry_run)
     instance_ids = [instance['InstanceId'] for instance in resp['Instances']]
     LOGGER.info("%s started ec2 instances %s for '%s'",
                 tag_prefix, instance_ids, app_name)
@@ -3138,7 +3197,8 @@ def create_target_group(region_name, app_name, instance_ids=None,
                         image_name=None, identities_url=None, ssh_key_name=None,
                         instance_type=None,
                         subnet_id=None, vpc_id=None, vpc_cidr=None,
-                        tag_prefix=None):
+                        tag_prefix=None,
+                        dry_run=False):
     """
     Create TargetGroup to forward HTTPS requests to application service.
     """
@@ -3176,7 +3236,8 @@ def create_target_group(region_name, app_name, instance_ids=None,
             identities_url=identities_url, ssh_key_name=ssh_key_name,
             instance_type=instance_type,
             web_subnet_id=subnet_id, vpc_id=vpc_id, vpc_cidr=vpc_cidr,
-            tag_prefix=tag_prefix)
+            tag_prefix=tag_prefix,
+            dry_run=dry_run)
     if instance_ids:
         for _ in range(0, NB_RETRIES):
             # The EC2 instances take some time to be fully operational.
@@ -3282,7 +3343,7 @@ def main(input_args):
 
     tag_prefix = args.prefix
     if not tag_prefix:
-        tag_prefix = os.path.basename(args.config)
+        tag_prefix = os.path.splitext(os.path.basename(args.config))[0]
 
     region_name = config['default'].get('region_name')
 
@@ -3296,13 +3357,7 @@ def main(input_args):
         with open(tls_fullchain_path) as fullchain_file:
             tls_fullchain_cert = fullchain_file.read()
 
-    ssh_key_content = None
     ssh_key_name = config['default'].get('ssh_key_name')
-    if ssh_key_name:
-        with open(os.path.join(os.getenv('HOME'),
-            '.ssh', '%s.pub' % ssh_key_name), 'rb') as ssh_key_obj:
-            ssh_key_content = ssh_key_obj.read()
-
     storage_enckey = config['default'].get('storage_enckey')
 
     s3_default_logs_bucket = config['default'].get('s3_logs_bucket')
@@ -3317,7 +3372,6 @@ def main(input_args):
             tls_priv_key=tls_priv_key,
             tls_fullchain_cert=tls_fullchain_cert,
             ssh_key_name=ssh_key_name,
-            ssh_key_content=ssh_key_content,
             storage_enckey=storage_enckey,
             s3_logs_bucket=s3_default_logs_bucket,
             sally_ip=config['default'].get('sally_ip'),
@@ -3343,6 +3397,7 @@ def main(input_args):
                     tls_fullchain_cert = fullchain_file.read()
 
             # Create the EC2 instances
+            build_ami = bool(config[app_name].get('ami'))
             instance_ids = config[app_name].get('instance_ids')
             if instance_ids:
                 instance_ids = instance_ids.split(',')
@@ -3366,9 +3421,10 @@ def main(input_args):
                         'subnet_id', config['default'].get('subnet_id')),
                     vpc_cidr=config['default']['vpc_cidr'],
                     vpc_id=config['default'].get('vpc_id'),
-                    tag_prefix=tag_prefix)
+                    tag_prefix=tag_prefix,
+                    dry_run=args.dry_run)
 
-            if config[app_name].get('ami'):
+            if build_ami:
                 # If we are creating an AMI
                 create_ami_webfront(
                     region_name,
@@ -3395,7 +3451,8 @@ def main(input_args):
                         'subnet_id', config['default'].get('subnet_id')),
                     vpc_cidr=config['default']['vpc_cidr'],
                     vpc_id=config['default'].get('vpc_id'),
-                    tag_prefix=tag_prefix)
+                    tag_prefix=tag_prefix,
+                    dry_run=args.dry_run)
                 if tls_fullchain_cert and tls_priv_key:
                     create_domain_forward(
                         region_name,

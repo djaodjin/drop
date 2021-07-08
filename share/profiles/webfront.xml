@@ -55,8 +55,6 @@ Name of the machine hosting the LDAP server.
         <extra name="/etc/ssh/sshd_config">
           <PermitRootLogin>no</PermitRootLogin>
           <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
-          <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
-          <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
           <!-- BE CAREFUL: Password authentication is enabled here only
                when we use a sally port to access the web machines. -->
           <PasswordAuthentication>no</PasswordAuthentication>

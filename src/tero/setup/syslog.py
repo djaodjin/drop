@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@ from tero.setup import stageFile
 
 class syslog_ngSetup(setup.SetupTemplate):
 
-    te_templates = { 
+    te_templates = {
         'syslog_te_config_template': {
             'filename': 'syslog-ng.te',
             'comment': 'Configure SELinux to run syslog-ng.',
@@ -119,8 +119,9 @@ log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
             settings={'ForwardToSyslog': "yes"},
             sep='=', context=context)
 
-        setup.postinst.shellCommand(
-            ['rm', '-f', '/etc/systemd/system/syslog.service'])
+        # Make sure we disable rsyslog, we are using sylog-ng here.
+        setup.postinst.shellCommand(['systemctl', 'stop', 'rsyslog.service'])
+        setup.postinst.shellCommand(['systemctl', 'disable', 'rsyslog.service'])
 
         #Install 500 error filter config for docker.log
         _, err500_template_path = stageFile(
@@ -129,16 +130,16 @@ log { source(s_sys); filter(f_5xxERR-hook); destination(d_5xxERR-hook); };
             context)
         with open(err500_template_path, 'w') as err500_template_file:
             err500_template_file.write(self.err500_template['template'])
-        
+
         # Configure SELinux to run syslog-ng and run logrotate executables
         for te_template in self.te_templates:
             syslog_te = os.path.join(
-                os.path.dirname(setup.postinst.postinst_run_path), self.te_templates[te_template]['filename'])
+                os.path.dirname(setup.postinst.postinst_run_path),
+                self.te_templates[te_template]['filename'])
             _, syslog_te_path = stageFile(syslog_te, context)
             with open(syslog_te_path, 'w') as syslog_te_file:
                 syslog_te_file.write(self.te_templates[te_template]['template'])
             setup.postinst.install_selinux_module(syslog_te,
                 self.te_templates[te_template]['comment'])
-            setup.postinst.shellCommand(['systemctl', 'reload', 'syslog-ng'])
 
         return complete

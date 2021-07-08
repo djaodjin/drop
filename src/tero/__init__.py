@@ -1271,11 +1271,14 @@ class BuildGenerator(DependencyGenerator):
         a repository or a patch/package for which the dependencies are not
         complete.
         """
-        targets = []
         dist = CONTEXT.host()
+        tags = [dist]
+        if dist in ALIAS_DISTRIBS:
+            tags += [ALIAS_DISTRIBS[dist]]
+
+        targets = []
         name = variant.project
         if name in self.projects:
-            tags = [dist]
             project = self.as_project(name)
             if project.repository:
                 self.repositories |= set([name])
@@ -1287,15 +1290,17 @@ class BuildGenerator(DependencyGenerator):
                     prereqs = [update_s] + targets
                 self.add_config_make(variant, project.repository.configure,
                     project.repository.make, prereqs)
-            elif dist in project.packages:
-                self.packages |= set([name])
-                targets = self.add_setup(variant.target,
-                    project.packages[dist].prerequisites(tags))
-                install_step = self.add_install(name, variant.target)
-                # package files won't install without prerequisites already
-                # on the local system.
-                install_step.prerequisites = (targets
-                    + install_step.prerequisites)
+            else:
+                for dist in tags:
+                    if dist in project.packages:
+                        self.packages |= set([name])
+                        targets = self.add_setup(variant.target,
+                            project.packages[dist].prerequisites(tags))
+                        install_step = self.add_install(name, variant.target)
+                        # package files won't install without prerequisites already
+                        # on the local system.
+                        install_step.prerequisites = (targets
+                            + install_step.prerequisites)
         else:
             # We leave the native host package manager to deal with this one...
             self.packages |= set([name])
@@ -2346,7 +2351,7 @@ class PipInstallStep(InstallStep):
             admin = True
             noexecute = context.nonative
         commands = []
-        if version < 20:
+        if version and version[0] < 20:
             commands += [([pip, 'install', '--upgrade', 'pip'],
                 admin, noexecute)]
         if packages:

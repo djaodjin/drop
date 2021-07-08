@@ -47,7 +47,7 @@ def create_install_script(dgen, context, install_top):
     # a simple archive of the configuration files and postinst script.
     prev = os.getcwd()
     share_dir = os.path.join(install_top, 'share')
-    project_name = os.path.basename(context.value('modEtcDir'))
+    install_name = os.path.basename(context.value('modEtcDir'))
     package_dir = context.obj_dir(os.path.basename(context.value('modEtcDir')))
     if not os.path.exists(package_dir):
         os.makedirs(package_dir)
@@ -55,7 +55,7 @@ def create_install_script(dgen, context, install_top):
     if make_simple_archive:
         os.chdir(context.value('modEtcDir'))
         package_path = os.path.join(package_dir,
-            project_name + '-' + str(__version__) + '.tar.bz2')
+            install_name + '-' + str(__version__) + '.tar.bz2')
         archived = []
         for dirname in ['etc', 'usr', 'var']:
             if os.path.exists(dirname):
@@ -87,7 +87,7 @@ def create_install_script(dgen, context, install_top):
     for package in fetch_packages.fetches:
         tero.EXCLUDE_PATS += [os.path.basename(package).split('_')[0]]
 
-    obj_dir = context.obj_dir(project_name)
+    obj_dir = context.obj_dir(install_name)
     install_script_path = os.path.join(obj_dir, 'install.sh')
     install_script = tero.setup.create_install_script(
         install_script_path, context=context)
@@ -97,10 +97,9 @@ def create_install_script(dgen, context, install_top):
 set -x
 ''')
     deps = ordered_prerequisites(dgen, tero.INDEX)
-    for dep in tero.EXCLUDE_PATS + [project_name]:
-        if dep in deps:
-            deps.remove(dep)
     for step in [dep for dep in deps if hasattr(dep, 'install_commands')]:
+        if step.project in tero.EXCLUDE_PATS + dgen.roots:
+            continue
         cmds = step.install_commands(step.get_installs(), tero.CONTEXT)
         for cmd, admin, noexecute in cmds:
             install_script.script.write("%s\n" % ' '.join(cmd))
@@ -111,7 +110,7 @@ set -x
         or not os.path.samefile(package_path, local_package_path)):
         sys.stdout.write('copy %s to %s\n' % (package_path, local_package_path))
         shutil.copy(package_path, local_package_path)
-    package_files = [os.path.join(project_name, package_name)]
+    package_files = [os.path.join(install_name, package_name)]
     for name in fetch_packages.fetches:
         fullname = context.local_dir(name)
         package = os.path.basename(fullname)
@@ -123,19 +122,21 @@ set -x
                        % (context.host(), package): None})
         shutil.copy(fullname, os.path.join(obj_dir, package))
         install_script.install(package, force=True)
-        package_files += [os.path.join(project_name, package)]
+        package_files += [os.path.join(install_name, package)]
     install_script.install(package_name, force=True,
                           postinst_script=tero.setup.postinst.postinst_path)
     install_script.write('echo done.\n')
     install_script.script.close()
     shell_command(['chmod', '755', install_script_path])
 
+    package_path = os.path.join(
+        os.path.dirname(obj_dir), install_name + '.tar.bz2')
     prev = os.getcwd()
     os.chdir(os.path.dirname(obj_dir))
-    shell_command(['tar', 'jcf', project_name + '.tar.bz2',
-                   os.path.join(project_name, 'install.sh')] + package_files)
+    shell_command(['tar', 'jcf', package_path,
+        os.path.join(install_name, 'install.sh')] + package_files)
     os.chdir(prev)
-    return os.path.join(os.path.dirname(obj_dir), project_name + '.tar.bz2')
+    return package_path
 
 
 def create_postinst(start_timestamp, setups, context=None):
