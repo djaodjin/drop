@@ -2283,7 +2283,7 @@ class NpmInstallStep(InstallStep):
             admin = False
             noexecute = False
             return [([self._manager(context), 'install', '-g',
-                '--scripts-prepend-node-path',
+                '--scripts-prepend-node-path', 'true',
                 '--cache', os.path.join(context.value('buildTop'), '.npm'),
                 '--tmp', os.path.join(context.value('buildTop'), 'tmp'),
                 '--prefix', context.value('installTop')] + packages,
