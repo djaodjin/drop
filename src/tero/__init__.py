@@ -3394,16 +3394,17 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
             results.append((name_pat, absolute_path))
             continue
         link_name, suffix = link_build_name(name_pat, 'bin', variant)
+        linked_path = os.path.realpath(link_name)
         if variant:
             log_interactive("%s/" % variant)
         log_interactive("%s... " % name_pat)
         candidate = None
         if (os.path.islink(link_name) and
-            os.path.exists(os.path.realpath(link_name))):
+            os.path.exists(linked_path)):
             # If we already have a symbolic link that points to a valid
             # file in the binBuildDir, we will assume it is the one to use
             # in order to cut off re-computing things that hardly change.
-            candidate = os.path.realpath(link_name)
+            candidate = linked_path
             results.append((name_pat, candidate))
             log_info(found_bin_suffix(candidate, variant=variant))
             continue

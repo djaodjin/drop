@@ -50,9 +50,9 @@ Example:
     $ diff -u ~/.aws/djaoapp
     +ssh_key_name = ec2-production-key
 
-4. Run cloud.py
+4. Run dcloud
 
-    $ python src/tero/clouds/awscloud.py --dry-run
+    $ dcloud --dry-run
 
 
 Add a postgresql database
@@ -88,9 +88,9 @@ Add a postgresql database
     +[dbs-1]
     +db_password = [*** REDACTED ***]
 
-4. Run cloud.py
+4. Run dcloud
 
-    $ python src/tero/clouds/awscloud.py --skip-create-network --dry-run
+    $ dcloud --skip-create-network --dry-run
 
 
 (When using RDS)
@@ -129,6 +129,6 @@ s3://__identities_bucket__/identities/__region_name__/djaoapp-__tag_name__/var/w
     identities_url = s3://__identities_bucket__/identities/__region_name__/djaoapp-__tag_name__
     ami = 1
 
-3. Run cloud.py
+3. Run dcloud
 
-    $ python src/tero/clouds/awscloud.py --skip-create-network --dry-run
+    $ dcloud --skip-create-network --dry-run

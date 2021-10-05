@@ -38,10 +38,18 @@ class dockerSetup(setup.SetupTemplate):
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
-        setup.modify_config('/etc/sysconfig/docker', settings={'OPTIONS': '--selinux-enabled --log-driver syslog --log-opt labels="{{.ID}}" --log-opt tag=".{{.ID}}" --signature-verification=false\'', 'LOGROTATE': 'false\''}, sep='=\'', context=context)
-        setup.postinst.shellCommand(
-                ['LIVECONTAINERS=`docker', 'ps', '--format={{.Names}}`;', 'systemctl', 'restart', 'docker', '&&', 'docker', 'start', '$LIVECONTAINERS'])
-        ### The previous line needs to be small shell script that records the name of the currently running instances into a variable, then uses those name to start the containters after docker gets restarted. Restarting them by name won't work.
+        setup.modify_config('/etc/sysconfig/docker', settings={
+            'OPTIONS': '--selinux-enabled --log-driver syslog --log-opt labels="{{.ID}}" --log-opt tag=".{{.ID}}" --signature-verification=false\'',
+            'LOGROTATE': 'false\''
+        }, sep='=\'', context=context)
+        # The following command is useful to restart the running containers
+        # after the docker daemon is itself restarted.
+        #
+        #     LIVECONTAINERS=`docker ps --format={{.Names}}`; systemctl restart docker.service && docker start $LIVECONTAINERS
+        #
+        # XXX We should technically put the above command in the `daemons` variable.
+        # ps. Restarting containers by name won't work.
+
         # XXX
         # $ sudo groupadd docker
         # $ sudo usermod -a -G docker $USER

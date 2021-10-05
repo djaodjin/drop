@@ -96,7 +96,7 @@ Name of the machine hosting the LDAP server.
       <!-- reverse proxy -->
       <dep name="nginx">
         <bin>nginx</bin>
-        <extra name="conf.d/%(domainName)s.conf">
+        <extra name="conf.d/00_djaoapp.conf">
           <domainName>%(domainName)s</domainName>
           <port>443</port>
           <webapp>
@@ -142,6 +142,10 @@ Name of the machine hosting the LDAP server.
       </dep>
       <dep name="wget">
         <bin>wget</bin>
+      </dep>
+      <dep name="sqlite3-django22" excludes="3.7.17">
+        <!-- because Django2.2 requires at least version 3.8 of sqlite3 -->
+        <bin>sqlite3</bin>
       </dep>
     </package>
     <package name="Fedora">
@@ -227,7 +231,7 @@ Name of the machine hosting the LDAP server.
       <!-- reverse proxy -->
       <dep name="nginx">
         <bin>nginx</bin>
-        <extra name="conf.d/%(domainName)s.conf">
+        <extra name="conf.d/00_djaoapp.conf">
           <domainName>%(domainName)s</domainName>
           <port>443</port>
           <webapp>
@@ -276,14 +280,22 @@ Name of the machine hosting the LDAP server.
       </dep>
     </package>
   </project>
+  <project name="sqlite3-django22">
+    <package name="RedHat">
+      <fetch>
+        <url>https://www.djaodjin.com/pub/redhat/linux/updates/7/x86_64/sqlite-3.24.0-8.el7.1.x86_64.rpm</url>
+        <sha1>22ba7b8f4b0cf7d026bdfe73b6558da1e429e04d</sha1>
+      </fetch>
+    </package>
+  </project>
   <project name="openldap-clients-with-openssl">
     <package name="Fedora">
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
+        <url>https://www.djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
         <sha1>6f6428deee881efa18003482d5353587fbf35b5b</sha1>
       </fetch>
       <fetch>
-        <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-clients-2.4.44-10.fc25.x86_64.rpm</url>
+        <url>https://www.djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-clients-2.4.44-10.fc25.x86_64.rpm</url>
         <sha1>dbcfa8f4ceda5b31c17bcab5484f2de7c3aec8ff</sha1>
       </fetch>
     </package>

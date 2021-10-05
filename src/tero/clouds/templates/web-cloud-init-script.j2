@@ -12,17 +12,22 @@ OWNER=ec2-user
 
 # Install necessary public packages to bootstrap configuration
 if [ -f /usr/bin/dnf ]; then
+    OWNER=fedora
     [ -f /usr/bin/aws ] || /usr/bin/dnf -y install awscli
+    [ -f /usr/bin/bzip2 ] || /usr/bin/dnf -y install bzip2
     [ -f /usr/bin/make ] || /usr/bin/dnf -y install make
 else
-    if [ ! -f /usr/bin/python3 ]; then
-        if [ ! -d /etc/yum.repos.d/epel.repo ]; then
-            if [ "$(grep "CentOS" /etc/system-release)" == "" ]; then
-                # We have to enable the EPEL repo to install podofo.
-                amazon-linux-extras install epel -y
-            else
+    if [ "$(grep "Amazon" /etc/system-release)" != "" ]; then
+        # We have to enable the EPEL repo to install podofo.
+        if [ ! -f /etc/yum.repos.d/epel.repo ]; then
+            amazon-linux-extras install epel -y
+        fi
+    fi
+    if [ "$(grep "CentOS" /etc/system-release)" != "" ]; then
+        OWNER=centos
+        if [ ! -f /usr/bin/python3 ]; then
+            if [ ! -f /etc/yum.repos.d/epel.repo ]; then
                 /usr/bin/yum -y install epel-release
-                OWNER=centos
             fi
         fi
         # Without making the fast cache, python36 is sometimes not found on mirror
@@ -128,18 +133,20 @@ if [ -d ${siteTop} ] ; then
     if [ ! -f /usr/lib/systemd/system/djaoapp.service ]; then
         echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djaoapp
         echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djaoapp
+        echo "LD_LIBRARY_PATH=/usr/local/lib64" >> ${siteTop}/etc/sysconfig/djaoapp
         /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djaoapp
-        # We make sure the .pid file can be created by gunicorn and systemd
-        # service can load.
-        /usr/bin/chown ${OWNER}:${OWNER} ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run
         /usr/bin/mkdir -p /var/log/gunicorn
         /usr/bin/chown ${USER}:${USER} /var/log/gunicorn
         /usr/bin/rm -rf ${siteTop}/var/log/gunicorn
         pushd ${siteTop}/var/log
         /usr/bin/ln -s /var/log/gunicorn
         popd
-        # Insures we can upload themes
         /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
+
+        # We make sure the .pid file can be created by gunicorn and systemd
+        # service can load.
+        /usr/bin/chown ${USER}:${USER} ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run /var/log/gunicorn
+        # Insures we can upload themes
         /usr/bin/chown ${USER}:${USER} ${siteTop}/reps/djaoapp/htdocs ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
         # and that nginx can access the static assets
         /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' '${siteTop}/reps/djaoapp/htdocs(.*)'
@@ -151,10 +158,6 @@ if [ -d ${siteTop} ] ; then
 
     # Configure nginx proxy
     if [ ! -f /etc/nginx/conf.d/proxy_djaoapp.conf ]; then
-        # We make an initial sqlite3 database so the server renders a page
-        # instead of a 500 error when the AMI just booted with no configuration.
-        cd ${siteTop}/reps/djaoapp
-        ../../bin/python manage.py migrate --run-syncdb
 
         # Rewrite nginx config file to avoid redirects loops because no https
         /usr/bin/cat << EOF >> /etc/nginx/conf.d/proxy_djaoapp.conf
