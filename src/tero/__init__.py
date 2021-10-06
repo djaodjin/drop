@@ -1023,9 +1023,12 @@ class DependencyGenerator(Unserializer):
         setup_name = SetupStep.genid(project_name, target)
         if project_name in self.projects:
             project = self.projects[project_name]
-            if CONTEXT.host() in project.packages:
+            dist = CONTEXT.host()
+            if dist not in project.packages:
+                dist = ALIAS_DISTRIBS.get(dist, dist)
+            if dist in project.packages:
                 filenames = []
-                flavor = project.packages[CONTEXT.host()]
+                flavor = project.packages[dist]
                 for remote_path in flavor.update.fetches:
                     filenames += [CONTEXT.local_dir(remote_path)]
                 install_step = create_package_file(project_name, filenames)
@@ -4399,7 +4402,11 @@ def install(packages, dbindex):
             # *name* is definitely handled by the local system package manager
             # whenever there is no associated project.
             if name in handler.projects:
-                package = handler.as_project(name).packages[CONTEXT.host()]
+                project = handler.as_project(name)
+                dist = CONTEXT.host()
+                if dist not in project.packages:
+                    dist = ALIAS_DISTRIBS.get(dist, dist)
+                package = project.packages.get(dist)
                 if package:
                     package_files.insert(create_package_file(name,
                                                           package.fetches()))

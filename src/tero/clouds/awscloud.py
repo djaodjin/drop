@@ -2392,8 +2392,7 @@ def create_ami_webfront(region_name, app_name, instance_id, ssh_key_name=None,
     """
     if not sally_key_file:
         sally_key_file = '$HOME/.ssh/%s' % ssh_key_name
-    if not sally_port:
-        sally_port = 22
+    sally_port = int(sally_port) if sally_port else 22
     instance_domain = None
     ec2_client = boto3.client('ec2', region_name=region_name)
     resp = ec2_client.describe_instances(
@@ -2410,7 +2409,8 @@ def create_ami_webfront(region_name, app_name, instance_id, ssh_key_name=None,
         requests.get('http://%s/' % instance_domain, timeout=5)
         resp = client.create_image(InstanceId=instance_id, Name=app_name)
         LOGGER.info("creating image '%s'", resp['ImageId'])
-    except requests.exceptions.Timeout as err:
+    except (requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout) as err:
         LOGGER.error(err)
 
 

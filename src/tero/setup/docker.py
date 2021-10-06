@@ -39,7 +39,7 @@ class dockerSetup(setup.SetupTemplate):
             # files here.
             return complete
         setup.modify_config('/etc/sysconfig/docker', settings={
-            'OPTIONS': '--selinux-enabled --log-driver syslog --log-opt labels="{{.ID}}" --log-opt tag=".{{.ID}}" --signature-verification=false\'',
+            'OPTIONS': '--selinux-enabled --log-driver syslog --log-opt labels="{{.ID}}" --log-opt tag=".{{.ID}}"\'',
             'LOGROTATE': 'false\''
         }, sep='=\'', context=context)
         # The following command is useful to restart the running containers

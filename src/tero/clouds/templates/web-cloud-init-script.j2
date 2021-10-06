@@ -149,11 +149,16 @@ if [ -d ${siteTop} ] ; then
         # Insures we can upload themes
         /usr/bin/chown ${USER}:${USER} ${siteTop}/reps/djaoapp/htdocs ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
         # and that nginx can access the static assets
-        /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' '${siteTop}/reps/djaoapp/htdocs(.*)'
+        dirpath="${siteTop}/reps/djaoapp/htdocs(.*)"
+        /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' ${dirpath}
         /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp
 
         /usr/bin/cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
         /usr/bin/systemctl enable djaoapp
+    fi
+    # move the database where the config files have been configured with.
+    if [ -f ${siteTop}/reps/djaoapp/db.sqlite ]; then
+        /usr/bin/mv ${siteTop}/reps/djaoapp/db.sqlite ${siteTop}/var/db/djaodjin.sqlite
     fi
 
     # Configure nginx proxy
