@@ -118,6 +118,8 @@ if [ "$1" == "%(user)s" ] ; then
     exit 1
 fi
 exec /usr/libexec/openssh/ssh-ldap-helper -s "$1"
-""" % {'user': "centos"})
+""" % {
+    'user': "ec-user" if context.host() == 'Amazon' else context.host().lower()
+})
         postinst.shellCommand(['chmod', '755', config_path])
         return complete

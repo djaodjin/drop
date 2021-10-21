@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2020, Djaodjin Inc.
+# Copyright (c) 2021, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -284,14 +284,14 @@ def download_updated_logs(lognames,
                 logname, item['LastModified'], update=True):
             s3_key = s3_resource.Object(bucket, keyname)
             if not s3_key.storage_class or s3_key.storage_class == 'STANDARD':
-                sys.stderr.write("download %s to %s\n" % (
+                LOGGER.info("download %s to %s\n" % (
                     keyname, os.path.abspath(filename)))
                 if not os.path.isdir(os.path.dirname(filename)):
                     os.makedirs(os.path.dirname(filename))
                 s3_key.download_file(filename)
                 downloaded += [filename]
             else:
-                sys.stderr.write("skip %s (on %s storage)\n" % (
+                LOGGER.info("skip %s (on %s storage)\n" % (
                     keyname, s3_key.storage_class))
 
     # It is possible some files were already downloaded as part of a previous
@@ -329,7 +329,7 @@ def upload_log(s3_location, filename, logsuffix=None):
             logsuffix = logsuffix[1:]
     keyname = as_keyname(
         filename, logsuffix=logsuffix, prefix=s3_prefix)
-    sys.stderr.write("Upload %s ... to s3://%s/%s\n"
+    LOGGER.info("Upload %s ... to s3://%s/%s\n"
         % (filename, s3_bucket, keyname))
     s3_client = boto3.client('s3')
     s3_client.upload_file(filename, s3_bucket, keyname, ExtraArgs=headers)
