@@ -2742,20 +2742,21 @@ class GitRepository(Repository):
             self.url = context.remote_src_path(self.url)
         if not name:
             url_parts = _urlparse(self.url)
-            normallized_url = _urlunparse((url_parts.scheme, url_parts.netloc,
+            normalized_url = _urlunparse((url_parts.scheme, url_parts.netloc,
                 os.path.normpath(url_parts.path), url_parts.params,
                 url_parts.query, url_parts.fragment))
             prefix = context.value('remoteSrcTop')
             if not prefix.endswith(':') and not prefix.endswith(os.sep):
                 prefix = prefix + os.sep
-            name = normallized_url.replace(prefix, '')
-            if name == normallized_url:
+            if not normalized_url.startwith(prefix):
                 # The url is not inside `remoteSrcTop`,
                 # let's try `remoteSiteTop`.
+                log_info("warning: '%s' outside remoteSrcTop '%s'" % (
+                    normalized_url, prefix))
                 prefix = context.value('remoteSiteTop')
                 if not prefix.endswith(':') and not prefix.endswith(os.sep):
                     prefix = prefix + os.sep
-                name = normallized_url.replace(prefix, '')
+            name = normalized_url.replace(prefix, '')
         if name.endswith('.git'):
             name = name[:-4]
         local = context.src_dir(name)
@@ -4178,11 +4179,6 @@ def find_rsync(host, context=None, relative=True, admin=False,
         cmdline += ['--rsync-path', '/usr/bin/rsync']
     return cmdline, prefix
 
-def find_virtualenv(context, version=3):
-    virtual_package = 'python-virtualenv'
-    find_boot_bin(r"(virtualenv)(-%d\.\d)?" % version,
-        package=virtual_package, context=context)
-    return os.path.join(context.bin_build_dir(), 'virtualenv')
 
 def name_pat_regex(name_pat):
     # Many C++ tools contain ++ in their name which might trip
@@ -5487,8 +5483,8 @@ def pub_build(args, graph=False, clean=False,
     NO_VIRTUALENV = novirtualenv
     pip_executable = os.path.join(install_top, 'bin', 'pip')
     if not novirtualenv and not os.path.isfile(pip_executable):
-        shell_command([find_virtualenv(CONTEXT, 2 if python2 else 3),
-            '--system-site-packages', site_top])
+        shell_command([
+            sys.executable, '-m', 'venv', '--system-site-packages', site_top])
         link_pat_path(
             'python', os.path.join(CONTEXT.value('binDir'), 'python'), 'bin')
         # Force upgrade of setuptools otherwise html5lib install complains.
