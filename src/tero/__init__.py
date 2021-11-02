@@ -1274,11 +1274,7 @@ class BuildGenerator(DependencyGenerator):
         a repository or a patch/package for which the dependencies are not
         complete.
         """
-        dist = CONTEXT.host()
-        tags = [dist]
-        if dist in ALIAS_DISTRIBS:
-            tags += [ALIAS_DISTRIBS[dist]]
-
+        tags = [CONTEXT.host()]
         targets = []
         name = variant.project
         if name in self.projects:
@@ -1295,6 +1291,8 @@ class BuildGenerator(DependencyGenerator):
                     project.repository.make, prereqs)
             else:
                 for dist in tags:
+                    if dist not in project.packages and dist in ALIAS_DISTRIBS:
+                        dist = ALIAS_DISTRIBS[dist]
                     if dist in project.packages:
                         self.packages |= set([name])
                         targets = self.add_setup(variant.target,
@@ -2395,13 +2393,16 @@ class RpmInstallStep(InstallStep):
 
     @staticmethod
     def install_commands(managed, context):
-        # --nodeps because rpm looks stupid and can't figure out that
-        # the vcd package provides the libvcd.so required by the executable.
         if managed:
             admin = True
             noexecute = context.nonative
+            # --nodeps because rpm looks stupid and can't figure out that
+            # the vcd package provides the libvcd.so required by the executable.
             return [(['rpm', '-i', '--force'] + managed + ['--nodeps'],
                 admin, noexecute)]
+            # XXX `yum localinstall` will also install native dependencies,
+            # necessary for google-chrome-stable.
+            # return [(['yum', 'localinstall'] + managed, admin, noexecute)]
         return []
 
 
@@ -2748,7 +2749,7 @@ class GitRepository(Repository):
             prefix = context.value('remoteSrcTop')
             if not prefix.endswith(':') and not prefix.endswith(os.sep):
                 prefix = prefix + os.sep
-            if not normalized_url.startwith(prefix):
+            if not normalized_url.startswith(prefix):
                 # The url is not inside `remoteSrcTop`,
                 # let's try `remoteSiteTop`.
                 log_info("warning: '%s' outside remoteSrcTop '%s'" % (
@@ -4180,6 +4181,15 @@ def find_rsync(host, context=None, relative=True, admin=False,
     return cmdline, prefix
 
 
+def find_virtualenv(context, version=3):
+    if version >= 3:
+        return [sys.executable, '-m', 'venv']
+    virtual_package = 'python-virtualenv'
+    find_boot_bin(r"(virtualenv)(-%d\.\d)?" % version,
+        package=virtual_package, context=context)
+    return os.path.join(context.bin_build_dir(), 'virtualenv')
+
+
 def name_pat_regex(name_pat):
     # Many C++ tools contain ++ in their name which might trip
     # the regular expression parser.
@@ -5483,8 +5493,8 @@ def pub_build(args, graph=False, clean=False,
     NO_VIRTUALENV = novirtualenv
     pip_executable = os.path.join(install_top, 'bin', 'pip')
     if not novirtualenv and not os.path.isfile(pip_executable):
-        shell_command([
-            sys.executable, '-m', 'venv', '--system-site-packages', site_top])
+        shell_command([find_virtualenv(CONTEXT, 2 if python2 else 3),
+            '--system-site-packages', site_top])
         link_pat_path(
             'python', os.path.join(CONTEXT.value('binDir'), 'python'), 'bin')
         # Force upgrade of setuptools otherwise html5lib install complains.
