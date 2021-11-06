@@ -37,6 +37,9 @@ def main(args):
         + str(__version__))
     parser.add_argument('--version', action='version',
         version='%(prog)s ' + str(__version__))
+    parser.add_argument('--quiet', action='store_true',
+        dest='quiet', default=False,
+        help='Quiet mode. Only write on stderr when there is an error')
     parser.add_argument('--last-run', action='store',
         dest='last_run', default=None,
         help='Store a map of {logname: last_date} to use when deciding'\
@@ -62,6 +65,11 @@ def main(args):
         parser.print_help()
         return 1
 
+    if options.quiet:
+        logging.basicConfig(level=logging.ERROR)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
     lognames = options.lognames
     logsuffix = options.logsuffix
     s3_location = options.location
@@ -70,11 +78,11 @@ def main(args):
     s3_prefix = '/'.join(parts[1:])
     to_s3 = not options.download
     if to_s3:
-        sys.stdout.write(
+        LOGGER.info(
             "Upload rotated logs for %s to bucket '%s' under prefix '%s'\n"
             % (' '.join(lognames), s3_bucket, s3_prefix))
     else:
-        sys.stdout.write(
+        LOGGER.info(
             "Download rotated logs for %s from bucket '%s' under prefix '%s'\n"
             % (' '.join(lognames), s3_bucket, s3_prefix))
 
