@@ -68,7 +68,7 @@ def main(args):
     if options.quiet:
         logging.basicConfig(level=logging.ERROR)
     else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(format='%(message)s', level=logging.INFO)
 
     lognames = options.lognames
     logsuffix = options.logsuffix
