@@ -1,4 +1,4 @@
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,10 +24,10 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import argparse, datetime, gzip, itertools, json, logging, re, os, os.path, sys
+import argparse, datetime, decimal, gzip, itertools, json, logging, re, os
+import os.path, sys
 
-import six
-import pytz
+import requests, pytz, six
 
 from tero import __version__
 
@@ -53,6 +53,18 @@ class FixedOffset(datetime.tzinfo):
         return datetime.timedelta(0)
     def __repr__(self):
         return 'FixedOffset(%d)' % (self.utcoffset().total_seconds() // 60)
+
+
+class JSONEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        #pylint: disable=method-hidden,arguments-differ
+        # `arguments-differ`: parameter is called `o` in json.JSONEncoder.
+        if hasattr(obj, 'isoformat'):
+            return obj.isoformat()
+        if isinstance(obj, decimal.Decimal):
+            return float(obj)
+        return super(JSONEncoder, self).default(obj)
 
 
 def get_last_modified(item):
@@ -113,7 +125,13 @@ def generate_regex(format_string, var_regex, regexps):
     return re.compile(full_regex)
 
 
-class NginxLogParser(object):
+class LogParser(object):
+
+    def parse(self, line, writer=None):
+        return None
+
+
+class NginxLogParser(LogParser):
     """
     We make sure nginx and gunicorn access logs have the same format.
     """
@@ -148,14 +166,14 @@ class NginxLogParser(object):
         self.format_vars = re.findall(var_regex, format_string)
         self.regex = generate_regex(format_string, var_regex, regexps)
 
-    def parse(self, to_parse):
-        match = self.regex.match(to_parse)
-        if match:
-            parsed = dict(zip(self.format_vars, match.groups()))
-        else:
-            return None
+    def parse(self, line, writer=None):
+        match = self.regex.match(line)
+        if not match:
+            raise ValueError("'%s' does not match regex %s" % (
+                line.replace("'", "\\'"), self.regex))
 
-        parsed = {k[1:]: v for k, v in six.iteritems(parsed)}
+        parsed = {k[1:]: v for k, v in six.iteritems(
+            dict(zip(self.format_vars, match.groups())))}
 
         field_types = {
             'status' : int,
@@ -181,31 +199,185 @@ class NginxLogParser(object):
         return parsed
 
 
-class JsonEventParser(object):
+class PythonExceptionLogParser(LogParser):
     """
-    Application logs
+    Python Exception application logs
     """
+    EXCEPTION_START = 0
+    TRACEBACK_START = 1
+    FIRST_FILE_LINENO = 2
+    FILE_LINENO = 3
+    STATEMENT = 4
+    EXCEPTION_CLASS = 5
+    EXCEPTION_END = 6
 
-    @staticmethod
-    def parse(to_parse):
-        try:
-            to_parse = to_parse[to_parse.find('{'):]
-            event = json.loads(to_parse)
-            field_types = {
-                'status' : int,
-                'body_bytes_sent': convert_bytes_sent,
-                'time_local': parse_date,
-                'http_x_forwarded_for': split_on_comma
-            }
-            for key, convert in six.iteritems(field_types):
-                if key in event:
-                    event[key] = convert(event[key])
-        except ValueError:
-            event = None
+    def __init__(self):
+        self.exception_start_pat = re.compile(r"ERROR (?P<remote_addr>.+) (?P<"\
+r"username>.+) \[(?P<asctime>.+)\] Internal Server Error: (?P<http_path>.+) \""\
+r"(?P<http_user_agent>.+)\"")
+        self.traceback_start_pat = re.compile(
+            r"^Traceback \(most recent call last\):")
+        self.file_lineno_pat = re.compile(r"\s*File \"(?P<filename>.+)\", line"\
+r" (?P<lineno>\d+), in (?P<function>\S+)")
+        self.exception_class_pat = re.compile(
+            r"^(?P<exception_type>\S+):\s+(?P<exception_descr>.*)")
+        self.state = self.EXCEPTION_START
+        self.msg = None
+
+    def parse(self, line, writer=None):
+        event = None
+        if self.state == self.EXCEPTION_START:
+            look = self.exception_start_pat.match(line)
+            if look:
+                self.msg = {
+                    'log_level': "ERROR",
+                    'asctime': look.group('asctime'),
+                    'remote_addr': look.group('remote_addr'),
+                    'username': look.group('username'),
+                    'http_path': look.group('http_path'),
+                    'http_user_agent': look.group('http_user_agent'),
+                    'frames': []
+                    }
+                self.state = self.TRACEBACK_START
+        elif self.state == self.TRACEBACK_START:
+            look = self.traceback_start_pat.match(line)
+            if look:
+                self.state = self.FILE_LINENO
+        elif self.state == self.FILE_LINENO:
+            look = self.file_lineno_pat.match(line)
+            if look:
+                self.msg['frames'] += [{
+                    'filename': look.group('filename'),
+                    'lineno': int(look.group('lineno')),
+                    'function': look.group('function')
+                }]
+                self.state = self.STATEMENT
+            else:
+                look = self.exception_class_pat.match(line)
+                if look:
+                    self.msg.update({
+                        'exception_type': look.group('exception_type'),
+                        'exception_descr': look.group('exception_descr')
+                    })
+                    self.state = self.EXCEPTION_END
+        elif self.state == self.STATEMENT:
+            self.msg['frames'][-1].update({
+                'context_line': line.strip()
+            })
+            self.state = self.FILE_LINENO
+
+        if self.state == self.EXCEPTION_END:
+            event = self.msg
+            if writer:
+                writer.write(json.dumps(event))
+            self.msg = None
+            self.state = self.EXCEPTION_START
+
         return event
 
 
-def error_event(fname, key, reason, extra=None):
+class JsonEventParser(PythonExceptionLogParser):
+    """
+    JSON-formatted (deployutils.apps.django.logging.JSONFormatter) application
+    logs
+    """
+
+    def parse(self, line, writer=None):
+        event = None
+        if self.state == self.EXCEPTION_START:
+            candidate_event_start = line.find('{')
+            if candidate_event_start >= 0:
+                line = line[candidate_event_start:]
+                event = json.loads(line)
+                field_types = {
+                    'status' : int,
+                    'body_bytes_sent': convert_bytes_sent,
+                    'time_local': parse_date,
+                    'http_x_forwarded_for': split_on_comma
+                }
+                for key, convert in six.iteritems(field_types):
+                    if key in event:
+                        event[key] = convert(event[key])
+                return event
+        # We can't find an event, so let's try to parse an Exception.
+        return super(JsonEventParser, self).parse(line, writer=writer)
+
+
+class EventWriter(object):
+
+    def write(self, event):
+        sys.stdout.write(json.dumps(event, indent=2, cls=JSONEncoder))
+        sys.stdout.write('\n')
+
+
+class GitLabEventWriter(EventWriter):
+
+    def __init__(self, api_endpoint, token, default_project_name=None):
+        self.filter_processed_events = False
+        self.api_endpoint = api_endpoint
+        self.token = token
+        self.default_project_name = default_project_name
+
+    def write(self, event):
+        source_event = event.get('_source', {})
+        if source_event.get('exception_type'):
+            auth_headers = {'PRIVATE-TOKEN': self.token}
+            project_name = source_event.get('host', self.default_project_name)
+            project_search_api_endpoint = "%s/projects" % self.api_endpoint
+            if project_name:
+                project_search_api_endpoint += '?search=%s' % project_name
+            resp = requests.get(project_search_api_endpoint,
+                headers=auth_headers)
+            resp_data = resp.json()
+            project_id = resp_data[0].get('id')
+            issue_api_endpoint = "%s/projects/%d/issues" % (
+                self.api_endpoint, project_id)
+            http_method = source_event.get('http_method', 'GET')
+            http_path = source_event.get('http_path')
+            title = "%s %s" % (http_method, http_path)
+            resp = requests.get(
+                issue_api_endpoint + '?search=%s' % title.replace(' ', '+'),
+                headers=auth_headers)
+            resp_data = resp.json()
+            if resp_data:
+                issue_data = resp_data[0]
+            else:
+                issue_data = {}
+            issue_iid = issue_data.get('iid')
+            if not issue_iid:
+                resp = requests.post(issue_api_endpoint,
+                    data={
+                        "issue_type": "incident",
+                        "title": title
+                    },
+                    headers=auth_headers)
+                issue_data = resp.json()
+                issue_iid = issue_data.get('iid')
+            else:
+                requests.put(issue_api_endpoint + str(issue_iid),
+                    data={'state_event': 'reopen'},
+                    headers=auth_headers)
+            note = "**Exception**: %s\n" % source_event.get('exception_type')
+            note += "```\nTraceback (most recent call last):\n"
+            for frame in source_event.get('frames'):
+                note += "  File \"%s\", line %d, in %s\n" % (
+                    frame.get('filename'), frame.get('lineno'),
+                    frame.get('function'))
+                note += "    %s\n" % frame.get('context_line')
+            note += "```\n"
+            affected = source_event.get('username')
+            if affected:
+                note += "**Affected user**: %s" % affected
+            LOGGER.info("update issue %s/%d", issue_api_endpoint, issue_iid)
+            resp = requests.post(issue_api_endpoint + "/%d/notes" % issue_iid,
+                data={'body': note},
+                headers=auth_headers)
+        if not (self.filter_processed_events and
+            source_event.get('exception_type')):
+            super(GitLabEventWriter, self).write(event)
+
+
+def error_event(key, reason, extra=None):
     now = datetime.datetime.now()
     body = {
         'reason': reason,
@@ -227,7 +399,8 @@ def parse_logname(filename):
     log_name = None
     instance_id = None
     log_date = None
-    look = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-]+)-(?P<log_date>[0-9]{8})(\.gz)?', filename)
+    look = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-"\
+"]+)-(?P<log_date>[0-9]{8})(\.gz)?', os.path.basename(filename))
     if look:
         host = look.group('host')
         log_name = look.group('log_name')
@@ -239,44 +412,31 @@ def parse_logname(filename):
 
 
 def generate_events(fileobj, key):
-    fname = os.path.basename(key)
-    host, log_name, instance_id, log_date = parse_logname(fname)
+    #pylint:disable=too-many-locals
+    host, log_name, instance_id, log_date = parse_logname(key)
     if not log_name:
-        sys.stderr.write('warning: "%s" is not a log file?' % fname)
-        yield error_event(fname, key, 'log filename didnt match regexp')
+        sys.stderr.write('warning: "%s" is not a log file?' % key)
+        yield error_event(key, 'log filename didnt match regexp')
         return
 
-    log_folder = os.path.basename(os.path.dirname(key))
-    if log_folder == 'nginx':
-        log_type = 'webfront'
-    elif log_folder == 'gunicorn':
-        if fname.startswith('djaodjin-access.log-'):
-            log_type = 'djsession'
-        else:
-            log_type = 'customer'
-
-    else:
+    log_parser = NginxLogParser()
+    log_type = 'webfront'
+    if host == 'djaoapp':
+        # Dealing with the RBAC proxy access log.
+        log_type = 'djsession'
+    elif '.' not in host:
+        log_type = 'customer'
+    if log_name not in ('access',):
+        log_parser = JsonEventParser()
         log_type = None
+        if log_name not in ('app',):
+            sys.stderr.write(
+                "(skip) cannot derive Site from '%s'" % key)
+            yield error_event(key,
+                'could not find parser based on log filename')
+            return
 
-    index = 'logs-%s' % log_date.strftime('%Y%m%d')
-    doc_type = 'log'
-
-    if log_folder == 'nginx':
-        parser = NginxLogParser()
-    elif log_folder == 'gunicorn':
-        parser = NginxLogParser()
-        if log_name == 'access':
-            parser = NginxLogParser()
-        else:
-            parser = JsonEventParser()
-    else:
-        sys.stderr.write("error: unknown log folder %s\n" % log_folder)
-        yield error_event(fname, key, 'could not find parser for log folder',
-                          {'log_folder': log_folder,
-                           'log_date': log_date})
-        return
-
-    LOGGER.debug("using parser %s", parser)
+    LOGGER.debug("log %s using parser %s", key, log_parser)
     error_count = 0
     ok_count = 0
     for idx, line in enumerate(fileobj.readlines()):
@@ -288,53 +448,62 @@ def generate_events(fileobj, key):
         if total_count > 100 and (float(error_count)/total_count) > 0.8:
             sys.stderr.write(
                 "error: too many errors for key '%s'. bailing" % str(key))
-            yield error_event(fname, key, 'bailing because of too many errors.',
+            yield error_event(key, 'bailing because of too many errors.',
                               {'log_date': log_date,
                                'line': line})
             return
 
         try:
-            event = parser.parse(line)
+            event = log_parser.parse(line)
         except Exception as err:
-            sys.stderr.write("error: %s in line '%s'\n" % (err, line))
-            yield error_event(fname, key, 'could not parse log line',
+            LOGGER.info("warning: '%s' cannot be interpreted by %s (%s)",
+                line.replace("'", "\\'"), log_parser.__class__.__name__, err)
+            yield error_event(key, 'could not parse log line',
                               {'line': line,
-                               'exception_message': err.message,
+                               'exception_message': str(err),
                                'log_date': log_date,
                                'exception_type': type(err).__name__})
-
-            continue
-
-        if event is None:
-            sys.stderr.write(
-                "error: parsing '%s' in '%s'\n" % (line, log_folder))
-            yield error_event(fname, key, 'could not parse log line',
-                              {'line': line,
-                               'log_date': log_date,})
             error_count += 1
             continue
 
-        ok_count += 1
-        _id = '%s:%d' % (key, idx)
-        event.update({
-            'log_name': log_name,
-        })
-        if log_type is not None:
-            event['log_type'] = log_type
+        if event:
+            ok_count += 1
+            _id = '%s:%d' % (key, idx)
+            event.update({
+                'log_name': log_name,
+            })
+            if log_type is not None:
+                event['log_type'] = log_type
 
-        event.update({
-            'host': host,
-            'log_name': log_name,
-            'instance_id': instance_id,
-            'log_date': log_date.strftime('%Y%m%d')
-        })
+            event.update({
+                'host': host,
+                'log_name': log_name,
+                'instance_id': instance_id,
+                'log_date': log_date.strftime('%Y%m%d')
+            })
 
-        yield {
-            '_id': _id,
-            '_index': index,
-            '_type': doc_type,
-            '_source': event
-        }
+            index = 'logs-%s' % log_date.strftime('%Y%m%d')
+            doc_type = 'log'
+            yield {
+                '_id': _id,
+                '_index': index,
+                '_type': doc_type,
+                '_source': event
+            }
+
+
+def parse_logfile(logname, writer=None):
+    if not writer:
+        writer = EventWriter()
+    if logname.endswith('.gz'):
+        with gzip.open(logname, 'rt') as logfile:
+            for event in generate_events(logfile, logname):
+                writer.write(event)
+    else:
+        with open(logname, 'rt') as logfile:
+            for event in generate_events(logfile, logname):
+                writer.write(event)
+
 
 def sanitize_filename(fname):
     fname = fname.replace(os.path.sep, '_')
@@ -352,6 +521,9 @@ def main(args):
         + str(__version__))
     parser.add_argument('--version', action='version',
         version='%(prog)s ' + str(__version__))
+    parser.add_argument('--gitlab-api-url', action='store')
+    parser.add_argument('--token', action='store')
+    parser.add_argument('--default-project-name', action='store', default=None)
     parser.add_argument('lognames', metavar='lognames', nargs='+',
         help="log files to parse")
 
@@ -359,23 +531,17 @@ def main(args):
     if len(options.lognames) < 1:
         sys.stderr.write("error: not enough arguments")
         parser.print_help()
-        return 1
+        return -1
 
-    serializer = JSONSerializer()
+    writer = None
+    if options.gitlab_api_url:
+        writer = GitLabEventWriter(options.gitlab_api_url, options.token,
+            default_project_name=options.default_project_name)
+
     for logname in options.lognames:
-        with open(logname) as logfile:
-            for event in generate_events(logfile, logname):
-                # the elasticsearch serializer does have a
-                # a dumps method, but we don't use it
-                # because it turns off json.dumps' ensure_ascii
-                # we want to enforce ascii because it's
-                # not actually specified what encoding the
-                # log file is in. We were also getting
-                # invalid utf-8 sequences.
-                sys.stdout.write(json.dumps(event, default=serializer.default))
-                sys.stdout.write('\n')
+        parse_logfile(logname, writer=writer)
 
+    return 0
 
 if __name__ == '__main__':
-    from elasticsearch.serializer import JSONSerializer
     main(sys.argv[1:])

@@ -49,7 +49,7 @@ class logrotateSetup(setup.SetupTemplate):
         TIMESTAMP=`stat -c %Y $ROTATEDFILE`
         mv -nv $ROTATEDFILE ${ROTATEDFILE/\.log*/.log-$TIMESTAMP}
         /bin/gzip -v9 ${ROTATEDFILE/\.log*/.log-$TIMESTAMP}
-        /usr/local/bin/dcopylogs --location s3://djaoapp-logs/docker --logsuffix=$INSTANCE_ID $LOGS
+        /usr/local/bin/dcopylogs --quiet --location s3://djaoapp-logs/docker --logsuffix=$INSTANCE_ID $LOGS
     endscript
     lastaction
         /bin/sh -c 'syslog-ng-ctl reopen 2>/dev/null || kill -HUP `pgrep syslog-ng 2>/dev/null` 2>/dev/null || true'
