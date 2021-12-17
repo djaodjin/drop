@@ -152,7 +152,7 @@ binDist = $(_binDist$(distHost))
 
 
 DOCBOOK_SCHEMA := $(shareBuildDir)/schemas/docbook.xsd
-DOCBOOK_SCHEMA := $(shareBuildDir)/docbook-xsl/slides/schema/xsd/docbook.xsd
+DOCBOOK_SCHEMA := $(shareBuildDir)/docbook/5.0/xsd/docbook.xsd
 
 # stylesheets to produce .html and .fo markups out of docbook (.book) markups
 htmlxsl     := $(shareBuildDir)/docbook-xsl/html/docbook.xsl

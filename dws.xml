@@ -28,42 +28,49 @@
       <!-- How to express >=4 when the python XML parser 
 		   throws malformed exceptions? -->
       <alternates>
-		<alternate name="Darwin">
-		  <dep name="docbook-xsl">
-			<!-- We have to link at the docbook-xsl directory level
-				 because the stylesheet expects to find files looking
-				 into into .. -->
-			<share>.*(docbook-xsl)/fo/docbook.xsl</share>
-		  </dep>
-		</alternate>
-		<alternate name="Ubuntu">
-		  <dep name="debhelper">
-			<bin>dh_builddeb</bin>
-		  </dep>
-		  <dep name="devscripts">
-			<bin>debuild</bin>
-		  </dep>
-		  <dep name="fakeroot">
-			<bin>fakeroot</bin>
-		  </dep>
-		  <dep name="docbook-xsl">
-			<!-- We have to link at the docbook-xsl directory level
-				 because the stylesheet expects to find files looking
-				 into into .. -->
-			<share>.*(docbook-xsl)/fo/docbook.xsl</share>
-		  </dep>
-		</alternate>
-		<alternate name="Fedora">
-		  <dep name="rpmdevtools">
-			<bin>rpmdev-setuptree</bin> 
-		  </dep>  
-		  <dep name="docbook5-style-xsl">
-			<!-- We have to link at the docbook-xsl directory level
-				 because the stylesheet expects to find files looking
-				 into into .. -->
-			<share>.*(docbook-xsl|xsl-ns-stylesheets)/fo/docbook.xsl</share>
-		  </dep>
-		</alternate>
+        <alternate name="Darwin">
+          <dep name="docbook-xml">
+            <!-- The XSD schema is in docbook-xml while the processors
+                 are in docbook-xsl. Note that the xsd is only used
+                 to validate source docbook files.
+            -->
+            <share>.*/xml/(docbook)/5.0/xsd/docbook.xsd</share>
+          </dep>
+          <dep name="docbook-xsl">
+            <!-- We have to link at the docbook-xsl directory level
+                 because the stylesheet expects to find files looking
+                 into into .. -->
+            <share>.*(docbook-xsl)/fo/docbook.xsl</share>
+          </dep>
+        </alternate>
+        <alternate name="Ubuntu">
+          <dep name="debhelper">
+            <bin>dh_builddeb</bin>
+          </dep>
+          <dep name="devscripts">
+            <bin>debuild</bin>
+          </dep>
+          <dep name="fakeroot">
+            <bin>fakeroot</bin>
+          </dep>
+          <dep name="docbook-xsl">
+            <!-- We have to link at the docbook-xsl directory level
+                 because the stylesheet expects to find files looking
+                 into into .. -->
+            <share>.*(docbook-xsl)/fo/docbook.xsl</share>
+          </dep>
+        </alternate>
+        <alternate name="Fedora">
+          <dep name="rpmdevtools">
+            <bin>rpmdev-setuptree</bin>
+          </dep>
+          <dep name="docbook5-style-xsl">
+            <!-- We have to link at the docbook-xsl directory level
+                 because the stylesheet expects to find files looking
+                 into into .. -->
+            <share>.*(docbook-xsl|xsl-ns-stylesheets)/fo/docbook.xsl</share>
+          </dep>
+        </alternate>
       </alternates>
     </repository>
     <package name="Ubuntu">
