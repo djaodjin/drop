@@ -415,7 +415,7 @@ def generate_events(fileobj, key):
     #pylint:disable=too-many-locals
     host, log_name, instance_id, log_date = parse_logname(key)
     if not log_name:
-        sys.stderr.write('warning: "%s" is not a log file?' % key)
+        sys.stderr.write('warning: "%s" does not match log file regex\n' % key)
         yield error_event(key, 'log filename didnt match regexp')
         return
 
@@ -521,7 +521,7 @@ def main(args):
         + str(__version__))
     parser.add_argument('--version', action='version',
         version='%(prog)s ' + str(__version__))
-    parser.add_argument('--gitlab-api-url', action='store')
+    parser.add_argument('--gitlab-api-base', action='store')
     parser.add_argument('--token', action='store')
     parser.add_argument('--default-project-name', action='store', default=None)
     parser.add_argument('lognames', metavar='lognames', nargs='+',
@@ -534,8 +534,8 @@ def main(args):
         return -1
 
     writer = None
-    if options.gitlab_api_url:
-        writer = GitLabEventWriter(options.gitlab_api_url, options.token,
+    if options.gitlab_api_base:
+        writer = GitLabEventWriter(options.gitlab_api_base, options.token,
             default_project_name=options.default_project_name)
 
     for logname in options.lognames:
