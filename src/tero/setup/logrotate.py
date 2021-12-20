@@ -53,7 +53,7 @@ class logrotateSetup(setup.SetupTemplate):
         new_config_lines = []
         dateext_linenum = None
         dateformat_linenum = None
-        dateformat = "dateformat -%Y%m%dT%H%M%S\n"
+        dateformat = "dateformat -%Y%m%d-%s\n"
         for linenum, line in enumerate(conf_lines):
             look = re.match(r'dateformat', line)
             if look:
