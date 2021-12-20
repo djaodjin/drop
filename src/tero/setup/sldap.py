@@ -91,6 +91,36 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
         with open(pathname, 'w') as new_config:
             new_config.write(''.join(lines))
 
+    def restore(filename, domain=None):
+        """
+        Restore a LDAP database from file.
+        """
+        with tempfile.NamedTemporaryFile(
+                dir=os.path.dirname(filename)) as tmpfile:
+            tmpfilename = tmpfile.name
+            with open(filename) as backup:
+                for line in backup.readlines():
+                    look = re.match('^(\S+): (.*)', line)
+                    if look:
+                        key = look.group(1)
+                        value = look.group(2)
+                        if not key in ('structuralObjectClass', 'entryUUID',
+                            'creatorsName', 'createTimestamp', 'entryCSN',
+                            'modifiersName', 'modifyTimestamp'):
+                            config_line = "%s: %s\n" % (key, value)
+                            if hasattr(config_line, 'encode'):
+                                config_line = config_line.encode('utf-8')
+                            tmpfile.write(config_line)
+                    else:
+                        if hasattr(line, 'encode'):
+                            line = line.encode('utf-8')
+                        tmpfile.write(line)
+            domain_dn = ',dc='.join(domain.split('.'))
+            cmd = ['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
+                   '-f', tmpfilename, '-D', 'cn=Manager,dc=%s' % domain_dn]
+            sys.stdout.write("%s\n" % ' '.join(cmd))
+            subprocess.check_call(cmd)
+
     def run(self, context):
         complete = super(openldap_serversSetup, self).run(context)
         if not complete:

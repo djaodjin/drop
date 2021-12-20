@@ -31,6 +31,20 @@ class dockerSetup(setup.SetupTemplate):
         super(dockerSetup, self).__init__(name, files, **kwargs)
         self.daemons = ['docker']
 
+    def create_syslog_conf(self, context):
+        """
+        Create configuration for syslog
+        """
+        syslog_conf = os.path.join(
+            context.value('etcDir'), 'syslog-ng', 'conf.d', 'docker.conf')
+        templates_dir = os.path.dirname(os.path.abspath(__file__))
+        _, new_conf_path = stageFile(syslog_conf, context)
+        with open(os.path.join(
+                templates_dir, 'docker-syslog.tpl')) as conf_file:
+            conf_template = conf_file.read()
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write(conf_template)
+
     def run(self, context):
         complete = super(dockerSetup, self).run(context)
         if not complete:
@@ -38,10 +52,16 @@ class dockerSetup(setup.SetupTemplate):
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
-        setup.modify_config('/etc/sysconfig/docker', settings={
+
+        docker_conf = os.path.join(
+            context.value('etcDir'), 'sysconfig', 'docker')
+        setup.modify_config(docker_conf, settings={
             'OPTIONS': '--selinux-enabled --log-driver syslog --log-opt labels="{{.ID}}" --log-opt tag=".{{.ID}}"\'',
             'LOGROTATE': 'false\''
         }, sep='=\'', context=context)
+
+        self.create_syslog_conf(context)
+
         # The following command is useful to restart the running containers
         # after the docker daemon is itself restarted.
         #

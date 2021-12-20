@@ -74,6 +74,8 @@ Name of the machine hosting the LDAP server.
       <!-- monitoring -->
       <dep name="syslog-ng">
         <bin>syslog-ng</bin>
+        <extra name="/var/log/docker">
+        </extra>
       </dep>
       <dep name="syslog-ng-libdbi">
         <lib>dbi</lib>

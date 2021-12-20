@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/bin/sh
 #
-# Copyright (c) 2019, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,8 +24,5 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if __name__ == '__main__':
-    import os, sys
-    from tero.dissues import main
-    main(sys.argv)
-
+# When passed stdin (from a filtered set of logs) this script will rotate logs after 30 seconds of no data on the stream unless no data is sent.
+tt=`stat -c %Y -`;while :;do [ $((`date +%s` - `stat -c %Y -`)) -le 30 ] && nn=""; [ -z $nn ] && [ $tt != `stat -c %Y -` ] && [ $((`date +%s` - `stat -c %Y -`)) -ge 30 ] && nn="1" && /sbin/logrotate -vf /etc/logrotate.d/syslog;sleep 1;done >>/var/log/logrotatehook.log 2>&1

@@ -131,6 +131,55 @@ class LogParser(object):
         return None
 
 
+class MakeLogParser(LogParser):
+    """
+    Extracts the bare useful information to quickly scan through
+    dws log files.
+    """
+
+    def run(logname, writer=None):
+        with open(logname) as log:
+            self.bufferedLines = []
+            for line in log.readlines():
+                self.parse(line, writer=writer)
+
+    def parse(self, line, writer=None):
+        # We locally filter log output. Everything that falls before
+        # a '^###' marker will be discarded in the error output.
+        self.bufferedLines += [ line ]
+        look = re.match(r'^###.*\s+(\S+)\s+.*', line)
+        if look:
+            self.bufferedLines = [ line ]
+        else:
+            look = re.match(
+             r'^(make(\[\d+\]:.*not remade because of errors)|(:.*Error \d+))',
+                line)
+            if look:
+                filename = '^make '
+            else:
+                look = re.match('^(.*):\d+:error:',line)
+                if look:
+                    filename = look.group(1)
+                else:
+                    look = re.match('^error:',line)
+                    if look:
+                        filename = '^$'
+            if look:
+                # We will try to finely filter buffered lines to the shell
+                # command that triggered the error if possible.
+                start = 0
+                if len(self.bufferedLines) > 0:
+                    start = len(self.bufferedLines) - 1
+                while start > 0:
+                    look = re.match(filename, self.bufferedLines[start])
+                    if look:
+                        break
+                    start = start - 1
+                for prev in self.bufferedLines[start:]:
+                    sys.stdout.write(prev)
+                self.bufferedLines = []
+
+
 class NginxLogParser(LogParser):
     """
     We make sure nginx and gunicorn access logs have the same format.
@@ -353,6 +402,7 @@ class GitLabEventWriter(EventWriter):
                     headers=auth_headers)
                 issue_data = resp.json()
                 issue_iid = issue_data.get('iid')
+                LOGGER.info("create issue %s/%d", issue_api_endpoint, issue_iid)
             else:
                 requests.put(issue_api_endpoint + str(issue_iid),
                     data={'state_event': 'reopen'},
@@ -400,7 +450,7 @@ def parse_logname(filename):
     instance_id = None
     log_date = None
     look = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-"\
-"]+)-(?P<log_date>[0-9]{8})(\.gz)?', os.path.basename(filename))
+"]+)-(?P<log_date>[0-9]{8}(T[0-9]{6})?)(\.gz)?', os.path.basename(filename))
     if look:
         host = look.group('host')
         log_name = look.group('log_name')
@@ -495,6 +545,13 @@ def generate_events(fileobj, key):
 def parse_logfile(logname, writer=None):
     if not writer:
         writer = EventWriter()
+
+    # hook for what used to be in `dlogfilt.py`.
+    look = re.match(r'dws\S+\.log', os.path.basename(logname))
+    if look:
+        parser = MakeLogParser()
+        parser.run(logname, writer=writer)
+
     if logname.endswith('.gz'):
         with gzip.open(logname, 'rt') as logfile:
             for event in generate_events(logfile, logname):

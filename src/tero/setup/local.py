@@ -325,19 +325,14 @@ def main(args):
         sys.exit(1)
 
     # siteTop where packages are built
-    conf_top = os.getcwd()
     tero.ASK_PASS = os.path.join(bin_base, 'askpass')
 
     # -- Let's start the configuration --
-    if not os.path.isdir(conf_top):
-        os.makedirs(conf_top)
-    os.chdir(conf_top)
     tero.USE_DEFAULT_ANSWER = True
     tero.CONTEXT = Context()
-    tero.CONTEXT.config_filename = os.path.join(conf_top, 'dws.mk')
-    tero.CONTEXT.buildTopRelativeCwd \
-        = os.path.dirname(tero.CONTEXT.config_filename)
+    tero.CONTEXT.locate()
     tero.CONTEXT.environ['version'] = __version__
+    tero.CONTEXT.environ['etcDir'] = '/etc'
 
     # Configuration information
     # Add necessary variables in context, then parse a list of variable

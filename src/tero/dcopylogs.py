@@ -29,7 +29,6 @@ import datetime, decimal, json, logging, os, re, sys
 import boto3, requests, six
 from pytz import utc
 
-__version__ = None
 
 LOGGER = logging.getLogger(__name__)
 

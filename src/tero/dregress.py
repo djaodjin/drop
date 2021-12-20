@@ -33,7 +33,8 @@ Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 import re, os, optparse, shutil, stat, sys, tempfile, time
 import cStringIO
 
-__version__ = None
+from tero import helpBook, __version__
+
 
 class TestCaseFormater:
 
@@ -154,12 +155,10 @@ def logAdvance(log):
     return logLineNum, logTestName
 
 
-# Main Entry point
-if __name__ == '__main__':
-    import imp
-    dws = imp.load_source('dws',
-      os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),'dws'))
-
+def main(args):
+    """
+    Main entry point
+    """
     usage= 'usage: %prog [options] -o regression result [reference ...]'
     parser = optparse.OptionParser(usage=usage,
                                    version='%prog ' + str(__version__))
@@ -178,7 +177,7 @@ if __name__ == '__main__':
     if options.helpBook:
         help = cStringIO.StringIO()
         parser.print_help(help)
-        dws.helpBook(help)
+        helpBook(help)
         sys.exit(0)
 
     testFormater = TestCaseFormater

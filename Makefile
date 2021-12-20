@@ -42,7 +42,7 @@ include $(srcDir)/src/prefix.mk
 
 shareItemDirs ?= $(shell cd $(srcDir)/share && find playbooks profiles -type d)
 
-scripts := dws dtero
+scripts := dws dtero logrotate-hook
 manpages:= $(addsuffix .1,$(scripts))
 
 install:: $(srcDir)/src/prefix.mk \

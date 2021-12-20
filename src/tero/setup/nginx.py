@@ -127,10 +127,13 @@ class nginxSetup(setup.SetupTemplate):
                             new_nginx_conf_file.write(line)
 
         certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')
+        if not os.path.isdir(certs_top):
+            os.makedirs(certs_top)
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
-        setup.postinst.shellCommand([
-            '[', '-f', dhparam_path, ']', '||', '/usr/bin/openssl',
-            'dhparam', '-out', dhparam_path, '4096'])
+        # XXX disabled for faster dev turn around. DO NOT COMMIT!
+        #setup.postinst.shellCommand([
+        #    '[', '-f', dhparam_path, ']', '||', '/usr/bin/openssl',
+        #    'dhparam', '-out', dhparam_path, '4096'])
         setup.postinst.shellCommand([
             'setsebool', '-P', 'httpd_can_network_connect', '1'])
         return complete

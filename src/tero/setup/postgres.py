@@ -92,6 +92,24 @@ class postgresql_serverSetup(SetupTemplate):
             'system_user': system_user.ljust(24),
             'pg_user': pg_user.ljust(16)})
 
+    def restore(filename, drop_if_exists=True):
+        """
+        Restore a PostgresQL database from file.
+        """
+        if drop_if_exists:
+            db_name = os.path.basename(filename).split('.')[0]
+            cmd = ['sudo', '-u', 'postgres', 'psql', '-c',
+                'DROP DATABASE IF EXISTS %s;' % db_name]
+            sys.stdout.write("%s\n" % ' '.join(cmd))
+            subprocess.check_call(cmd)
+        if filename.endswith('.gz'):
+            cmd = ['sh', '-c',
+            "sudo -u postgres gunzip -c %s | sudo -u postgres psql" % filename]
+        else:
+            cmd = ['sudo', '-u', 'postgres', 'psql', '-f', filename]
+        sys.stdout.write("%s\n" % ' '.join(cmd))
+        subprocess.check_call(cmd)
+
     def run(self, context):
         complete = super(postgresql_serverSetup, self).run(context)
         if not complete:
