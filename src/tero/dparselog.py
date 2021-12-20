@@ -411,7 +411,7 @@ class GitLabEventWriter(EventWriter):
             note += "```\nTraceback (most recent call last):\n"
             for frame in source_event.get('frames'):
                 note += "  File \"%s\", line %d, in %s\n" % (
-                    frame.get('filename'), frame.get('lineno'),
+                    frame.get('filename'), int(frame.get('lineno')),
                     frame.get('function'))
                 note += "    %s\n" % frame.get('context_line')
             note += "```\n"
