@@ -53,6 +53,20 @@ class nginxSetup(setup.SetupTemplate):
             return os.path.join(
                 sysconfdir, 'nginx', 'conf.d', domain + '.conf')
 
+    def create_syslog_conf(self, app, context):
+        """
+        Create configuration for syslog
+        """
+        syslog_conf = os.path.join(
+            context.value('etcDir'), 'syslog-ng', 'conf.d', app)
+        templates_dir = os.path.dirname(os.path.abspath(__file__))
+        _, new_conf_path = setup.stageFile(syslog_conf, context)
+        with open(os.path.join(
+                templates_dir, 'webapp-syslog.tpl')) as conf_file:
+            conf_template = conf_file.read()
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write(conf_template)
+
     def run(self, context):
         complete = super(nginxSetup, self).run(context)
         if not complete:

@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -38,9 +38,9 @@ class dockerSetup(setup.SetupTemplate):
         syslog_conf = os.path.join(
             context.value('etcDir'), 'syslog-ng', 'conf.d', 'docker.conf')
         templates_dir = os.path.dirname(os.path.abspath(__file__))
-        _, new_conf_path = stageFile(syslog_conf, context)
+        _, new_conf_path = setup.stageFile(syslog_conf, context)
         with open(os.path.join(
-                templates_dir, 'docker-syslog.tpl')) as conf_file:
+                templates_dir, 'webapp-syslog.tpl')) as conf_file:
             conf_template = conf_file.read()
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write(conf_template)

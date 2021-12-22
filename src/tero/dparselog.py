@@ -450,7 +450,7 @@ def parse_logname(filename):
     instance_id = None
     log_date = None
     look = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-"\
-"]+)-(?P<log_date>[0-9]{8}(-[0-9]{1,10})?)(\.gz)?', os.path.basename(filename))
+"]+)-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?', os.path.basename(filename))
     if look:
         host = look.group('host')
         log_name = look.group('log_name')
