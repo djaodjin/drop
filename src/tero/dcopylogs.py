@@ -80,7 +80,7 @@ def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
     (i.e. no leading '/') whether `filename` is an absolute path or
     a subdirectory of the current path.
     """
-    filename = filename.lstrip('/')
+    filename = filename.lstrip(os.sep)
     result = filename
     if ext.startswith('.'):
         ext = ext[1:]
@@ -275,10 +275,13 @@ def download_updated_logs(lognames,
     s3_resource = boto3.resource('s3')
     for item in sorted(local_update, key=get_last_modified):
         keyname = item['Key']
+        logname = as_logname(keyname)
         filename = as_filename(keyname, prefix=s3_prefix)
-        if filename.startswith('/'):
-            filename = '.' + filename
-        logname = as_logname(filename)
+        filename = filename.lstrip(os.sep)
+        if local_prefix:
+            filename = os.path.join('.', local_prefix, filename)
+        else:
+            filename = os.path.join('.', filename)
         if not last_run or last_run.more_recent(
                 logname, item['LastModified'], update=True):
             s3_key = s3_resource.Object(bucket, keyname)
