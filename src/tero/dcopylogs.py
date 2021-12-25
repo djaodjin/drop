@@ -302,10 +302,13 @@ def download_updated_logs(lognames,
     for item in sorted(list_local(lognames,
                 prefix=local_prefix, list_all=False), key=get_last_modified):
         keyname = item['Key']
+        logname = as_logname(keyname)
         filename = as_filename(keyname, prefix=s3_prefix)
-        if filename.startswith('/'):
-            filename = '.' + filename
-        logname = as_logname(filename)
+        filename = filename.lstrip(os.sep)
+        if local_prefix:
+            filename = os.path.join('.', local_prefix, filename)
+        else:
+            filename = os.path.join('.', filename)
         if not last_run or last_run.more_recent(
                 logname, item['LastModified'], update=True):
             downloaded += [filename]
