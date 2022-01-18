@@ -1,4 +1,4 @@
-# Copyright (c) 2019, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,7 @@ class iptablesSetup(setup.SetupTemplate):
             return os.path.join(sysconfdir, '%stables.conf' % ip_type)
         elif dist_host in REDHAT_DISTRIBS:
             return os.path.join(sysconfdir, 'sysconfig', '%stables' % ip_type)
+        raise NotImplementedError("unknown distribution '%s'" % dist_host)
 
     def run(self, context):
         complete = super(iptablesSetup, self).run(context)
@@ -61,7 +62,7 @@ class iptablesSetup(setup.SetupTemplate):
             elif key == 'forward':
                 for forward, _ in val:
                     orig, dest = forward.split(':')
-                    forwards += [eth0, (int(orig), int(dest))]
+                    forwards += [(eth0, int(orig), int(dest))]
 
         # We completely overwrite the iptables configuration for both
         # ipv4 and ipv6. We own it.

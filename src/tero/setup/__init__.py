@@ -287,12 +287,14 @@ def after_daemon_start(daemon, cmdline):
 
 
 def create_install_script(script_path, context=None):
-    if context.host() in APT_DISTRIBS:
+    dist_host = context.host()
+    if dist_host in APT_DISTRIBS:
         return debianInstallScript(
             script_path, mod_sysconfdir=context.modEtcDir)
-    elif context.host() in REDHAT_DISTRIBS:
+    elif dist_host in REDHAT_DISTRIBS:
         return redhatInstallScript(
             script_path, mod_sysconfdir=context.modEtcDir)
+    raise NotImplementedError("unknown distribution '%s'" % dist_host)
 
 
 def next_token_in_config(remain,

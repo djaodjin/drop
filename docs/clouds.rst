@@ -54,6 +54,37 @@ Example:
 
     $ dcloud --dry-run
 
+Add a sally instance
+~~~~~~~~~~~~~~~~~~~~
+
+1. Check the LDAP TLS certificate is in the identities directory
+
+    $ cd /Volumes/identities/__region_name__/sally
+    $ find . -type f
+    etc/pki/tls/certs/ldaps.__region_name__.internal.crt
+
+2. Upload identities
+
+    $ cd /Volumes/identities/__region_name__
+    $ aws s3 cp sally \
+        s3://__identities_bucket__/identities/__region_name__/sally \
+        --recursive
+
+3. Update configuration file in ~/.aws
+
+    $ diff -u ~/.aws/djaoapp
+    [default]
+    # ImageID for AWS Linux in __region_name__
+    +image_name = ami-******
+
+    +[sally]
+    +identities_url = s3://__identities_bucket__/identities/__region_name__/sally
+    +ssh_port = __ssh_port__
+
+4. Run dcloud
+
+    $ dcloud --skip-create-network --dry-run
+
 
 Add a postgresql database
 ~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2021, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import argparse, logging, re, os, sys
+import argparse, logging, re, os, subprocess, sys
 
 import six
 
@@ -92,6 +92,7 @@ class postgresql_serverSetup(SetupTemplate):
             'system_user': system_user.ljust(24),
             'pg_user': pg_user.ljust(16)})
 
+    @staticmethod
     def restore(filename, drop_if_exists=True):
         """
         Restore a PostgresQL database from file.

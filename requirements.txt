@@ -7,5 +7,6 @@ pyasn1_modules==0.2.5
 pyOpenSSL==18.0.0
 pytz==2020.1
 requests==2.25.1
+six==1.16.0
 sqlparse==0.3.1
 urllib3==1.26.5

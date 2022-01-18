@@ -33,7 +33,7 @@ Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 import re, os, optparse, shutil, stat, sys, tempfile, time
 import cStringIO
 
-from tero import helpBook, __version__
+from tero import Error, help_book, __version__
 
 
 class TestCaseFormater:
@@ -45,12 +45,12 @@ class TestCaseFormater:
                            % (self.testName, self.testName))
 
     @staticmethod
-    def associate(name,fileobj):
-        return TestCaseFormater(name,fileobj)
+    def associate(name, fileobj):
+        return TestCaseFormater(name, fileobj)
 
-    def header(self,tag,reffile,testStatus):
+    def header(self, tag, reffile, testStatus):
         self.tag = tag
-        self.out.write('<%s name="%s">\n' % (tag,reffile))
+        self.out.write('<%s name="%s">\n' % (tag, reffile))
         self.out.write('<status>%s</status>\n' % (testStatus))
         self.out.write('<system-out><![CDATA[\n')
 
@@ -73,10 +73,10 @@ class JUnitFormater(TestCaseFormater):
         self.tag = None
 
     @staticmethod
-    def associate(name,fileobj):
-        return JUnitFormater(name,fileobj)
+    def associate(name, fileobj):
+        return JUnitFormater(name, fileobj)
 
-    def header(self,tag,reffile,testStatus):
+    def header(self, tag, reffile, testStatus):
         name = os.path.basename(os.path.splitext(reffile)[0])
         self.out.write('<testcase name="%s_%s" classname="%s" time="0">\n' \
                            % (tag, name, self.testName))
@@ -105,20 +105,22 @@ class JUnitFormater(TestCaseFormater):
         if self.tag:
             self.out.write(text)
 
+TEST_FORMATER = TestCaseFormater
 
-def addTest(testName,reffile,testStatus,tests,regressions):
+
+def addTest(testName, reffile, testStatus, tests, regressions):
     if not testName in tests:
         tests[testName] \
-            = testFormater.associate(testName,tempfile.TemporaryFile())
+            = TEST_FORMATER.associate(testName, tempfile.TemporaryFile())
     testFile = tests[testName]
     if not testName in regressions:
         regressions[testName] = {}
     if not reffile in regressions[testName]:
-        testFile.header('compare',reffile,testStatus)
+        testFile.header('compare', reffile, testStatus)
         regressions[testName][reffile] = testStatus
     return testFile
 
-def diffAdvance(diff,testFile = None):
+def diffAdvance(diff, testFile = None):
     diffLineNum = sys.maxint
     look = None
     while look == None:
@@ -127,7 +129,7 @@ def diffAdvance(diff,testFile = None):
             break
         if testFile:
             testFile.write(diffLine)
-        look = re.match('@@ -(\d+),',diffLine)
+        look = re.match('@@ -(\d+),', diffLine)
     if look != None:
         # The "diff -U 1" is invoked. This seems to all offset all starting
         # chunks by 1. In case the test result is only one line long, it might
@@ -142,16 +144,15 @@ def logAdvance(log):
         logLineNum = sys.maxint
         logTestName = None
     else:
-        look = re.match('(\d+):@@ test: (\S+) (\S+)? @@',logLine)
+        look = re.match('(\d+):@@ test: (\S+) (\S+)? @@', logLine)
         if look != None:
             logLineNum = int(look.group(1))
             logTestName = look.group(2)
             # group(3) if present is status
         else:
-            raise dws.Error("unexpected format of result log. Line '%s'" \
-                            " in %s does not match " \
-                            "'(\d+):@@ test: (\S+) (\S+)? @@'."
-                            % (logLine, str(log)))
+            raise Error("unexpected format of result log. Line '%s'" \
+                " in %s does not match '(\d+):@@ test: (\S+) (\S+)? @@'."
+                % (logLine, str(log)))
     return logLineNum, logTestName
 
 
@@ -159,7 +160,7 @@ def main(args):
     """
     Main entry point
     """
-    usage= 'usage: %prog [options] -o regression result [reference ...]'
+    usage = 'usage: %prog [options] -o regression result [reference ...]'
     parser = optparse.OptionParser(usage=usage,
                                    version='%prog ' + str(__version__))
     parser.add_option('--format', dest='format',
@@ -169,20 +170,19 @@ def main(args):
                       metavar="FILE",
                       default='regression.xml',
                       help='Output regression junit xml FILE')
-    parser.add_option('--help-book', dest='helpBook', action='store_true',
+    parser.add_option('--help-book', dest='help_book', action='store_true',
                       help='Print help in docbook format')
 
     options, args = parser.parse_args()
 
-    if options.helpBook:
+    if options.help_book:
         help = cStringIO.StringIO()
         parser.print_help(help)
-        helpBook(help)
+        help_book(help)
         sys.exit(0)
 
-    testFormater = TestCaseFormater
     if options.format == 'junit':
-        testFormater = JUnitFormater
+        TEST_FORMATER = JUnitFormater
 
     if len(args) < 1:
         parser.print_help()
@@ -201,14 +201,14 @@ def main(args):
     failureNames = set([])
     (confno, confname) = tempfile.mkstemp()
     os.close(confno)
-    conf = open(confname,'w')
+    conf = open(confname, 'w')
     firstIteration = True
     for filename in [ logfile ]:
         hasOuput = {}
-        f = open(filename,'r')
+        f = open(filename, 'r')
         line = f.readline()
         while line != '':
-            look = re.match('@@ test: (\S+) (\S+)?\s*@@',line)
+            look = re.match('@@ test: (\S+) (\S+)?\s*@@', line)
             if look:
                 # found information associated with a test
                 testName = look.group(1)
@@ -220,9 +220,9 @@ def main(args):
                     failureNames |= set([testName])
                     nbErrors = nbErrors + 1
                 if not testName in tests:
-                    tests[testName] = testFormater.associate(testName,
+                    tests[testName] = TEST_FORMATER.associate(testName,
                                                     tempfile.TemporaryFile())
-                tests[testName].header('result',filename,testStatus)
+                tests[testName].header('result', filename, testStatus)
                 testFile = tests[testName]
                 hasOuput[testName] = True
             elif testFile:
@@ -270,16 +270,16 @@ def main(args):
             diffLine = diff.readline()
             if diffLine == '':
                 break
-            look = re.match('@@ -(\d+),',diffLine)
+            look = re.match('@@ -(\d+),', diffLine)
             if look != None:
                 break
-            look = re.match('\+@@ test: (\S+) (\S+)? @@',diffLine)
+            look = re.match('\+@@ test: (\S+) (\S+)? @@', diffLine)
             if look != None:
                 # If we arrive here, it means the first N tests in reference
                 # are missing from result. We passed '@@ -(\d+)' on the way
                 # (Note the absence of ending coma in the pattern).
-                testFile = addTest(look.group(1),reffile,"different",
-                                   tests,regressions)
+                testFile = addTest(look.group(1), reffile, "different",
+                                   tests, regressions)
             look = None
         if look != None:
             # The "diff -U 1" is invoked. This seems to all offset all starting
@@ -298,24 +298,24 @@ def main(args):
             if diffLineNum < logLineNum:
                 # last log failed
                 if prevLogTestName != None:
-                    testFile = addTest(prevLogTestName,reffile,"different",
-                                       tests,regressions)
+                    testFile = addTest(prevLogTestName, reffile, "different",
+                                       tests, regressions)
                     prevLogTestName = None
-                diffLineNum = diffAdvance(diff,testFile)
+                diffLineNum = diffAdvance(diff, testFile)
             elif diffLineNum > logLineNum:
                 # last log passed
                 if prevLogTestName != None:
-                    testFile = addTest(prevLogTestName,reffile,"identical",
-                                       tests,regressions)
+                    testFile = addTest(prevLogTestName, reffile, "identical",
+                                       tests, regressions)
                 prevLogTestName = logTestName
                 logLineNum, logTestName = logAdvance(log)
             else:
                 if prevLogTestName != None:
-                    testFile = addTest(prevLogTestName,reffile,"identical",
-                                       tests,regressions)
+                    testFile = addTest(prevLogTestName, reffile, "identical",
+                                       tests, regressions)
                 prevLogTestName = logTestName
                 logLineNum, logTestName = logAdvance(log)
-                diffLineNum = diffAdvance(diff,testFile)
+                diffLineNum = diffAdvance(diff, testFile)
 
         # If we donot have any more differences and we haven't
         # reached the end of the list of tests, all remaining
@@ -333,21 +333,21 @@ def main(args):
             reflog.close()
             while logLineNum != sys.maxint:
                 if prevLogTestName in refs:
-                    testFile = addTest(prevLogTestName,reffile,"identical",
-                                       tests,regressions)
+                    testFile = addTest(prevLogTestName, reffile, "identical",
+                                       tests, regressions)
                 prevLogTestName = logTestName
                 logLineNum, logTestName = logAdvance(log)
             if prevLogTestName in refs:
-                testFile = addTest(prevLogTestName,reffile,"identical",
-                                   tests,regressions)
+                testFile = addTest(prevLogTestName, reffile, "identical",
+                                   tests, regressions)
 
         elif logLineNum == diffLineNum:
             # Both finish at the same time, let's flush the last testName
             # and be done with it. It seems the test is new and wasn't run
             # in the reference.
             if prevLogTestName != None:
-                testFile = addTest(prevLogTestName,reffile,"absent",
-                                   tests,regressions)
+                testFile = addTest(prevLogTestName, reffile, "absent",
+                                   tests, regressions)
                 prevLogTestName = None
         diff.close()
         log.close()
@@ -376,7 +376,7 @@ def main(args):
                         regressionNames[reffile] |= set([testName])
                         nbRegressions = nbRegressions + 1
                 else:
-                    tests[testName].header('compare',reffile,'absent')
+                    tests[testName].header('compare', reffile, 'absent')
                     tests[testName].footer()
             else:
                 if not reffile in regressionNames:
@@ -384,9 +384,9 @@ def main(args):
                 regressionNames[reffile] |= set(['- ' + testName])
                 nbRegressions = nbRegressions + 1
                 if not testName in tests:
-                    tests[testName] = testFormater.associate(testName,
+                    tests[testName] = TEST_FORMATER.associate(testName,
                                                     tempfile.TemporaryFile())
-                tests[testName].header('compare',reffile,'compile')
+                tests[testName].header('compare', reffile, 'compile')
                 tests[testName].footer()
 
     # Results for a single testcase have been aggregated in a temporary file.
@@ -395,14 +395,14 @@ def main(args):
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%S",
                               time.gmtime(os.path.getmtime(logfile)))
     # timestamp = datetime.datetime(os.stat(logfile).st_mtime)
-    time = 0 # time taken to execute testsuite
+    execution_time = 0 # time taken to execute testsuite
     hostname = "localhost"
     expectedFail = 0
     (outno, outname) = tempfile.mkstemp()
     os.close(outno)
-    out = open(outname,'w')
+    out = open(outname, 'w')
     out.write('<testsuite name="%s" timestamp="%s" time="%s" hostname="%s" tests="%d" failures="%s" errors="%s">\n' \
-       % (testsuitename, timestamp, time, hostname,
+       % (testsuitename, timestamp, execution_time, hostname,
           len(tests), expectedFail, (nbErrors + nbRegressions)))
     out.write('<properties></properties>\n')
 
@@ -421,7 +421,7 @@ def main(args):
     for testName in sorted(tests):
         testFile = tests[testName]
         testFile.flush()
-        testFile.out.seek(0,os.SEEK_SET)
+        testFile.out.seek(0, os.SEEK_SET)
         line = testFile.out.readline()
         while line != '':
             out.write(line)
@@ -443,9 +443,9 @@ def main(args):
     out.write('</testsuite>\n')
     out.close()
     # Insures permission will allow the CGI to read the file
-    os.chmod(outname,stat.S_IRUSR | stat.S_IWUSR
-             | stat.S_IRGRP | stat.S_IROTH)
-    shutil.move(outname,options.output)
+    os.chmod(outname, stat.S_IRUSR | stat.S_IWUSR
+        | stat.S_IRGRP | stat.S_IROTH)
+    shutil.move(outname, options.output)
     sys.stdout.write(str(nbErrors) + ' failures\n')
     if len(failureNames) > 0:
         sys.stdout.write('\t' + '\n\t'.join(failureNames) + '\n')
@@ -455,7 +455,7 @@ def main(args):
             sys.stdout.write('\t(' + os.path.basename(reffile) + ')\n')
             sys.stdout.write('\t' \
                 + '\n\t'.join(regressionNames[reffile]) + '\n')
-    sys.exit(max(nbErrors,nbRegressions))
+    sys.exit(max(nbErrors, nbRegressions))
 
 
 

@@ -137,7 +137,7 @@ class MakeLogParser(LogParser):
     dws log files.
     """
 
-    def run(logname, writer=None):
+    def run(self, logname, writer=None):
         with open(logname) as log:
             self.bufferedLines = []
             for line in log.readlines():
@@ -146,6 +146,8 @@ class MakeLogParser(LogParser):
     def parse(self, line, writer=None):
         # We locally filter log output. Everything that falls before
         # a '^###' marker will be discarded in the error output.
+        if not hasattr(self, 'bufferedLines'):
+            self.bufferedLines = []
         self.bufferedLines += [ line ]
         look = re.match(r'^###.*\s+(\S+)\s+.*', line)
         if look:
@@ -157,11 +159,11 @@ class MakeLogParser(LogParser):
             if look:
                 filename = '^make '
             else:
-                look = re.match('^(.*):\d+:error:',line)
+                look = re.match('^(.*):\d+:error:', line)
                 if look:
                     filename = look.group(1)
                 else:
-                    look = re.match('^error:',line)
+                    look = re.match('^error:', line)
                     if look:
                         filename = '^$'
             if look:

@@ -23,7 +23,7 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 from __future__ import unicode_literals
 
-import binascii, os
+import binascii, os, re, sys, subprocess, tempfile
 
 from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 
@@ -91,6 +91,7 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
         with open(pathname, 'w') as new_config:
             new_config.write(''.join(lines))
 
+    @staticmethod
     def restore(filename, domain=None):
         """
         Restore a LDAP database from file.

@@ -52,6 +52,7 @@ class nginxSetup(setup.SetupTemplate):
         elif dist_host in REDHAT_DISTRIBS:
             return os.path.join(
                 sysconfdir, 'nginx', 'conf.d', domain + '.conf')
+        raise NotImplementedError("unknown distribution '%s'" % dist_host)
 
     def create_syslog_conf(self, app, context):
         """

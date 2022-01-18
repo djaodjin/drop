@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2022, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,52 +22,26 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
+import os, re, six
 
-from tero.setup import modify_config, postinst, SetupTemplate
+from tero import setup
 
 
-class sstmpSetup(SetupTemplate):
-
-    def __init__(self, name, files, **kwargs):
-        super(sstmpSetup, self).__init__(name, files, **kwargs)
+class bashSetup(setup.SetupTemplate):
 
     def run(self, context):
-        complete = super(sstmpSetup, self).run(context)
+        complete = super(bashSetup, self).run(context)
         if not complete:
             # As long as the default setup cannot find all prerequisite
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
 
-        revaliases_conf = os.path.join(
-            context.value('etcDir'), 'ssmtp', 'revaliases')
-        sstmp_conf = os.path.join(
-            context.value('etcDir'), 'ssmtp', 'ssmtp.conf')
-
-        domain = context.value('domainName')
-        notify_email = context.value('notifyEmail')
-        if notify_email:
-            email_host = context.value('emailHost')
-            email_port = context.value('emailPort')
-            email_host_user = context.value('emailHostUser')
-            email_host_password = context.value('emailHostPassword')
-            modify_config(sstmp_conf, settings={
-                'root': notify_email,
-                'mailhub': email_host,
-                'RewriteDomain': domain,
-                'Hostname': domain,
-                'FromLineOverride': "NO",
-                'UseSTARTTLS': "YES",
-                'UseTLS': "YES",
-                'AuthUser': email_host_user,
-                'AuthPass': email_host_password
-            }, sep='=', context=context)
-            modify_config(revaliases_conf, settings={
-                'root': notify_email
-            }, sep=':', context=context)
-
-        postinst.shellCommand([
-            'alternatives', '--set mta', '/usr/sbin/sendmail.ssmtp'])
+        _, new_bash_logout_path = setup.stageFile(os.path.join(
+            context.value('etcDir'), 'bash.bash_logout'), context)
+        with open(new_bash_logout_path, 'w') as conf:
+            conf.write("""history -c
+history -w
+""")
 
         return complete
