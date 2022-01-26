@@ -80,6 +80,95 @@ def list_instances(regions=None, ec2_client=None):
     return runnning_instance_ids
 
 
+def list_instances_by_subnets(regions=None, ec2_client=None):
+    if not regions:
+        regions = get_regions(ec2_client)
+    subnets = {}
+    instances = {}
+    instances_by_subnets = {}
+    for region_name in regions:
+        LOGGER.info('look for instances in region %s...', region_name)
+        ec2_client = boto3.client('ec2', region_name=region_name)
+        elb_client = boto3.client('elbv2', region_name=region_name)
+
+        # Load balancers
+        resp = elb_client.describe_load_balancers()
+        for load_balancer in resp['LoadBalancers']:
+            load_balancer_name = load_balancer['LoadBalancerName']
+            for zone in load_balancer['AvailabilityZones']:
+                subnet_id = zone['SubnetId']
+                if subnet_id not in instances_by_subnets:
+                    instances_by_subnets.update({
+                        subnet_id: [load_balancer_name]})
+                else:
+                    instances_by_subnets[subnet_id] += [load_balancer_name]
+
+        # EC2 instances
+        resp = ec2_client.describe_instances(
+            Filters=[{'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
+        for reserv in resp['Reservations']:
+            for instance in reserv['Instances']:
+                instance_id = instance['InstanceId']
+                subnet_id = instance['SubnetId']
+                instances.update({instance_id: {}})
+                for tag in instance['Tags']:
+                    key = tag.get('Key')
+                    val = tag.get('Value')
+                    if key == 'Name':
+                        instances[instance_id].update({'name': val})
+                        break
+                if subnet_id not in instances_by_subnets:
+                    instances_by_subnets.update({subnet_id: [instance_id]})
+                else:
+                    instances_by_subnets[subnet_id] += [instance_id]
+
+        # route tables
+        default_route_table_id = None
+        resp = ec2_client.describe_route_tables()
+        for route_table in resp['RouteTables']:
+            for assoc in route_table['Associations']:
+                route_table_id = assoc['RouteTableId']
+                subnet_id = assoc.get('SubnetId')
+                if subnet_id:
+                    if subnet_id not in subnets:
+                        subnets.update({subnet_id: {
+                            'route_tables': [route_table_id]}})
+                    else:
+                        subnets[subnet_id]['route_tables'] += [route_table_id]
+                elif assoc['Main']:
+                    default_route_table_id = route_table_id
+
+        # finish populating subnets
+        resp = ec2_client.describe_subnets()
+        for subnet in resp['Subnets']:
+            subnet_id = subnet['SubnetId']
+            if subnet_id not in subnets:
+                subnets.update({subnet_id: {
+                    'route_tables': [default_route_table_id]}})
+            subnets[subnet_id].update({
+                'map_public_ip_on_launch': subnet['MapPublicIpOnLaunch'],
+            })
+            for tag in subnet.get('Tags', []):
+                key = tag.get('Key')
+                val = tag.get('Value')
+                if key == 'Name':
+                    subnets[subnet_id].update({'name': val})
+                    break
+            if subnet_id not in instances_by_subnets:
+                instances_by_subnets.update({subnet_id: []})
+
+    for subnet_id, instance_ids in six.iteritems(instances_by_subnets):
+        subnet_name = subnets[subnet_id].get('name', "")
+        print("%s,%s,%s,%s" % (subnet_id, subnet_name,
+            subnets[subnet_id].get('map_public_ip_on_launch'),
+            ','.join(subnets[subnet_id].get('route_tables'))))
+        for instance_id in instance_ids:
+            instance_name = instances.get(instance_id, {}).get('name', "")
+            print("\t%s,%s" % (instance_id, instance_name))
+
+    return instances_by_subnets
+
+
 def list_logs(log_location, domains, lognames=['access', 'error'],
               start_at=None, ends_at=None, s3_client=None):
     """
@@ -406,6 +495,10 @@ def main(input_args):
         default=False,
         help='Do not create resources')
     parser.add_argument(
+        '--region', action='append',
+        default=[],
+        help='Region')
+    parser.add_argument(
         '--log-location', action='store',
         default="s3://%s-logs/" % APP_NAME,
         help='location where logs are stored')
@@ -432,5 +525,5 @@ def main(input_args):
 
     log_location = args.log_location
     domains = args.domain
-    instances = list_instances()
-
+    instances_by_subnets = list_instances_by_subnets(regions=args.region)
+#    instances = list_instances()

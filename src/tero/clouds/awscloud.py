@@ -2604,7 +2604,7 @@ def create_instances(region_name, app_name, image_name,
                 if tag['Key'] == 'Name':
                     names = [name.strip() for name in tag['Value'].split(',')]
                     break
-            if True: #app_name not in names:
+            if app_name not in names:
                 continue
             instance_ids += [instance['InstanceId']]
             if instance['State']['Name'] == EC2_STOPPED:
@@ -2645,7 +2645,7 @@ def create_instances(region_name, app_name, image_name,
         {
             # `DeviceName` is required and must match expected name otherwise
             # an extra disk is created.
-            'DeviceName': '/dev/sda1',
+            'DeviceName': '/dev/xvda', # XXX '/dev/sda1',
             #'VirtualName': 'string',
     # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html
             'Ebs': {
