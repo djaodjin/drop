@@ -139,19 +139,19 @@ class MakeLogParser(LogParser):
 
     def run(self, logname, writer=None):
         with open(logname) as log:
-            self.bufferedLines = []
+            self.buffered_lines = []
             for line in log.readlines():
                 self.parse(line, writer=writer)
 
     def parse(self, line, writer=None):
         # We locally filter log output. Everything that falls before
         # a '^###' marker will be discarded in the error output.
-        if not hasattr(self, 'bufferedLines'):
-            self.bufferedLines = []
-        self.bufferedLines += [ line ]
+        if not hasattr(self, 'buffered_lines'):
+            self.buffered_lines = []
+        self.buffered_lines += [line]
         look = re.match(r'^###.*\s+(\S+)\s+.*', line)
         if look:
-            self.bufferedLines = [ line ]
+            self.buffered_lines = [line]
         else:
             look = re.match(
              r'^(make(\[\d+\]:.*not remade because of errors)|(:.*Error \d+))',
@@ -159,27 +159,27 @@ class MakeLogParser(LogParser):
             if look:
                 filename = '^make '
             else:
-                look = re.match('^(.*):\d+:error:', line)
+                look = re.match(r'^(.*):\d+:error:', line)
                 if look:
                     filename = look.group(1)
                 else:
-                    look = re.match('^error:', line)
+                    look = re.match(r'^error:', line)
                     if look:
                         filename = '^$'
             if look:
                 # We will try to finely filter buffered lines to the shell
                 # command that triggered the error if possible.
                 start = 0
-                if len(self.bufferedLines) > 0:
-                    start = len(self.bufferedLines) - 1
+                if len(self.buffered_lines) > 0:
+                    start = len(self.buffered_lines) - 1
                 while start > 0:
-                    look = re.match(filename, self.bufferedLines[start])
+                    look = re.match(filename, self.buffered_lines[start])
                     if look:
                         break
                     start = start - 1
-                for prev in self.bufferedLines[start:]:
+                for prev in self.buffered_lines[start:]:
                     sys.stdout.write(prev)
-                self.bufferedLines = []
+                self.buffered_lines = []
 
 
 class NginxLogParser(LogParser):
@@ -363,11 +363,29 @@ class EventWriter(object):
 
 class GitLabEventWriter(EventWriter):
 
-    def __init__(self, api_endpoint, token, default_project_name=None):
+    def __init__(self, api_endpoint, token,
+                 default_project_name=None, url_patterns=None):
         self.filter_processed_events = False
         self.api_endpoint = api_endpoint
         self.token = token
         self.default_project_name = default_project_name
+        self.url_patterns = [] if not url_patterns else url_patterns
+
+    def as_url_pattern(self, path):
+        for pat in self.url_patterns:
+            print("Compare %s with %s" % (path, pat))
+            parts = pat.split('/')
+            parts_re = []
+            for part in parts:
+                if part.startswith('{'):
+                    parts_re += [r'\w+']
+                else:
+                    parts_re += [part]
+            pat_re = '/'.join(parts_re)
+            look = re.match(pat_re, path)
+            if look:
+                return pat
+        return path
 
     def write(self, event):
         source_event = event.get('_source', {})
@@ -385,7 +403,7 @@ class GitLabEventWriter(EventWriter):
                 self.api_endpoint, project_id)
             http_method = source_event.get('http_method', 'GET')
             http_path = source_event.get('http_path')
-            title = "%s %s" % (http_method, http_path)
+            title = "%s %s" % (http_method, self.as_url_pattern(http_path))
             resp = requests.get(
                 issue_api_endpoint + '?search=%s' % title.replace(' ', '+'),
                 headers=auth_headers)
@@ -409,17 +427,19 @@ class GitLabEventWriter(EventWriter):
                 requests.put(issue_api_endpoint + str(issue_iid),
                     data={'state_event': 'reopen'},
                     headers=auth_headers)
-            note = "**Exception**: %s\n" % source_event.get('exception_type')
-            note += "```\nTraceback (most recent call last):\n"
+            note = "**Exception**: %s: %s\n" % (
+                source_event.get('exception_type'),
+                source_event.get('exception_descr'))
+            affected = source_event.get('username')
+            if affected:
+                note += "**Affected user**: %s\n" % affected
+            note += "**Traceback**:\n```\n"
             for frame in source_event.get('frames'):
                 note += "  File \"%s\", line %d, in %s\n" % (
                     frame.get('filename'), int(frame.get('lineno')),
                     frame.get('function'))
                 note += "    %s\n" % frame.get('context_line')
             note += "```\n"
-            affected = source_event.get('username')
-            if affected:
-                note += "**Affected user**: %s" % affected
             LOGGER.info("update issue %s/%d", issue_api_endpoint, issue_iid)
             resp = requests.post(issue_api_endpoint + "/%d/notes" % issue_iid,
                 data={'body': note},
@@ -583,6 +603,8 @@ def main(args):
     parser.add_argument('--gitlab-api-base', action='store')
     parser.add_argument('--token', action='store')
     parser.add_argument('--default-project-name', action='store', default=None)
+    parser.add_argument('--url-patterns', dest='url_patterns', action='store',
+        help='File containing URL patterns to aggregate exceptions')
     parser.add_argument('lognames', metavar='lognames', nargs='+',
         help="log files to parse")
 
@@ -592,10 +614,18 @@ def main(args):
         parser.print_help()
         return -1
 
+    url_patterns = []
+    url_patterns_filename = options.url_patterns
+    if url_patterns_filename:
+        with open(url_patterns_filename) as url_patterns_file:
+            for pat in url_patterns_file.readlines():
+                url_patterns += [pat.strip()]
+
     writer = None
     if options.gitlab_api_base:
         writer = GitLabEventWriter(options.gitlab_api_base, options.token,
-            default_project_name=options.default_project_name)
+            default_project_name=options.default_project_name,
+            url_patterns=url_patterns)
 
     for logname in options.lognames:
         parse_logfile(logname, writer=writer)
