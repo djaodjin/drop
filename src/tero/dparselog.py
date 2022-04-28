@@ -210,7 +210,7 @@ class NginxLogParser(LogParser):
             '$request'              : r'[^"]*',
             '$status'               : r'[0-9]{3}',
             '$body_bytes_sent'      : r'[0-9]+|-',
-            '$http_referer'         : r'[^"]+',
+            '$http_referer'         : r'[^"]*',
             '$http_user_agent'      : r'[^"]*',
             '$http_x_forwarded_for' : r'[^"]+',
         }
