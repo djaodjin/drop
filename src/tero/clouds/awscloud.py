@@ -1,4 +1,4 @@
-# Copyright (c) 2021, Djaodjin Inc.
+# Copyright (c) 2022, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -1126,7 +1126,7 @@ def create_kitchen_door_role(kitchen_door_name,
                 }]
             }))
         if identities_url:
-            _, identities_bucket, prefix = urlparse(location)[:3]
+            _, identities_bucket, prefix = urlparse(identities_url)[:3]
             iam_client.put_role_policy(
                 RoleName=kitchen_door_role,
                 PolicyName='ReadsIdentity',
@@ -2641,6 +2641,11 @@ def create_instances(region_name, app_name, image_name,
         image_name, instance_profile_arn=instance_profile_arn,
         ec2_client=ec2_client, region_name=region_name)
 
+    if not storage_enckey:
+        # Always make sure the EBS storage is encrypted.
+        storage_enckey = _get_or_create_storage_enckey(
+            region_name, tag_prefix, dry_run=dry_run)
+
     block_devices = [
         {
             # `DeviceName` is required and must match expected name otherwise
@@ -2767,6 +2772,7 @@ def create_app_resources(region_name, app_name, image_name,
                          settings_crypt_key=None,
                          s3_uploads_bucket=None,
                          instance_type=None,
+                         queue_url=None,
                          app_subnet_id=None,
                          vpc_id=None,
                          vpc_cidr=None,
@@ -2800,19 +2806,24 @@ def create_app_resources(region_name, app_name, image_name,
     `settings_location`, `settings_crypt_key` and `s3_uploads_bucket`
     are configuration used by the application code.
 
-    Cached settings
-    ---------------
-
-    These settings are purely for performace improvement.
-    `app_subnet_id`, `vpc_id`, `vpc_cidr` and `hosted_zone_id` will be
-    re-computed from the network setup if they are not passed as parameters.
-
     Miscellaneous settings
     ----------------------
 
     `tag_prefix` is the special tag for the shared webfront resources.
     `app_prefix` is the special tag for the application resources.
     `dry_run` shows the command that would be executed without executing them.
+
+    Cached settings
+    ---------------
+
+    The arguments below are purely for custom deployment and/or performace
+    improvement. Default values will be re-computed from the network setup
+    if they are not passed as parameters.
+        - `queue_url`
+        - `app_subnet_id`
+        - `vpc_id`
+        - `vpc_cidr`
+        - `hosted_zone_id`
     """
     if not instance_type:
         instance_type = 't3a.small'
@@ -2829,20 +2840,23 @@ def create_app_resources(region_name, app_name, image_name,
     # Create a Queue to communicate with the agent on the EC2 instance.
     # Implementation Note:
     #   strange but no exception thrown when queue already exists.
-    sqs = boto3.client('sqs', region_name=region_name)
-    if not dry_run:
-        resp = sqs.create_queue(QueueName=app_name)
-        queue_url = resp.get("QueueUrl")
-        LOGGER.info(
-            "found or created queue. queue_url set to %s", queue_url)
-    else:
-        queue_url = \
+    if not queue_url:
+        sqs_client = boto3.client('sqs', region_name=region_name)
+        if not dry_run:
+            resp = sqs_client.create_queue(QueueName=app_name)
+            queue_url = resp.get("QueueUrl")
+            LOGGER.info(
+                "found or created queue. queue_url set to %s", queue_url)
+        else:
+            queue_url = \
             'https://dry-run-sqs.%(region_name)s.amazonaws.com/%(app_name)s' % {
-            'region_name': region_name,
-            'app_name': app_name
-        }
-        LOGGER.warning(
-            "(dryrun) queue not created. queue_url set to %s", queue_url)
+                'region_name': region_name,
+                'app_name': app_name
+            }
+            LOGGER.warning(
+                "(dryrun) queue not created. queue_url set to %s", queue_url)
+    else:
+        LOGGER.info("uses pre-configured queue_url %s", queue_url)
 
     if not vpc_id:
         vpc_id, _ = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
@@ -3159,18 +3173,21 @@ def create_webfront_resources(region_name, app_name, image_name,
     `domain_name` is the domain the application responds on.
     `s3_uploads_bucket` is the bucket where POD documents are uploaded.
 
-    Cached settings
-    ---------------
-
-    These settings are purely for performace improvement.
-    `web_subnet_id`, `vpc_id` and `vpc_cidr` will be
-    re-computed from the network setup if they are not passed as parameters.
-
     Miscellaneous settings
     ----------------------
 
     `tag_prefix` is the special tag for the shared webfront resources.
     `dry_run` shows the command that would be executed without executing them.
+
+    Cached settings
+    ---------------
+
+    The arguments below are purely for custom deployment and/or performace
+    improvement. Default values will be re-computed from the network setup
+    if they are not passed as parameters.
+        - `web_subnet_id`
+        - `vpc_id`
+        - `vpc_cidr`
     """
     if not instance_type:
         instance_type = 't3.micro'
@@ -3258,18 +3275,21 @@ def create_sally_resources(region_name, app_name, image_name,
     as a privileged user. `company_domain` and `ldap_host` are used
     as the identity provider for regular users.
 
-    Cached settings
-    ---------------
-
-    These settings are purely for performace improvement.
-    `web_subnet_id`, `vpc_id` and `vpc_cidr` will be
-    re-computed from the network setup if they are not passed as parameters.
-
     Miscellaneous settings
     ----------------------
 
     `tag_prefix` is the special tag for the shared webfront resources.
     `dry_run` shows the command that would be executed without executing them.
+
+    Cached settings
+    ---------------
+
+    The arguments below are purely for custom deployment and/or performace
+    improvement. Default values will be re-computed from the network setup
+    if they are not passed as parameters.
+        - `web_subnet_id`
+        - `vpc_id`
+        - `vpc_cidr`
     """
     subnet_id = web_subnet_id
     sg_tag_prefix = tag_prefix
@@ -3490,31 +3510,144 @@ def create_target_group(region_name, app_name, instance_ids=None,
     return target_group
 
 
-def deploy_app_container(app_name, container_location,
-                         role_name=None, external_id=None, env=None,
-                         region_name=None, sqs_client=None, dry_run=None):
+def deploy_app_container(
+        app_name,
+        container_location,       # Repository:tag to find the container image
+        env=None,                 # Runtime environment variables for the app
+        container_access_id=None, # credentials for private repository
+        container_access_key=None,# credentials for private repository
+        queue_url=None,
+        sqs_client=None,
+        region_name=None,
+        dry_run=None):
     """
-    Sends the message to the agent to (re-)deploy the Docker container.
+    Sends a remote command to the agent to (re-)deploy the Docker container.
+
+    Cached settings
+    ---------------
+
+    The arguments below are purely for custom deployment and/or performace
+    improvement. Default values will be re-computed from the network setup
+    if they are not passed as parameters.
+        - queue_url
+        - sqs_client
+        - region_name
     """
-    queue_name = app_name
     if not sqs_client:
         sqs_client = boto3.client('sqs', region_name=region_name)
-    queue_url = sqs_client.get_queue_url(QueueName=queue_name).get('QueueUrl')
+    if not queue_url:
+        queue_url = sqs_client.get_queue_url(QueueName=app_name).get('QueueUrl')
     msg = {
         'event': "deploy_container",
         'app_name': app_name,
         'container_location': container_location
     }
-    if role_name:
-        msg.update({'role_name': role_name})
-    if external_id:
-        msg.update({'external_id': external_id})
+    if container_access_id:
+        msg.update({'role_name': container_access_id})
+    if container_access_key:
+        msg.update({'external_id': container_access_key})
     if env:
         msg.update({'env': env})
     if not dry_run:
         sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(msg))
         LOGGER.info("%s send 'deploy_container' message to %s",
             app_name, queue_url)
+
+
+def run_app(
+        region_name,             # region to deploy the app into
+        app_name,                # identifier for the app
+        image_name,              # AMI to start the app from
+        # App container settings
+        container_location=None,  # Docker repository:tag to find the image
+        env=None,                 # Runtime environment variables for the app
+        container_access_id=None, # credentials for private repository
+        container_access_key=None,# credentials for private repository
+        # DjaoApp gate settings
+        djaoapp_version=None,     # version of the djaoapp gate
+        settings_location=None,   # where to find Runtime djaoapp settings
+        settings_crypt_key=None,  # key to decrypt djaoapp settings
+        s3_uploads_bucket=None,   # where uploaded media are stored
+        # connection and monitoring settings.
+        identities_url=None,      # files to copy on the image
+        s3_logs_bucket=None,      # where to upload log files
+        ssh_key_name=None,        # AWS SSH key to connect
+        queue_url=None,           # To send remote commands to the instance
+        tls_priv_key=None,        # install TLS cert
+        tls_fullchain_cert=None,  # install TLS cert
+        # Cloud infrastructure settings
+        instance_type=None,       # EC2 instance the app runs on
+        storage_enckey=None,      # Key to encrypt the EBS volume
+        app_subnet_id=None,       # Subnet the app runs in
+        vpc_id=None,              # VPC the app runs in
+        vpc_cidr=None,            # VPC the app runs in (as IP range)
+        hosted_zone_id=None,      # To set DNS
+        app_prefix=None, # account_id for billing purposes
+        tag_prefix=None,
+        dry_run=None):
+    """
+    Creates the resources and deploy an application `app_name` in region
+    `region_name`. The EC2 image for the application is `image_name`.
+
+    Furthermore, a Docker image located at `container_location`
+    (requires `container_access_id` and `container_access_key`
+    for private Docker repository) can be deployed for the application.
+    The container is started with the environment variables defined in `env`.
+
+    Cached settings
+    ---------------
+
+    The arguments below are purely for custom deployment and/or performace
+    improvement. Default values will be re-computed from the network setup
+    if they are not passed as parameters.
+        - `queue_url`
+        - `app_subnet_id`
+        - `vpc_id`
+        - `vpc_cidr`
+        - `hosted_zone_id`
+    """
+    if not app_prefix:
+        app_prefix = app_name
+
+    ecr_access_role_arn = None
+    if container_location and is_aws_ecr(container_location):
+        ecr_access_role_arn = container_access_id
+
+    create_app_resources(
+        region_name, app_name, image_name,
+        instance_type=instance_type,
+        storage_enckey=storage_enckey,
+        s3_logs_bucket=s3_logs_bucket,
+        identities_url=identities_url,
+        ssh_key_name=ssh_key_name,
+        ecr_access_role_arn=ecr_access_role_arn,
+        settings_location=settings_location,
+        settings_crypt_key=settings_crypt_key,
+        s3_uploads_bucket=s3_uploads_bucket,
+        queue_url=queue_url,
+        app_subnet_id=app_subnet_id,
+        vpc_id=vpc_id,
+        vpc_cidr=vpc_cidr,
+        hosted_zone_id=hosted_zone_id,
+        app_prefix=app_prefix,
+        tag_prefix=tag_prefix,
+        dry_run=dry_run)
+    if tls_fullchain_cert and tls_priv_key:
+        create_domain_forward(region_name, djaoapp_version,
+            tls_priv_key=tls_priv_key,
+            tls_fullchain_cert=tls_fullchain_cert,
+            tag_prefix=tag_prefix,
+            dry_run=dry_run)
+
+    # Environment variables is an array of name/value.
+    if container_location:
+        deploy_app_container(app_name, container_location,
+            env=env,
+            container_access_id=container_access_id,
+            container_access_key=container_access_key,
+            queue_url=queue_url,
+            region_name=region_name,
+            dry_run=dry_run)
 
 
 def upload_app_logs(app_name,
@@ -3744,59 +3877,43 @@ def main(input_args):
                 dry_run=args.dry_run)
 
         else:
-            tls_priv_key_path = config[app_name].get('tls_priv_key_path')
-            tls_fullchain_path = config[app_name].get('tls_fullchain_path')
-            container_location = config[app_name].get('container_location')
-            if container_location and is_aws_ecr(container_location):
-                ecr_access_role_arn = config[app_name].get(
-                    'ecr_access_role_arn')
-                role_name = ecr_access_role_arn
-            else:
-                ecr_access_role_arn = None
-                role_name = config[app_name].get('container_access_token')
-            create_app_resources(
-                region_name,
-                app_name,
-                config[app_name].get(
-                    'image_name', config['default'].get('image_name')),
-                instance_type=config[app_name].get(
-                    'instance_type', 't3a.small'),
-                storage_enckey=storage_enckey,
-                s3_logs_bucket=s3_default_logs_bucket,
-                ssh_key_name=ssh_key_name,
-                ecr_access_role_arn=ecr_access_role_arn,
-                settings_location=config[app_name].get('settings_location'),
-                settings_crypt_key=config[app_name].get('settings_crypt_key'),
-                s3_uploads_bucket=config[app_name].get('s3_uploads_bucket'),
-                app_subnet_id=config[app_name].get('app_subnet_id',
-                    config['default'].get('app_subnet_id')),
-                vpc_id=config['default'].get('vpc_id'),
-                vpc_cidr=config['default'].get('vpc_cidr'),
-                app_prefix=app_name,
-                tag_prefix=tag_prefix,
-                dry_run=args.dry_run)
-            if tls_fullchain_cert and tls_priv_key:
-                create_domain_forward(
-                    region_name,
-                    config[app_name].get('version', '%s-2020-06-08' % APP_NAME),
-                    tls_priv_key=tls_priv_key,
-                    tls_fullchain_cert=tls_fullchain_cert,
-                    tag_prefix=tag_prefix,
-                    dry_run=args.dry_run)
-
             # Environment variables is an array of name/value.
+            container_location=config[app_name].get('container_location')
             if container_location:
                 env = config[app_name].get('env')
                 if env:
                     env = json.loads(env)
-                deploy_app_container(
-                    app_name,
-                    container_location,
-                    role_name=role_name,
-                    external_id=config[app_name].get('external_id'),
-                    env=env,
-                    region_name=region_name,
-                    dry_run=args.dry_run)
+            run_app(
+                region_name,
+                app_name,
+                config[app_name].get('image_name', config['default'].get(
+                    'image_name')),
+                container_location=container_location,
+                env=env,
+                container_access_id=config[app_name].get(
+                    'container_access_id'),
+                container_access_key=config[app_name].get(
+                    'container_access_key'),
+                instance_type=config[app_name].get(
+                    'instance_type', 't3a.small'),
+                storage_enckey=storage_enckey,
+                s3_logs_bucket=s3_default_logs_bucket,
+                identities_url=config[app_name].get('identities_url'),
+                ssh_key_name=ssh_key_name,
+                settings_location=config[app_name].get('settings_location'),
+                settings_crypt_key=config[app_name].get('settings_crypt_key'),
+                s3_uploads_bucket=config[app_name].get('s3_uploads_bucket'),
+                queue_url=config[app_name].get('queue_url'),
+                app_subnet_id=config[app_name].get('subnet_id',
+                    config['default'].get('app_subnet_id')),
+                vpc_id=config['default'].get('vpc_id'),
+                vpc_cidr=config['default'].get('vpc_cidr'),
+                djaoapp_version=config[app_name].get(
+                    'version', '%s-2021-10-05' % APP_NAME),
+                tls_priv_key=tls_priv_key,
+                tls_fullchain_cert=tls_fullchain_cert,
+                tag_prefix=tag_prefix,
+                dry_run=args.dry_run)
 
 
 if __name__ == '__main__':
