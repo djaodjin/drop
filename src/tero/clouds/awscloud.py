@@ -1175,7 +1175,7 @@ def create_instance_profile(instance_role,
                             iam_client=None,
                             region_name=None,
                             tag_prefix=None,
-                            dry_run=None):
+                            dry_run=False):
     """
     Returns an existing instance profile for the `instance_role` or, if none
     is found, create a new one and returns it.
@@ -3519,7 +3519,7 @@ def deploy_app_container(
         queue_url=None,
         sqs_client=None,
         region_name=None,
-        dry_run=None):
+        dry_run=False):
     """
     Sends a remote command to the agent to (re-)deploy the Docker container.
 
@@ -3584,7 +3584,7 @@ def run_app(
         hosted_zone_id=None,      # To set DNS
         app_prefix=None, # account_id for billing purposes
         tag_prefix=None,
-        dry_run=None):
+        dry_run=False):
     """
     Creates the resources and deploy an application `app_name` in region
     `region_name`. The EC2 image for the application is `image_name`.
