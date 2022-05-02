@@ -2838,25 +2838,29 @@ def create_app_resources(region_name, app_name, image_name,
         'courtyard'], tag_prefix=app_prefix)[0]
 
     # Create a Queue to communicate with the agent on the EC2 instance.
+    queue_name = app_name
+    if queue_url:
+        queue_name = queue_url.split('/')[-1]
     # Implementation Note:
     #   strange but no exception thrown when queue already exists.
-    if not queue_url:
-        sqs_client = boto3.client('sqs', region_name=region_name)
-        if not dry_run:
-            resp = sqs_client.create_queue(QueueName=app_name)
-            queue_url = resp.get("QueueUrl")
-            LOGGER.info(
-                "found or created queue. queue_url set to %s", queue_url)
-        else:
+    sqs_client = boto3.client('sqs', region_name=region_name)
+    if not dry_run:
+        resp = sqs_client.create_queue(QueueName=queue_name)
+        if queue_url and queue_url != resp.get("QueueUrl"):
+            LOGGER.warning(
+                "Expected queue_url %s but found or created queue %s",
+                queue_url, resp.get("QueueUrl"))
+        queue_url = resp.get("QueueUrl")
+        LOGGER.info("found or created queue. queue_url set to %s", queue_url)
+    else:
+        if not queue_url:
             queue_url = \
             'https://dry-run-sqs.%(region_name)s.amazonaws.com/%(app_name)s' % {
                 'region_name': region_name,
                 'app_name': app_name
             }
-            LOGGER.warning(
-                "(dryrun) queue not created. queue_url set to %s", queue_url)
-    else:
-        LOGGER.info("uses pre-configured queue_url %s", queue_url)
+        LOGGER.warning(
+            "(dryrun) queue not created. queue_url set to %s", queue_url)
 
     if not vpc_id:
         vpc_id, _ = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
