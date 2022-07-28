@@ -72,13 +72,25 @@ def get_last_modified(item):
 
 
 def parse_date(dt_str):
-    naive_date_str, offset_str = dt_str.split(' ')
-    naive_dt = datetime.datetime.strptime(naive_date_str, '%d/%b/%Y:%H:%M:%S')
+    try:
+        naive_date_str, offset_str = dt_str.split(' ')
+        naive_dt = datetime.datetime.strptime(
+            naive_date_str, '%d/%b/%Y:%H:%M:%S')
+        offset = int(offset_str[-4:-2])*60 + int(offset_str[-2:])
+        if offset_str[0] == "-":
+            offset = -offset
+        tzinfo = FixedOffset(offset)
+    except ValueError:
+        space_idx = dt_str.rfind(',')
+        if space_idx <= 0:
+            raise
+        naive_date_str = dt_str[:space_idx]
+        offset_str = ""
+        naive_dt = datetime.datetime.strptime(
+            naive_date_str, '%Y-%m-%d %H:%M:%S')
+        tzinfo = datetime.timezone.utc
 
-    offset = int(offset_str[-4:-2])*60 + int(offset_str[-2:])
-    if offset_str[0] == "-":
-        offset = -offset
-    return naive_dt.replace(tzinfo=FixedOffset(offset))
+    return naive_dt.replace(tzinfo=tzinfo)
 
 
 def split_on_comma(http_x_forwarded_for):
