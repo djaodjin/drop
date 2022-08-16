@@ -483,8 +483,10 @@ def parse_logname(filename):
     log_name = None
     instance_id = None
     log_date = None
-    look = re.match(r'(?P<host>\S+)-(?P<log_name>\S+)\.log-(?P<instance_id>[^-"\
-"]+)-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?', os.path.basename(filename))
+    look = re.match(
+        r'(?P<host>\S+)-(?P<log_name>\S+)\.log(-(?P<instance_id>[^-"\
+        "]+))?-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?',
+        os.path.basename(filename))
     if look:
         host = look.group('host')
         log_name = look.group('log_name')
@@ -498,6 +500,8 @@ def parse_logname(filename):
 def generate_events(fileobj, key):
     #pylint:disable=too-many-locals
     host, log_name, instance_id, log_date = parse_logname(key)
+    if not instance_id:
+        sys.stderr.write('warning: "%s" cannot extract instance_id\n' % key)
     if not log_name:
         sys.stderr.write('warning: "%s" does not match log file regex\n' % key)
         yield error_event(key, 'log filename didnt match regexp')
