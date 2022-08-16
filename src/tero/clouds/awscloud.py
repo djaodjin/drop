@@ -25,22 +25,30 @@
 #pylint:disable=too-many-statements,too-many-locals,too-many-arguments
 #pylint:disable=too-many-lines
 
-import argparse, configparser, datetime, json, logging, os, re, time
+import argparse, configparser, datetime, json, logging, os
+import random, re, shutil, subprocess, tempfile, time
 from collections import OrderedDict
 
 import boto3, jinja2, requests, six
 import botocore.exceptions
 import OpenSSL.crypto
 from pyasn1.codec.der.decoder import decode as asn1_decoder
-from pyasn1_modules.rfc2459 import SubjectAltName
 from pyasn1.codec.native.encoder import encode as nat_encoder
+from pyasn1_modules.rfc2459 import SubjectAltName
 #pylint:disable=import-error
 from six.moves.urllib.parse import urlparse
+
+from .. import shell_command
+from ..setup.nginx import read_upstream_proxies
 
 
 LOGGER = logging.getLogger(__name__)
 
 APP_NAME = 'djaoapp'
+USES_DEPRECATED_DOCKER_VERSION = False
+BASH = '/bin/bash'
+NGINX = '/usr/sbin/nginx'
+
 
 EC2_PENDING = 'pending'
 EC2_RUNNING = 'running'
@@ -3653,51 +3661,159 @@ def run_app(
             region_name=region_name,
             dry_run=dry_run)
 
-
-def upload_app_logs(app_name,
-                    region_name=None, sqs_client=None):
+def run_app_local(
+        app_name,                 # identifier for the app
+        # App container settings
+        app_port=None,            # port on which to run the app
+        container_location=None,  # Docker repository:tag to find the image
+        env=None,                 # Runtime environment variables for the app
+        container_access_id=None, # credentials for private repository
+        container_access_key=None,# credentials for private repository
+        tag_prefix=None,
+        dry_run=False):
     """
-    Sends the message to upload the container logs.
+    Runs the application with the local docker daemon
+
+    A Docker image located at `container_location`
+    (requires `container_access_id` and `container_access_key`
+    for private Docker repository) will be deployed for the application.
+    The container is started with the environment variables defined in `env`.
     """
-    queue_name = app_name
-    if not sqs_client:
-        sqs_client = boto3.client('sqs', region_name=region_name)
-    queue_url = sqs_client.get_queue_url(QueueName=queue_name).get('QueueUrl')
-    msg = {
-        'event': "upload_logs",
-        'app_name': app_name
-    }
-    sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(msg))
+    if not env:
+        env = []
+    look = re.match(r'^(https?://)?(.*)(/[a-zA-Z_\-:]+)', container_location)
+    if look:
+        container_host = look.group(2)
+        container_path = look.group(3)
+    else:
+        container_host = container_location
+        container_path = ''
+    container_location_no_scheme = container_host + container_path
+
+    if not app_port:
+        port_by_apps, _ = read_upstream_proxies()
+        if app_name in port_by_apps:
+            app_port = port_by_apps[app_name]
+        else:
+            # allocate a port and write proxy file.
+            count = 0
+            app_port = random.randint(8000, 8999)
+            while app_port in port_by_apps and count < 10:
+                app_port = random.randint(8000, 8999)
+                count = count + 1
+            if app_port in port_by_apps and count >= 10:
+                raise ValueError('Unable to select a port for the application')
+
+    cmd = ['/usr/bin/docker', 'run', '-d', '--name', app_name]
+    cmd += ['-p', '%d:80' % app_port]
+    for var in env:
+        if 'name' in var and 'value' in var:
+            cmd += ['-e', '"%(name)s=%(value)s"' % {
+                'name': var['name'], 'value': var['value'].replace('"', '\\"')}]
+        else:
+            LOGGER.warning("%s in %s does not contain a 'name' or 'value' key.",
+                var, env)
+    cmd += ['-t', container_location_no_scheme]
+    cmdline = ' '.join(cmd)
+
+    login_statement = ""
+    # AWS ECR
+    if re.match(
+            r'^[0-9]+\.dkr\.ecr\.[a-z0-9\-]+\.amazonaws\.com\/.*',
+            container_location_no_scheme):
+        # Regsitry location format is account_id.dk.ecr.region.amazon.com
+        parts = container_location_no_scheme.split('.')
+        if len(parts) < 4:
+            raise RuntimeError(
+                "Could not guess region of ECR from '%s'" % container_location)
+        container_region = parts[3]
+        if container_access_key and container_access_id:
+            #pylint:disable=line-too-long
+            external_aws_account = """temp_role=$(/usr/bin/aws sts assume-role --role-arn %(role_name)s --external-id %(external_id)s --role-session-name %(session_name)s)
+export AWS_ACCESS_KEY_ID=$(echo $temp_role | jq .Credentials.AccessKeyId | xargs)
+export AWS_SECRET_ACCESS_KEY=$(echo $temp_role | jq .Credentials.SecretAccessKey | xargs)
+export AWS_SESSION_TOKEN=$(echo $temp_role | jq .Credentials.SessionToken | xargs)
+""" % {
+                'role_name': container_access_key,
+                'session_name': "%s-%s" % (tag_prefix, app_name),
+                'external_id': container_access_id
+            }
+        else:
+            external_aws_account = ""
+        if USES_DEPRECATED_DOCKER_VERSION:
+            login_statement = "%(external_aws_account)s$(/usr/bin/aws"\
+                " ecr get-login --region %(container_region)s)" % {
+                'external_aws_account': external_aws_account,
+                'container_region': container_region,
+            }
+        else:
+            login_statement = ("%(external_aws_account)s/usr/bin/aws "\
+              "ecr get-login-password --region %(container_region)s | "\
+              "docker login --username AWS --password-stdin %(container_host)s"
+              % {
+                'external_aws_account': external_aws_account,
+                'container_host': container_host,
+                'container_region': container_region,
+            })
+
+    # GitHub Packages
+    elif re.match(r'^docker.pkg.github.com\/.*', container_location_no_scheme):
+        #pylint:disable=line-too-long
+        login_statement = "/usr/bin/docker login docker.pkg.github.com -u %(username)s -p %(token)s" % {
+            'username': container_access_id,
+            'token': container_access_key
+        }
+
+    with tempfile.NamedTemporaryFile() as script_file:
+        script_content = """#!/bin/bash
+
+set -x
+set -e
+
+# Authenticate with the container registry
+%(login_statement)s
+
+# Stops running container and reclaim disk space before starting new one.
+RUNNING_CONTAINERS=$(/usr/bin/docker ps -q)
+echo "shutting down containers $RUNNING_CONTAINERS"
+[ "X$RUNNING_CONTAINERS" == "X" ] || /usr/bin/docker stop $RUNNING_CONTAINERS
+/usr/bin/docker system prune -a -f
+
+# Fetch the application container and start it.
+/usr/bin/docker pull %(container_location)s
+%(cmdline)s
+""" % {
+    'login_statement': login_statement,
+    'container_location': container_location_no_scheme,
+    'cmdline': cmdline
+}
+        sys.stderr.write("%sexecute shell script:\n%s" % (
+            "(dryrun) " if dry_run else "", script_content))
+        script_file.write(script_content.encode('utf-8'))
+        script_file.flush()
+        script_file.seek(0)
+        try:
+            if not dry_run:
+                shell_command([BASH, script_file.name])
+        except subprocess.CalledProcessError:
+            failed_script = \
+                '/var/www/djaoapp/reps/djagent/deploy_container-failed.sh'
+            shutil.copyfile(script_file.name, failed_script)
+            LOGGER.warning("saved failed script to %s", failed_script)
 
 
-def main(input_args):
+def run_config(config_name, include_apps=None,
+               local_docker=False, skip_create_network=False,
+               tag_prefix=None, dry_run=False):
     """
-    Main entry point to run creation of AWS resources
+    Run the config file at `config_name`, skipping network configuration
+    if `skip_created_network = True`.
     """
-    logging.basicConfig(level=logging.INFO)
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--dry-run', action='store_true',
-        default=False,
-        help='Do not create resources')
-    parser.add_argument(
-        '--skip-create-network', action='store_true',
-        default=False,
-        help='Assume network resources have already been provisioned')
-    parser.add_argument(
-        '--prefix', action='store',
-        default=None,
-        help='prefix used to tag the resources created'\
-        ' (defaults to config name)')
-    parser.add_argument(
-        '--config', action='store',
-        default=os.path.join(os.getenv('HOME'), '.aws', APP_NAME),
-        help='configuration file')
-
-    args = parser.parse_args(input_args[1:])
+    if not config_name:
+        config_name = os.path.join(os.getenv('HOME'), '.aws', APP_NAME)
     config = configparser.ConfigParser()
-    config.read(args.config)
-    LOGGER.info("read configuration from %s", args.config)
+    config.read(config_name)
+    LOGGER.info("read configuration from %s", config_name)
     for section in config.sections():
         LOGGER.info("[%s]", section)
         for key, val in config.items(section):
@@ -3706,9 +3822,8 @@ def main(input_args):
             else:
                 LOGGER.info("%s = %s", key, val)
 
-    tag_prefix = args.prefix
     if not tag_prefix:
-        tag_prefix = os.path.splitext(os.path.basename(args.config))[0]
+        tag_prefix = os.path.splitext(os.path.basename(config_name))[0]
 
     region_name = config['default'].get('region_name')
 
@@ -3729,7 +3844,7 @@ def main(input_args):
     if not s3_default_logs_bucket:
         s3_default_logs_bucket = '%s-logs' % tag_prefix
 
-    if not args.skip_create_network:
+    if not local_docker and not skip_create_network:
         create_network(
             region_name,
             config['default']['vpc_cidr'],
@@ -3740,11 +3855,13 @@ def main(input_args):
             storage_enckey=storage_enckey,
             s3_logs_bucket=s3_default_logs_bucket,
             sally_ip=config['default'].get('sally_ip'),
-            dry_run=args.dry_run)
+            dry_run=dry_run)
 
     # Create target groups for the applications.
     for app_name in config:
-        if app_name.lower() == 'default':
+        app_name = app_name.lower()
+        if app_name == 'default' or (
+                include_apps and app_name not in include_apps):
             continue
 
         if tag_prefix and app_name.startswith(tag_prefix):
@@ -3787,7 +3904,7 @@ def main(input_args):
                     vpc_cidr=config['default']['vpc_cidr'],
                     vpc_id=config['default'].get('vpc_id'),
                     tag_prefix=tag_prefix,
-                    dry_run=args.dry_run)
+                    dry_run=dry_run)
 
             if build_ami:
                 # If we are creating an AMI
@@ -3817,7 +3934,7 @@ def main(input_args):
                     vpc_cidr=config['default']['vpc_cidr'],
                     vpc_id=config['default'].get('vpc_id'),
                     tag_prefix=tag_prefix,
-                    dry_run=args.dry_run)
+                    dry_run=dry_run)
                 if tls_fullchain_cert and tls_priv_key:
                     create_domain_forward(
                         region_name,
@@ -3853,7 +3970,7 @@ def main(input_args):
                     'image_name', config['default'].get('image_name')),
                 ssh_key_name=ssh_key_name,
                 provider=config[app_name].get('provider'),
-                dry_run=args.dry_run)
+                dry_run=dry_run)
 
         elif app_name.startswith('sally'):
             create_sally_resources(
@@ -3878,7 +3995,7 @@ def main(input_args):
                 vpc_id=config['default'].get('vpc_id'),
                 vpc_cidr=config['default'].get('vpc_cidr'),
                 tag_prefix=tag_prefix,
-                dry_run=args.dry_run)
+                dry_run=dry_run)
 
         else:
             # Environment variables is an array of name/value.
@@ -3887,37 +4004,108 @@ def main(input_args):
                 env = config[app_name].get('env')
                 if env:
                     env = json.loads(env)
-            run_app(
-                region_name,
-                app_name,
-                config[app_name].get('image_name', config['default'].get(
-                    'image_name')),
-                container_location=container_location,
-                env=env,
-                container_access_id=config[app_name].get(
-                    'container_access_id'),
-                container_access_key=config[app_name].get(
-                    'container_access_key'),
-                instance_type=config[app_name].get(
-                    'instance_type', 't3a.small'),
-                storage_enckey=storage_enckey,
-                s3_logs_bucket=s3_default_logs_bucket,
-                identities_url=config[app_name].get('identities_url'),
-                ssh_key_name=ssh_key_name,
-                settings_location=config[app_name].get('settings_location'),
-                settings_crypt_key=config[app_name].get('settings_crypt_key'),
-                s3_uploads_bucket=config[app_name].get('s3_uploads_bucket'),
-                queue_url=config[app_name].get('queue_url'),
-                app_subnet_id=config[app_name].get('subnet_id',
-                    config['default'].get('app_subnet_id')),
-                vpc_id=config['default'].get('vpc_id'),
-                vpc_cidr=config['default'].get('vpc_cidr'),
-                djaoapp_version=config[app_name].get(
-                    'version', '%s-2021-10-05' % APP_NAME),
-                tls_priv_key=tls_priv_key,
-                tls_fullchain_cert=tls_fullchain_cert,
-                tag_prefix=tag_prefix,
-                dry_run=args.dry_run)
+            if local_docker:
+                run_app_local(
+                    app_name,
+                    app_port=config[app_name].get('app_port'),
+                    container_location=container_location,
+                    env=env,
+                    container_access_id=config[app_name].get(
+                        'container_access_id'),
+                    container_access_key=config[app_name].get(
+                        'container_access_key'),
+                    dry_run=dry_run)
+            else:
+                run_app(
+                    region_name,
+                    app_name,
+                    config[app_name].get('image_name', config['default'].get(
+                        'image_name')),
+                    container_location=container_location,
+                    env=env,
+                    container_access_id=config[app_name].get(
+                        'container_access_id'),
+                    container_access_key=config[app_name].get(
+                        'container_access_key'),
+                    instance_type=config[app_name].get(
+                        'instance_type', 't3a.small'),
+                    storage_enckey=storage_enckey,
+                    s3_logs_bucket=s3_default_logs_bucket,
+                    identities_url=config[app_name].get('identities_url'),
+                    ssh_key_name=ssh_key_name,
+                    settings_location=config[app_name].get('settings_location'),
+                    settings_crypt_key=config[app_name].get(
+                        'settings_crypt_key'),
+                    s3_uploads_bucket=config[app_name].get('s3_uploads_bucket'),
+                    queue_url=config[app_name].get('queue_url'),
+                    app_subnet_id=config[app_name].get('subnet_id',
+                        config['default'].get('app_subnet_id')),
+                    vpc_id=config['default'].get('vpc_id'),
+                    vpc_cidr=config['default'].get('vpc_cidr'),
+                    djaoapp_version=config[app_name].get(
+                        'version', '%s-2021-10-05' % APP_NAME),
+                    tls_priv_key=tls_priv_key,
+                    tls_fullchain_cert=tls_fullchain_cert,
+                    tag_prefix=tag_prefix,
+                    dry_run=dry_run)
+
+
+def upload_app_logs(app_name,
+                    region_name=None, sqs_client=None):
+    """
+    Sends the message to upload the container logs.
+    """
+    queue_name = app_name
+    if not sqs_client:
+        sqs_client = boto3.client('sqs', region_name=region_name)
+    queue_url = sqs_client.get_queue_url(QueueName=queue_name).get('QueueUrl')
+    msg = {
+        'event': "upload_logs",
+        'app_name': app_name
+    }
+    sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(msg))
+
+
+def main(input_args):
+    """
+    Main entry point to run creation of AWS resources
+    """
+    logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--dry-run', action='store_true',
+        default=False,
+        help='Do not create resources')
+    parser.add_argument(
+        '--include-apps', action='append',
+        default=[],
+        help='Assume other apps have already been deployed')
+    parser.add_argument(
+        '--local-docker', action='store_true',
+        default=False,
+        help='Start apps using the docker daemon on the machine'\
+' executing the script')
+    parser.add_argument(
+        '--skip-create-network', action='store_true',
+        default=False,
+        help='Assume network resources have already been provisioned')
+    parser.add_argument(
+        '--prefix', action='store',
+        default=None,
+        help='prefix used to tag the resources created'\
+        ' (defaults to config name)')
+    parser.add_argument(
+        '--config', action='store',
+        default=os.path.join(os.getenv('HOME'), '.aws', APP_NAME),
+        help='configuration file')
+
+    args = parser.parse_args(input_args[1:])
+    run_config(args.config,
+        include_apps=args.include_apps,
+        local_docker=args.local_docker,
+        skip_create_network=args.skip_create_network,
+        tag_prefix=args.prefix,
+        dry_run=args.dry_run)
 
 
 if __name__ == '__main__':

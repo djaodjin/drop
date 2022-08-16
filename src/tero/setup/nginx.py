@@ -22,9 +22,16 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os, re, six
+import logging, os, re, six
 
 from tero import APT_DISTRIBS, REDHAT_DISTRIBS, setup
+
+LOGGER = logging.getLogger(__name__)
+
+NGINX_CONF_DIR = '/etc/nginx/conf.d'
+
+IPV4_RE = r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'
+SLUG_RE = r'[a-z][a-z0-9\-]*'
 
 
 class nginxSetup(setup.SetupTemplate):
@@ -49,7 +56,7 @@ class nginxSetup(setup.SetupTemplate):
         if dist_host in APT_DISTRIBS:
             return os.path.join(
                 sysconfdir, 'nginx', 'sites-available', domain)
-        elif dist_host in REDHAT_DISTRIBS:
+        if dist_host in REDHAT_DISTRIBS:
             return os.path.join(
                 sysconfdir, 'nginx', 'conf.d', domain + '.conf')
         raise NotImplementedError("unknown distribution '%s'" % dist_host)
@@ -69,6 +76,7 @@ class nginxSetup(setup.SetupTemplate):
             new_conf.write(conf_template)
 
     def run(self, context):
+        #pylint:disable=too-many-locals,too-many-nested-blocks
         complete = super(nginxSetup, self).run(context)
         if not complete:
             # As long as the default setup cannot find all prerequisite
@@ -159,6 +167,7 @@ class nginxSetup(setup.SetupTemplate):
         """
         Generate a configuration file for the site.
         """
+        #pylint:disable=too-many-arguments,too-many-locals
         app_name = domain.split('.')[0]
         if conf_name is None:
             conf_name = app_name
@@ -223,3 +232,59 @@ class nginxSetup(setup.SetupTemplate):
                 'webapps': webapps,
                 'wildcard_key_path': wildcard_key_path,
                 'wildcard_cert_path': wildcard_cert_path})
+
+
+def read_upstream_proxy(filename):
+    """
+    Read an nginx config file with an upstream proxy statement
+
+    upstream proxy_%(slug)s {
+        server  127.0.0.1:%(port)s;
+    }
+    """
+    slug = None
+    port = None
+    with open(filename) as proxy_file:
+        for line in proxy_file.readlines():
+            look = re.match(r'\s*upstream proxy_(%s) {' % SLUG_RE, line)
+            if look:
+                slug = look.group(1)
+            else:
+                look = re.match(r'\s*server\s+%s:(\d+);' % IPV4_RE, line)
+                if look:
+                    port = int(look.group(1))
+    LOGGER.info("found app '%s' on port '%s'", slug, port)
+    return port, slug
+
+
+def read_upstream_proxies(dirname=None):
+    """
+    Read nginx configs for upstream proxies, i.e. the filename matches
+    proxy_*.conf
+    """
+    port_by_apps = {}
+    app_by_ports = {}
+    if not dirname:
+        dirname = NGINX_CONF_DIR
+    for filename in os.listdir(dirname):
+        filename = os.path.join(dirname, filename)
+        look = re.match(r'.*/proxy_(%s).conf$' % SLUG_RE, filename)
+        if look:
+            port, slug = read_upstream_proxy(filename)
+            if not port:
+                LOGGER.warning("cannot extract port from %s", filename)
+                continue
+            if not slug:
+                LOGGER.warning("cannot extract slug from %s", filename)
+                continue
+            if port in app_by_ports:
+                LOGGER.warning("cannot add port %d for '%s',"
+                    " already present in %s", port, slug, app_by_ports)
+                continue
+            if slug in port_by_apps:
+                LOGGER.warning("cannot add app '%s' with port %d,"
+                    " already present in %s", slug, port, app_by_ports)
+                continue
+            port_by_apps.update({slug: port})
+            app_by_ports.update({port: slug})
+    return port_by_apps, app_by_ports
