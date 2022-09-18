@@ -978,12 +978,16 @@ def create_gate_role(gate_name,
                 }]}))
         LOGGER.info("%s created IAM role %s", tag_prefix, gate_role)
     except botocore.exceptions.ClientError as err:
-        if not err.response.get('Error', {}).get(
-                'Code', 'Unknown') == 'EntityAlreadyExists':
-            raise
+        err_code = err.response.get('Error', {}).get('Code', 'Unknown')
+        if not err_code != 'EntityAlreadyExists':
+            if err_code == 'AccessDenied':
+                # We don't have permissions to create the role. This might
+                # still be OK if the role already exists.
+                resp = iam_client.get_role(RoleName=gate_role)
+            else:
+                raise
         LOGGER.info("%s found IAM role %s", tag_prefix, gate_role)
-    resp = iam_client.list_role_policies(
-        RoleName=gate_role)
+    resp = iam_client.list_role_policies(RoleName=gate_role)
     for policy_name in resp['PolicyNames']:
         LOGGER.info(
             "%s found policy %s in role %s",
@@ -3888,7 +3892,10 @@ def run_config(config_name, include_apps=None,
                     region_name,
                     app_name,
                     image_name=config[app_name].get(
-                    'image_name', config['default'].get('image_name')),
+                        'image_name', config['default'].get('image_name')),
+                    storage_enckey=config[app_name].get(
+                        'storage_enckey', storage_enckey),
+                    s3_logs_bucket=s3_default_logs_bucket,
                     identities_url=config[app_name].get('identities_url'),
                     company_domain=config[app_name].get('company_domain',
                         config['default'].get('company_domain')),

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2022, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -175,21 +175,21 @@ unexpectedZeroExit = @echo "$(1)" && (($(1) \
 # If we leave the default, dynamic before static, since make search for
 # -llibname in vpath, VPATH and /lib, /usr/lib, and prefix/lib, it will always
 # find the dynamic one instead of the one we linked in *libBuildDir*.
-.LIBPATTERNS := lib%.a lib%.so
+.LIBPATTERNS := lib%.a lib%$(dylSuffix)
 
-vpath %.a       $(libSearchPath)
-vpath %.so      $(libSearchPath)
-vpath %.h       $(incSearchPath) $(srcDir)
-vpath %.hh      $(incSearchPath) $(srcDir)
-vpath %.cc      $(srcDir)/src
-vpath %.cpp     $(srcDir)/src
-vpath %.py      $(srcDir)/src
-vpath %.sh      $(srcDir)/src
-vpath %.c       $(srcDir)/src
-vpath %.m       $(srcDir)/src
-vpath %.book    $(srcDir)/doc
-vpath %.mxml    $(srcDir)/src
-vpath %Makefile $(srcDir)
+vpath %.a            $(libSearchPath)
+vpath %$(dylSuffix)  $(libSearchPath)
+vpath %.h            $(incSearchPath) $(srcDir)
+vpath %.hh           $(incSearchPath) $(srcDir)
+vpath %.cc           $(srcDir)/src
+vpath %.cpp          $(srcDir)/src
+vpath %.py           $(srcDir)/src
+vpath %.sh           $(srcDir)/src
+vpath %.c            $(srcDir)/src
+vpath %.m            $(srcDir)/src
+vpath %.book         $(srcDir)/doc
+vpath %.mxml         $(srcDir)/src
+vpath %Makefile      $(srcDir)
 
 define bldUnitTest
 

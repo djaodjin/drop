@@ -17,7 +17,7 @@ Maintenance scripts for the front-end session manager proxy.
         <description>
 Name of the machine hosting the LDAP server.
         </description>
-        <default>ldaps.ec2.internal</default>
+        <default>ldaps.us-west-2.internal</default>
       </variable>
       <variable name="notifyEmail">
         <description>Email to send notification to about the state of the machine.</description>
@@ -158,7 +158,7 @@ Name of the machine hosting the LDAP server.
         <description>
 Name of the machine hosting the LDAP server.
         </description>
-        <default>ldaps.ec2.internal</default>
+        <default>ldaps.us-west-2.internal</default>
       </variable>
       <variable name="notifyEmail">
         <description>Email to send notification to about the state of the machine.</description>

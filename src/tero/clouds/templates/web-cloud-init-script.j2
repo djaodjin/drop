@@ -101,7 +101,7 @@ else
 fi
 
 cd $siteTop
-bin/python reps/drop/src/dservices.py -DetcDir=/etc{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} reps/drop/share/profiles/webfront.xml
+${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocation={% logs_storage_location %}{% endif %}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} reps/drop/share/profiles/webfront.xml
 
 # Extra configuation to start up djagent and djaoapp
 if [ -d ${siteTop} ] ; then
@@ -141,16 +141,15 @@ if [ -d ${siteTop} ] ; then
         pushd ${siteTop}/var/log
         /usr/bin/ln -s /var/log/gunicorn
         popd
-        /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
+        /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/htdocs/themes
 
         # We make sure the .pid file can be created by gunicorn and systemd
         # service can load.
         /usr/bin/chown ${USER}:${USER} ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run /var/log/gunicorn
         # Insures we can upload themes
-        /usr/bin/chown ${USER}:${USER} ${siteTop}/reps/djaoapp/htdocs ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
+        /usr/bin/chown ${USER}:${USER} ${siteTop}/reps/djaoapp/htdocs/themes ${siteTop}/reps/djaoapp/themes
         # and that nginx can access the static assets
-        dirpath="${siteTop}/reps/djaoapp/htdocs(.*)"
-        /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' ${dirpath}
+        /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' "${siteTop}/reps/djaoapp/htdocs(.*)"
         /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp
 
         /usr/bin/cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system

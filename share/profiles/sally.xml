@@ -14,7 +14,7 @@ Installs and configures services used on SSH-accessible machines.
         <description>
 Name of the machine hosting the LDAP server.
         </description>
-        <default>ldaps.ec2.internal</default>
+        <default>ldaps.us-west-2.internal</default>
       </variable>
       <dep name="bash">
         <!-- We want to create a default /etc/bash.bash_logout -->
@@ -79,7 +79,7 @@ Name of the machine hosting the LDAP server.
         <description>
 Name of the machine hosting the LDAP server.
         </description>
-        <default>ldaps.ec2.internal</default>
+        <default>ldaps.us-west-2.internal</default>
       </variable>
       <!-- Access control -->
       <dep name="iptables">
