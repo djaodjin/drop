@@ -37,6 +37,7 @@ class dockerSetup(setup.SetupTemplate):
         """
         Create configuration for syslog
         """
+        appname = 'djaoapp'
         syslog_conf = os.path.join(
             context.value('etcDir'), 'syslog-ng', 'conf.d', 'docker.conf')
         templates_dir = os.path.dirname(os.path.abspath(__file__))
@@ -45,7 +46,7 @@ class dockerSetup(setup.SetupTemplate):
                 templates_dir, 'webapp-syslog.tpl')) as conf_file:
             conf_template = conf_file.read()
         with open(new_conf_path, 'w') as new_conf:
-            new_conf.write(conf_template)
+            new_conf.write(conf_template % {'appname': appname})
 
     def run(self, context):
         complete = super(dockerSetup, self).run(context)

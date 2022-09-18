@@ -101,7 +101,7 @@ else
 fi
 
 cd $siteTop
-${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocation={% logs_storage_location %}{% endif %}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} reps/drop/share/profiles/webfront.xml
+${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocation={{logs_storage_location}}{% endif %}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} reps/drop/share/profiles/webfront.xml
 
 # Extra configuation to start up djagent and djaoapp
 if [ -d ${siteTop} ] ; then
