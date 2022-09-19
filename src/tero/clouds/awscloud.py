@@ -38,8 +38,8 @@ from pyasn1_modules.rfc2459 import SubjectAltName
 #pylint:disable=import-error
 from six.moves.urllib.parse import urlparse
 
-from .. import shell_command
-from ..setup.nginx import read_upstream_proxies
+from tero import shell_command
+from tero.setup.nginx import read_upstream_proxies
 
 
 LOGGER = logging.getLogger(__name__)
@@ -979,7 +979,7 @@ def create_gate_role(gate_name,
         LOGGER.info("%s created IAM role %s", tag_prefix, gate_role)
     except botocore.exceptions.ClientError as err:
         err_code = err.response.get('Error', {}).get('Code', 'Unknown')
-        if not err_code != 'EntityAlreadyExists':
+        if err_code != 'EntityAlreadyExists':
             if err_code == 'AccessDenied':
                 # We don't have permissions to create the role. This might
                 # still be OK if the role already exists.
@@ -2509,18 +2509,17 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
     return instance_ids
 
 
-def create_ami_webfront(region_name, app_name, instance_id, ssh_key_name=None,
-                        sally_ip=None, sally_key_file=None, sally_port=None):
+def print_ssh_commands(region_name, instance_ids, ssh_key_name=None,
+                       sally_ip=None, sally_key_file=None, sally_port=None):
     """
-    Create an AMI from a running EC2 instance
+    Prints the ssh command to login into the EC2 instances
     """
     if not sally_key_file:
         sally_key_file = '$HOME/.ssh/%s' % ssh_key_name
     sally_port = int(sally_port) if sally_port else 22
     instance_domain = None
     ec2_client = boto3.client('ec2', region_name=region_name)
-    resp = ec2_client.describe_instances(
-        InstanceIds=[instance_id])
+    resp = ec2_client.describe_instances(InstanceIds=instance_ids)
     for reserv in resp['Reservations']:
         for instance in reserv['Instances']:
             instance_domain = instance['PrivateDnsName']
@@ -2528,6 +2527,18 @@ def create_ami_webfront(region_name, app_name, instance_id, ssh_key_name=None,
                 " -p %d -q -W %%h:%%p %s' -i $HOME/.ssh/%s ec2-user@%s",
                 instance['InstanceId'], sally_key_file, sally_port, sally_ip,
                 ssh_key_name, instance_domain)
+
+
+def create_ami_webfront(region_name, app_name, instance_id):
+    """
+    Create an AMI from a running EC2 instance
+    """
+    instance_domain = None
+    ec2_client = boto3.client('ec2', region_name=region_name)
+    resp = ec2_client.describe_instances(InstanceIds=[instance_id])
+    for reserv in resp['Reservations']:
+        for instance in reserv['Instances']:
+            instance_domain = instance['PrivateDnsName']
             break
 
     try:
@@ -3150,20 +3161,20 @@ def create_app_resources(region_name, app_name, image_name,
 
 
 def create_webfront_resources(region_name, app_name, image_name,
-                         storage_enckey=None,
-                         s3_logs_bucket=None,
-                         identities_url=None,
-                         ssh_key_name=None,
-                         company_domain=None,
-                         ldap_host=None,
-                         domain_name=None,
-                         s3_uploads_bucket=None,
-                         instance_type=None,
-                         web_subnet_id=None,
-                         vpc_id=None,
-                         vpc_cidr=None,
-                         tag_prefix=None,
-                         dry_run=False):
+                              storage_enckey=None,
+                              s3_logs_bucket=None,
+                              identities_url=None,
+                              ssh_key_name=None,
+                              company_domain=None,
+                              ldap_host=None,
+                              domain_name=None,
+                              s3_uploads_bucket=None,
+                              instance_type=None,
+                              web_subnet_id=None,
+                              vpc_id=None,
+                              vpc_cidr=None,
+                              tag_prefix=None,
+                              dry_run=False):
     """
     Create the proxy session server `app_name` based on OS distribution
     `image_name` in region `region_name` and connects it to the target group.
@@ -3912,17 +3923,20 @@ def run_config(config_name, include_apps=None,
                     vpc_id=config['default'].get('vpc_id'),
                     tag_prefix=tag_prefix,
                     dry_run=dry_run)
+                print_ssh_commands(
+                    region_name,
+                    instance_ids,
+                    ssh_key_name=ssh_key_name,
+                    sally_ip=config['default'].get('sally_ip'),
+                    sally_key_file=config['default'].get('sally_key_file'),
+                    sally_port=config['default'].get('sally_port'))
 
             if build_ami:
                 # If we are creating an AMI
                 create_ami_webfront(
                     region_name,
                     app_name,
-                    instance_ids[0],
-                    ssh_key_name=ssh_key_name,
-                    sally_ip=config['default'].get('sally_ip'),
-                    sally_key_file=config['default'].get('sally_key_file'),
-                    sally_port=config['default'].get('sally_port'))
+                    instance_ids[0])
             else:
                 # If we are not creating an AMI, then let's connect
                 # the instances to the load-balancer.

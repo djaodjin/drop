@@ -118,6 +118,7 @@ if [ -d ${siteTop} ] ; then
     # Install djagent service
     if [ ! -f /usr/lib/systemd/system/djagent.service ]; then
         cd ${siteTop}/reps/djagent
+        ../../bin/pip install -r requirements.txt
         ../../bin/dws --default make install
         echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djagent
         echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djagent
