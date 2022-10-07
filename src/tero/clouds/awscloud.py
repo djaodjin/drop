@@ -2779,6 +2779,20 @@ def create_instances(region_name, app_name, image_name,
             time.sleep(RETRY_WAIT_DELAY)
         LOGGER.info("%s started instances %s for '%s'",
                     tag_prefix, instance_ids, app_name)
+        for _ in range(0, NB_RETRIES):
+            # It can take some time before the instances will appear
+            # in a `describe_instances` call. We want to make sure
+            # not to get errors later on if we execute too fast.
+            try:
+                resp = ec2_client.describe_instances(InstanceIds=instance_ids)
+            except botocore.exceptions.ClientError as err:
+                err_code = err.response.get('Error', {}).get('Code', 'Unknown')
+                LOGGER.error("XXX err_code=%s", err_code)
+                if not err_code == 'InvalidInstanceID.NotFound':
+                    raise
+                LOGGER.info("%s waiting for EC2 instances %s to be"\
+                    " operational ...", tag_prefix, instance_ids)
+            time.sleep(RETRY_WAIT_DELAY)
 
     return instances
 
