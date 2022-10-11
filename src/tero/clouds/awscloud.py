@@ -2785,6 +2785,7 @@ def create_instances(region_name, app_name, image_name,
             # not to get errors later on if we execute too fast.
             try:
                 resp = ec2_client.describe_instances(InstanceIds=instance_ids)
+                break
             except botocore.exceptions.ClientError as err:
                 err_code = err.response.get('Error', {}).get('Code', 'Unknown')
                 LOGGER.error("XXX err_code=%s", err_code)

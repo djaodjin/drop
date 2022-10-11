@@ -4,9 +4,9 @@ boto3==1.17.12
 elasticsearch==7.6.0
 paramiko==2.8.0
 pyasn1_modules==0.2.5
-pyOpenSSL==18.0.0
-pytz==2020.1
-requests==2.25.1
+pyOpenSSL==22.1.0
+pytz==2022.1
+requests==2.28.1
 six==1.16.0
 sqlparse==0.3.1
-urllib3==1.26.5
+urllib3==1.26.12
