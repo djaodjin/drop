@@ -1093,20 +1093,22 @@ def create_vault_role(vault_name,
     return vault_role
 
 
-def create_kitchen_door_role(kitchen_door_name,
-                             s3_logs_bucket=None,
-                             identities_url=None,
-                             iam_client=None,
-                             tag_prefix=None):
+def create_logs_role(sg_name,
+                     s3_logs_bucket=None,
+                     identities_url=None,
+                     iam_client=None,
+                     tag_prefix=None):
     """
-    Returns an existing or create a new kitchen_door role for sally instances.
+    Returns an existing or create a new `kitchen-door` or `watch-tower` role
+    for sally and mail instances respectively. This role can download identities
+    and upload logs.
     """
-    kitchen_door_role = kitchen_door_name
+    role_name = sg_name
     if not iam_client:
         iam_client = boto3.client('iam')
     try:
         resp = iam_client.create_role(
-            RoleName=kitchen_door_role,
+            RoleName=role_name,
             AssumeRolePolicyDocument=json.dumps({
             "Version": "2012-10-17",
             "Statement": [
@@ -1121,7 +1123,7 @@ def create_kitchen_door_role(kitchen_door_name,
             ]
         }))
         iam_client.put_role_policy(
-            RoleName=kitchen_door_role,
+            RoleName=role_name,
             PolicyName='WriteslogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
@@ -1140,7 +1142,7 @@ def create_kitchen_door_role(kitchen_door_name,
         if identities_url:
             _, identities_bucket, prefix = urlparse(identities_url)[:3]
             iam_client.put_role_policy(
-                RoleName=kitchen_door_role,
+                RoleName=role_name,
                 PolicyName='ReadsIdentity',
                 PolicyDocument=json.dumps({
                     "Version": "2012-10-17",
@@ -1167,20 +1169,19 @@ def create_kitchen_door_role(kitchen_door_name,
                         }
                     ]
                 }))
-        LOGGER.info("%s created IAM role %s", tag_prefix, kitchen_door_role)
+        LOGGER.info("%s created IAM role %s", tag_prefix, role_name)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
                 'Code', 'Unknown') == 'EntityAlreadyExists':
             raise
-        LOGGER.info("%s found IAM role %s", tag_prefix, kitchen_door_name)
-    resp = iam_client.list_role_policies(
-        RoleName=kitchen_door_name)
+        LOGGER.info("%s found IAM role %s", tag_prefix, sg_name)
+    resp = iam_client.list_role_policies(RoleName=sg_name)
     for policy_name in resp['PolicyNames']:
         LOGGER.info(
             "%s found policy %s in role %s",
-            tag_prefix, policy_name, kitchen_door_name)
+            tag_prefix, policy_name, sg_name)
 
-    return kitchen_door_role
+    return role_name
 
 
 def create_instance_profile(instance_role,
@@ -2124,7 +2125,7 @@ def create_network(region_name, vpc_cidr, tag_prefix,
 
         # ... for sally instances
         create_instance_profile(
-            create_kitchen_door_role(kitchen_door_name,
+            create_logs_role(kitchen_door_name,
                 s3_logs_bucket=s3_logs_bucket,
                 iam_client=iam_client, tag_prefix=tag_prefix),
             iam_client=iam_client, region_name=region_name,
@@ -3285,19 +3286,20 @@ def create_webfront_resources(region_name, app_name, image_name,
 
 
 def create_sally_resources(region_name, app_name, image_name,
-                         storage_enckey=None,
-                         s3_logs_bucket=None,
-                         identities_url=None,
-                         ssh_key_name=None,
-                         ssh_port=None,
-                         company_domain=None,
-                         ldap_host=None,
-                         instance_type=None,
-                         web_subnet_id=None,
-                         vpc_id=None,
-                         vpc_cidr=None,
-                         tag_prefix=None,
-                         dry_run=False):
+                           storage_enckey=None,
+                           s3_logs_bucket=None,
+                           identities_url=None,
+                           ssh_key_name=None,
+                           ssh_port=None,
+                           company_domain=None,
+                           ldap_host=None,
+                           security_group_name=None,
+                           instance_type=None,
+                           web_subnet_id=None,
+                           vpc_id=None,
+                           vpc_cidr=None,
+                           tag_prefix=None,
+                           dry_run=False):
     """
     Create the sally server `app_name` based on OS distribution
     `image_name` in region `region_name`.
@@ -3317,6 +3319,8 @@ def create_sally_resources(region_name, app_name, image_name,
     as a privileged user. `company_domain` and `ldap_host` are used
     as the identity provider for regular users.
 
+    XXX `ssh_port`
+
     Miscellaneous settings
     ----------------------
 
@@ -3329,14 +3333,18 @@ def create_sally_resources(region_name, app_name, image_name,
     The arguments below are purely for custom deployment and/or performace
     improvement. Default values will be re-computed from the network setup
     if they are not passed as parameters.
+        - `security_group_name`
+        - `instance_type`
         - `web_subnet_id`
         - `vpc_id`
         - `vpc_cidr`
     """
     subnet_id = web_subnet_id
     sg_tag_prefix = tag_prefix
-    kitchen_door_sg_name = _get_security_group_names(
-        ['kitchen-door'], tag_prefix=sg_tag_prefix)[0]
+    if not security_group_name:
+        security_group_name = 'kitchen-door'
+    sg_name = _get_security_group_names(
+        [security_group_name], tag_prefix=sg_tag_prefix)[0]
 
     ec2_client = boto3.client('ec2', region_name=region_name)
     if not vpc_id:
@@ -3353,12 +3361,12 @@ def create_sally_resources(region_name, app_name, image_name,
         subnet_id = next(iter(web_subnet_by_cidrs.values()))['SubnetId']
 
     group_ids = _get_security_group_ids(
-        [kitchen_door_sg_name], tag_prefix,
+        [sg_name], tag_prefix,
         vpc_id=vpc_id, ec2_client=ec2_client)
 
     iam_client = boto3.client('iam')
     instance_profile_arn = create_instance_profile(
-        create_kitchen_door_role(kitchen_door_sg_name,
+        create_logs_role(sg_name,
             s3_logs_bucket=s3_logs_bucket,
             iam_client=iam_client, tag_prefix=tag_prefix),
         iam_client=iam_client, region_name=region_name,
@@ -4008,7 +4016,7 @@ def run_config(config_name, include_apps=None,
                 provider=config[app_name].get('provider'),
                 dry_run=dry_run)
 
-        elif app_name.startswith('sally'):
+        elif app_name.startswith('sally') or app_name.startswith('mail'):
             create_sally_resources(
                 region_name,
                 app_name,
@@ -4024,6 +4032,7 @@ def run_config(config_name, include_apps=None,
                     config['default'].get('ldap_host')),
                 ssh_port=config[app_name].get('ssh_port',
                     config['default'].get('ssh_port')),
+                security_group_name=config[app_name].get('security_group_name'),
                 instance_type=config[app_name].get(
                     'instance_type', 't3a.small'),
                 web_subnet_id=config[app_name].get(

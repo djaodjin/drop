@@ -45,9 +45,6 @@ Deploy and configure packages for running LDAP and SQL databases.
           <PubkeyAuthentication>yes</PubkeyAuthentication>
         </extra>
       </dep>
-      <dep name="openldap-servers">
-        <bin>slapd</bin>
-      </dep>
       <dep name="sssd">
         <bin>sssd</bin>
       </dep>

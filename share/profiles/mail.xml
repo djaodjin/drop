@@ -12,18 +12,28 @@ maintenance scripts for authentication and communication services
     <variable name="domainName">
       <description>Domain name for the machine being configured.</description>
     </variable>
-    <package name="Fedora">
-      <!-- Some active security against spammers -->
+    <package name="RedHat">
+      <!-- authentication -->
+      <dep name="openldap-servers">
+        <bin>slapd</bin>
+      </dep>
+      <dep name="sssd">
+        <bin>sssd</bin>
+      </dep>
+      <!-- monitoring -->
       <dep name="fail2ban">
         <bin>fail2ban-client</bin>
       </dep>
-      <!-- log messages -->
       <dep name="syslog-ng">
         <bin>syslog-ng</bin>
       </dep>
       <dep name="syslog-ng-libdbi">
         <lib>dbi</lib>
       </dep>
+      <dep name="monit">
+        <bin>monit</bin>
+      </dep>
+      <!-- mail -->
       <dep name="clamav">
         <bin>clamav</bin>
       </dep>
@@ -70,7 +80,7 @@ filter="grep spamd: -"
       </dep>
     </package>
   </project>
-  <project name="openldap-clients">
+  <project name="openldap-clients-with-openssl">
     <package name="Fedora">
       <fetch>
         <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-2.4.44-10.fc25.x86_64.rpm</url>
