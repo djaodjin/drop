@@ -351,7 +351,7 @@ def _get_security_group_names(base_names, tag_prefix=None):
     tag_prefix = _clean_tag_prefix(tag_prefix)
     results = []
     for base_name in base_names:
-        if base_name == 'kitchen-door':
+        if base_name in ['kitchen-door', 'watch-tower']:
             results += [base_name]
         else:
             results += ['%s%s' % (tag_prefix, base_name)]

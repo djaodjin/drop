@@ -9,16 +9,57 @@ maintenance scripts for authentication and communication services
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <variable name="domainName">
-      <description>Domain name for the machine being configured.</description>
-    </variable>
     <package name="RedHat">
-      <!-- authentication -->
-      <dep name="openldap-servers">
-        <bin>slapd</bin>
+      <variable name="domainName">
+        <description>Domain name for the machine being configured.</description>
+      </variable>
+      <variable name="notifyEmail">
+        <description>Email to send notification to about the state of the machine.</description>
+      </variable>
+      <variable name="emailHost">
+        <description>Host for the email server used to send notification about the state of the machine.</description>
+      </variable>
+      <variable name="emailPort">
+        <description>Port on the host email server used to send notification about the state of the machine.</description>
+      </variable>
+      <variable name="emailHostUser">
+        <description>User to connect to the email server used to send notification about the state of the machine.</description>
+      </variable>
+      <variable name="emailHostPassword">
+        <description>Password to connect to the email server used to send notification about the state of the machine.</description>
+      </variable>
+      <!-- Access control -->
+      <dep name="iptables">
+        <bin>iptables</bin>
+        <port>22</port>
+        <!-- mail receiving and sending -->
+        <port>25</port>
+        <port>587</port>
+        <port>993</port>
+        <port>995</port>
+        <!-- To get TLS certificates -->
+        <port>80</port>
+        <port>443</port>
+      </dep>
+      <dep name="authconfig">
+        <bin>authconfig</bin>
       </dep>
       <dep name="sssd">
         <bin>sssd</bin>
+      </dep>
+      <!-- to get TLS certificates -->
+      <dep name="certbot">
+        <bin>certbot</bin>
+      </dep>
+      <dep name="nginx">
+        <bin>nginx</bin>
+      </dep>
+
+      <dep name="opendkim">
+        <bin>opendkim</bin>
+      </dep>
+      <dep name="openldap-servers">
+        <bin>slapd</bin>
       </dep>
       <!-- monitoring -->
       <dep name="fail2ban">
@@ -35,7 +76,7 @@ maintenance scripts for authentication and communication services
       </dep>
       <!-- mail -->
       <dep name="clamav">
-        <bin>clamav</bin>
+        <bin>clamscan</bin>
       </dep>
       <dep name="spamassassin">
         <bin>spamc</bin>
@@ -76,7 +117,7 @@ filter="grep spamd: -"
         <bin>dovecot</bin>
       </dep>
       <dep name="cyrus-sasl">
-        <etc>init.d/saslauthd</etc>
+        <etc>sysconfig/saslauthd</etc>
       </dep>
     </package>
   </project>

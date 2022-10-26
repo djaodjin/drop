@@ -43,7 +43,9 @@ fi
 VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 
 # download keys, certificates, etc.
+{% if identities_url %}
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
+{% endif %}
 
 # defaults to downloading drop so we can install the mail.xml profile.
 if [ ! -f ${siteTop}/bin/dservices ]; then
@@ -57,7 +59,9 @@ if [ ! -f ${siteTop}/bin/dservices ]; then
     popd
 fi
 
-${siteTop}/bin/dservices -DetcDir=/etc -DlogsLocation={{logs_storage_location}}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %} reps/drop/share/profiles/mail.xml
+cd ${siteTop}
+LDAP_HASHED_PASSWORD='{{ldap_hashed_password}}'
+${siteTop}/bin/dservices -DetcDir=/etc -DlogsLocation={{logs_storage_location}} -DldapPasswordHash="$LDAP_HASHED_PASSWORD"{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} ${siteTop}/reps/drop/share/profiles/mail.xml
 
 # disable what we don't need
 /usr/bin/systemctl stop rpcbind
