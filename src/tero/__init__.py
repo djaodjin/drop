@@ -3546,7 +3546,7 @@ def find_first_files(base, name_pat, subdir=''):
                 relative = os.path.join(subdir, filename)
                 path = os.path.join(base, relative)
                 regex = name_pat_regex(name_pat)
-                look = regex.match(path)
+                look = regex.match(relative)
                 if look != None:
                     results += [relative]
                 elif (((('.*' + os.sep) in name_pat)
@@ -4200,7 +4200,7 @@ def name_pat_regex(name_pat):
     if not pat.startswith('.*'):
         # If we don't add the separator here we will end-up with unrelated
         # links to automake, pkmake, etc. when we are looking for "make".
-        pat = ".*" + os.sep + pat
+        pat = r'^' + pat + r'$|.*' + os.sep + pat
     return re.compile(pat + '$')
 
 

@@ -57,7 +57,8 @@ if [ ! -f ${siteTop}/bin/dservices ]; then
     popd
 fi
 
-${siteTop}/bin/dservices -DetcDir=/etc -DsshPort={{ssh_port}} -DlogsLocation={{logs_storage_location}}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %} reps/drop/share/profiles/sally.xml
+cd ${siteTop}
+${siteTop}/bin/dservices -DetcDir=/etc -DsshPort={{ssh_port}} -DlogsLocation={{logs_storage_location}}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %} ${siteTop}/reps/drop/share/profiles/sally.xml
 
 # disable what we don't need
 /usr/bin/systemctl stop rpcbind

@@ -31,8 +31,9 @@ from tero.setup import modify_config, stageFile, postinst, SetupTemplate
 class openldap_serversSetup(SetupTemplate):
 
     backup_script = [
-        "slapcat -v -l /var/backups/ldap/people.ldif",
-        "chmod 600 /var/backups/ldap/people.ldif"]
+        "slapcat -v -l /var/migrate/ldap/dumps/people.ldif",
+        "chmod 600 /var/migrate/ldap/dumps/people.ldif"
+    ]
 
     def __init__(self, name, files, **kwargs):
         super(openldap_serversSetup, self).__init__(name, files, **kwargs)
@@ -56,7 +57,7 @@ class openldap_serversSetup(SetupTemplate):
         _, new_conf_path = stageFile(os.path.join(
             context.value('etcDir'), 'logrotate.d', 'ldap_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
-            new_conf.write("""/var/backups/ldap/people.ldif
+            new_conf.write("""/var/migrate/ldap/dumps/people.ldif
 {
     create 0600 root root
     daily

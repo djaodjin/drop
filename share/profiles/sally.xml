@@ -39,7 +39,7 @@ Name of the machine hosting the LDAP server.
         <bin>sshd</bin>
         <extra name="/etc/ssh/sshd_config">
           <PermitRootLogin>no</PermitRootLogin>
-          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
+          <AuthorizedKeysFile>.ssh/authorized_keys</AuthorizedKeysFile>
           <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
           <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
           <PasswordAuthentication>no</PasswordAuthentication>

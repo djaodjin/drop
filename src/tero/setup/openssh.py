@@ -73,10 +73,6 @@ class openssh_serverSetup(SetupTemplate):
         ldapCertPath = os.path.join(context.value('etcDir'),
             'pki', 'tls', 'certs', '%s.crt' % ldapHost)
         if config_ldap:
-            settings.update({
-                'AuthorizedKeysCommand': '/usr/libexec/openssh/ssh-ldap-wrapper',
-                'AuthorizedKeysCommandUser': 'nobody'
-            })
             names = {
                 'ldapHost': ldapHost,
                 'domainNat': domain_parts[0],

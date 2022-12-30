@@ -47,25 +47,22 @@ Name of the machine hosting the LDAP server.
       <dep name="sssd">
         <bin>sssd</bin>
       </dep>
-      <dep name="openssh-ldap">
-        <libexec>.*/(openssh)/ssh-ldap-helper</libexec>
-      </dep>
       <dep name="openssh-server">
         <bin>sshd</bin>
         <extra name="/etc/ssh/sshd_config">
-          <PermitRootLogin>no</PermitRootLogin>
-          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
-          <!-- BE CAREFUL: Password authentication is enabled here only
-               when we use a sally port to access the web machines. -->
-          <PasswordAuthentication>no</PasswordAuthentication>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
-          <PermitTunnel>no</PermitTunnel>
-          <X11Forwarding>no</X11Forwarding>
-          <StrictModes>yes</StrictModes>
+          <AuthorizedKeysFile>.ssh/authorized_keys</AuthorizedKeysFile>
           <IgnoreRhosts>yes</IgnoreRhosts>
           <HostbasedAuthentication>no</HostbasedAuthentication>
-          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <!-- BE CAREFUL: Password authentication is enabled here only
+               when we use a sally port to access the web machines. -->
+          <PasswordAuthentication>yes</PasswordAuthentication>
           <PubkeyAuthentication>yes</PubkeyAuthentication>
+          <PermitRootLogin>no</PermitRootLogin>
+          <PermitTunnel>no</PermitTunnel>
+          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <StrictModes>yes</StrictModes>
+          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+          <X11Forwarding>no</X11Forwarding>
         </extra>
       </dep>
       <dep name="openldap-clients">
@@ -194,21 +191,19 @@ Name of the machine hosting the LDAP server.
       <dep name="openssh-server">
         <bin>sshd</bin>
         <extra name="/etc/ssh/sshd_config">
-          <PermitRootLogin>no</PermitRootLogin>
-          <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
-          <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
-          <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
-          <!-- BE CAREFUL: Password authentication is enabled here only
-               when we use a sally port to access the web machines. -->
-          <PasswordAuthentication>no</PasswordAuthentication>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
-          <PermitTunnel>no</PermitTunnel>
-          <X11Forwarding>no</X11Forwarding>
-          <StrictModes>yes</StrictModes>
+          <AuthorizedKeysFile>.ssh/authorized_keys</AuthorizedKeysFile>
           <IgnoreRhosts>yes</IgnoreRhosts>
           <HostbasedAuthentication>no</HostbasedAuthentication>
-          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <!-- BE CAREFUL: Password authentication is enabled here only
+               when we use a sally port to access the web machines. -->
+          <PasswordAuthentication>yes</PasswordAuthentication>
           <PubkeyAuthentication>yes</PubkeyAuthentication>
+          <PermitRootLogin>no</PermitRootLogin>
+          <PermitTunnel>no</PermitTunnel>
+          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
+          <StrictModes>yes</StrictModes>
+          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+          <X11Forwarding>no</X11Forwarding>
         </extra>
       </dep>
       <dep name="openldap-clients-with-openssl">
