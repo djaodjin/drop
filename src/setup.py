@@ -55,6 +55,7 @@ setup(name='drop',
         # Scripts to configure cloud infrastructure and OS distributions
         'scripts/dcloud',
         'scripts/dservices',
+        'scripts/dsettings',
         # Scripts to monitor development work and operations
         'scripts/dintegrity',
         'scripts/dmonitor',
