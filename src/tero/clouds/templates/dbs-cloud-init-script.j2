@@ -6,26 +6,41 @@ set -x
 set -e
 
 siteTop=${HOME}/workspace
+OWNER=ec2-user
 
-# Install necessary packages to bootstrap configuration
-VIRTUALENV_RUN="virtualenv -p python3 --system-site-packages"
+# Install necessary public packages to bootstrap configuration
 if [ -f /usr/bin/dnf ]; then
-    /usr/bin/dnf -y install git-core python-virtualenv awscli
+    OWNER=fedora
+    [ -f /usr/bin/aws ] || /usr/bin/dnf -y install awscli
+    [ -f /usr/bin/bzip2 ] || /usr/bin/dnf -y install bzip2
+    [ -f /usr/bin/make ] || /usr/bin/dnf -y install make
 else
-    /usr/bin/yum -y install epel-release
-    # Without making the fast cache, python36 is sometimes not found on mirror
-    # (ex: mirrors.cat.pdx.edu)
-    /usr/bin/yum makecache fast
-    /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip
-    /usr/bin/yum -y install bzip2 git-core python-virtualenv python36-six wget awscli
-    # We also need to install postgresql repos to find `postgresql11-server`
-    /usr/bin/wget https://download.postgresql.org/pub/repos/yum/11/redhat/rhel-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-    /usr/bin/yum -y install pgdg-redhat-repo-latest.noarch.rpm
-    # disable services that should have never been started
-    /usr/bin/systemctl disable rpcbind.service rpcbind.socket
-    /usr/bin/systemctl stop rpcbind.service rpcbind.socket
-    /usr/bin/systemctl disable postfix.service
-    /usr/bin/systemctl stop postfix.service
+    if [ "$(grep "Amazon" /etc/system-release)" != "" ]; then
+        # We have to enable the EPEL repo to install podofo.
+        if [ ! -f /etc/yum.repos.d/epel.repo ]; then
+            amazon-linux-extras install epel -y
+            # We must enable postgresql14 otherwise `yum install postgresql`
+            # installs version 9.2.
+            amazon-linux-extras enable postgresql14
+        fi
+    fi
+    if [ "$(grep "CentOS" /etc/system-release)" != "" ]; then
+        OWNER=centos
+        if [ ! -f /usr/bin/python3 ]; then
+            if [ ! -f /etc/yum.repos.d/epel.repo ]; then
+                /usr/bin/yum -y install epel-release
+            fi
+        fi
+        # Without making the fast cache, python36 is sometimes not found on mirror
+        # (ex: mirrors.cat.pdx.edu)
+        /usr/bin/yum makecache fast
+        /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip python-boto3
+    fi
+    [ -f /usr/bin/aws ] || /usr/bin/yum -y install awscli
+    [ -e /usr/lib64/python2.7/site-packages/selinux ] || /usr/bin/yum -y install libselinux-python
+    [ -f /usr/bin/bzip2 ] || /usr/bin/yum -y install bzip2
+    [ -f /usr/bin/make ] || /usr/bin/yum -y install make
+    [ -f /usr/bin/git ] || /usr/bin/yum -y install git
 fi
 
 # Mount encrypted volume as /var after copying previous content over.
@@ -48,19 +63,26 @@ fi
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
 
 # Clone configuration scripts repository and setup the machine.
+VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 mkdir -p ${siteTop}/reps
 ${VIRTUALENV_RUN} ${siteTop}
 cd ${siteTop}
 git clone {{remote_drop_repo}} reps/drop
+bin/pip install -r reps/drop/requirements.txt
+pushd reps/drop/src
+../../../bin/python setup.py --quiet build -b ../../../build install --prefix=${siteTop}
+popd
 DB_PASSWORD='{{db_password}}'
 DB_MASTER_PASSWORD='{{db_master_password}}'
-LDAP_HASHED_PASSWORD='{{ldap_hashed_password}}'
-bin/python reps/drop/src/dservices.py -Dadmin=$USER -DetcDir=/etc -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}" -DldapPasswordHash="$LDAP_HASHED_PASSWORD" -Dvpc_cidr="{{vpc_cidr}}" reps/drop/share/profiles/databases.xml
-/usr/bin/psql -c "ALTER USER postgres PASSWORD '$DB_MASTER_PASSWORD';"
-/usr/bin/psql -c "CREATE ROLE {{db_user}} LOGIN PASSWORD '$DB_PASSWORD';"
+${siteTop}/bin/dservices -Dadmin=$USER -DetcDir=/etc -DlogsBucket={{s3_logs_bucket}} -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}"{% if ldap_hashed_password %} -DldapPasswordHash="{{ldap_hashed_password}}"{% endif %} -Dvpc_cidr="{{vpc_cidr}}" reps/drop/share/profiles/databases.xml
+sudo -u postgres /usr/bin/psql -c "ALTER USER postgres PASSWORD '$DB_MASTER_PASSWORD';"
+sudo -u postgres /usr/bin/psql -c "CREATE ROLE {{db_user}} LOGIN PASSWORD '$DB_PASSWORD';"
 
 # Restore database from flat files
-chown -R postgres:postgres /var/migrate/pgsql/dumps
+mkdir -p /var/migrate/pgsql/dumps /var/migrate/pgsql/schemas
+chown -R postgres:postgres /var/migrate/pgsql
 LDIF_DUMPS=`find /var/migrate/ldap/dumps -name '*.ldif' -print`
 PGSQL_DUMPS=`find /var/migrate/pgsql/dumps -name '*.sql' -o -name '*.sql.gz' -print`
-bin/python reps/drop/src/drestore.py --domainName="{{company_domain}}" $LDIF_DUMPS $PGSQL_DUMPS
+if [ "X$LDIF_DUMPS" != "X" ] && [ "X$PGSQL_DUMPS" != "X" ] ; then
+    bin/python reps/drop/src/drestore.py --domainName="{{company_domain}}" $LDIF_DUMPS $PGSQL_DUMPS
+fi

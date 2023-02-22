@@ -40,12 +40,31 @@ maintenance scripts for authentication and communication services
         <!-- To get TLS certificates -->
         <port>80</port>
         <port>443</port>
+        <!-- Expose LDAPS -->
+        <port>636</port>
       </dep>
       <dep name="authconfig">
         <bin>authconfig</bin>
       </dep>
       <dep name="sssd">
         <bin>sssd</bin>
+      </dep>
+      <dep name="openssh-server">
+        <bin>sshd</bin>
+        <extra name="/etc/ssh/sshd_config">
+          <AuthorizedKeysFile>.ssh/authorized_keys</AuthorizedKeysFile>
+          <IgnoreRhosts>yes</IgnoreRhosts>
+          <HostbasedAuthentication>no</HostbasedAuthentication>
+          <!-- BE CAREFUL: Password authentication is enabled here only
+               when we use a sally port to access the web machines. -->
+          <PasswordAuthentication>yes</PasswordAuthentication>
+          <PubkeyAuthentication>yes</PubkeyAuthentication>
+          <PermitRootLogin>no</PermitRootLogin>
+          <PermitTunnel>no</PermitTunnel>
+          <StrictModes>yes</StrictModes>
+          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
+          <X11Forwarding>no</X11Forwarding>
+        </extra>
       </dep>
       <!-- to get TLS certificates -->
       <dep name="certbot">
@@ -54,7 +73,6 @@ maintenance scripts for authentication and communication services
       <dep name="nginx">
         <bin>nginx</bin>
       </dep>
-
       <dep name="opendkim">
         <bin>opendkim</bin>
       </dep>
@@ -131,6 +149,33 @@ filter="grep spamd: -"
         <url>https://djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-clients-2.4.44-10.fc25.x86_64.rpm</url>
         <sha1>dbcfa8f4ceda5b31c17bcab5484f2de7c3aec8ff</sha1>
       </fetch>
+    </package>
+  </project>
+  <project name="openldap-servers-with-openssl">
+    <package name="Fedora">
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-2.4.45-4.fc27.x86_64.rpm</url>
+        <sha1>918168af8ddafd92637ce45f37f30e42651591bc</sha1>
+      </fetch>
+      <fetch>
+        <url>https://djaodjin.com/pub/fedora/linux/updates/fc27/x86_64/openldap-servers-2.4.45-4.fc27.x86_64.rpm</url>
+        <sha1>64630e969744f24cde204ccd632643583ca83d75</sha1>
+      </fetch>
+      <dep name="libdb-utils">
+        <lib>db</lib>
+      </dep>
+      <dep name="libtool-ltdl">
+        <lib>ltdl</lib>
+      </dep>
+      <dep name="authconfig">
+        <!-- (optional) used to configure sssd -->
+        <bin>authconfig</bin>
+      </dep>
+      <dep name="openssl">
+        <!-- (optional)
+             Install openssl in order to create dummy certificates -->
+        <bin>openssl</bin>
+      </dep>
     </package>
   </project>
 </projects>

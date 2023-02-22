@@ -42,14 +42,29 @@ class postgresql_serverSetup(SetupTemplate):
     def __init__(self, name, files, **kwargs):
         super(postgresql_serverSetup, self).__init__(name, files, **kwargs)
 
-    @property
-    def backup_script(self):
+    def backup_script(self, context):
         return [
+        "#!/bin/sh",
+        "",
+        "LOG_SUFFIX=`wget -q -O - "\
+        " http://instance-data/latest/meta-data/instance-id | sed -e s/i-/-/`",
+
+        "sudo -u postgres sh -c 'rm /var/migrate/pgsql/dumps/*.gz'",
+
         "sudo -u postgres psql -U postgres -qAt -c 'select datname from"\
         " pg_database where datallowconn' | xargs -r -I X sudo -u postgres"\
-        " %(pg_dump)s -U postgres -C -f /var/backups/pgsql/X.sql X" % {
-            'pg_dump': self.pg_dump},
-        "chmod 600 /var/backups/pgsql/*.sql"]
+        " %(pg_dump)s -U postgres -C -f /var/backups/pgsql/X.sql$LOG_SUFFIX X" %
+            {'pg_dump': self.pg_dump},
+
+        "chmod 600 /var/backups/pgsql/*.sql",
+
+    'sudo -u postgres sh -c "gzip /var/migrate/pgsql/dumps/*.sql$LOG_SUFFIX"',
+
+        "sudo -u postgres /usr/bin/aws s3 cp --quiet --recursive --sse AES256"\
+        " /var/migrate/pgsql/dumps/"\
+        " s3://%(s3_logs_bucket)s/var/migrate/pgsql/dumps/" % {
+        's3_logs_bucket': context.value('logsBucket')
+    }]
 
     def create_cron_conf(self, context):
         """
@@ -58,10 +73,7 @@ class postgresql_serverSetup(SetupTemplate):
         _, new_conf_path = stageFile(os.path.join(
             context.value('etcDir'), 'cron.daily', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
-            new_conf.write("""#!/bin/sh
-
-%(backup_script)s
-""" % {'backup_script': '\n'.join(self.backup_script)})
+            new_conf.write("\n".join(self.backup_script(context)))
 
     def create_logrotate_conf(self, context):
         """
@@ -252,15 +264,15 @@ class postgresql_serverSetup(SetupTemplate):
         return complete
 
 
-class postgresql11_serverSetup(postgresql_serverSetup):
+class postgresql14_serverSetup(postgresql_serverSetup):
 
-    pgdata = '/var/lib/pgsql/11/data'
-    postgresql_setup = '/usr/pgsql-11/bin/postgresql-11-setup'
-    pg_dump = '/usr/pgsql-11/bin/pg_dump'
-    daemons = ['postgresql-11']
+    pgdata = '/var/lib/pgsql/14/data'
+    postgresql_setup = '/usr/pgsql-14/bin/postgresql-14-setup'
+    pg_dump = '/usr/pgsql-14/bin/pg_dump'
+    daemons = ['postgresql-14']
 
     def __init__(self, name, files, **kwargs):
-        super(postgresql11_serverSetup, self).__init__(name, files, **kwargs)
+        super(postgresql14_serverSetup, self).__init__(name, files, **kwargs)
 
 
 class postgresqlSetup(SetupTemplate):

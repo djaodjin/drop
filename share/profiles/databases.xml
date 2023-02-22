@@ -19,7 +19,7 @@ Deploy and configure packages for running SQL databases.
       <variable name="dbPassword">
         <description>Password for user to access databases</description>
       </variable>
-      <dep name="postgresql11-server">
+      <dep name="postgresql-server">
         <bin>postgres</bin>
         <listen_addresses>private-ip.local</listen_addresses>
       </dep>
@@ -42,7 +42,6 @@ Deploy and configure packages for running SQL databases.
           <StrictModes>yes</StrictModes>
           <IgnoreRhosts>yes</IgnoreRhosts>
           <HostbasedAuthentication>no</HostbasedAuthentication>
-          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
           <PubkeyAuthentication>yes</PubkeyAuthentication>
         </extra>
       </dep>
@@ -55,9 +54,6 @@ Deploy and configure packages for running SQL databases.
       </dep>
       <dep name="syslog-ng-libdbi">
         <lib>dbi</lib>
-      </dep>
-      <dep name="monit">
-        <bin>monit</bin>
       </dep>
       <dep name="ssmtp">
         <bin>ssmtp</bin>
@@ -74,7 +70,7 @@ Deploy and configure packages for running SQL databases.
         <bin>fail2ban-client</bin>
       </dep>
       <!-- XXX Client tools so we can debug installation. -->
-      <dep name="postgresql11">
+      <dep name="postgresql">
         <bin>psql</bin>
       </dep>
       <dep name="openldap-clients">
@@ -114,7 +110,6 @@ Deploy and configure packages for running SQL databases.
           <StrictModes>yes</StrictModes>
           <IgnoreRhosts>yes</IgnoreRhosts>
           <HostbasedAuthentication>no</HostbasedAuthentication>
-          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
           <PubkeyAuthentication>yes</PubkeyAuthentication>
         </extra>
       </dep>

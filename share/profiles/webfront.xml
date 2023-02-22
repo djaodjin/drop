@@ -59,7 +59,6 @@ Name of the machine hosting the LDAP server.
           <PubkeyAuthentication>yes</PubkeyAuthentication>
           <PermitRootLogin>no</PermitRootLogin>
           <PermitTunnel>no</PermitTunnel>
-          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
           <StrictModes>yes</StrictModes>
           <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <X11Forwarding>no</X11Forwarding>
@@ -200,7 +199,6 @@ Name of the machine hosting the LDAP server.
           <PubkeyAuthentication>yes</PubkeyAuthentication>
           <PermitRootLogin>no</PermitRootLogin>
           <PermitTunnel>no</PermitTunnel>
-          <RhostsRSAAuthentication>no</RhostsRSAAuthentication>
           <StrictModes>yes</StrictModes>
           <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <X11Forwarding>no</X11Forwarding>

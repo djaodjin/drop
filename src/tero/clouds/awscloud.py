@@ -722,16 +722,100 @@ def create_waf(tag_prefix, acl_name=None, elb_arn=None,
         elb_arn, elb_dns = _get_load_balancer(
             tag_prefix, region_name=region_name)
 
+    # List available rule groups:
+    #     `aws wafv2 list-available-managed-rule-groups --scope REGIONAL`
+    #     `aws wafv2 describe-managed-rule-group`
+    # specific version from one item in list above:
+    #     `aws wafv2 list-available-managed-rule-group-versions`
+    rules = []
+    for idx, ruleset in enumerate([
+            "AWSManagedRulesCommonRuleSet",
+            # Contains rules that are generally applicable to web applications.
+            "AWSManagedRulesKnownBadInputsRuleSet",
+            # Contains rules that allow you to block request patterns that are
+            # known to be invalid and are associated with exploitation or
+            # discovery of vulnerabilities.
+            "AWSManagedRulesBotControlRuleSet",
+            # protection against automated bots
+            "AWSManagedRulesATPRuleSet"
+            # protection for your login page against stolen credentials,
+            # credential stuffing attacks, brute force login attempts,
+            # and other anomalous login activities.
+    ]):
+        rule = {
+            'Name': "AWS-%s" % ruleset,
+            'Priority': idx,
+            'Statement': {
+                'ManagedRuleGroupStatement': {
+                    'VendorName': "AWS",
+                    'Name': ruleset
+                }
+            },
+            'OverrideAction': {
+                'None': {}
+            },
+            'VisibilityConfig': {
+                'SampledRequestsEnabled': True,
+                'CloudWatchMetricsEnabled': True,
+                'MetricName': "AWS-%s" % ruleset
+            }
+        }
+        if ruleset == 'AWSManagedRulesATPRuleSet':
+            rule['Statement']['ManagedRuleGroupStatement'].update({
+                'ManagedRuleGroupConfigs': [{
+                    'LoginPath': '/login/'
+                }, {
+                    'PasswordField': {'Identifier': "password"},
+                }, {
+                    'PayloadType': "FORM_ENCODED",
+                }, {
+                    'UsernameField': {'Identifier': "username"},
+                }]
+            })
+        elif ruleset == 'AWSManagedRulesBotControlRuleSet':
+            rule['Statement']['ManagedRuleGroupStatement'].update({
+                'ManagedRuleGroupConfigs': [{
+                    'AWSManagedRulesBotControlRuleSet': {
+                        'InspectionLevel': "COMMON"
+                    }
+                }]
+            })
+        rules += [rule]
+    acl_arn = None
     waf_client = boto3.client('wafv2', region_name=region_name)
-    resp = waf_client.create_web_acl(Name=acl_name)
+    try:
+        resp = waf_client.create_web_acl(
+            Name=acl_name,
+            Scope='REGIONAL',
+            Rules=rules,
+            DefaultAction={
+                'Allow': {}
+            },
+            VisibilityConfig={
+                'SampledRequestsEnabled': True,
+                'CloudWatchMetricsEnabled': True,
+                'MetricName': acl_name
+            })
+        acl_arn = resp['Summary'].get('ARN')
+        LOGGER.info("%s created Web ACL %s as %s",
+            tag_prefix, acl_name, acl_arn)
+
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'WAFDuplicateItemException':
+            raise
+        resp = waf_client.list_web_acls(Scope='REGIONAL')
+        for acl in resp.get('WebACLs', []):
+            if acl.get('Name') == acl_name:
+                acl_arn = acl.get('ARN')
+                break
+        LOGGER.info("%s found Web ACL %s as %s",
+            tag_prefix, acl_name, acl_arn)
     resp = waf_client.associate_web_acl(
         WebACLArn=acl_arn,
         ResourceArn=elb_arn)
-    # XXX Add managed rule groups
-    # AWS Core rule set
-    # Known bad inputs
-    # SQL database
-    # Amazon IP reputation list??
+    LOGGER.info("%s associated Web ACL %s to load balancer %s",
+        tag_prefix, acl_arn, elb_arn)
 
 
 def create_elb(tag_prefix, web_subnet_by_cidrs, moat_sg_id,
@@ -747,7 +831,8 @@ def create_elb(tag_prefix, web_subnet_by_cidrs, moat_sg_id,
     elb_client = boto3.client('elbv2', region_name=region_name)
     resp = elb_client.create_load_balancer(
         Name=elb_name,
-        Subnets=[subnet['SubnetId'] for subnet in web_subnet_by_cidrs.values()],
+        Subnets=[subnet['SubnetId'] for subnet in web_subnet_by_cidrs.values()
+                 if subnet],
         SecurityGroups=[
             moat_sg_id,
         ],
@@ -871,6 +956,8 @@ def create_elb(tag_prefix, web_subnet_by_cidrs, moat_sg_id,
             raise
         LOGGER.info("%s found HTTPS application load balancer listener for %s",
             tag_prefix, load_balancer_arn)
+
+    return load_balancer_arn
 
 
 def create_gate_role(gate_name,
@@ -1289,24 +1376,33 @@ def create_network(region_name, vpc_cidr, tag_prefix,
         if not subnet:
             available_zones = zones - web_zones
             zone_id, zone_name = available_zones.pop()
-            resp = ec2_client.create_subnet(
-                AvailabilityZoneId=zone_id,
-                CidrBlock=cidr_block,
-                VpcId=vpc_id,
-                TagSpecifications=[{
-                    'ResourceType': 'subnet',
-                    'Tags': [
-                        {'Key': "Prefix", 'Value': tag_prefix},
-                        {'Key': "Name",
-                         'Value': "%s %s web" % (tag_prefix, zone_name)}]}],
-                DryRun=dry_run)
-            subnet = resp['Subnet']
-            web_subnet_by_cidrs[cidr_block] = subnet
-            web_zones |= set([(zone_id, zone_name)])
-            subnet_id = subnet['SubnetId']
-            LOGGER.info("%s created subnet %s in zone %s for cidr %s",
-                tag_prefix, subnet_id, zone_name, cidr_block)
-        if not subnet['MapPublicIpOnLaunch']:
+            try:
+                resp = ec2_client.create_subnet(
+                    AvailabilityZoneId=zone_id,
+                    CidrBlock=cidr_block,
+                    VpcId=vpc_id,
+                    TagSpecifications=[{
+                        'ResourceType': 'subnet',
+                        'Tags': [
+                            {'Key': "Prefix", 'Value': tag_prefix},
+                            {'Key': "Name",
+                             'Value': "%s %s web" % (tag_prefix, zone_name)}]}],
+                    DryRun=dry_run)
+                subnet = resp['Subnet']
+                web_subnet_by_cidrs[cidr_block] = subnet
+                web_zones |= set([(zone_id, zone_name)])
+                subnet_id = subnet['SubnetId']
+                LOGGER.info("%s created subnet %s in zone %s for cidr %s",
+                    tag_prefix, subnet_id, zone_name, cidr_block)
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidSubnet.Conflict':
+                    raise
+                # We have a conflict, let's just skip over it.
+                LOGGER.warning(
+                    "%s (skip) created subnet in zone %s because '%s'",
+                    tag_prefix, zone_name, err)
+        if subnet and not subnet['MapPublicIpOnLaunch']:
             subnet_id = subnet['SubnetId']
             if not dry_run:
                 resp = ec2_client.modify_subnet_attribute(
@@ -1579,6 +1675,9 @@ def create_network(region_name, vpc_cidr, tag_prefix,
             tag_prefix)
 
     for cidr_block, subnet in web_subnet_by_cidrs.items():
+        if not subnet:
+            # Maybe there was a conflict and we skipped this cidr_block.
+            continue
         subnet_id = subnet['SubnetId']
         resp = ec2_client.describe_route_tables(
             DryRun=dry_run,
@@ -2209,12 +2308,19 @@ def create_network(region_name, vpc_cidr, tag_prefix,
         storage_enckey = _get_or_create_storage_enckey(
             region_name, tag_prefix, dry_run=dry_run)
 
-    # Create an Application ELB
-    create_elb(
+    # Create an Application ELB and WAF
+    load_balancer_arn = create_elb(
         tag_prefix, web_subnet_by_cidrs, moat_sg_id,
         s3_logs_bucket=s3_logs_bucket,
         tls_priv_key=tls_priv_key, tls_fullchain_cert=tls_fullchain_cert,
         region_name=region_name)
+    create_waf(
+        tag_prefix,
+        elb_arn=load_balancer_arn,
+        s3_logs_bucket=s3_logs_bucket,
+        region_name=region_name,
+        dry_run=dry_run)
+
 
 
 
@@ -2224,7 +2330,8 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
                       db_host=None,
                       db_master_user=None, db_master_password=None,
                       db_user=None, db_password=None,
-                      identities_url=None, s3_identities_bucket=None,
+                      identities_url=None,
+                      s3_logs_bucket=None, s3_identities_bucket=None,
                       image_name=None, ssh_key_name=None,
                       company_domain=None, ldap_host=None,
                       ldap_hashed_password=None,
@@ -2399,6 +2506,7 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
     template_env = jinja2.Environment(loader=template_loader)
     template = template_env.get_template("dbs-cloud-init-script.j2")
     user_data = template.render(
+        s3_logs_bucket=s3_logs_bucket,
         db_host=db_host,
         db_user=db_user,
         db_password=db_password,
@@ -2428,7 +2536,7 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
     # XXX adds encrypted volume
     block_devices = [
         {
-            'DeviceName': '/dev/sda1',
+            'DeviceName': '/dev/xvda',
             #'VirtualName': 'string',
     # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html
             'Ebs': {
@@ -2436,7 +2544,7 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
                 #'Iops': 100, # 'not supported for gp2'
                 #'SnapshotId': 'string',
                 'VolumeSize': 20,
-                'VolumeType': 'gp2'
+                'VolumeType': 'gp3'
             },
             #'NoDevice': 'string'
         },
@@ -2469,16 +2577,16 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
                 'Value': '%(app_name)s'
             }]}],
         UserData='''%(user_data)s''')
-    """,
-        block_devices=block_devices,
-        image_id=image_id,
-        ssh_key_name=ssh_key_name,
-        instance_type=instance_type,
-        db_subnet_group_subnet_id=db_subnet_group_subnet_ids[0],
-        group_ids=group_ids,
-        instance_profile_arn=instance_profile_arn,
-        app_name=app_name,
-        user_data=user_data)
+    """ % {
+        'block_devices': block_devices,
+        'image_id': image_id,
+        'ssh_key_name': ssh_key_name,
+        'instance_type': instance_type,
+        'db_subnet_group_subnet_id': db_subnet_group_subnet_ids[0],
+        'group_ids': group_ids,
+        'instance_profile_arn': instance_profile_arn,
+        'app_name': app_name,
+        'user_data': user_data})
     resp = ec2_client.run_instances(
         BlockDeviceMappings=block_devices,
         ImageId=image_id,
@@ -4001,6 +4109,9 @@ def run_config(config_name, include_apps=None,
                 db_user=config[app_name].get('db_user'),
                 db_password=config[app_name].get('db_password'),
                 identities_url=config[app_name].get('identities_url'),
+                s3_logs_bucket=config[app_name].get(
+                    's3_logs_bucket',
+                    config['default'].get('s3_logs_bucket')),
                 s3_identities_bucket=config[app_name].get(
                     's3_identities_bucket',
                     config['default'].get('s3_identities_bucket')),
