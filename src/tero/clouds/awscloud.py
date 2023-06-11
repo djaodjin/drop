@@ -2641,6 +2641,9 @@ def print_ssh_commands(region_name, instance_ids, ssh_key_name=None,
 def create_ami_webfront(region_name, app_name, instance_id):
     """
     Create an AMI from a running EC2 instance
+
+    This function waits for an HTTP server on the instance to be live
+    and responding to HTTP requests.
     """
     instance_domain = None
     ec2_client = boto3.client('ec2', region_name=region_name)
@@ -3948,8 +3951,8 @@ echo "shutting down containers $RUNNING_CONTAINERS"
             LOGGER.warning("saved failed script to %s", failed_script)
 
 
-def run_config(config_name, include_apps=None,
-               local_docker=False, skip_create_network=False,
+def run_config(config_name, create_ami=False, local_docker=False,
+               include_apps=None, skip_create_network=False,
                tag_prefix=None, dry_run=False):
     """
     Run the config file at `config_name`, skipping network configuration
@@ -4025,7 +4028,7 @@ def run_config(config_name, include_apps=None,
                     tls_fullchain_cert = fullchain_file.read()
 
             # Create the EC2 instances
-            build_ami = bool(config[app_name].get('ami'))
+            build_ami = bool(config[app_name].get('ami', create_ami))
             instance_ids = config[app_name].get('instance_ids')
             if instance_ids:
                 instance_ids = instance_ids.split(',')
@@ -4229,6 +4232,10 @@ def main(input_args):
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        '--create-ami', action='store_true',
+        default=False,
+        help='Creates an AMI instead of deploying an EC2 instance')
+    parser.add_argument(
         '--dry-run', action='store_true',
         default=False,
         help='Do not create resources')
@@ -4257,8 +4264,9 @@ def main(input_args):
 
     args = parser.parse_args(input_args[1:])
     run_config(args.config,
-        include_apps=args.include_apps,
+        create_ami=args.create_ami,
         local_docker=args.local_docker,
+        include_apps=args.include_apps,
         skip_create_network=args.skip_create_network,
         tag_prefix=args.prefix,
         dry_run=args.dry_run)

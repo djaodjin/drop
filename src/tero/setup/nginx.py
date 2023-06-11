@@ -134,19 +134,32 @@ class nginxSetup(setup.SetupTemplate):
                 context=context)
             with open(org_nginx_conf) as org_nginx_conf_file:
                 with open(new_nginx_conf, 'w') as new_nginx_conf_file:
-                    remove = 0
+                    remove_block = 0
+                    remove_line = False
                     for line in org_nginx_conf_file.readlines():
+                        if remove_line and re.match(';', line):
+                            new_nginx_conf_file.write(
+        "log_format  main '$remote_addr $host $upstream_http_user_session '\n"\
+        "'[$time_local] \"$request\" $status $body_bytes_sent '\n"\
+        "'\"$http_referer\" \"$http_user_agent\" '\n"\
+        "'\"$http_x_forwarded_for\" '\n"\
+        "'$request_time $upstream_response_time $pipe';\n")
+                            remove_line = False
+                        look = re.match(r'.*log_format', line)
+                        if look:
+                            remove_line = True
+                            continue
                         look = re.match(r'.*server\s+{', line)
                         if look:
-                            remove = 1
-                        elif remove > 0:
+                            remove_block = 1
+                        elif remove_block > 0:
                             look = re.match('{', line)
                             if look:
-                                remove += 1
+                                remove_block += 1
                             look = re.match('}', line)
                             if look:
-                                remove -= 1
-                        if remove == 0:
+                                remove_block -= 1
+                        if remove_block == 0:
                             new_nginx_conf_file.write(line)
 
         certs_top = os.path.join(context.value('etcDir'), 'pki', 'tls', 'certs')

@@ -93,11 +93,32 @@ def parse_date(dt_str):
     return naive_dt.replace(tzinfo=tzinfo)
 
 
+def parse_time(time_str):
+    """
+    Returns a timedelta from a string representing elasped time in seconds
+    with a milliseconds resolution (ex: nginx $request_time).
+    """
+    if time_str:
+        time_str = time_str.strip()
+    if not time_str or time_str == '-':
+        return None
+    seconds, milliseconds = time_str.split('.')
+    milliseconds = milliseconds.split(',')[0]
+    return datetime.timedelta(
+        seconds=int(seconds), milliseconds=int(milliseconds))
+
+
 def split_on_comma(http_x_forwarded_for):
     if http_x_forwarded_for == '-':
         return []
     ips = http_x_forwarded_for.split(',')
     return [part.strip() for part in ips]
+
+
+def parse_pipe(pipe):
+    if pipe:
+        pipe = pipe.strip()
+    return pipe and pipe == 'p'
 
 
 def convert_bytes_sent(value):
@@ -204,7 +225,8 @@ class NginxLogParser(LogParser):
             ' $remote_user [$time_local]'\
             ' "$request" $status $body_bytes_sent'\
             ' "$http_referer" "$http_user_agent"'\
-            ' "$http_x_forwarded_for"'
+            ' "$http_x_forwarded_for"'\
+            '$request_time$upstream_response_time$pipe'
 
         var_regex = r'\$[a-z_]+'
         ipv6_regex = r'(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}'
@@ -225,6 +247,9 @@ class NginxLogParser(LogParser):
             '$http_referer'         : r'[^"]*',
             '$http_user_agent'      : r'[^"]*',
             '$http_x_forwarded_for' : r'[^"]+',
+            '$request_time': r' ?[0-9.,]*',
+            '$upstream_response_time': r' ?[0-9.,]*|-?',
+            '$pipe': r' ?[p.]?'
         }
         self.format_vars = re.findall(var_regex, format_string)
         self.regex = generate_regex(format_string, var_regex, regexps)
@@ -242,10 +267,14 @@ class NginxLogParser(LogParser):
             'status' : int,
             'body_bytes_sent': convert_bytes_sent,
             'time_local': parse_date,
-            'http_x_forwarded_for': split_on_comma
+            'http_x_forwarded_for': split_on_comma,
+            'request_time': parse_time,
+            'upstream_response_time': parse_time,
+            'pipe': parse_pipe,
         }
         for key, convert in six.iteritems(field_types):
-            parsed[key] = convert(parsed[key])
+            if key in parsed:
+                parsed[key] = convert(parsed[key])
 
         if (parsed['http_x_forwarded_for']
             and parsed['remote_addr'] in ['-', '127.0.0.1']):
@@ -368,24 +397,12 @@ class JsonEventParser(PythonExceptionLogParser):
 
 class EventWriter(object):
 
-    def write(self, event):
-        sys.stdout.write(json.dumps(event, indent=2, cls=JSONEncoder))
-        sys.stdout.write('\n')
-
-
-class GitLabEventWriter(EventWriter):
-
-    def __init__(self, api_endpoint, token,
-                 default_project_name=None, url_patterns=None):
-        self.filter_processed_events = False
-        self.api_endpoint = api_endpoint
-        self.token = token
-        self.default_project_name = default_project_name
+    def __init__(self, url_patterns=None):
         self.url_patterns = [] if not url_patterns else url_patterns
 
     def as_url_pattern(self, path):
         for pat in self.url_patterns:
-            print("Compare %s with %s" % (path, pat))
+            LOGGER.debug("Compare %s with %s" % (path, pat))
             parts = pat.split('/')
             parts_re = []
             for part in parts:
@@ -398,6 +415,21 @@ class GitLabEventWriter(EventWriter):
             if look:
                 return pat
         return path
+
+    def write(self, event):
+        sys.stdout.write(json.dumps(event, indent=2, cls=JSONEncoder))
+        sys.stdout.write('\n')
+
+
+class GitLabEventWriter(EventWriter):
+
+    def __init__(self, api_endpoint, token,
+                 default_project_name=None, url_patterns=None):
+        super(GitLabEventWriter, self).__init__(url_patterns=url_patterns)
+        self.filter_processed_events = False
+        self.api_endpoint = api_endpoint
+        self.token = token
+        self.default_project_name = default_project_name
 
     def write(self, event):
         source_event = event.get('_source', {})

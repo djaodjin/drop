@@ -48,6 +48,38 @@ class dockerSetup(setup.SetupTemplate):
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write(conf_template % {'appname': appname})
 
+
+    def create_container_systemd_service(context, name, location, port,
+                                         description=None):
+        if not description:
+            description = "%s container" % name
+        conf_template = """[Unit]
+Description=%(description)s
+After=docker.target network.target remote-fs.target nss-lookup.target
+Requires=docker.service
+
+[Service]
+TimeoutStartSec=0
+#Restart=always
+ExecStartPre=-/usr/bin/docker stop %(name)s
+ExecStartPre=-/usr/bin/docker rm %(name)s
+ExecStartPre=/usr/bin/docker pull %(location)s
+ExecStart=/usr/bin/docker run --rm --name %(name)s -p %(port)s:80  %(location)s
+
+[Install]
+WantedBy=multi-user.target
+"""
+        service_conf = os.path.join('usr', 'lib', 'systemd', 'system',
+            name + '.service')
+        _, new_conf_path = setup.stageFile(service_conf, context)
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write(conf_template % {
+            'name': name,
+            'location': location,
+            'port': port,
+            'description': description
+        })
+
     def run(self, context):
         complete = super(dockerSetup, self).run(context)
         if not complete:
@@ -64,6 +96,16 @@ class dockerSetup(setup.SetupTemplate):
         }, sep='=\'', context=context)
 
         self.create_syslog_conf(context)
+
+        for name, vals in six.iteritems(self.managed['docker']['files']):
+            for elem in vals:
+                settings = elem[0]
+                location = settings.get('location')
+                port = settings.get('port')
+                description = settings.get('description')
+                self.create_container_systemd_service(
+                    context, name, location, port,
+                    description=description)
 
         # The following command is useful to restart the running containers
         # after the docker daemon is itself restarted.

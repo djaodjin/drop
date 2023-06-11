@@ -1,4 +1,4 @@
-# Copyright (c) 2021, Djaodjin Inc.
+# Copyright (c) 2023, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -201,6 +201,44 @@ def list_logs(log_location, domains, lognames=['access', 'error'],
         process_log_meta(resp.get('Contents', []), search,
             start_at=start_at, ends_at=ends_at)
     return search
+
+
+def list_targetgroups_by_domains(regions=None, ec2_client=None):
+    """
+    Returns a dictionnary of target groups indexed by domain name
+    for all load balancers in a region.
+    """
+    targetgroups_by_arns = {}
+    targetgroups_by_domains = {}
+    if not regions:
+        regions = get_regions(ec2_client=ec2_client)
+    for region_name in regions:
+        elb_client = boto3.client('elbv2', region_name=region_name)
+        resp = elb_client.describe_load_balancers()
+        for load_balancer in resp['LoadBalancers']:
+            resp = elb_client.describe_target_groups(
+                LoadBalancerArn=load_balancer['LoadBalancerArn'])
+            for targetgroup in resp['TargetGroups']:
+                targetgroups_by_arns.update({
+                    targetgroup['TargetGroupArn']: targetgroup
+                })
+            resp = elb_client.describe_listeners(
+                LoadBalancerArn=load_balancer['LoadBalancerArn'])
+            for listener in resp['Listeners']:
+                resp = elb_client.describe_rules(
+                    ListenerArn=listener['ListenerArn'])
+                for rule in resp['Rules']:
+                    for cond in rule['Conditions']:
+                        action = rule['Actions'][-1]
+                        if (cond['Field'] in ('host-header',) and
+                            action['Type'] in ('forward',)):
+                            targetgroup = action['TargetGroupArn']
+                            for domain in cond['Values']:
+                                targetgroups_by_domains.update({
+                                    domain: targetgroups_by_arns.get(
+                                        targetgroup, {}).get(
+                                        'TargetGroupName', targetgroup)})
+    return targetgroups_by_domains
 
 
 def process_db_meta(logmetas, search, start_at=None, ends_at=None):
@@ -525,5 +563,7 @@ def main(input_args):
 
     log_location = args.log_location
     domains = args.domain
-    instances_by_subnets = list_instances_by_subnets(regions=args.region)
+    targetgroups_by_domains = list_targetgroups_by_domains(regions=args.region)
+    print(json.dumps(targetgroups_by_domains, indent=2))
+#    instances_by_subnets = list_instances_by_subnets(regions=args.region)
 #    instances = list_instances()
