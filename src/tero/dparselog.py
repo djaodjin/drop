@@ -421,6 +421,16 @@ class EventWriter(object):
         sys.stdout.write('\n')
 
 
+class DuplicateEventWriter(EventWriter):
+
+    def __init__(self, *writers):
+        self.writers = writers
+
+    def write(self, event):
+        for writer in self.writers:
+            writer.write(event)
+
+
 class GitLabEventWriter(EventWriter):
 
     def __init__(self, api_endpoint, token,

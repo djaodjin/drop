@@ -3433,15 +3433,22 @@ def find_bin(names, search_path, build_top, versions=None, variant=None):
                         if len(numbers) == 1:
                             excluded = False
                             if excludes:
+                                candidate_version = numbers[0]
                                 for exclude in list(excludes):
-                                    if ((not exclude[0]
-                                     or version_compare(
-                                                exclude[0], numbers[0]) <= 0)
-                                     and (not exclude[1]
-                                     or version_compare(
-                                                numbers[0], exclude[1]) < 0)):
-                                        excluded = True
-                                        break
+                                    if isinstance(exclude, tuple):
+                                        if ((not exclude[0]
+                                         or version_compare(exclude[0],
+                                            candidate_version) <= 0)
+                                         and (not exclude[1]
+                                         or version_compare(candidate_version,
+                                                            exclude[1]) < 0)):
+                                            excluded = True
+                                            break
+                                    else:
+                                        if version_compare(candidate_version,
+                                                           exclude) == 0:
+                                            excluded = True
+                                            break
                             if not excluded:
                                 candidate = binpath
                                 version = numbers[0]
@@ -3887,15 +3894,22 @@ def find_lib(names, search_path, build_top, versions=None, variant=None):
                 if len(numbers) == 1:
                     excluded = False
                     if excludes:
+                        candidate_version = numbers[0]
                         for exclude in list(excludes):
-                            if ((not exclude[0]
-                                 or version_compare(
-                                        exclude[0], numbers[0]) <= 0)
-                                and (not exclude[1]
-                                     or version_compare(
-                                        numbers[0], exclude[1]) < 0)):
-                                excluded = True
-                                break
+                            if isinstance(exclude, tuple):
+                                if ((not exclude[0]
+                                 or version_compare(exclude[0],
+                                    candidate_version) <= 0)
+                                 and (not exclude[1]
+                                 or version_compare(candidate_version,
+                                                    exclude[1]) < 0)):
+                                    excluded = True
+                                    break
+                            else:
+                                if version_compare(candidate_version,
+                                                   exclude) == 0:
+                                    excluded = True
+                                    break
                     if not excluded:
                         # Insert candidate into a sorted list. First to last,
                         # higher version number, dynamic libraries.
