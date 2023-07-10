@@ -1,4 +1,4 @@
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -77,11 +77,19 @@ def _load_sqlschema(schema_text):
             while field_token and not (
                     field_token.match(tokens.Name, values=None) or
                     field_token.match(tokens.Name.Builtin, values=None) or
+                    field_token.match(tokens.String.Symbol, values=None) or
                     field_token.match(tokens.Keyword, values=None)):
                 field_token = field_tokens.pop(0) if field_tokens else None
             if field_token.match(tokens.Keyword, values=('CONSTRAINT',)):
-                while field_token and not (
-                        field_token.match(tokens.Punctuation, values=(',',))):
+                indent = 0
+                while field_token:
+                    if field_token.match(tokens.Punctuation, values=('(',)):
+                        indent += 1
+                    elif field_token.match(tokens.Punctuation, values=(')',)):
+                        indent -= 1
+                    elif (field_token.match(tokens.Punctuation, values=(',',))
+                          and not indent):
+                        break
                     field_token = field_tokens.pop(0) if field_tokens else None
                 if field_token:
                     continue
@@ -228,10 +236,16 @@ def check_sqlschema(schema_text, reference_schema=None):
         for field in sorted(set(schema[table]) & set(reference_schema[table])):
             if (schema[table][field]['type'] !=
                 reference_schema[table][field]['type']):
-                altered += ['"%s" type was altered from %s to %s' % (
-                    field,
-                    reference_schema[table][field]['type'],
-                    schema[table][field]['type'])]
+                if (schema[table][field]['type'] in ('integer', 'bigint') and
+                    reference_schema[table][field]['type'] == 'serial'):
+                    # pg_dump14 will mark as 'id' as integer and
+                    # add a `CREATE SEQUENCE` statement.
+                    pass
+                else:
+                    altered += ['"%s" type was altered from %s to %s' % (
+                        field,
+                        reference_schema[table][field]['type'],
+                        schema[table][field]['type'])]
             elif (schema[table][field].get('length', 0) !=
                   reference_schema[table][field].get('length', 0)):
                 altered += ['"%s" length was altered from %d to %d' % (
