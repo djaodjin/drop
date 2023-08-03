@@ -110,8 +110,12 @@ Name of the machine hosting the LDAP server.
       <dep name="docker">
         <bin>docker</bin>
         <extra name="livedemo">
-          <location>ghcr.io/djaodjin/djaoapp/livedemo:2022-09-16</location>
+          <location>ghcr.io/djaodjin/djaoapp/livedemo:main</location>
           <port>8000</port>
+        </extra>
+        <extra name="djaopsp">
+          <location>ghcr.io/djaodjin/djaopsp/djaopsp:main</location>
+          <port>8040</port>
         </extra>
       </dep>
       <!-- fonts used to generate PDFs -->

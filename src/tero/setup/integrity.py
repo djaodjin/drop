@@ -95,7 +95,7 @@ def _load_sqlschema(schema_text):
                     continue
             if not field_token:
                 continue
-            field_name = field_token.value
+            field_name = field_token.value.strip('"')
             # field type
             field_token = field_tokens.pop(0) if field_tokens else None
             while field_token and not (

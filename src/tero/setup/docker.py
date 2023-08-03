@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,6 +24,7 @@
 
 import os
 
+import six
 from tero import setup
 
 
@@ -48,7 +49,7 @@ class dockerSetup(setup.SetupTemplate):
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write(conf_template % {'appname': appname})
 
-
+    @staticmethod
     def create_container_systemd_service(context, name, location, port,
                                          description=None):
         if not description:
@@ -65,11 +66,12 @@ ExecStartPre=-/usr/bin/docker stop %(name)s
 ExecStartPre=-/usr/bin/docker rm %(name)s
 ExecStartPre=/usr/bin/docker pull %(location)s
 ExecStart=/usr/bin/docker run --rm --name %(name)s -p %(port)s:80  %(location)s
+ExecStop=/usr/bin/docker stop %(name)s
 
 [Install]
 WantedBy=multi-user.target
 """
-        service_conf = os.path.join('usr', 'lib', 'systemd', 'system',
+        service_conf = os.path.join('/usr', 'lib', 'systemd', 'system',
             name + '.service')
         _, new_conf_path = setup.stageFile(service_conf, context)
         with open(new_conf_path, 'w') as new_conf:
@@ -100,12 +102,13 @@ WantedBy=multi-user.target
         for name, vals in six.iteritems(self.managed['docker']['files']):
             for elem in vals:
                 settings = elem[0]
-                location = settings.get('location')
-                port = settings.get('port')
-                description = settings.get('description')
-                self.create_container_systemd_service(
-                    context, name, location, port,
-                    description=description)
+                if isinstance(settings, dict):
+                    location = settings.get('location')
+                    port = settings.get('port')
+                    description = settings.get('description')
+                    self.create_container_systemd_service(
+                        context, name, location, port,
+                        description=description)
 
         # The following command is useful to restart the running containers
         # after the docker daemon is itself restarted.

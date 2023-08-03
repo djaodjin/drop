@@ -4945,12 +4945,16 @@ def shell_command(execute, admin=False, search_path=None, node_path=None,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
                                close_fds=True)
-        line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
+        line = cmd.stdout.readline()
+        if not isinstance(line, string_types):
+            line = line.decode(DEFAULT_ENCODING)
         while line != "":
             if pat and re.match(pat, line):
                 filtered_output += [line]
             log_info(line[:-1], nolog=nolog)
-            line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
+            line = cmd.stdout.readline()
+            if not isinstance(line, string_types):
+                line = line.decode(DEFAULT_ENCODING)
         cmd.wait()
         if prev_euid:
             os.seteuid(prev_euid)

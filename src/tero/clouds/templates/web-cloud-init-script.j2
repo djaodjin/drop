@@ -18,6 +18,16 @@ if [ -f /usr/bin/dnf ]; then
     [ -f /usr/bin/make ] || /usr/bin/dnf -y install make
 else
     if [ "$(grep "Amazon" /etc/system-release)" != "" ]; then
+        # We need to insure SELinux is enabled which is not the case
+        # with the default AmazonLinux2 images.
+        if [ "$(sestatus)" =~ .*disabled ] ; then
+            yum install selinux-policy selinux-policy-targeted policycoreutils-python
+            sed -i 's/SELINUX=\(\w\w*\)/SELINUX=enforcing/g' /etc/selinux/config
+            sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 selinux=1 security=selinux"/' /etc/default/grub
+            /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+            touch /.autorelabel
+            # XXX we will need to reboot with the `reboot` command.
+        fi
         # We have to enable the EPEL repo to install podofo.
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             amazon-linux-extras install epel -y
@@ -75,6 +85,10 @@ if [ "X$packages" != "X" ] ; then
         [[ $package == *.tar.bz2 ]] && /usr/bin/tar jxf $package
         if [ ! -f ${installTop}/bin/activate ]; then
             $VIRTUALENV_RUN ${installTop}
+            # Updating pip because version 22.0. does not generate version
+            # numbers correctly when doing `pip install .`
+            # in a source directory.
+            ${installTop}/bin/pip install pip -U
             # Installing `wheel` will help install packages with Python bindinds
             # without recompiling from source.
             ${installTop}/bin/pip install wheel
