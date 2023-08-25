@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -500,7 +500,7 @@ class Context(object):
         site_top_found = False
         with open(filename) as config_file:
             line = config_file.readline()
-            while line != '':
+            while line:
                 look = re.match(r'(\S+)\s*=\s*(\S+)', line)
                 if look != None:
                     if look.group(1) == 'siteTop':
@@ -1539,7 +1539,7 @@ class HostPlatform(Variable):
                 if os.path.exists(version_path):
                     version = open(version_path)
                     line = version.readline()
-                    while line != '':
+                    while line:
                         for dist in APT_DISTRIBS + DNF_DISTRIBS + YUM_DISTRIBS:
                             look = re.match('.*' + dist + '.*', line)
                             if look:
@@ -2786,7 +2786,7 @@ class GitRepository(Repository):
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
             line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
-            while line != '':
+            while line:
                 log_info(line.strip(), context=context)
                 look = re.match(r'^[Uu]pdating', line)
                 if look:
@@ -3181,7 +3181,7 @@ class XMLDbParser(xml.sax.ContentHandler):
         of a package and return the name of the package.'''
         name = None
         line = db_prev.readline()
-        while line != '':
+        while line:
             look = re.match(self.tagPattern, line)
             if look != None:
                 name = look.group(1)
@@ -3205,7 +3205,7 @@ class XMLDbParser(xml.sax.ContentHandler):
         of a package and return the name of the package.'''
         name = None
         line = db_prev.readline()
-        while line != '':
+        while line:
             look = re.match(self.tagPattern, line)
             if look != None:
                 name = look.group(1)
@@ -3708,7 +3708,7 @@ def find_include(names, search_path, build_top, versions=None, variant=None):
                 header = os.path.join(include_sys_dir, header)
                 with open(header) as header_file:
                     line = header_file.readline()
-                    while line != '':
+                    while line:
                         look = re.match(r'\s*#define.*VERSION\s+(\S+)', line)
                         if look != None:
                             for ver in version_candidates(look.group(1)):
@@ -4948,7 +4948,7 @@ def shell_command(execute, admin=False, search_path=None, node_path=None,
         line = cmd.stdout.readline()
         if not isinstance(line, string_types):
             line = line.decode(DEFAULT_ENCODING)
-        while line != "":
+        while line:
             if pat and re.match(pat, line):
                 filtered_output += [line]
             log_info(line[:-1], nolog=nolog)

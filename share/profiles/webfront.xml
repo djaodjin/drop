@@ -109,12 +109,12 @@ Name of the machine hosting the LDAP server.
       </dep>
       <dep name="docker">
         <bin>docker</bin>
-        <extra name="livedemo">
+        <extra name="djaoapp-demo">
           <location>ghcr.io/djaodjin/djaoapp/livedemo:main</location>
           <port>8000</port>
         </extra>
-        <extra name="djaopsp">
-          <location>ghcr.io/djaodjin/djaopsp/djaopsp:main</location>
+        <extra name="djaopsp-demo">
+          <location>ghcr.io/djaodjin/djaopsp/livedemo:main</location>
           <port>8040</port>
         </extra>
       </dep>

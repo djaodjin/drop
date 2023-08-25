@@ -109,6 +109,7 @@ WantedBy=multi-user.target
                     self.create_container_systemd_service(
                         context, name, location, port,
                         description=description)
+                    self.daemons += [name]
 
         # The following command is useful to restart the running containers
         # after the docker daemon is itself restarted.

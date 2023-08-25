@@ -83,6 +83,7 @@ if [ "X$packages" != "X" ] ; then
         installTop="$rootDir/$dirname"
         [[ $package == *.tar.gz ]] && /usr/bin/tar zxf $package
         [[ $package == *.tar.bz2 ]] && /usr/bin/tar jxf $package
+        /usr/bin/chown -R ${OWNER}:${OWNER} "$dirname"
         if [ ! -f ${installTop}/bin/activate ]; then
             $VIRTUALENV_RUN ${installTop}
             # Updating pip because version 22.0. does not generate version

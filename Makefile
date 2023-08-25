@@ -70,7 +70,8 @@ dtero: dtero.py
 	chmod 755 $@
 
 dws: tero/__init__.py
-	$(SED) -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
+	$(SED) -e "s,^#!/usr/bin/env python,#!$(PYTHON),g" -e "s,\$${libDir},$(libDir),g" -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
 	chmod 755 $@
+
 
 include $(srcDir)/src/suffix.mk
