@@ -111,7 +111,7 @@ Name of the machine hosting the LDAP server.
         <bin>docker</bin>
         <extra name="djaoapp-demo">
           <location>ghcr.io/djaodjin/djaoapp/livedemo:main</location>
-          <port>8000</port>
+          <port>8370</port>
         </extra>
         <extra name="djaopsp-demo">
           <location>ghcr.io/djaodjin/djaopsp/livedemo:main</location>
