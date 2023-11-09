@@ -7,39 +7,46 @@ set -e
 
 siteTop=/usr/local
 OWNER=ec2-user
+INSTALL_PACKAGES=/usr/bin/dnf
 
 # Install necessary public packages to bootstrap configuration
-if [ -f /usr/bin/dnf ]; then
-    OWNER=fedora
-    [ -f /usr/bin/aws ] || /usr/bin/dnf -y install awscli
-    [ -f /usr/bin/bzip2 ] || /usr/bin/dnf -y install bzip2
-    [ -f /usr/bin/make ] || /usr/bin/dnf -y install make
-else
-    if [ "$(grep "Amazon" /etc/system-release)" != "" ]; then
-        [ -f /usr/bin/git ] || /usr/bin/yum -y install git
-        # We have to enable the EPEL repo to install ssmtp,
-        # fail2ban, syslog-ng-libdbi and syslog-ng.
-        if [ ! -f /etc/yum.repos.d/epel.repo ]; then
-            amazon-linux-extras install epel -y
-        fi
+if [ "$(grep "Amazon Linux release 2" /etc/system-release)" != "" ]; then
+    INSTALL_PACKAGES=/usr/bin/yum
+    # We need to insure SELinux is enabled which is not the case
+    # with the default AmazonLinux2 images.
+    if [ "$(sestatus)" =~ .*disabled ] ; then
+        /usr/bin/yum install selinux-policy selinux-policy-targeted policycoreutils-python
+        sed -i 's/SELINUX=\(\w\w*\)/SELINUX=enforcing/g' /etc/selinux/config
+        sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 selinux=1 security=selinux"/' /etc/default/grub
+        /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+        touch /.autorelabel
+        # XXX we will need to reboot with the `reboot` command.
     fi
-    if [ "$(grep "CentOS" /etc/system-release)" != "" ]; then
-        OWNER=centos
-        if [ ! -f /usr/bin/python3 ]; then
-            if [ ! -f /etc/yum.repos.d/epel.repo ]; then
-                /usr/bin/yum -y install epel-release
-            fi
-        fi
-        # Without making the fast cache, python36 is sometimes not found
-        # on mirror (ex: mirrors.cat.pdx.edu)
-        /usr/bin/yum makecache fast
-        /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip python-boto3
+    # We have to enable the EPEL repo to install podofo.
+    if [ ! -f /etc/yum.repos.d/epel.repo ]; then
+        amazon-linux-extras install epel -y
     fi
-    [ -f /usr/bin/aws ] || /usr/bin/yum -y install awscli
-    [ -f /usr/bin/bzip2 ] || /usr/bin/yum -y install bzip2
-    [ -f /usr/bin/make ] || /usr/bin/yum -y install make
-    [ -e /usr/lib64/python2.7/site-packages/selinux ] || /usr/bin/yum -y install libselinux-python
+    [ -e /usr/lib64/python2.7/site-packages/selinux ] || $INSTALL_PACKAGES -y install libselinux-python
 fi
+if [ "$(grep "CentOS" /etc/system-release)" != "" ]; then
+    OWNER=centos
+    INSTALL_PACKAGES=/usr/bin/yum
+    if [ ! -f /usr/bin/python3 ]; then
+        if [ ! -f /etc/yum.repos.d/epel.repo ]; then
+            /usr/bin/yum -y install epel-release
+        fi
+    fi
+    # Without making the fast cache, python36 is sometimes not found on mirror
+    # (ex: mirrors.cat.pdx.edu)
+    /usr/bin/yum makecache fast
+    /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip python-boto3
+    [ -e /usr/lib64/python2.7/site-packages/selinux ] || $INSTALL_PACKAGES -y install libselinux-python
+fi
+
+[ -f /usr/bin/aws ] || $INSTALL_PACKAGES -y install awscli
+[ -f /usr/bin/bzip2 ] || $INSTALL_PACKAGES -y install bzip2
+[ -f /usr/bin/make ] || $INSTALL_PACKAGES -y install make
+
 VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 
 # download keys, certificates, etc.

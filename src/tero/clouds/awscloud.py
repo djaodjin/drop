@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Djaodjin Inc.
+# Copyright (c) 2023, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -707,6 +707,7 @@ def create_cdn(tag_prefix, cdn_name=None, elb_domain=None,
                 }
             })
     except botocore.exceptions.ClientError as err:
+        LOGGER.error("CDN create_distribution raises error: %s", err)
         raise
 
 
@@ -784,21 +785,22 @@ def create_waf(tag_prefix, acl_name=None, elb_arn=None,
     acl_arn = None
     waf_client = boto3.client('wafv2', region_name=region_name)
     try:
-        resp = waf_client.create_web_acl(
-            Name=acl_name,
-            Scope='REGIONAL',
-            Rules=rules,
-            DefaultAction={
-                'Allow': {}
-            },
-            VisibilityConfig={
-                'SampledRequestsEnabled': True,
-                'CloudWatchMetricsEnabled': True,
-                'MetricName': acl_name
-            })
-        acl_arn = resp['Summary'].get('ARN')
-        LOGGER.info("%s created Web ACL %s as %s",
-            tag_prefix, acl_name, acl_arn)
+        if not dry_run:
+            resp = waf_client.create_web_acl(
+                Name=acl_name,
+                Scope='REGIONAL',
+                Rules=rules,
+                DefaultAction={
+                    'Allow': {}
+                },
+                VisibilityConfig={
+                    'SampledRequestsEnabled': True,
+                    'CloudWatchMetricsEnabled': True,
+                    'MetricName': acl_name
+                })
+            acl_arn = resp['Summary'].get('ARN')
+        LOGGER.info("%s%s created Web ACL %s as %s",
+            "(dryrun) " if dry_run else "", tag_prefix, acl_name, acl_arn)
 
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
@@ -811,11 +813,12 @@ def create_waf(tag_prefix, acl_name=None, elb_arn=None,
                 break
         LOGGER.info("%s found Web ACL %s as %s",
             tag_prefix, acl_name, acl_arn)
-    resp = waf_client.associate_web_acl(
-        WebACLArn=acl_arn,
-        ResourceArn=elb_arn)
-    LOGGER.info("%s associated Web ACL %s to load balancer %s",
-        tag_prefix, acl_arn, elb_arn)
+    if not dry_run:
+        resp = waf_client.associate_web_acl(
+            WebACLArn=acl_arn,
+            ResourceArn=elb_arn)
+    LOGGER.info("%s%s associated Web ACL %s to load balancer %s",
+        "(dryrun) " if dry_run else "", tag_prefix, acl_arn, elb_arn)
 
 
 def create_elb(tag_prefix, web_subnet_by_cidrs, moat_sg_id,
@@ -1302,7 +1305,7 @@ def create_instance_profile(instance_role,
     return instance_profile_arn
 
 
-def create_network(region_name, vpc_cidr, tag_prefix,
+def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                    tls_priv_key=None, tls_fullchain_cert=None,
                    ssh_key_name=None, ssh_key_content=None, sally_ip=None,
                    s3_logs_bucket=None, s3_identities_bucket=None,
@@ -1328,7 +1331,7 @@ def create_network(region_name, vpc_cidr, tag_prefix,
     LOGGER.info("Provisions network ...")
     ec2_client = boto3.client('ec2', region_name=region_name)
 
-    # Create a VPC
+    # Create VPC for Web/API Gateway
     vpc_id, vpc_cidr_read = _get_vpc_id(tag_prefix, ec2_client=ec2_client,
         region_name=region_name)
     if vpc_id:
@@ -1359,136 +1362,20 @@ def create_network(region_name, vpc_cidr, tag_prefix,
     # ELB will require that there is at least one subnet per availability zones.
     # RDS will require that there is at least two subnets for databases.
     resp = ec2_client.describe_availability_zones()
-    zones = {(zone['ZoneId'], zone['ZoneName'])
+    region_zones = {(zone['ZoneId'], zone['ZoneName'])
         for zone in resp['AvailabilityZones']}
-    web_subnet_cidrs, dbs_subnet_cidrs, app_subnet_cidrs = _split_cidrs(
-        vpc_cidr, zones=zones, region_name=region_name)
+    web_subnet_cidrs, dbs_subnet_cidrs, gate_subnet_cidrs = _split_cidrs(
+        vpc_cidr, zones=region_zones, region_name=region_name)
 
-    LOGGER.info("%s provisioning web subnets...", tag_prefix)
-    web_zones = set([])
-    web_subnet_by_cidrs = _get_subnet_by_cidrs(
-        web_subnet_cidrs, tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
-    for cidr_block, subnet in web_subnet_by_cidrs.items():
-        if subnet:
-            web_zones |= {
-                (subnet['AvailabilityZoneId'], subnet['AvailabilityZone'])}
-    for cidr_block, subnet in web_subnet_by_cidrs.items():
-        if not subnet:
-            available_zones = zones - web_zones
-            zone_id, zone_name = available_zones.pop()
-            try:
-                resp = ec2_client.create_subnet(
-                    AvailabilityZoneId=zone_id,
-                    CidrBlock=cidr_block,
-                    VpcId=vpc_id,
-                    TagSpecifications=[{
-                        'ResourceType': 'subnet',
-                        'Tags': [
-                            {'Key': "Prefix", 'Value': tag_prefix},
-                            {'Key': "Name",
-                             'Value': "%s %s web" % (tag_prefix, zone_name)}]}],
-                    DryRun=dry_run)
-                subnet = resp['Subnet']
-                web_subnet_by_cidrs[cidr_block] = subnet
-                web_zones |= set([(zone_id, zone_name)])
-                subnet_id = subnet['SubnetId']
-                LOGGER.info("%s created subnet %s in zone %s for cidr %s",
-                    tag_prefix, subnet_id, zone_name, cidr_block)
-            except botocore.exceptions.ClientError as err:
-                if not err.response.get('Error', {}).get(
-                        'Code', 'Unknown') == 'InvalidSubnet.Conflict':
-                    raise
-                # We have a conflict, let's just skip over it.
-                LOGGER.warning(
-                    "%s (skip) created subnet in zone %s because '%s'",
-                    tag_prefix, zone_name, err)
-        if subnet and not subnet['MapPublicIpOnLaunch']:
-            subnet_id = subnet['SubnetId']
-            if not dry_run:
-                resp = ec2_client.modify_subnet_attribute(
-                    SubnetId=subnet_id,
-                    MapPublicIpOnLaunch={'Value': True})
-            LOGGER.info("%s modify web subnet %s so instance can receive"\
-                " a public IP by default", tag_prefix, subnet_id)
-
-    LOGGER.info("%s provisioning dbs subnets...", tag_prefix)
-    dbs_zones = set([])
-    dbs_subnet_by_cidrs = _get_subnet_by_cidrs(
-        dbs_subnet_cidrs, tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
-    for cidr_block, subnet in dbs_subnet_by_cidrs.items():
-        if subnet:
-            dbs_zones |= {
-                (subnet['AvailabilityZoneId'], subnet['AvailabilityZone'])}
-    for cidr_block, subnet in dbs_subnet_by_cidrs.items():
-        if not subnet:
-            available_zones = zones - dbs_zones
-            zone_id, zone_name = available_zones.pop()
-            resp = ec2_client.create_subnet(
-                AvailabilityZoneId=zone_id,
-                CidrBlock=cidr_block,
-                VpcId=vpc_id,
-                TagSpecifications=[{
-                    'ResourceType': 'subnet',
-                    'Tags': [
-                        {'Key': "Prefix", 'Value': tag_prefix},
-                        {'Key': "Name",
-                         'Value': "%s %s dbs" % (tag_prefix, zone_name)}]}],
-                DryRun=dry_run)
-            subnet = resp['Subnet']
-            dbs_subnet_by_cidrs[cidr_block] = subnet
-            dbs_zones |= set([(zone_id, zone_name)])
-            subnet_id = subnet['SubnetId']
-            LOGGER.info("%s created subnet %s in zone %s for cidr %s",
-                tag_prefix, subnet_id, zone_name, cidr_block)
-        if subnet['MapPublicIpOnLaunch']:
-            subnet_id = subnet['SubnetId']
-            if not dry_run:
-                resp = ec2_client.modify_subnet_attribute(
-                    SubnetId=subnet_id,
-                    MapPublicIpOnLaunch={'Value': False})
-            LOGGER.info("%s modify dbs subnet %s so instance do not receive"\
-                " a public IP by default", tag_prefix, subnet_id)
-
-    LOGGER.info("%s provisioning apps subnets...", tag_prefix)
-    app_zones = set([])
-    app_subnet_by_cidrs = _get_subnet_by_cidrs(
-        app_subnet_cidrs, tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
-    for cidr_block, subnet in app_subnet_by_cidrs.items():
-        if subnet:
-            app_zones |= {
-                (subnet['AvailabilityZoneId'], subnet['AvailabilityZone'])}
-    for cidr_block, subnet in app_subnet_by_cidrs.items():
-        if not subnet:
-            available_zones = zones - app_zones
-            zone_id, zone_name = available_zones.pop()
-            resp = ec2_client.create_subnet(
-                AvailabilityZoneId=zone_id,
-                CidrBlock=cidr_block,
-                VpcId=vpc_id,
-                # COMMIT MSG:
-                # this requires boto3>=1.14, using `createTag` might fail
-                # because the subnet is not fully created yet.
-                TagSpecifications=[{
-                    'ResourceType': 'subnet',
-                    'Tags': [
-                        {'Key': "Prefix", 'Value': tag_prefix},
-                        {'Key': "Name",
-                         'Value': "%s %s app" % (tag_prefix, zone_name)}]}],
-                DryRun=dry_run)
-            subnet = resp['Subnet']
-            app_subnet_by_cidrs[cidr_block] = subnet
-            app_zones |= set([(zone_id, zone_name)])
-            subnet_id = subnet['SubnetId']
-            LOGGER.info("%s created subnet %s in %s for cidr %s",
-                tag_prefix, subnet_id, zone_name, cidr_block)
-        if subnet['MapPublicIpOnLaunch']:
-            subnet_id = subnet['SubnetId']
-            if not dry_run:
-                resp = ec2_client.modify_subnet_attribute(
-                    SubnetId=subnet_id,
-                    MapPublicIpOnLaunch={'Value': False})
-            LOGGER.info("%s modify app subnet %s so instance do not receive"\
-                " a public IP by default", tag_prefix, subnet_id)
+    web_subnet_by_cidrs = create_subnets('web', web_subnet_cidrs,
+        vpc_id, region_zones, tag_prefix, ec2_client,
+        public_on_launch=True, dry_run=dry_run)
+    dbs_subnet_by_cidrs = create_subnets('dbs', dbs_subnet_cidrs,
+        vpc_id, region_zones, tag_prefix, ec2_client,
+        dry_run=dry_run)
+    gate_subnet_by_cidrs = create_subnets('gate', gate_subnet_cidrs,
+        vpc_id, region_zones, tag_prefix, ec2_client,
+        dry_run=dry_run)
 
     # Ensure that the VPC has an Internet Gateway.
     resp = ec2_client.describe_internet_gateways(
@@ -1579,42 +1466,44 @@ def create_network(region_name, vpc_cidr, tag_prefix,
             LOGGER.warning("%s found more than one NAT gateway."\
                 " Using first one in the list.", tag_prefix)
         nat_gateway = resp['NatGateways'][0]
-        nat_gateway_id = nat_gateway['NatGatewayId']
+        public_nat_gateway_id = nat_gateway['NatGatewayId']
         nat_gateway_subnet_id = nat_gateway['SubnetId']
-        LOGGER.info("%s found NAT gateway %s", tag_prefix, nat_gateway_id)
+        LOGGER.info("%s found NAT gateway %s", tag_prefix, public_nat_gateway_id)
     else:
         nat_gateway_subnet_id = next(web_subnet_by_cidrs.values())['SubnetId']
         resp = ec2_client.create_nat_gateway(
             AllocationId=nat_elastic_ip,
             ClientToken=client_token,
             SubnetId=nat_gateway_subnet_id)
-        nat_gateway_id = resp['NatGateway']['NatGatewayId']
+        public_nat_gateway_id = resp['NatGateway']['NatGatewayId']
         ec2_client.create_tags(
             DryRun=dry_run,
-            Resources=[nat_gateway_id],
+            Resources=[public_nat_gateway_id],
             Tags=[{'Key': "Prefix", 'Value': tag_prefix},
                   {'Key': "Name",
                    'Value': "%s NAT gateway" % tag_prefix}])
         LOGGER.info("%s created NAT gateway %s",
-            tag_prefix, nat_gateway_id)
+            tag_prefix, public_nat_gateway_id)
 
     # Set up public and NAT-protected route tables
     resp = ec2_client.describe_route_tables(
         Filters=[{'Name': "vpc-id", 'Values': [vpc_id]}])
     public_route_table_id = None
-    private_route_table_id = None
+    gate_route_table_id = None
+    dbs_route_table_id = None
     for route_table in resp['RouteTables']:
         for route in route_table['Routes']:
+            print("XXX route=%s" % str(route))
             if 'GatewayId' in route and route['GatewayId'] == igw_id:
                 public_route_table_id = route_table['RouteTableId']
                 LOGGER.info("%s found public route table %s",
                     tag_prefix, public_route_table_id)
                 break
             if ('NatGatewayId' in route and
-                  route['NatGatewayId'] == nat_gateway_id):
-                private_route_table_id = route_table['RouteTableId']
+                  route['NatGatewayId'] == public_nat_gateway_id):
+                gate_route_table_id = route_table['RouteTableId']
                 LOGGER.info("%s found private route table %s",
-                    tag_prefix, private_route_table_id)
+                    tag_prefix, gate_route_table_id)
 
     if not public_route_table_id:
         resp = ec2_client.create_route_table(
@@ -1635,28 +1524,28 @@ def create_network(region_name, vpc_cidr, tag_prefix,
             GatewayId=igw_id,
             RouteTableId=public_route_table_id)
 
-    if not private_route_table_id:
+    if not dbs_route_table_id:
         resp = ec2_client.create_route_table(
             DryRun=dry_run,
             VpcId=vpc_id)
-        private_route_table_id = resp['RouteTable']['RouteTableId']
+        dbs_route_table_id = resp['RouteTable']['RouteTableId']
         ec2_client.create_tags(
             DryRun=dry_run,
-            Resources=[private_route_table_id],
+            Resources=[dbs_route_table_id],
             Tags=[
                 {'Key': "Prefix", 'Value': tag_prefix},
-                {'Key': "Name", 'Value': "%s internal" % tag_prefix}])
-        private_route_table_id = resp['RouteTable']['RouteTableId']
-        LOGGER.info("%s created private route table %s",
-            tag_prefix, private_route_table_id)
+                {'Key': "Name", 'Value': "%s dbs" % tag_prefix}])
+        dbs_route_table_id = resp['RouteTable']['RouteTableId']
+        LOGGER.info("%s created dbs route table %s",
+            tag_prefix, dbs_route_table_id)
         for _ in range(0, NB_RETRIES):
             # The NAT Gateway takes some time to be fully operational.
             try:
                 resp = ec2_client.create_route(
                     DryRun=dry_run,
                     DestinationCidrBlock='0.0.0.0/0',
-                    NatGatewayId=nat_gateway_id,
-                    RouteTableId=private_route_table_id)
+                    NatGatewayId=public_nat_gateway_id,
+                    RouteTableId=dbs_route_table_id)
             except botocore.exceptions.ClientError as err:
                 if not err.response.get('Error', {}).get(
                         'Code', 'Unknown') == 'InvalidNatGatewayID.NotFound':
@@ -1700,6 +1589,7 @@ def create_network(region_name, vpc_cidr, tag_prefix,
                 "%s associate public route table %s to web subnet %s",
                 tag_prefix, public_route_table_id, subnet_id)
 
+    # Associates routes to subnets
     for cidr_block, subnet in dbs_subnet_by_cidrs.items():
         subnet_id = subnet['SubnetId']
         resp = ec2_client.describe_route_tables(
@@ -1713,22 +1603,182 @@ def create_network(region_name, vpc_cidr, tag_prefix,
         if resp['RouteTables']:
             found_association = (
                 resp['RouteTables'][0]['Associations'][0]['RouteTableId'] ==
-                private_route_table_id
+                dbs_route_table_id
             )
         if found_association:
             LOGGER.info(
-                "%s found private route table %s associated to dbs subnet %s",
-                tag_prefix, private_route_table_id, subnet_id)
+                "%s found dbs route table %s associated to dbs subnet %s",
+                tag_prefix, dbs_route_table_id, subnet_id)
         else:
             resp = ec2_client.associate_route_table(
                 DryRun=dry_run,
-                RouteTableId=private_route_table_id,
+                RouteTableId=dbs_route_table_id,
                 SubnetId=subnet_id)
             LOGGER.info(
-                "%s associate private route table %s to dbs subnet %s",
-                tag_prefix, private_route_table_id, subnet_id)
+                "%s associate dbsrivate route table %s to dbs subnet %s",
+                tag_prefix, dbs_route_table_id, subnet_id)
 
-    for cidr_block, subnet in app_subnet_by_cidrs.items():
+    # Create the VPC for 3rd party application
+    transit_gateway_id = None
+    if apps_vpc_cidr and apps_vpc_cidr != vpc_cidr:
+        apps_tag_prefix = "%sapps"
+        apps_vpc_id, vpc_cidr_read = _get_vpc_id(apps_tag_prefix,
+            ec2_client=ec2_client, region_name=region_name)
+        if apps_vpc_id:
+            if apps_vpc_cidr != vpc_cidr_read:
+                raise RuntimeError(
+                  "%s cidr block for VPC is %s while it was expected to be %s" %
+                  (apps_tag_prefix, vpc_cidr_read, apps_vpc_cidr))
+        else:
+            # https://aws.amazon.com/blogs/networking-and-content-delivery/building-an-egress-vpc-with-aws-transit-gateway-and-the-aws-cdk/
+            resp = ec2_client.create_vpc(
+                DryRun=dry_run,
+                CidrBlock=apps_vpc_cidr,
+                AmazonProvidedIpv6CidrBlock=False,
+                InstanceTenancy='default')
+            apps_vpc_id = resp['Vpc']['VpcId']
+            ec2_client.create_tags(
+                DryRun=dry_run,
+                Resources=[apps_vpc_id],
+                Tags=[
+                    {'Key': "Prefix", 'Value': apps_tag_prefix},
+                    {'Key': "Name", 'Value': "%s-vpc" % apps_tag_prefix}])
+            LOGGER.info("%s created Apps VPC %s", apps_tag_prefix, apps_vpc_id)
+
+        # Create the subnets in the Apps VPC
+        apps_subnet_cidrs, _, _ = _split_cidrs(
+            apps_vpc_cidr, zones=region_zones, region_name=region_name)
+        apps_subnet_by_cidrs = create_subnets('apps', apps_subnet_cidrs,
+            apps_vpc_id, region_zones, tag_prefix, ec2_client,
+            dry_run=dry_run)
+
+        resp = ec2_client.create_transit_gateway(
+            DryRun=dry_run,
+            Description="Transit Gateway for Gate VPC to Apps VPC"
+        )
+        transit_gateway_id = resp['TransitGateway']['TransitGatewayId']
+
+        apps_subnet_ids = [subnet['SubnetId']
+            for subnet in apps_subnet_by_cidrs.values() if subnet]
+        resp = ec2_client.create_transit_gateway_vpc_attachment(
+            TransitGatewayId=transit_gateway_id,
+            VpcId=apps_vpc_id,
+            SubnetIds=apps_subnet_ids)
+        apps_vpc_attachment_id = (
+            resp['TransitGatewayVpcAttachment']['TransitGatewayAttachmentId'])
+
+        resp = ec2_client.create_transit_gateway_route_table(
+            DryRun=dry_run,
+            TransitGatewayId=transit_gateway_id)
+        transit_gateway_route_table_id = (
+            resp['TransitGatewayRouteTable']['TransitGatewayRouteTableId'])
+
+        resp = ec2_client.create_transit_gateway_route(
+            DryRun=dry_run,
+            DestinationCidrBlock=apps_vpc_cidr,
+            TransitGatewayAttachmentId=apps_vpc_attachment_id,
+            TransitGatewayRouteTableId=transit_gateway_route_table_id)
+
+        # Ensure that the Apps VPC has an Internet Gateway.
+        resp = ec2_client.describe_internet_gateways(
+            Filters=[{'Name': 'attachment.vpc-id', 'Values': [apps_vpc_id]}])
+        if resp['InternetGateways']:
+            igw_id = resp['InternetGateways'][0]['InternetGatewayId']
+            LOGGER.info("%s found Internet Gateway %s", apps_tag_prefix, igw_id)
+        else:
+            resp = ec2_client.describe_internet_gateways(
+                Filters=[{'Name': 'tag:Prefix', 'Values': [apps_tag_prefix]}])
+            if resp['InternetGateways']:
+                igw_id = resp['InternetGateways'][0]['InternetGatewayId']
+                LOGGER.info("%s found Internet Gateway %s",
+                    apps_tag_prefix, igw_id)
+            else:
+                resp = ec2_client.create_internet_gateway(DryRun=dry_run)
+                igw_id = resp['InternetGateway']['InternetGatewayId']
+                ec2_client.create_tags(
+                    DryRun=dry_run,
+                    Resources=[igw_id],
+                    Tags=[{'Key': "Prefix", 'Value': apps_tag_prefix},
+                          {'Key': "Name",
+                           'Value': "%s internet gateway" % apps_tag_prefix}])
+                LOGGER.info("%s created Internet Gateway %s",
+                    apps_tag_prefix, igw_id)
+            resp = ec2_client.attach_internet_gateway(
+                DryRun=dry_run,
+                InternetGatewayId=igw_id,
+                VpcId=apps_vpc_id)
+
+        # Set up route tables for Apps VPC
+        resp = ec2_client.describe_route_tables(
+            Filters=[{'Name': "vpc-id", 'Values': [apps_vpc_id]}])
+        public_route_table_id = None
+        for route_table in resp['RouteTables']:
+            for route in route_table['Routes']:
+                if 'GatewayId' in route and route['GatewayId'] == igw_id:
+                    public_route_table_id = route_table['RouteTableId']
+                    LOGGER.info("%s found public route table %s",
+                        tag_prefix, public_route_table_id)
+                    break
+        if not public_route_table_id:
+            resp = ec2_client.create_route_table(
+                DryRun=dry_run,
+                VpcId=apps_vpc_id)
+            public_route_table_id = resp['RouteTable']['RouteTableId']
+            ec2_client.create_tags(
+                DryRun=dry_run,
+                Resources=[public_route_table_id],
+                Tags=[
+                    {'Key': "Prefix", 'Value': apps_tag_prefix},
+                    {'Key': "Name", 'Value': "%s public" % apps_tag_prefix}])
+            LOGGER.info("%s created public subnet route table %s",
+                apps_tag_prefix, public_route_table_id)
+            resp = ec2_client.create_route(
+                DryRun=dry_run,
+                DestinationCidrBlock='0.0.0.0/0',
+                GatewayId=igw_id,
+                RouteTableId=public_route_table_id)
+
+    # Creates the route table for gate subnets
+    if not gate_route_table_id:
+        resp = ec2_client.create_route_table(
+            DryRun=dry_run,
+            VpcId=vpc_id)
+        gate_route_table_id = resp['RouteTable']['RouteTableId']
+        ec2_client.create_tags(
+            DryRun=dry_run,
+            Resources=[gate_route_table_id],
+            Tags=[
+                {'Key': "Prefix", 'Value': tag_prefix},
+                {'Key': "Name", 'Value': "%s gate" % tag_prefix}])
+        gate_route_table_id = resp['RouteTable']['RouteTableId']
+        LOGGER.info("%s created gate route table %s",
+            tag_prefix, gate_route_table_id)
+        for _ in range(0, NB_RETRIES):
+            # The NAT Gateway takes some time to be fully operational.
+            try:
+                resp = ec2_client.create_route(
+                    DryRun=dry_run,
+                    DestinationCidrBlock='0.0.0.0/0',
+                    NatGatewayId=public_nat_gateway_id,
+                    RouteTableId=gate_route_table_id)
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidNatGatewayID.NotFound':
+                    raise
+            if apps_vpc_cidr and transit_gateway_id:
+                try:
+                    resp = ec2_client.create_route(
+                        DryRun=dry_run,
+                        DestinationCidrBlock=apps_vpc_cidr,
+                        TransitGatewayId=transit_gateway_id,
+                        RouteTableId=gate_route_table_id)
+                except botocore.exceptions.ClientError as err:
+                    if not err.response.get('Error', {}).get('Code',
+                        'Unknown') == 'InvalidNatGatewayID.NotFound':
+                        raise
+            time.sleep(RETRY_WAIT_DELAY)
+
+    for cidr_block, subnet in gate_subnet_by_cidrs.items():
         subnet_id = subnet['SubnetId']
         resp = ec2_client.describe_route_tables(
             DryRun=dry_run,
@@ -1741,20 +1791,20 @@ def create_network(region_name, vpc_cidr, tag_prefix,
         if resp['RouteTables']:
             found_association = (
                 resp['RouteTables'][0]['Associations'][0]['RouteTableId'] ==
-                private_route_table_id
+                gate_route_table_id
             )
         if found_association:
             LOGGER.info(
-                "%s found private route table %s associated to app subnet %s",
-                tag_prefix, private_route_table_id, subnet_id)
+                "%s found gate route table %s associated to gate subnet %s",
+                tag_prefix, gate_route_table_id, subnet_id)
         else:
             resp = ec2_client.associate_route_table(
                 DryRun=dry_run,
-                RouteTableId=private_route_table_id,
+                RouteTableId=gate_route_table_id,
                 SubnetId=subnet_id)
             LOGGER.info(
-                "%s associate private route table %s to app subnet %s",
-                tag_prefix, private_route_table_id, subnet_id)
+                "%s associate gate route table %s to gate subnet %s",
+                tag_prefix, gate_route_table_id, subnet_id)
 
     # Create the ELB, proxies and databases security groups
     # The app security group (as the instance role) will be specific
@@ -2322,6 +2372,67 @@ def create_network(region_name, vpc_cidr, tag_prefix,
         dry_run=dry_run)
 
 
+def create_subnets(label, subnet_cidrs,
+                   vpc_id, region_zones, tag_prefix, ec2_client,
+                   public_on_launch=False, dry_run=False):
+    """
+    Creates the `label` subnets for `subnet_cidrs` in VPC `vpc_id`.
+
+    `region_zones` is all the zones available in a region.
+    """
+    LOGGER.info("%s provisioning %s subnets...", tag_prefix, label)
+    zones = set([])
+    subnet_by_cidrs = _get_subnet_by_cidrs(
+        subnet_cidrs, tag_prefix, vpc_id=vpc_id, ec2_client=ec2_client)
+    for cidr_block, subnet in subnet_by_cidrs.items():
+        if subnet:
+            zones |= {
+                (subnet['AvailabilityZoneId'], subnet['AvailabilityZone'])}
+    for cidr_block, subnet in subnet_by_cidrs.items():
+        if not subnet:
+            available_zones = region_zones - zones
+            zone_id, zone_name = available_zones.pop()
+            try:
+                resp = ec2_client.create_subnet(
+                    AvailabilityZoneId=zone_id,
+                    CidrBlock=cidr_block,
+                    VpcId=vpc_id,
+                    # COMMIT MSG:
+                    # this requires boto3>=1.14, using `createTag` might fail
+                    # because the subnet is not fully created yet.
+                    TagSpecifications=[{
+                        'ResourceType': 'subnet',
+                        'Tags': [
+                            {'Key': "Prefix", 'Value': tag_prefix},
+                            {'Key': "Name",
+                             'Value': "%s %s %s" % (
+                                 tag_prefix, zone_name, label)}]}],
+                    DryRun=dry_run)
+                subnet = resp['Subnet']
+                subnet_by_cidrs[cidr_block] = subnet
+                zones |= set([(zone_id, zone_name)])
+                subnet_id = subnet['SubnetId']
+                LOGGER.info("%s created subnet %s in zone %s for cidr %s",
+                    tag_prefix, subnet_id, zone_name, cidr_block)
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'InvalidSubnet.Conflict':
+                    raise
+                # We have a conflict, let's just skip over it.
+                LOGGER.warning(
+                    "%s (skip) created subnet in zone %s because '%s'",
+                    tag_prefix, zone_name, err)
+
+        if subnet and subnet['MapPublicIpOnLaunch'] != public_on_launch:
+            subnet_id = subnet['SubnetId']
+            if not dry_run:
+                resp = ec2_client.modify_subnet_attribute(
+                    SubnetId=subnet_id,
+                    MapPublicIpOnLaunch={'Value': public_on_launch})
+            LOGGER.info("%s modify %s subnet %s so instance do not receive"\
+                " a public IP by default", tag_prefix, label, subnet_id)
+
+    return subnet_by_cidrs
 
 
 def create_datastores(region_name, vpc_cidr, tag_prefix,
