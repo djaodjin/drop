@@ -10,7 +10,7 @@ OWNER=ec2-user
 INSTALL_PACKAGES=/usr/bin/dnf
 
 # Install necessary public packages to bootstrap configuration
-if [ "$(grep "Amazon Linux release 2" /etc/system-release)" != "" ]; then
+if [ "$(grep "Amazon Linux release 2 " /etc/system-release)" != "" ]; then
     INSTALL_PACKAGES=/usr/bin/yum
     # We need to insure SELinux is enabled which is not the case
     # with the default AmazonLinux2 images.

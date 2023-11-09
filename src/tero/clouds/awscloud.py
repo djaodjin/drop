@@ -3398,21 +3398,21 @@ def create_app_resources(region_name, app_name, image_name,
     return [instance['InstanceId'] for instance in instances]
 
 
-def create_webfront_resources(region_name, app_name, image_name,
-                              storage_enckey=None,
-                              s3_logs_bucket=None,
-                              identities_url=None,
-                              ssh_key_name=None,
-                              company_domain=None,
-                              ldap_host=None,
-                              domain_name=None,
-                              s3_uploads_bucket=None,
-                              instance_type=None,
-                              web_subnet_id=None,
-                              vpc_id=None,
-                              vpc_cidr=None,
-                              tag_prefix=None,
-                              dry_run=False):
+def create_gate_resources(region_name, app_name, image_name,
+                          storage_enckey=None,
+                          s3_logs_bucket=None,
+                          identities_url=None,
+                          ssh_key_name=None,
+                          company_domain=None,
+                          ldap_host=None,
+                          domain_name=None,
+                          s3_uploads_bucket=None,
+                          instance_type=None,
+                          gate_subnet_id=None,
+                          vpc_id=None,
+                          vpc_cidr=None,
+                          tag_prefix=None,
+                          dry_run=False):
     """
     Create the proxy session server `app_name` based on OS distribution
     `image_name` in region `region_name` and connects it to the target group.
@@ -3450,13 +3450,13 @@ def create_webfront_resources(region_name, app_name, image_name,
     The arguments below are purely for custom deployment and/or performace
     improvement. Default values will be re-computed from the network setup
     if they are not passed as parameters.
-        - `web_subnet_id`
+        - `gate_subnet_id`
         - `vpc_id`
         - `vpc_cidr`
     """
     if not instance_type:
-        instance_type = 't3.micro'
-    subnet_id = web_subnet_id
+        instance_type = 't3a.micro'
+    subnet_id = gate_subnet_id
     sg_tag_prefix = tag_prefix
     ec2_client = boto3.client('ec2', region_name=region_name)
     gate_sg_name = _get_security_group_names(
@@ -3467,13 +3467,13 @@ def create_webfront_resources(region_name, app_name, image_name,
             region_name=region_name)
     if not subnet_id:
         #pylint:disable=unused-variable
-        _, _, app_subnet_cidrs = _split_cidrs(
+        _, _, gate_subnet_cidrs = _split_cidrs(
             vpc_cidr, ec2_client=ec2_client, region_name=region_name)
-        app_subnet_by_cidrs = _get_subnet_by_cidrs(
-            app_subnet_cidrs, tag_prefix,
+        gate_subnet_by_cidrs = _get_subnet_by_cidrs(
+            gate_subnet_cidrs, tag_prefix,
             vpc_id=vpc_id, ec2_client=ec2_client)
         # Use first valid subnet that does not require a public IP.
-        subnet_id = next(iter(app_subnet_by_cidrs.values()))['SubnetId']
+        subnet_id = next(iter(gate_subnet_by_cidrs.values()))['SubnetId']
 
     group_ids = _get_security_group_ids(
         [gate_sg_name], tag_prefix,
@@ -3751,11 +3751,11 @@ def create_target_group(region_name, app_name, instance_ids=None,
     # It is time to attach the instance that will respond to http requests
     # to the target group.
     if not instance_ids:
-        instance_ids = create_webfront_resources(
+        instance_ids = create_gate_resources(
             region_name, app_name, image_name,
             identities_url=identities_url, ssh_key_name=ssh_key_name,
             instance_type=instance_type,
-            web_subnet_id=subnet_id, vpc_id=vpc_id, vpc_cidr=vpc_cidr,
+            gate_subnet_id=subnet_id, vpc_id=vpc_id, vpc_cidr=vpc_cidr,
             tag_prefix=tag_prefix,
             dry_run=dry_run)
     if instance_ids:
@@ -4144,7 +4144,7 @@ def run_config(config_name, create_ami=False, local_docker=False,
             if instance_ids:
                 instance_ids = instance_ids.split(',')
             else:
-                instance_ids = create_webfront_resources(
+                instance_ids = create_gate_resources(
                     region_name,
                     app_name,
                     image_name=config[app_name].get(
@@ -4162,7 +4162,7 @@ def run_config(config_name, create_ami=False, local_docker=False,
                     ssh_key_name=ssh_key_name,
                     instance_type=config[app_name].get(
                       'instance_type', config['default'].get('instance_type')),
-                    web_subnet_id=config[app_name].get(
+                    gate_subnet_id=config[app_name].get(
                         'subnet_id', config['default'].get('subnet_id')),
                     vpc_cidr=config['default']['vpc_cidr'],
                     vpc_id=config['default'].get('vpc_id'),
