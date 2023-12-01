@@ -80,7 +80,7 @@ if PY3:
     def _iteritems(dct, **kw):
         return iter(dct.items(**kw))
 else:
-    string_types = basestring,
+    string_types = basestring, #pylint:disable=undefined-variable
 
     def _iteritems(dct, **kw):
         return dct.iteritems(**kw)
@@ -347,8 +347,6 @@ class Context(object):
         self.config_filename = None
 
     def __getattr__(self, name):
-        if name.startswith('_'):
-            return super(Context, self).__getattr__(name)
         return self.value(name)
 
     def base(self, name):

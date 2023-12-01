@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,13 +21,14 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import os, re
 
-from tero import setup
+from . import stage_file, SetupTemplate
 
 
-class logrotateSetup(setup.SetupTemplate):
+class logrotateSetup(SetupTemplate):
 
     def __init__(self, name, files, **kwargs):
         super(logrotateSetup, self).__init__(name, files, **kwargs)
@@ -46,7 +47,7 @@ class logrotateSetup(setup.SetupTemplate):
             context.value('etcDir'), 'logrotate.conf')
         # If the `dateformat` option is not specified, we insert it
         # right after the `dateext` option.
-        org_config_path, new_config_path = setup.stageFile(
+        org_config_path, new_config_path = stage_file(
             logrotate_conf, context)
         with open(org_config_path) as conf_file:
             conf_lines = conf_file.readlines()

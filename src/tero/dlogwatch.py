@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,7 @@ import argparse, hashlib, json, logging, re, select, sys
 
 import six, boto3
 from six.moves.urllib.parse import urlparse
-from systemd import journal
+from cysystemd import journal
 
 from tero import __version__
 from tero.dparselog import PythonExceptionLogParser

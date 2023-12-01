@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,19 +21,20 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import os
 
 import six
 
-from tero.setup import SetupTemplate, modify_config, stageFile
+from . import SetupTemplate, modify_config, stage_file
 
 def add_entry(filename, command,
               username='root', minutes='0', hours='19', dom='*', months='*',
-              dow='*', sysconfDir='/etc', context=None):
+              dow='*', sysconf_dir='/etc', context=None):
     '''Add a new cron job.'''
-    _, cron_path = stageFile(
-        os.path.join(sysconfDir, 'cron.d', filename), context)
+    _, cron_path = stage_file(
+        os.path.join(sysconf_dir, 'cron.d', filename), context)
     with open(cron_path, 'w') as cron:
         cron.write('# m  h dom mon dow user command\n')
         cron.write('%s %s %s %s %s %s %s\n'
@@ -68,9 +69,8 @@ class cronSetup(SetupTemplate):
             if key.startswith('/etc/cron.d'):
                 for cmds in vals:
                     lines = cmds[0]
-                    _, cron = stageFile(key, context=context)
-                    cronfile = open(cron, 'w')
-                    cronfile.write('# m  h dom mon dow command\n')
-                    cronfile.write(lines)
-                    cronfile.close()
+                    _, cron_path = stage_file(key, context=context)
+                    with open(cron_path, 'w') as cronfile:
+                        cronfile.write('# m  h dom mon dow command\n')
+                        cronfile.write(lines)
         return complete

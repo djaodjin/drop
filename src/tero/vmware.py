@@ -433,9 +433,3 @@ def read_addr_from_dhcp_conf(vm_name):
                     break
             line = dnsf.readline()
     return ipaddr, macaddr
-
-
-def is_available(vm_name, user=None, keyfile=None, port=22):
-    tero.wait_until_ssh_up(
-        get_ip_addr(vm_name), user, keyfile, port, timeout=2400)
-

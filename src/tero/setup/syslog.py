@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,18 +21,22 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
-import os, re, six
+import os, re
 
-from tero import setup
+import six
+
+from . import modify_config, postinst, stage_file, SetupTemplate
 
 
-class syslog_ngSetup(setup.SetupTemplate):
+class syslog_ngSetup(SetupTemplate):
 
     BEFORE_ACTIONS = 0
     IN_ACTIONS = 1
     IN_LAST_ACTION = 2
 
+    #pylint:disable=line-too-long
     te_templates = {
         'syslog_te_config_template': {
             'filename': 'syslog-ng.te',
@@ -112,7 +116,7 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
         ]
         syslog_logrotate_conf = os.path.join(
             context.value('etcDir'), 'logrotate.d', 'syslog')
-        org_conf_path, new_conf_path = setup.stageFile(
+        org_conf_path, new_conf_path = stage_file(
             syslog_logrotate_conf, context)
         inserted = False
         state = self.BEFORE_ACTIONS
@@ -163,13 +167,12 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
             return complete
 
         journald_conf = "/etc/systemd/journald.conf"
-        setup.modify_config(journald_conf,
+        modify_config(journald_conf,
             settings={'ForwardToSyslog': "yes"},
             sep='=', context=context)
 
         # Make sure we disable rsyslog, we are using sylog-ng here.
-        setup.postinst.shellCommand(['systemctl', 'stop', 'rsyslog.service'])
-        setup.postinst.shellCommand(['systemctl', 'disable', 'rsyslog.service'])
+        postinst.service_disable('rsyslog')
 
         # Rotate and upload all logs which have been written through syslog
         additional_lognames = []
@@ -181,14 +184,14 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
             context, additional_lognames=additional_lognames)
 
         # Configure SELinux to run syslog-ng and run logrotate executables
-        for te_template in self.te_templates:
+        for te_template in six.iteritems(self.te_templates):
             syslog_te = os.path.join(
-                os.path.dirname(setup.postinst.postinst_run_path),
+                os.path.dirname(postinst.postinst_run_path),
                 self.te_templates[te_template]['filename'])
-            _, syslog_te_path = setup.stageFile(syslog_te, context)
+            _, syslog_te_path = stage_file(syslog_te, context)
             with open(syslog_te_path, 'w') as syslog_te_file:
                 syslog_te_file.write(self.te_templates[te_template]['template'])
-            setup.postinst.install_selinux_module(syslog_te,
+            postinst.install_selinux_module(syslog_te,
                 self.te_templates[te_template]['comment'])
 
         return complete

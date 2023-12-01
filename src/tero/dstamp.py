@@ -199,7 +199,7 @@ def main(args):
         if options.helpBook:
             help_text = dws.StringIO()
             parser.print_help(help_text)
-            dws.helpBook(help_text)
+            dws.help_book(help_text)
             sys.exit(0)
         if options.noexecute:
             global DO_NOT_EXECUTE

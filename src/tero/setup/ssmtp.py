@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -67,7 +67,7 @@ class sstmpSetup(SetupTemplate):
                 'root': notify_email
             }, sep=':', context=context)
 
-        postinst.shellCommand([
+        postinst.shell_command([
             'alternatives', '--set mta', '/usr/sbin/sendmail.ssmtp'])
 
         return complete

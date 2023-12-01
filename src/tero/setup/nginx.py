@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,10 +21,12 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import logging, os, re, six
 
-from tero import APT_DISTRIBS, REDHAT_DISTRIBS, setup
+from tero import APT_DISTRIBS, REDHAT_DISTRIBS
+from . import postinst, stage_file, SetupTemplate
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ IPV4_RE = r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'
 SLUG_RE = r'[a-z][a-z0-9\-]*'
 
 
-class nginxSetup(setup.SetupTemplate):
+class nginxSetup(SetupTemplate):
 
     proxy_params_template = """
             proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
@@ -68,7 +70,7 @@ class nginxSetup(setup.SetupTemplate):
         syslog_conf = os.path.join(
             context.value('etcDir'), 'syslog-ng', 'conf.d', app)
         templates_dir = os.path.dirname(os.path.abspath(__file__))
-        _, new_conf_path = setup.stageFile(syslog_conf, context)
+        _, new_conf_path = stage_file(syslog_conf, context)
         with open(os.path.join(
                 templates_dir, 'webapp-syslog.tpl')) as conf_file:
             conf_template = conf_file.read()
@@ -86,7 +88,7 @@ class nginxSetup(setup.SetupTemplate):
 
         last_webapps = ""
         remove_default_server = False
-        _, new_proxy_params = setup.stageFile(os.path.join(
+        _, new_proxy_params = stage_file(os.path.join(
             context.value('etcDir'), 'nginx', 'proxy_params'), context=context)
         with open(new_proxy_params, 'w') as proxy_params_file:
             proxy_params_file.write(self.proxy_params_template)
@@ -129,7 +131,7 @@ class nginxSetup(setup.SetupTemplate):
         # Remove default server otherwise our config for intermediate nodes
         # with no domain names will be overridden.
         if remove_default_server:
-            org_nginx_conf, new_nginx_conf = setup.stageFile(os.path.join(
+            org_nginx_conf, new_nginx_conf = stage_file(os.path.join(
                 context.value('etcDir'), 'nginx', 'nginx.conf'),
                 context=context)
             with open(org_nginx_conf) as org_nginx_conf_file:
@@ -167,10 +169,10 @@ class nginxSetup(setup.SetupTemplate):
             os.makedirs(certs_top)
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
         # XXX disabled for faster dev turn around. DO NOT COMMIT!
-        #setup.postinst.shellCommand([
+        #postinst.shell_command([
         #    '[', '-f', dhparam_path, ']', '||', '/usr/bin/openssl',
         #    'dhparam', '-out', dhparam_path, '4096'])
-        setup.postinst.shellCommand([
+        postinst.shell_command([
             'setsebool', '-P', 'httpd_can_network_connect', '1'])
         return complete
 
@@ -202,32 +204,32 @@ class nginxSetup(setup.SetupTemplate):
         # this in order to start nginx correctly.
         wildcard_csr_path = wildcard_cert_path.replace('.crt', '.csr')
         domain_info = os.path.join(
-            os.path.dirname(setup.postinst.postinst_run_path),
+            os.path.dirname(postinst.postinst_run_path),
             '%s.info' % domain)
-        _, domain_info_path = setup.stageFile(domain_info, context)
+        _, domain_info_path = stage_file(domain_info, context)
         with open(domain_info_path, 'w') as domain_info_file:
             domain_info_file.write("US\nCalifornia\nSan Francisco\n"\
                 "Dummy Corp\n\n*.%(domain)s\nsupport@%(email)s\n\n\n" %
             {'domain': domain, 'email': 'root@localhost.localdomain'})
-        setup.postinst.shellCommand([
+        postinst.shell_command([
             '[', '-f', wildcard_key_path, ']', '||', '/usr/bin/openssl',
             'req', '-new', '-newkey', 'rsa:2048', '-nodes',
             '-keyout', wildcard_key_path, '-out', wildcard_csr_path,
             '<', domain_info_path])
-        setup.postinst.shellCommand([
+        postinst.shell_command([
             '[', '-f', wildcard_cert_path, ']', '||', '/usr/bin/openssl',
             'x509', '-req', '-days', '15',
             '-in', wildcard_csr_path,
             '-signkey', wildcard_key_path,
             '-out', wildcard_cert_path])
-        setup.postinst.shellCommand([
+        postinst.shell_command([
             '[', '-f', key_path, ']', '||', '/usr/bin/ln', '-s',
             wildcard_key_path, key_path])
-        setup.postinst.shellCommand([
+        postinst.shell_command([
             '[', '-f', cert_path, ']', '||', '/usr/bin/ln', '-s',
             wildcard_cert_path, cert_path])
         dhparam_path = os.path.join(certs_top, 'dhparam.pem')
-        _, new_site_conf = setup.stageFile(self.conf_path(
+        _, new_site_conf = stage_file(self.conf_path(
             domain, context.host(), context.value('etcDir')),
             context=context)
         # XXX increase server name hash with amazon host names.

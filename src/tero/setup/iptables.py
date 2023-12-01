@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,13 +21,17 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
-import os, six, stat
+import os, stat
 
-from tero import APT_DISTRIBS, REDHAT_DISTRIBS, setup
+import six
+
+from .. import APT_DISTRIBS, REDHAT_DISTRIBS
+from . import postinst, stage_file, SetupTemplate
 
 
-class iptablesSetup(setup.SetupTemplate):
+class iptablesSetup(SetupTemplate):
 
     IPV4 = 'ip'
     IPV6 = 'ip6'
@@ -39,7 +43,7 @@ class iptablesSetup(setup.SetupTemplate):
     def conf_path(cls, dist_host, ip_type=IPV4, sysconfdir=None):
         if dist_host in APT_DISTRIBS:
             return os.path.join(sysconfdir, '%stables.conf' % ip_type)
-        elif dist_host in REDHAT_DISTRIBS:
+        if dist_host in REDHAT_DISTRIBS:
             return os.path.join(sysconfdir, 'sysconfig', '%stables' % ip_type)
         raise NotImplementedError("unknown distribution '%s'" % dist_host)
 
@@ -66,7 +70,7 @@ class iptablesSetup(setup.SetupTemplate):
 
         # We completely overwrite the iptables configuration for both
         # ipv4 and ipv6. We own it.
-        _, new_conf_path = setup.stageFile(
+        _, new_conf_path = stage_file(
             self.conf_path(context.host(), sysconfdir=context.value('etcDir')),
             context=context)
         with open(new_conf_path, 'w') as conf:
@@ -102,7 +106,7 @@ COMMIT
         local6_filter_rules = '\n'.join([
             '-A INPUT -m state --state NEW -m tcp -p tcp --dport %d -j ACCEPT'
             % port for port in ports])
-        _, new_conf_path = setup.stageFile(
+        _, new_conf_path = stage_file(
             self.conf_path(context.host(),
                 ip_type=self.IPV6, sysconfdir=context.value('etcDir')),
             context=context)
@@ -132,10 +136,10 @@ COMMIT
 """ % {'local6_filter_rules': local6_filter_rules})
 
         # Create ifup-local script to load iptables rules
-        _, new_ifup_local = setup.stageFile(
+        _, new_ifup_local = stage_file(
             '/usr/sbin/ifup-local', context=context)
         with open(new_ifup_local, 'w') as conf:
-            conf.write("""#!/bin/bash
+            conf.write(r"""#!/bin/bash
 
 /sbin/iptables-restore < /etc/sysconfig/iptables
 /sbin/ip6tables-restore < /etc/sysconfig/ip6tables
@@ -145,6 +149,6 @@ sed -i "/^.*  *%(domain)s/{h;s/.* /${IPADDR}/};\${x;/^\$/{s//${IPADDR} %(domain)
 """ % {'domain': 'private-ip.local'})
         os.chmod(new_ifup_local, stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR
             |stat.S_IRGRP|stat.S_IXGRP|stat.S_IROTH|stat.S_IXOTH)
-        setup.postinst.shellCommand(['/usr/sbin/ifup-local'])
+        postinst.shell_command(['/usr/sbin/ifup-local'])
 
         return complete

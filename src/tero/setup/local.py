@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,15 +21,19 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 """
 Entry Point to setting-up a local machine.
 """
+from __future__ import unicode_literals
 
-import datetime, os, six, shutil, socket, subprocess, sys
+import datetime, os, shutil, socket, subprocess, sys
+import imp # XXX deprecated, for `load_source`
+import argparse, __main__
+
+import six
 
 import tero # for global variables (CONTEXT, etc.)
-from tero import (__version__, Error, pub_build, pub_make,
+from .. import (__version__, Error, pub_build, pub_make,
     create_managed, shell_command,
     FilteredList, ordered_prerequisites, fetch, merge_unique,
     IndexProjects, Context, stampfile, create_index_pathname)
@@ -44,6 +48,7 @@ def create_install_script(dgen, context, install_top):
     to setup the local machine. After this step, the final directory
     can then be tar'ed up and distributed to the local machine.
     """
+    #pylint:disable=too-many-locals
     # Create a package through the local package manager or alternatively
     # a simple archive of the configuration files and postinst script.
     prev = os.getcwd()
@@ -191,7 +196,7 @@ include %(share_dir)s/dws/suffix.mk
     for pathname in ['/var/spool/cron/crontabs']:
         if not os.access(pathname, os.W_OK):
             try:
-                tero.setup.postinst.shellCommand(['[ -f ' + pathname + ' ]',
+                tero.setup.postinst.shell_command(['[ -f ' + pathname + ' ]',
                     '&&', 'chown ', context.value('admin'), pathname])
             except Error:
                 # We don't have an admin variable anyway...
@@ -212,16 +217,16 @@ include %(share_dir)s/dws/suffix.mk
         enabled_services = check_systemd_services()
         for service in ['rpcbind', 'postfix', 'firewalld']:
             if service in enabled_services:
-                tero.setup.postinst.serviceDisable(service)
+                tero.setup.postinst.service_disable(service)
         tero.setup.postinst.scriptfile.write(
             "\n# Enable and restart services\n")
     for service in services:
-        tero.setup.postinst.serviceEnable(service)
+        tero.setup.postinst.service_enable(service)
     for service in services:
-        tero.setup.postinst.serviceRestart(service)
+        tero.setup.postinst.service_restart(service)
         if service in tero.setup.after_statements:
             for stmt in tero.setup.after_statements[service]:
-                tero.setup.postinst.shellCommand([stmt])
+                tero.setup.postinst.shell_command([stmt])
     if tero.setup.postinst.scriptfile:
         tero.setup.postinst.scriptfile.close()
         shell_command(['chmod', '755', tero.setup.postinst.postinst_path])
@@ -262,7 +267,6 @@ def prepare_local_system(context, project_name, profiles):
         profile_file.write(template_text % context.environ)
     sys.stdout.write('deploying profile %s ...\n' % index_path)
 
-    import imp
     csteps = {}
     for module_path in os.listdir(os.path.dirname(tero.setup.__file__)):
         if module_path.endswith('.py') and module_path != '__init__.py':
@@ -289,12 +293,12 @@ def prepare_local_system(context, project_name, profiles):
 
 
 def main(args):
-    '''Configure a machine to serve as a forum server, with ssh, e-mail
-       and web daemons. Hook-up the server machine with a dynamic DNS server
-       and make it reachable from the internet when necessary.'''
-
-    import __main__
-    import argparse
+    """
+    Configure a machine to serve as a forum server, with ssh, e-mail
+    and web daemons. Hook-up the server machine with a dynamic DNS server
+    and make it reachable from the internet when necessary.
+    """
+    #pylint:disable=too-many-locals
 
     # We keep a starting time stamp such that we can later on
     # find out the services that need to be restarted. These are

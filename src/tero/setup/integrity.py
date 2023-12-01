@@ -21,6 +21,7 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import getpass, json, logging, os, pwd, re, socket, subprocess, sys
 
@@ -404,6 +405,7 @@ def find_running_processes(log_path_prefix, dist_host, apps=None):
     for line in output:
         #USER      PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
         # START could be a time (hh:mm) or a date (ex:Jun09)
+        #pylint:disable=line-too-long
         look = re.match(r'(?P<user>\S+)\s+(?P<pid>\d+)\s+(?P<cpu>\d+\.\d+)\s+(?P<mem>\d+\.\d+)\s+(?P<vsz>\d+)\s+(?P<rss>\d+)\s+(?P<tty>\S+)\s+(?P<stat>\S+)\s+(?P<start>\S+)\s+(?P<time>\d+:\d+)\s+(?P<command>.+)$', line)
         if look:
             user = look.group('user')
@@ -450,6 +452,7 @@ def find_open_ports(log_path_prefix, dist_host, apps=None):
             ['/bin/netstat', '-n', '-atp'], pat=r'.*', admin=True)
         for line in output:
             # Proto Recv-Q Send-Q LocalAddress ForeignAddress State PID/Program
+            #pylint:disable=line-too-long
             look = re.match(r'(?P<proto>\S+)\s+(?P<recvq>\d+)\s+(?P<sendq>\d+)\s+(?P<local_address>((\d+\.\d+\.\d+\.\d+)|([0-9a-f]*:[0-9a-f]*:[0-9a-f]*)):\d+)\s+(?P<foreign_address>((\d+\.\d+\.\d+\.\d+)|([0-9a-f]*:[0-9a-f]*:[0-9a-f]*)):[0-9\*]+)\s+(?P<state>\S+)\s+(?P<pid>\d+)/(?P<program_name>.+)$', line)
             if look:
                 pid = int(look.group('pid'))
@@ -508,7 +511,7 @@ def fingerprint(context, log_path_prefix, skip_usage=False,
             try:
                 pid = int(app_name)
             except ValueError:
-              print("%(app_name)s,%(port)s, %(user)s, %(owner)s,"\
+                print("%(app_name)s,%(port)s, %(user)s, %(owner)s,"\
                     " %(python_version)s, %(django_version)s" % {
                     'app_name': app_name,
                     'port': app_snap.get('port'),

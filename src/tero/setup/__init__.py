@@ -1,4 +1,4 @@
-# Copyright (c) 2019, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,12 +21,13 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import logging, os, re, subprocess, sys
 
 import six
 
-from tero import (APT_DISTRIBS, CONTEXT, REDHAT_DISTRIBS,
+from .. import (APT_DISTRIBS, CONTEXT, REDHAT_DISTRIBS,
     Error, SetupStep, log_info, shell_command)
 
 postinst = None
@@ -145,35 +146,35 @@ class PostinstScript(object):
             self.postinst_path = os.path.join(
                 mod_sysconfdir, self.postinst_run_path[1:])
 
-    def serviceDisable(self, service):
+    def service_disable(self, service):
         if self.dist in REDHAT_DISTRIBS:
-            self.shellCommand(['systemctl', 'stop', '%s.service' % service])
-            self.shellCommand(['systemctl', 'disable', '%s.service' % service])
+            self.shell_command(['systemctl', 'stop', '%s.service' % service])
+            self.shell_command(['systemctl', 'disable', '%s.service' % service])
         else:
             sys.stderr.write(
                 "warning: how to enable services on '%s' is unknown" %
                 self.dist)
 
-    def serviceEnable(self, service):
+    def service_enable(self, service):
         if self.dist in REDHAT_DISTRIBS:
-            self.shellCommand(['systemctl', 'enable', '%s.service' % service])
+            self.shell_command(['systemctl', 'enable', '%s.service' % service])
         else:
             sys.stderr.write(
                 "warning: how to enable services on '%s' is unknown" %
                 self.dist)
 
-    def serviceRestart(self, service):
+    def service_restart(self, service):
         if self.dist in APT_DISTRIBS:
-            self.shellCommand(
+            self.shell_command(
                 [os.path.join(self.sysconfdir, 'init.d', service), 'restart'])
         elif self.dist in REDHAT_DISTRIBS:
-            self.shellCommand(['systemctl', 'restart', '%s.service' % service])
+            self.shell_command(['systemctl', 'restart', '%s.service' % service])
         else:
             sys.stderr.write(
                 "warning: how to start services on '%s' is unknown" %
                 self.dist)
 
-    def shellCommand(self, cmdline, comment=None):
+    def shell_command(self, cmdline, comment=None):
         # Insure the postinst script file is open for writing commands into it.
         if not self.scriptfile:
             if (os.path.dirname(self.postinst_path)
@@ -193,17 +194,17 @@ class PostinstScript(object):
         priv_key = '/etc/pki/tls/private/%s.key' % certificate_name
         sign_request = '/etc/pki/tls/certs/%s.csr' % certificate_name
         pub_cert = '/etc/pki/tls/certs/%s.crt' % certificate_name
-        self.shellCommand(['if [ ! -f %s ] ; then' % priv_key])
-        self.shellCommand(['echo', '-e',
+        self.shell_command(['if [ ! -f %s ] ; then' % priv_key])
+        self.shell_command(['echo', '-e',
             '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
                 '\nlocalhost\nsupport@example.com\n\n\n"', '|',
             'openssl', 'req', '-new', '-sha256',
             '-newkey', 'rsa:2048', '-nodes', '-keyout', priv_key,
             '-out', sign_request],
             comment=comment)
-        self.shellCommand(['openssl', 'x509', '-req', '-days', '365',
+        self.shell_command(['openssl', 'x509', '-req', '-days', '365',
             '-in', sign_request, '-signkey', priv_key, '-out', pub_cert])
-        self.shellCommand(['fi'])
+        self.shell_command(['fi'])
 
     def install_selinux_module(self, module_te, comment=None):
         """
@@ -213,76 +214,74 @@ class PostinstScript(object):
             os.path.basename(module_te))[0] + '.mod'
         module_pp = os.path.splitext(
             os.path.basename(module_te))[0] + '.pp'
-        self.shellCommand(
+        self.shell_command(
             ['checkmodule', '-M', '-m', '-o', module_mod, module_te],
             comment=comment)
-        self.shellCommand(
+        self.shell_command(
             ['semodule_package', '-m', module_mod, '-o', module_pp])
-        self.shellCommand(
+        self.shell_command(
             ['semodule', '-i', module_pp])
 
 
 
 
 class SetupTemplate(SetupStep):
-
-    '''Step responsible to configure part of the system (daemons, jobs,
-    utilities) to provide a specifc service.'''
-    daemons = []
-
-    def __init__(self, name, files, versions=None, target=None):
-        '''
-        Daemons that need to stay alive to provide the service and that
-        will need to be restarted when configuration files are modified.
-        '''
-        super(SetupTemplate, self).__init__(name, files, versions, target)
+    """
+    Step responsible to configure part of the system (daemons, jobs,
+    utilities) to provide a specifc service.
+    """
+    daemons = [] # Daemons that need to stay alive to provide the service
+                 # and that will need to be restarted when configuration files
+                 # are modified.
 
     def run(self, context):
         complete = super(SetupTemplate, self).run(context)
         return complete
 
     def preinstall(self):
-        '''Code that is run before the package (.deb) is built.'''
-        None
+        """
+        Code that is run before the package (.deb) is built.
+        """
 
-def addLines(pathname, lines, context=None):
-    logging.info('configure ' + pathname + "...\n")
-    org_config_path, new_config_path = stageFile(pathname, context=context)
-    newConfig = open(new_config_path, 'w')
-    if os.path.exists(org_config_path):
-        orgConfig = open(org_config_path)
-        line = orgConfig.readline()
-        while lines and line != '':
-            found = False
-            look = re.match(r'^\s*#'+ lines[0], line)
-            if look != None:
-                # The line was commented out, let's enable it.
-                newConfig.write(lines[0] + '\n')
-                found = True
-            else:
-                look = re.match(
-                    r'^' + lines[0].replace('*', '\*').replace('[', '\['), line)
-                if look != None:
-                    found = True
-                newConfig.write(line)
-            if found:
-                lines = lines[1:]
-            line = orgConfig.readline()
-        # Copy remaining lines from the previous configuration file.
-        while line != '':
-            newConfig.write(line)
-            line = orgConfig.readline()
-        orgConfig.close()
-    # Copy remaining lines to add to the configuration file.
-    if lines:
-        newConfig.write('\n'.join(lines))
-        newConfig.write('\n')
-    newConfig.close()
+
+def add_lines(pathname, lines, context=None):
+    logging.info('configure %s...', pathname)
+    org_config_path, new_config_path = stage_file(pathname, context=context)
+    with open(new_config_path, 'w') as new_config:
+        if os.path.exists(org_config_path):
+            with open(org_config_path) as org_config:
+                line = org_config.readline()
+                while lines and line != '':
+                    found = False
+                    look = re.match(r'^\s*#'+ lines[0], line)
+                    if look:
+                        # The line was commented out, let's enable it.
+                        new_config.write(lines[0] + '\n')
+                        found = True
+                    else:
+                        look = re.match(
+                            r'^' + lines[0].replace(
+                                '*', r'\*').replace(
+                                '[', r'\['), line)
+                        if look:
+                            found = True
+                        new_config.write(line)
+                    if found:
+                        lines = lines[1:]
+                    line = org_config.readline()
+                # Copy remaining lines from the previous configuration file.
+                while line != '':
+                    new_config.write(line)
+                    line = org_config.readline()
+        # Copy remaining lines to add to the configuration file.
+        if lines:
+            new_config.write('\n'.join(lines))
+            new_config.write('\n')
 
 
 def add_user(username):
     '''Add a user to the system.'''
-    postinst.shellCommand(
+    postinst.shell_command(
         ['[ -z "$(getent passwd %(username)s)" ] && adduser '\
 '--no-create-home %(username)s' % {'username': username}])
 
@@ -300,7 +299,7 @@ def create_install_script(script_path, context=None):
     if dist_host in APT_DISTRIBS:
         return debianInstallScript(
             script_path, mod_sysconfdir=context.modEtcDir)
-    elif dist_host in REDHAT_DISTRIBS:
+    if dist_host in REDHAT_DISTRIBS:
         return redhatInstallScript(
             script_path, mod_sysconfdir=context.modEtcDir)
     raise NotImplementedError("unknown distribution '%s'" % dist_host)
@@ -333,8 +332,9 @@ def next_token_in_config(remain,
     return indent, token, remain
 
 
-def modifyIniConfig(pathname, settings={}, sep='=', context=None):
-    '''Apply *settings* into an ini config file.
+def modify_ini_config(pathname, settings={}, sep='=', context=None):
+    """
+    Apply *settings* into an ini config file.
 
     ini config files have the following syntax:
           # comment
@@ -344,9 +344,9 @@ def modifyIniConfig(pathname, settings={}, sep='=', context=None):
           [section]
           variable = value
           ...
-    '''
-    logging.info('configure ' + pathname + "...\n")
-    org_config_path, new_config_path = stageFile(pathname, context)
+    """
+    logging.info('configure %s...', pathname)
+    org_config_path, new_config_path = stage_file(pathname, context)
     if os.path.exists(org_config_path):
         with open(new_config_path, 'w') as new_conf:
             with open(org_config_path) as org_conf:
@@ -394,21 +394,21 @@ def modify_config(pathname, settings={},
     # where and can thus make appropriate decisions about the commands he/she
     # runs.
     unchanged = {}
-    log_info('configure ' + pathname + "...")
-    org_config_path, new_config_path = stageFile(pathname, context)
+    logging.info('configure %s...', pathname)
+    org_config_path, new_config_path = stage_file(pathname, context)
     if os.path.exists(org_config_path):
-        with open(org_config_path) as orgConfig:
-            with open(new_config_path, 'w') as newConfig:
+        with open(org_config_path) as org_config:
+            with open(new_config_path, 'w') as new_config:
                 unchanged = modify_config_file(
-                    newConfig, orgConfig, settings, sep=sep,
+                    new_config, org_config, settings, sep=sep,
                     enter_block_sep=enter_block_sep,
                     exit_block_sep=exit_block_sep,
                     one_per_line=one_per_line)
     else:
         logging.warning('%s does not exists.', org_config_path)
         # Add lines that did not previously appear in the configuration file.
-        with open(new_config_path, 'w') as newConfig:
-            writeSettings(newConfig, settings, [],
+        with open(new_config_path, 'w') as new_config:
+            write_settings(new_config, settings, [],
                 sep=sep, one_per_line=one_per_line)
     return unchanged
 
@@ -419,7 +419,7 @@ def modify_config_file(output_file, input_file, settings={},
     prefix = ''
     unchanged = {}
     modified = []
-    configStack = []
+    config_stack = []
     if enter_block_sep and exit_block_sep:
         seps = [sep.strip(), enter_block_sep, exit_block_sep]
     else:
@@ -431,29 +431,29 @@ def modify_config_file(output_file, input_file, settings={},
         value = None
         remain = line
         commented = False
-        exitBlock = False
-        enterBlock = False
+        exit_block = False
+        enter_block = False
         look = re.match(r'^(?P<indent>\s*)#(?P<remain>\S+\s*%s.*)' % sep, line)
-        if look != None:
+        if look:
             commented = True
             indent = look.group('indent')
             remain = look.group('remain')
-        firstIndent, token, remain = next_token_in_config(remain, sep=sep,
+        first_indent, token, remain = next_token_in_config(remain, sep=sep,
             enter_block_sep=enter_block_sep, exit_block_sep=exit_block_sep)
         if commented:
-            firstIndent = indent
+            first_indent = indent
         if token and re.match(r'^\s*#?\s*\[\S+\]$', line):
             # if the whole line is not a [] tag,
             # we might catch ipv6 addr by accident.
             name = token[1:len(token)-1]
-            exitBlock = True
-            enterBlock = True
+            exit_block = True
+            enter_block = True
             token = None
-        while token != None:
+        while token is not None:
             if enter_block_sep and token == enter_block_sep:
-                enterBlock = True
+                enter_block = True
             elif exit_block_sep and token == exit_block_sep:
-                exitBlock = True
+                exit_block = True
             elif token == sep.strip():
                 value = ''
                 if state == 1:
@@ -466,30 +466,30 @@ def modify_config_file(output_file, input_file, settings={},
                     value = token
                     state = 3
                 else:
-                    if enterBlock or exitBlock:
-                        enterBlock = False
-                        exitBlock = False
+                    if enter_block or exit_block:
+                        enter_block = False
+                        exit_block = False
                     # because we have comma separated lists
                     # in mail configuration files.
                     if value:
                         value += indent + token
             indent, token, remain = next_token_in_config(remain, sep=sep,
                 enter_block_sep=enter_block_sep, exit_block_sep=exit_block_sep)
-        if exitBlock:
-            if not enterBlock:
+        if exit_block:
+            if not enter_block:
                 # Handles "[key]" blocks is different from "{...}" blocks
-                writeSettings(output_file, settings, modified,
-                    sep, firstIndent + '  ', prefix, one_per_line=one_per_line)
-            if configStack:
+                write_settings(output_file, settings, modified,
+                    sep, first_indent + '  ', prefix, one_per_line=one_per_line)
+            if config_stack:
                 prefix, settings, unchanged, present \
-                        = configStack.pop()
+                        = config_stack.pop()
                 if present and commented:
                     # Uncomment whenever possible
                     look = re.match(r'^(\s*)#(.*)', line)
                     output_file.write(look.group(1) + look.group(2) + '\n')
-                elif not enterBlock:
+                elif not enter_block:
                     output_file.write(line)
-        if enterBlock:
+        if enter_block:
             key = name
             if value:
                 key = '_'.join([name, value])
@@ -497,8 +497,8 @@ def modify_config_file(output_file, input_file, settings={},
                 prefixname = '.'.join([prefix, key])
             else:
                 prefixname = key
-            dive = (key in settings) and (not prefixname in modified)
-            configStack += [(prefix, settings, unchanged, dive)]
+            dive = (key in settings) and (prefixname not in modified)
+            config_stack += [(prefix, settings, unchanged, dive)]
             if dive:
                 prefix = prefixname
                 modified += [prefix]
@@ -513,14 +513,14 @@ def modify_config_file(output_file, input_file, settings={},
                 settings = {}
                 output_file.write(line)
             unchanged = {}
-        elif not enterBlock and not exitBlock:
+        elif not enter_block and not exit_block:
             if name and value:
                 if name in settings:
                     if prefix:
                         prefixname = '.'.join([prefix, name])
                     else:
                         prefixname = name
-                    if not prefixname in modified:
+                    if prefixname not in modified:
                         # Sometimes, a comment includes an example
                         # that matches the setting of the variable
                         # and there is no way for the parser to know
@@ -530,11 +530,11 @@ def modify_config_file(output_file, input_file, settings={},
                             if isinstance(settings[name], list):
                                 # because of apache NameVirtualHost,
                                 # openldap olcAccess.
-                                for s in settings[name]:
-                                    output_file.write(firstIndent + name
-                                      + sep + str(s) + '\n')
+                                for val in settings[name]:
+                                    output_file.write(first_indent + name
+                                      + sep + str(val) + '\n')
                             else:
-                                output_file.write(firstIndent + name
+                                output_file.write(first_indent + name
                                       + sep + str(settings[name]) + '\n')
                         elif commented:
                             # Uncomment whenever possible
@@ -551,19 +551,19 @@ def modify_config_file(output_file, input_file, settings={},
                 output_file.write(line)
         line = input_file.readline()
     # Add lines that did not previously appear in the configuration file.
-    writeSettings(output_file, settings, modified,
+    write_settings(output_file, settings, modified,
         sep=sep, one_per_line=one_per_line)
     return unchanged
 
 
-def stageDir(pathname, context):
-    newDir = context.modEtcDir + pathname
-    if not os.path.exists(newDir):
-        os.makedirs(newDir)
-    return newDir
+def stage_dir(pathname, context):
+    new_dir = context.modEtcDir + pathname
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    return new_dir
 
 
-def stageFile(pathname, context):
+def stage_file(pathname, context):
     """
     Prepare a configuration file for modification. It involves making
     a copy of the previous version, then opening a temporary file for edition.
@@ -601,7 +601,7 @@ def stageFile(pathname, context):
     return org_path, new_path
 
 
-def unifiedDiff(pathname):
+def unified_diff(pathname):
     '''Return a list of lines which is the unified diff between an original
     configuration file and the modified version.
     '''
@@ -619,23 +619,23 @@ def unifiedDiff(pathname):
     return lines
 
 
-def writeSettings(config, settings, outs=[], sep='=', indent='', prefix=None,
+def write_settings(config, settings, outs=[], sep='=', indent='', prefix=None,
                   one_per_line=False):
     for name in sorted(settings.keys()):
         if prefix:
             prefixname = '.'.join([prefix, name])
         else:
             prefixname = name
-        if not prefixname in outs:
+        if prefixname not in outs:
             if isinstance(settings[name], dict):
                 config.write(indent + name.replace('_', ' ') + ' {\n')
-                writeSettings(config, settings[name], outs,
+                write_settings(config, settings[name], outs,
                     sep, indent + '\t', prefixname, one_per_line=one_per_line)
                 config.write(indent + '}\n')
             elif isinstance(settings[name], list):
                 if one_per_line:
-                    for s in settings[name]:
-                        config.write(indent + name + sep + s + '\n')
+                    for val in settings[name]:
+                        config.write(indent + name + sep + str(val) + '\n')
                 else:
                     config.write(
                         indent + name + sep + ' '.join(settings[name]) + '\n')
@@ -643,7 +643,7 @@ def writeSettings(config, settings, outs=[], sep='=', indent='', prefix=None,
                 config.write(indent + name + sep + str(settings[name]) + '\n')
 
 
-def prettyPrint(settings):
+def pretty_print(settings):
     for name in sorted(settings.keys()):
         if not settings[name]:
             logging.info('warning: %s has no associated value.', name)

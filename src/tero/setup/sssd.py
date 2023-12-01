@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,10 +21,11 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import logging, os
 
-from tero.setup import stageFile, postinst, SetupTemplate
+from . import stage_file, postinst, SetupTemplate
 
 
 class sssdSetup(SetupTemplate):
@@ -41,31 +42,31 @@ class sssdSetup(SetupTemplate):
             # files here.
             return complete
 
-        ldapHost = context.value('ldapHost')
-        companyDomain = context.value('companyDomain')
-        if not (ldapHost and companyDomain):
+        ldap_host = context.value('ldapHost')
+        company_domain = context.value('companyDomain')
+        if not (ldap_host and company_domain):
             logging.warning('ldapHost(%s) or companyDomain(%s) are undefined.'\
                 ' skipping configuration of sssd.',
-                ldapHost, companyDomain)
+                ldap_host, company_domain)
             return complete
 
-        domain_parts = tuple(companyDomain.split('.'))
+        domain_parts = tuple(company_domain.split('.'))
         if len(domain_parts) < 2:
             logging.warning('companyDomain(%s) cannot be split in 2 parts.',
-                companyDomain)
+                company_domain)
             return complete
 
-        ldapCertPath = os.path.join(context.value('etcDir'),
-            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
+        ldap_cert_path = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', '%s.crt' % ldap_host)
         names = {
-            'ldapHost': ldapHost,
+            'ldapHost': ldap_host,
             'domainNat': domain_parts[0],
             'domainTop': domain_parts[1],
-            'ldapCertPath': ldapCertPath
+            'ldapCertPath': ldap_cert_path
         }
 
         sssd_conf = os.path.join(context.value('etcDir'), 'sssd', 'sssd.conf')
-        _, new_config_path = stageFile(sssd_conf, context)
+        _, new_config_path = stage_file(sssd_conf, context)
         with open(new_config_path, 'w') as new_config:
             new_config.write("""[sssd]
 config_file_version = 2
@@ -126,9 +127,9 @@ ldap_group_name = cn
 ldap_group_member = memberUid
 """ % names)
 
-        postinst.shellCommand(['chmod', '600', sssd_conf])
-        postinst.shellCommand(['authconfig',
+        postinst.shell_command(['chmod', '600', sssd_conf])
+        postinst.shell_command(['authconfig',
             '--update', '--enablesssd', '--enablesssdauth'])
-        postinst.shellCommand(['setsebool',
+        postinst.shell_command(['setsebool',
             '-P', 'authlogin_nsswitch_use_ldap', '1'])
         return complete

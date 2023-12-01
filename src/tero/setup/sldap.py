@@ -1,4 +1,4 @@
-# Copyright (c) 2016, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -25,7 +25,7 @@ from __future__ import unicode_literals
 
 import binascii, os, re, sys, subprocess, tempfile
 
-from tero.setup import modify_config, stageFile, postinst, SetupTemplate
+from . import modify_config, stage_file, postinst, SetupTemplate
 
 
 class openldap_serversSetup(SetupTemplate):
@@ -42,7 +42,7 @@ class openldap_serversSetup(SetupTemplate):
         """
         Create a cron job to backup the database to a flat text file.
         """
-        _, new_conf_path = stageFile(os.path.join(
+        _, new_conf_path = stage_file(os.path.join(
             context.value('etcDir'), 'cron.daily', 'ldap_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write("""#!/bin/sh
@@ -54,7 +54,7 @@ class openldap_serversSetup(SetupTemplate):
         """
         Rotate flat file backups.
         """
-        _, new_conf_path = stageFile(os.path.join(
+        _, new_conf_path = stage_file(os.path.join(
             context.value('etcDir'), 'logrotate.d', 'ldap_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write("""/var/migrate/ldap/dumps/people.ldif
@@ -73,7 +73,7 @@ class openldap_serversSetup(SetupTemplate):
 """ % {'backup_script': '\n        '.join(self.backup_script)})
 
     def create_syslogng_conf(self, context):
-        _, conf_path = stageFile(os.path.join(context.value('etcDir'),
+        _, conf_path = stage_file(os.path.join(context.value('etcDir'),
             'syslog-ng', 'conf.d', 'slapd.conf'), context=context)
         with open(conf_path, 'w') as conf_file:
             conf_file.write(
@@ -130,21 +130,21 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
             # executable, libraries, etc. we cannot update configuration
             # files here.
             return complete
-        ldapHost = context.value('ldapHost')
+        ldap_host = context.value('ldapHost')
         company_domain = context.value('companyDomain')
         password_hash = context.value('ldapPasswordHash')
         priv_key = os.path.join(context.value('etcDir'),
-            'pki', 'tls', 'private', '%s.key' % ldapHost)
+            'pki', 'tls', 'private', '%s.key' % ldap_host)
         config_path = os.path.join(context.value('etcDir'),
             'openldap', 'slapd.d', 'cn=config.ldif')
-        _, new_config_path = stageFile(config_path, context)
+        _, new_config_path = stage_file(config_path, context)
         modify_config(config_path,
             sep=': ', context=context,
             settings={
                 'olcTLSCACertificatePath': os.path.join(
                     context.value('etcDir'), 'pki', 'tls', 'certs'),
                 'olcTLSCertificateFile': os.path.join(context.value('etcDir'),
-                    'pki', 'tls', 'certs', '%s.crt' % ldapHost),
+                    'pki', 'tls', 'certs', '%s.crt' % ldap_host),
                 'olcTLSCertificateKeyFile': priv_key
             })
         self._update_crc32(new_config_path)
@@ -152,7 +152,7 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
         domain_parts = tuple(company_domain.split('.'))
         db_config_path = os.path.join(context.value('etcDir'),
             'openldap', 'slapd.d', 'cn=config', 'olcDatabase={0}config.ldif')
-        _, new_config_path = stageFile(db_config_path, context)
+        _, new_config_path = stage_file(db_config_path, context)
         modify_config(db_config_path,
             sep=': ', enter_block_sep=None, exit_block_sep=None,
             one_per_line=True, context=context, settings={
@@ -161,11 +161,12 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
         self._update_crc32(new_config_path)
         # XXX using hdb on Fedora27 with an encrypted EBS will lead
         #     to a `BDB0126 mmap: Invalid argument` error. just delete the file!
+        #pylint:disable=line-too-long
         for db_path in ['olcDatabase={2}hdb.ldif', 'olcDatabase={2}mdb.ldif']:
             db_path = os.path.join(context.value('etcDir'),
                 'openldap', 'slapd.d', 'cn=config', db_path)
             if os.path.exists(db_path):
-                _, new_config_path = stageFile(db_path, context)
+                _, new_config_path = stage_file(db_path, context)
                 modify_config(db_path,
                     sep=': ', enter_block_sep=None, exit_block_sep=None,
                     one_per_line=True, context=context, settings={
@@ -181,7 +182,7 @@ log { source(s_sys); filter(f_ldap); destination(d_ldap); };
 
         schema_path = os.path.join(context.value('etcDir'),
             'openldap', 'schema', 'openssh-ldap.ldif')
-        _, new_schema_path = stageFile(schema_path, context)
+        _, new_schema_path = stage_file(schema_path, context)
         with open(new_schema_path, 'w') as schema_file:
             schema_file.write("""dn: cn=openssh-openldap,cn=schema,cn=config
 objectClass: olcSchemaConfig
@@ -197,16 +198,16 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
         self.create_cron_conf(context)
         self.create_syslogng_conf(context)
 
-        postinst.create_certificate(ldapHost)
-        postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
-        postinst.shellCommand(['chgrp', 'ldap', os.path.dirname(priv_key)])
-        postinst.shellCommand(['chmod', '640', priv_key])
-        postinst.shellCommand(['chgrp', 'ldap', priv_key])
-        postinst.shellCommand(['chmod', '750', os.path.dirname(priv_key)])
+        postinst.create_certificate(ldap_host)
+        postinst.shell_command(['chmod', '750', os.path.dirname(priv_key)])
+        postinst.shell_command(['chgrp', 'ldap', os.path.dirname(priv_key)])
+        postinst.shell_command(['chmod', '640', priv_key])
+        postinst.shell_command(['chgrp', 'ldap', priv_key])
+        postinst.shell_command(['chmod', '750', os.path.dirname(priv_key)])
 
         sysconfig_path = os.path.join(
             context.value('etcDir'), 'sysconfig', 'slapd')
-        _, new_sysconfig_path = stageFile(sysconfig_path, context)
+        _, new_sysconfig_path = stage_file(sysconfig_path, context)
         modify_config(sysconfig_path, context=context, settings={
                'SLAPD_URLS': "ldaps:/// ldap:/// ldapi:///"
             })
@@ -218,21 +219,21 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
                 'openldap', 'slapd.d', 'cn=config', db_path)
             if os.path.exists(db_path):
                 ldap_paths += [db_path]
-        postinst.shellCommand(['chown', 'ldap:ldap'] + ldap_paths)
-        postinst.shellCommand(['chmod', '600'] + ldap_paths)
+        postinst.shell_command(['chown', 'ldap:ldap'] + ldap_paths)
+        postinst.shell_command(['chmod', '600'] + ldap_paths)
         # XXX seems necessary after executing on CentOS7?
-        postinst.shellCommand(['chown', '-R', 'ldap:ldap', '/var/lib/ldap'])
+        postinst.shell_command(['chown', '-R', 'ldap:ldap', '/var/lib/ldap'])
 
         # We need to start the server before adding the schemas.
-        postinst.serviceRestart('slapd')
-        postinst.serviceEnable('slapd')
-        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
+        postinst.service_restart('slapd')
+        postinst.service_enable('slapd')
+        postinst.shell_command(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
             '-f', '/etc/openldap/schema/cosine.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
+        postinst.shell_command(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
             '-f', '/etc/openldap/schema/nis.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
+        postinst.shell_command(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
           '-f', '/etc/openldap/schema/inetorgperson.ldif', '-D', '"cn=config"'])
-        postinst.shellCommand(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
+        postinst.shell_command(['ldapadd', '-Y', 'EXTERNAL', '-H', 'ldapi:///',
           '-f', '/etc/openldap/schema/openssh-ldap.ldif', '-D', '"cn=config"'])
 
         return complete
@@ -254,13 +255,13 @@ class openldap_clientsSetup(SetupTemplate):
             # files here.
             return complete
 
-        ldapHost = context.value('ldapHost')
-        ldapCertPath = os.path.join(context.value('etcDir'),
-            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
+        ldap_host = context.value('ldapHost')
+        ldap_cert_path = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', '%s.crt' % ldap_host)
         modify_config(os.path.join(context.value('etcDir'),
             'openldap', 'ldap.conf'), sep=' ', context=context,
             settings={
-                'TLS_CACERT': ldapCertPath,
+                'TLS_CACERT': ldap_cert_path,
                 'TLS_REQCERT': 'demand'})
 
         return complete

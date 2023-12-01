@@ -25,10 +25,11 @@
 import os
 
 import six
-from tero import setup
+
+from . import modify_config, stage_file, SetupTemplate
 
 
-class dockerSetup(setup.SetupTemplate):
+class dockerSetup(SetupTemplate):
 
     def __init__(self, name, files, **kwargs):
         super(dockerSetup, self).__init__(name, files, **kwargs)
@@ -42,7 +43,7 @@ class dockerSetup(setup.SetupTemplate):
         syslog_conf = os.path.join(
             context.value('etcDir'), 'syslog-ng', 'conf.d', 'docker.conf')
         templates_dir = os.path.dirname(os.path.abspath(__file__))
-        _, new_conf_path = setup.stageFile(syslog_conf, context)
+        _, new_conf_path = stage_file(syslog_conf, context)
         with open(os.path.join(
                 templates_dir, 'webapp-syslog.tpl')) as conf_file:
             conf_template = conf_file.read()
@@ -73,7 +74,7 @@ WantedBy=multi-user.target
 """
         service_conf = os.path.join('/usr', 'lib', 'systemd', 'system',
             name + '.service')
-        _, new_conf_path = setup.stageFile(service_conf, context)
+        _, new_conf_path = stage_file(service_conf, context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write(conf_template % {
             'name': name,
@@ -92,7 +93,8 @@ WantedBy=multi-user.target
 
         docker_conf = os.path.join(
             context.value('etcDir'), 'sysconfig', 'docker')
-        setup.modify_config(docker_conf, settings={
+        #pylint:disable=line-too-long
+        modify_config(docker_conf, settings={
             'OPTIONS': '--selinux-enabled --log-driver syslog --log-opt labels="{{.ID}}" --log-opt tag=".{{.ID}}"\'',
             'LOGROTATE': 'false\''
         }, sep='=\'', context=context)

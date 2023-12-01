@@ -41,6 +41,11 @@ CLOUD_BACKEND = None
 DEFAULT_REMOTE_PATH = '~/build'
 TIMEOUT_DURATION = 30
 
+ENV_USER = None
+ENV_PASSWORD = None
+ENV_KEY_FILENAME = None
+
+
 def _load_backend(path):
     """
     Load a specific backend.
@@ -112,13 +117,13 @@ def copy_setup(profiles, host, remote_path, settings=None):
                 # so let's copy it to the machine being setup as well.
                 shutil.copy(profile_abs_path, stage_profile_dir)
 
-    if fab.env.password:
+    if ENV_PASSWORD:
         # We will need a sudo password to install packages and configure
         # them according to a profile.
         askpass_path = os.path.join(stage_top, 'bin', 'askpass')
         with open(askpass_path, 'w') as askpass:
             askpass.write('#!/bin/sh\n')
-            askpass.write('echo %s\n' % fab.env.password)
+            askpass.write('echo %s\n' % ENV_PASSWORD)
         import stat
         os.chmod(askpass_path, stat.S_IRWXU)
 
@@ -126,11 +131,11 @@ def copy_setup(profiles, host, remote_path, settings=None):
         # XXX Either implementation is asking for password
         # XXX admin=True otherwise we cannot create directory in /var/www.
         cmdline, prefix = find_rsync(
-            host, relative=False, admin=False, key=fab.env.key_filename)
+            host, relative=False, admin=False, key=ENV_KEY_FILENAME)
         cmdline += ['--exclude=".git"', dirpath + '/*']
         dest = host + ':' + os.path.dirname(remote_path)
-        if fab.env.user:
-            dest = fab.env.user + '@' + dest
+        if ENV_USER:
+            dest = ENV_USER + '@' + dest
         cmdline += [dest]
         shell_command(cmdline)
     else:
@@ -161,9 +166,9 @@ def run_dservices(profile_names, host, remote_path, settings=None):
             profile = profile + '.xml'
         profiles += ['share/tero/profiles/' + profile]
     with fab_settings(abort_on_prompts=True, host_string=host):
-        with fab.cd(remote_path):
-            cmdline = ['./bin/dservices'] + defines + profiles
-            fab.run(' '.join(cmdline))
+        fab.cd(remote_path):
+        cmdline = ['./bin/dservices'] + defines + profiles
+        fab.run(' '.join(cmdline))
 
 
 def pub_boot(vm_list, image=None, macaddr=None):
@@ -171,8 +176,7 @@ def pub_boot(vm_list, image=None, macaddr=None):
     if len(vm_list) == 0:
         sys.stderr.write("warning: no target instances to boot.\n")
     for vm_name in vm_list:
-        guest = CLOUD_BACKEND.boot(vm_name, image, macaddr,
-                                   getattr(fab.env, 'keyfile', None))
+        guest = CLOUD_BACKEND.boot(vm_name, image, macaddr, ENV_KEY_FILENAME)
         sys.stdout.write("booted %s\n" % guest)
 
 
@@ -194,7 +198,7 @@ def pub_deploy(hosts, profiles=[], identities=[], settings={}):
         fab.env.host_string = host
         if identities:
             rsync, prefix = find_rsync(host, relative=True, admin=True,
-                username=fab.env.user, key=fab.env.key_filename)
+                username=ENV_USER, key=ENV_KEY_FILENAME)
             for src_path in identities:
                 cmdline = rsync + [src_path + '/./*', prefix + '/']
                 shell_command(cmdline)
@@ -243,7 +247,7 @@ def pub_stage(src_path, host):
     root directory. This is often used to copy credentials before running
     a deploy command.'''
     rsync, prefix = find_rsync(host, relative=True, admin=True,
-        username=fab.env.user, key=fab.env.key_filename)
+        username=ENV_USER, key=ENV_KEY_FILENAME)
     cmdline = rsync + [src_path + '/./*', prefix + '/']
     shell_command(cmdline)
 
@@ -309,9 +313,13 @@ def main(args, settings_path=None):
         parser.print_help()
         sys.exit(1)
     options = parser.parse_args(args[1:])
-    fab.env.user = options.user
-    fab.env.password = options.password
-    fab.env.key_filename = options.keyfile
+    global ENV_USER, ENV_PASSWORD, ENV_KEY_FILENAME
+    ENV_USER = options.user
+    ENV_PASSWORD = options.password
+    ENV_KEY_FILENAME = options.keyfile
+    fab.env.user = ENV_USER
+    fab.env.password = ENV_PASSWORD
+    fab.env.key_filename = ENV_KEY_FILENAME
 
     global CLOUD_BACKEND
     CLOUD_BACKEND = _load_backend('tero.%s.Backend' % options.cloud)

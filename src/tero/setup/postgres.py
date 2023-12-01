@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,15 +21,17 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import argparse, logging, re, os, subprocess, sys
 
 import six
 
-from tero import Context, Variable, shell_command
-from tero.setup import (after_daemon_start, modify_config, postinst, stageFile,
+import tero
+from .. import Variable, shell_command
+from . import (after_daemon_start, modify_config, postinst, stage_file,
     SetupTemplate)
-from tero.setup.cron import add_entry as cron_add_entry
+from .cron import add_entry as cron_add_entry
 
 
 class postgresql_serverSetup(SetupTemplate):
@@ -70,7 +72,7 @@ class postgresql_serverSetup(SetupTemplate):
         """
         Create a cron job to backup the database to a flat text file.
         """
-        _, new_conf_path = stageFile(os.path.join(
+        _, new_conf_path = stage_file(os.path.join(
             context.value('etcDir'), 'cron.daily', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write("\n".join(self.backup_script(context)))
@@ -79,7 +81,7 @@ class postgresql_serverSetup(SetupTemplate):
         """
         Rotate flat file backups.
         """
-        _, new_conf_path = stageFile(os.path.join(
+        _, new_conf_path = stage_file(os.path.join(
             context.value('etcDir'), 'logrotate.d', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write("""/var/backups/pgsql/*.sql
@@ -170,11 +172,11 @@ class postgresql_serverSetup(SetupTemplate):
                     postgresql_conf_settings.update({
                         'ssl_dh_params_file': "'%s'" % dh_params,
                     })
-                postinst.shellCommand([
+                postinst.shell_command([
                     'chown', 'root:postgres', db_ssl_key_file])
-                postinst.shellCommand([
+                postinst.shell_command([
                     'chmod', '640', db_ssl_key_file])
-                postinst.shellCommand([
+                postinst.shell_command([
                     'chmod', '755', os.path.dirname(db_ssl_key_file)])
         modify_config(postgresql_conf,
             settings=postgresql_conf_settings,
@@ -187,7 +189,7 @@ class postgresql_serverSetup(SetupTemplate):
         else:
             logging.warning("dbUser is '%s'. No regular user will be created"\
                 " to access the database remotely.")
-        old_conf_path, new_conf_path = stageFile(pg_ident_conf, context)
+        old_conf_path, new_conf_path = stage_file(pg_ident_conf, context)
         with open(new_conf_path, 'w') as new_conf:
             with open(old_conf_path) as old_conf:
                 for line in old_conf.readlines():
@@ -208,7 +210,7 @@ class postgresql_serverSetup(SetupTemplate):
         connections = [['all', 'postgres', vpc_cidr],
                        # 'all' because we need to add a constraint on auth_user
                        ['all', pg_user, vpc_cidr]]
-        old_conf_path, new_conf_path = stageFile(pg_hba_conf, context)
+        old_conf_path, new_conf_path = stage_file(pg_hba_conf, context)
         with open(new_conf_path, 'w') as new_conf:
             with open(old_conf_path) as old_conf:
                 source_host = 'host'
@@ -221,7 +223,7 @@ class postgresql_serverSetup(SetupTemplate):
                         new_conf.write(line.strip() + ' map=mymap\n')
                     else:
                         look = re.match(r'^(host|hostssl|hostnossl)\s+'\
-'(?P<db>\S+)\s+(?P<pg_user>\S+)\s+(?P<cidr>\S+)\s+(?P<method>\S+)',
+r'(?P<db>\S+)\s+(?P<pg_user>\S+)\s+(?P<cidr>\S+)\s+(?P<method>\S+)',
                             line.strip())
                         if look:
                             found = None
@@ -256,9 +258,9 @@ class postgresql_serverSetup(SetupTemplate):
 
         self.create_cron_conf(context)
         #XXX optimizations?
-        #https://people.planetpostgresql.org/devrim/index.php?/archives/83-Using-huge-pages-on-RHEL-7-and-PostgreSQL-9.4.html
-
-        postinst.shellCommand(['[ -d %(pgdata)s/base ] ||' % {
+        #https://people.planetpostgresql.org/devrim/index.php?/archives/\
+        #83-Using-huge-pages-on-RHEL-7-and-PostgreSQL-9.4.html
+        postinst.shell_command(['[ -d %(pgdata)s/base ] ||' % {
             'pgdata': self.pgdata }, self.postgresql_setup, 'initdb'])
 
         return complete
@@ -270,9 +272,6 @@ class postgresql14_serverSetup(postgresql_serverSetup):
     postgresql_setup = '/usr/pgsql-14/bin/postgresql-14-setup'
     pg_dump = '/usr/pgsql-14/bin/pg_dump'
     daemons = ['postgresql-14']
-
-    def __init__(self, name, files, **kwargs):
-        super(postgresql14_serverSetup, self).__init__(name, files, **kwargs)
 
 
 class postgresqlSetup(SetupTemplate):
@@ -315,14 +314,13 @@ class postgresqlSetup(SetupTemplate):
 
 
 def main(args):
-    import tero
     parser = argparse.ArgumentParser(usage='%(prog)s [options]')
     parser.add_argument('-D', dest='defines', action='append', default=[],
                       help='Add a (key,value) definition to use in templates.')
     options = parser.parse_args(args[1:])
     defines = dict([item.split('=') for item in options.defines])
 
-    tero.CONTEXT = Context()
+    tero.CONTEXT = tero.Context()
     tero.CONTEXT.environ['vpc_cidr'] = Variable('vpc_cidr',
              {'description': 'CIDR allowed to create remote connections',
               'default': defines.get('vpc_cidr', '192.168.144.0/24')})

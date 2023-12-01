@@ -1,4 +1,4 @@
-# Copyright (c) 2021, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,13 +21,14 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import logging, os
 
 import six
 
 from tero import CONTEXT
-from tero.setup import SetupTemplate, modify_config, stageFile, postinst
+from . import SetupTemplate, modify_config, stage_file, postinst
 
 
 class openssh_serverSetup(SetupTemplate):
@@ -60,38 +61,38 @@ class openssh_serverSetup(SetupTemplate):
 
         # Optionally configure LDAP
         config_ldap = False
-        ldapHost = context.value('ldapHost')
-        companyDomain = context.value('companyDomain')
-        if ldapHost and companyDomain:
+        ldap_host = context.value('ldapHost')
+        company_domain = context.value('companyDomain')
+        if ldap_host and company_domain:
             config_ldap = True
-            domain_parts = tuple(companyDomain.split('.'))
+            domain_parts = tuple(company_domain.split('.'))
             if len(domain_parts) < 2:
                 logging.warning('companyDomain(%s) cannot be split in 2 parts.'\
-                    ' skipping openssh/LDAP configuration.', companyDomain)
+                    ' skipping openssh/LDAP configuration.', company_domain)
                 config_ldap = False
 
-        ldapCertPath = os.path.join(context.value('etcDir'),
-            'pki', 'tls', 'certs', '%s.crt' % ldapHost)
+        ldap_cert_path = os.path.join(context.value('etcDir'),
+            'pki', 'tls', 'certs', '%s.crt' % ldap_host)
         if config_ldap:
             names = {
-                'ldapHost': ldapHost,
+                'ldapHost': ldap_host,
                 'domainNat': domain_parts[0],
                 'domainTop': domain_parts[1],
-                'ldapCertPath': ldapCertPath
+                'ldapCertPath': ldap_cert_path
             }
             modify_config(self.ldap_conf,
                 settings={
                     'URI': 'ldaps://%(ldapHost)s' % names,
                     'BASE': 'ou=people,dc=%(domainNat)s,dc=%(domainTop)s' % names,
-                    'TLS_CACERT': ldapCertPath,
+                    'TLS_CACERT': ldap_cert_path,
                     'TLS_REQCERT': 'demand',
                     'TIMELIMIT': '15',
                     'TIMEOUT': '20'
                 }, sep=' ', context=context)
-            postinst.shellCommand(['chmod', '644', self.ldap_conf])
+            postinst.shell_command(['chmod', '644', self.ldap_conf])
 
         banner = os.path.join(context.value('etcDir'), 'issue.net')
-        _, new_banner_path = stageFile(
+        _, new_banner_path = stage_file(
             banner, context=context)
         with open(new_banner_path, 'w') as new_banner:
             new_banner.write(
@@ -106,7 +107,7 @@ class openssh_serverSetup(SetupTemplate):
 
         config_path = os.path.join(
             '/usr', 'libexec', 'openssh', 'ssh-ldap-wrapper')
-        _, new_config_path = stageFile(config_path, context)
+        _, new_config_path = stage_file(config_path, context)
         with open(new_config_path, 'w') as new_config:
             new_config.write(
 """#!/bin/sh
@@ -117,5 +118,5 @@ exec /usr/libexec/openssh/ssh-ldap-helper -s "$1"
 """ % {
     'user': "ec2-user" if context.host() == 'Amazon' else context.host().lower()
 })
-        postinst.shellCommand(['chmod', '755', config_path])
+        postinst.shell_command(['chmod', '755', config_path])
         return complete

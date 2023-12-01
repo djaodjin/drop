@@ -1,4 +1,4 @@
-# Copyright (c) 2017, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,13 +21,15 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from __future__ import unicode_literals
 
 import os
 
-from tero import setup
+from . import (modify_config, modify_ini_config, postinst, stage_dir,
+    stage_file, SetupTemplate)
 
 
-class jenkinsSetup(setup.SetupTemplate):
+class jenkinsSetup(SetupTemplate):
 
     jetty_home = '/usr/share/jetty'
     jenkins_home = '/usr/share/jetty/.jenkins'
@@ -383,11 +385,11 @@ allow httpd_t unreserved_port_t:tcp_socket name_bind;
 
         # Workarounds to get jetty started (webdefault.xml and command line
         # arguments)
-        _, new_webdefault_conf = setup.stageFile(
+        _, new_webdefault_conf = stage_file(
             self.webdefault_conf_path, context=context)
         with open(new_webdefault_conf, 'w') as webdefault_conf_file:
             webdefault_conf_file.write(self.webdefault_config_template)
-        setup.modify_config(os.path.join(self.jetty_home, 'modules/jsp.mod'),
+        modify_config(os.path.join(self.jetty_home, 'modules/jsp.mod'),
             settings={
                 '-Dorg.apache.jasper.compiler.disablejsr199': 'true'
             }, sep='=', context=context)
@@ -396,42 +398,42 @@ allow httpd_t unreserved_port_t:tcp_socket name_bind;
         # Configure jetty/jenkins (environment variables and security context)
         jenkins_default_path = os.path.join(
             context.value('etcDir'), 'default', 'jenkins')
-        setup.modify_config(jenkins_default_path,
+        modify_config(jenkins_default_path,
             settings={
                 'JENKINS_HOME': self.jenkins_home,
                 'HUDSON_HOME': self.jenkins_home
             }, sep='=', context=context)
-        setup.modifyIniConfig('/usr/lib/systemd/system/jetty.service',
+        modify_ini_config('/usr/lib/systemd/system/jetty.service',
             settings={'Service':
                 {'EnvironmentFile': '-%s' % jenkins_default_path}},
             context=context)
-        _, new_context_conf = setup.stageFile(
+        _, new_context_conf = stage_file(
             os.path.join(self.jetty_home, 'webapps', 'jenkins.xml'),
             context=context)
         with open(new_context_conf, 'w') as context_conf_file:
             context_conf_file.write(
                 self.context_config_template % {'webapp': 'jenkins'})
-        setup.stageDir('/var/jenkins/jobs', context)
+        stage_dir('/var/jenkins/jobs', context)
 
         jenkins_jobs_dir = os.path.join(self.jenkins_home, 'jobs')
-        setup.postinst.shellCommand([
+        postinst.shell_command([
             '[', '-d', jenkins_jobs_dir, ']',
             '&&', 'mv', jenkins_jobs_dir,
             os.path.join(self.jenkins_home, 'jobs.prev')])
-        setup.postinst.shellCommand([
+        postinst.shell_command([
             'cd', self.jenkins_home,
             '&&', 'ln', '-s', '/var/jenkins/jobs'])
 
         # Configure SELinux to allow jetty/jenkins jobs.
         jenkins_te = os.path.join(
-            os.path.dirname(setup.postinst.postinst_run_path), 'jenkins.te')
+            os.path.dirname(postinst.postinst_run_path), 'jenkins.te')
         with open(jenkins_te, 'w') as jenkins_te_file:
             jenkins_te_file.write(self.jenkins_te_config_template)
-        setup.postinst.install_selinux_module(jenkins_te,
+        postinst.install_selinux_module(jenkins_te,
             comment="Configure SELinux to allow jetty/jenkins jobs.")
-        setup.postinst.shellCommand(
+        postinst.shell_command(
             ['setsebool', '-P', 'httpd_execmem', '1'])
-        setup.postinst.shellCommand(
+        postinst.shell_command(
             ['setsebool', '-P', 'httpd_builtin_scripting', '1'])
 
         return complete

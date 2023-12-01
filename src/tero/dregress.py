@@ -29,11 +29,11 @@ Generate regression between two log files.
 
 Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 """
+from __future__ import unicode_literals
 
 import re, os, optparse, shutil, stat, sys, tempfile, time
-import cStringIO
 
-from tero import Error, help_book, __version__
+import tero as dws
 
 
 class TestCaseFormater:
@@ -121,7 +121,7 @@ def addTest(testName, reffile, testStatus, tests, regressions):
     return testFile
 
 def diffAdvance(diff, testFile = None):
-    diffLineNum = sys.maxint
+    diffLineNum = sys.maxsize
     look = None
     while look == None:
         diffLine = diff.readline()
@@ -141,7 +141,7 @@ def diffAdvance(diff, testFile = None):
 def logAdvance(log):
     logLine = log.readline()
     if logLine == '':
-        logLineNum = sys.maxint
+        logLineNum = sys.maxsize
         logTestName = None
     else:
         look = re.match('(\d+):@@ test: (\S+) (\S+)? @@', logLine)
@@ -150,7 +150,7 @@ def logAdvance(log):
             logTestName = look.group(2)
             # group(3) if present is status
         else:
-            raise Error("unexpected format of result log. Line '%s'" \
+            raise dws.Error("unexpected format of result log. Line '%s'" \
                 " in %s does not match '(\d+):@@ test: (\S+) (\S+)? @@'."
                 % (logLine, str(log)))
     return logLineNum, logTestName
@@ -162,7 +162,7 @@ def main(args):
     """
     usage = 'usage: %prog [options] -o regression result [reference ...]'
     parser = optparse.OptionParser(usage=usage,
-                                   version='%prog ' + str(__version__))
+                                   version='%prog ' + str(dws.__version__))
     parser.add_option('--format', dest='format',
                       default='junit',
                       help='format of the log output (currently only junit is supported)')
@@ -176,9 +176,9 @@ def main(args):
     options, args = parser.parse_args()
 
     if options.help_book:
-        help = cStringIO.StringIO()
-        parser.print_help(help)
-        help_book(help)
+        help_text = dws.StringIO()
+        parser.print_help(help_text)
+        dws.help_book(help_text)
         sys.exit(0)
 
     if options.format == 'junit':
@@ -264,7 +264,7 @@ def main(args):
         # starts marks the end of a difference range associated
         # with *prevLogTestName*.
         logLineNum, prevLogTestName = logAdvance(log)
-        diffLineNum = sys.maxint
+        diffLineNum = sys.maxsize
         look = None
         while look == None:
             diffLine = diff.readline()
@@ -291,7 +291,7 @@ def main(args):
         # of logLineNum and diffLineNum as set by logAdvance()
         # and diffAdvance().
         logLineNum, logTestName = logAdvance(log)
-        while logLineNum != sys.maxint and diffLineNum != sys.maxint:
+        while logLineNum != sys.maxsize and diffLineNum != sys.maxsize:
             #print "!!! " + str(prevLogTestName) \
             #    + ', log@' + str(logLineNum) \
             #    + ' ' + str(logTestName) + ' and diff@' + str(diffLineNum)
@@ -320,18 +320,18 @@ def main(args):
         # If we donot have any more differences and we haven't
         # reached the end of the list of tests, all remaining
         # tests must be identical or be absent...
-        if logLineNum != sys.maxint:
+        if logLineNum != sys.maxsize:
             # Gather all the tests in the reference file in order
             # to distinguish between identical and absent.
             refs = set([])
             reflogCmdLine = "grep -n '@@ test:' " + reffile
             reflog = os.popen(reflogCmdLine)
             reflogLineNum, reflogTestName = logAdvance(reflog)
-            while reflogLineNum != sys.maxint:
+            while reflogLineNum != sys.maxsize:
                 refs |= set([ reflogTestName ])
                 reflogLineNum, reflogTestName = logAdvance(reflog)
             reflog.close()
-            while logLineNum != sys.maxint:
+            while logLineNum != sys.maxsize:
                 if prevLogTestName in refs:
                     testFile = addTest(prevLogTestName, reffile, "identical",
                                        tests, regressions)
