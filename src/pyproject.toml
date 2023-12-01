@@ -1,0 +1,52 @@
+# This pyproject.toml seems to work to build a new package
+# when `setuptools==67.6.1` is installed.
+[project]
+name = "tero"
+dynamic = ["version"]
+description = "Configures development machines to cloud resources"
+readme = "README.md"
+requires-python = ">=3.7"
+license =  {text = "BSD-2-Clause"}
+keywords = ["scripts", "cloud", "configure", "paas", "saas"]
+authors = [
+  {name = "The DjaoDjin Team", email = "help@djaodjin.com"}
+]
+maintainers = [
+  {name = "The DjaoDjin Team", email = "help@djaodjin.com"}
+]
+classifiers = [
+  "Environment :: Web Environment",
+  "Programming Language :: Python",
+  "License :: OSI Approved :: BSD License"
+]
+dependencies = [
+  "awscli>=1.31.5",
+  "boto3>=1.33.5",
+  "paramiko>=2.12.0",
+  "pyasn1_modules>=0.2.5",
+  "pyOpenSSL>=22.1.0",
+  "pytz>=2023.3",
+  "requests>=2.31.0",
+  "six>=1.16.0",
+  "sqlparse>=0.4.2"
+]
+
+[project.urls]
+repository = "https://github.com/djaodjin/drop"
+documentation = "https://drop.readthedocs.io/"
+changelog = "https://github.com/djaodjin/drop/changelog"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tero*"]
+
+[tool.setuptools.package-data]
+tero = [
+  'clouds/templates/*.j2',
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "tero.__version__"}

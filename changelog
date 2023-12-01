@@ -1,0 +1,8 @@
+Released versions
+=================
+
+1.0.0
+
+  * creates pypi package so it can be used as a third-party dependency
+
+ -- Sebastien Mirolo <smirolo@djaodjin.com>  Fri, 1 Dec 2023 11:06:00 -0700

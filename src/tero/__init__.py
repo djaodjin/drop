@@ -48,7 +48,7 @@ from __future__ import unicode_literals
 #
 # Requires Python 2.7 or above.
 
-__version__ = None
+__version__ = '1.0.0'
 
 import datetime, getpass, hashlib, inspect, json, locale
 import logging, logging.config

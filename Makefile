@@ -42,6 +42,9 @@ include $(srcDir)/src/prefix.mk
 
 shareItemDirs ?= $(shell cd $(srcDir)/share && find playbooks profiles -type d)
 
+PIP           ?= $(binDir)/pip
+TWINE         ?= $(binDir)/twine
+
 scripts := dws dtero logrotate-hook
 manpages:= $(addsuffix .1,$(scripts))
 
@@ -54,12 +57,19 @@ install:: $(srcDir)/src/prefix.mk \
 	$(installFiles) $(filter %.mk %.xsd,$^) $(shareDir)/dws
 
 install::
-	cd $(srcDir)/src && $(PYTHON) setup.py --quiet build \
-		-b $(CURDIR)/build install --prefix=$(DESTDIR)$(PREFIX)
+	cd $(srcDir)/src && $(PIP) install --prefix=$(DESTDIR)$(PREFIX) .
+
 
 install:: $(foreach shareItemDir,$(shareItemDirs),$(wildcard $(srcDir)/share/$(shareItemDir)/*))
 	for dir in $(shareItemDirs); do $(installDirs) $(shareDir)/dws/$$dir ; done
 	cd $(srcDir)/share && find playbooks profiles -path playbooks/group_vars -prune -o -type f -exec $(installFiles) {} $(shareDir)/dws/{} \;
+
+
+dist::
+	cd $(srcDir)/src && $(PYTHON) -m build
+	cd $(srcDir)/src && $(TWINE) check dist/*
+	cd $(srcDir)/src && $(TWINE) upload dist/*
+
 
 doc:
 	$(installDirs) docs
