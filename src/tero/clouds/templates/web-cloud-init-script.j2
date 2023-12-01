@@ -48,6 +48,7 @@ fi
 [ -f /usr/bin/aws ] || $INSTALL_PACKAGES -y install awscli
 [ -f /usr/bin/bzip2 ] || $INSTALL_PACKAGES -y install bzip2
 [ -f /usr/bin/make ] || $INSTALL_PACKAGES -y install make
+[ -f /usr/sbin/semanage ] || $INSTALL_PACKAGES -y install policycoreutils-python-utils
 
 # download keys, certificates, etc.
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
@@ -125,7 +126,7 @@ if [ -d ${siteTop} ] ; then
     if [ ! -f /usr/local/bin/dcopylogs ]; then
         mv ${siteTop}/dws.mk ${siteTop}/dws.disable
         cd ${siteTop}/reps/drop
-        make install installTop=/usr/local PYTHON=python
+        make install installTop=/usr/local PYTHON=/usr/bin/python3
         mv ${siteTop}/dws.disable ${siteTop}/dws.mk
         # Insures dcopylogs can upload the logs to S3
         setsebool -P nis_enabled 1
@@ -220,12 +221,6 @@ fi
 
 # cron notifications
 alternatives --set mta /usr/sbin/sendmail.ssmtp
-
-# disable what we don't need
-/usr/bin/systemctl stop rpcbind
-/usr/bin/systemctl disable rpcbind
-/usr/bin/systemctl stop postfix.service
-/usr/bin/systemctl disable postfix.service
 
 # restart services whose configuration has been altered
 /usr/bin/systemctl force-reload systemd-journald

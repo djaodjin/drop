@@ -145,6 +145,15 @@ class PostinstScript(object):
             self.postinst_path = os.path.join(
                 mod_sysconfdir, self.postinst_run_path[1:])
 
+    def serviceDisable(self, service):
+        if self.dist in REDHAT_DISTRIBS:
+            self.shellCommand(['systemctl', 'stop', '%s.service' % service])
+            self.shellCommand(['systemctl', 'disable', '%s.service' % service])
+        else:
+            sys.stderr.write(
+                "warning: how to enable services on '%s' is unknown" %
+                self.dist)
+
     def serviceEnable(self, service):
         if self.dist in REDHAT_DISTRIBS:
             self.shellCommand(['systemctl', 'enable', '%s.service' % service])

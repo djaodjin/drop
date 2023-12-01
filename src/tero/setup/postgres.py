@@ -46,7 +46,7 @@ class postgresql_serverSetup(SetupTemplate):
         return [
         "#!/bin/sh",
         "",
-        "LOG_SUFFIX=`wget -q -O - "\
+        "LOG_SUFFIX=`curl -s "\
         " http://instance-data/latest/meta-data/instance-id | sed -e s/i-/-/`",
 
         "sudo -u postgres sh -c 'rm /var/migrate/pgsql/dumps/*.gz'",

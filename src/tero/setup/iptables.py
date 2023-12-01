@@ -131,11 +131,6 @@ COMMIT
 COMMIT
 """ % {'local6_filter_rules': local6_filter_rules})
 
-        # Make sure we disable firewalld, we are using static rules here.
-        setup.postinst.shellCommand(['systemctl', 'stop', 'firewalld.service'])
-        setup.postinst.shellCommand(
-            ['systemctl', 'disable', 'firewalld.service'])
-
         # Create ifup-local script to load iptables rules
         _, new_ifup_local = setup.stageFile(
             '/usr/sbin/ifup-local', context=context)

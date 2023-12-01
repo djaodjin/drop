@@ -209,6 +209,17 @@ def check_permissions(paths, owner, group, mode):
             sys.stderr.write('mode mismatch: ' + path + '\n')
 
 
+def check_systemd_services():
+    services = []
+    output_lines = tero.shell_command(
+        '/usr/bin/systemctl list-unit-files', pat=r'.*')
+    for line in output_lines:
+        look = re.match(r'(.*)\.service\S+enabled', line)
+        if look:
+            services += [look.group(1)]
+    return services
+
+
 def check_sqlschema(schema_text, reference_schema=None):
     """
     Analyze a SQL schema that was dumped with `pg_dump --schema-only`

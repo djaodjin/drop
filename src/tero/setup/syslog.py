@@ -107,7 +107,7 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
         logsLocation = context.value('logsLocation')
         lastaction_commands = [
             'LOGS=$1\n',
-            'LOG_SUFFIX=`wget -q -O - http://instance-data/latest/meta-data/instance-id | sed -e s/i-/-/`\n',
+            'LOG_SUFFIX=`curl -s http://instance-data/latest/meta-data/instance-id | sed -e s/i-/-/`\n',
             '/usr/local/bin/dcopylogs --quiet --location %s --logsuffix=$LOG_SUFFIX $LOGS\n' % logsLocation
         ]
         syslog_logrotate_conf = os.path.join(

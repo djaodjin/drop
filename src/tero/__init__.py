@@ -148,13 +148,14 @@ INSTALL_DIRS = ['bin', 'include', 'lib', 'libexec', 'etc', 'share']
 
 # distributions per native package managers
 APT_DISTRIBS = ['Debian', 'Ubuntu']
-DNF_DISTRIBS = ['Fedora']
+DNF_DISTRIBS = ['Amazon', 'Fedora']
 PORT_DISTRIBS = ['Darwin']
-YUM_DISTRIBS = ['Amazon', 'CentOS', 'RedHat']
+YUM_DISTRIBS = ['AmazonLinux2', 'CentOS', 'RedHat']
 REDHAT_DISTRIBS = DNF_DISTRIBS + YUM_DISTRIBS
 ALIAS_DISTRIBS = {
     'CentOS': 'RedHat',
     'Amazon': 'RedHat',
+    'AmazonLinux2': 'RedHat',
     'Ubuntu': 'Debian'
 }
 
@@ -1544,6 +1545,8 @@ class HostPlatform(Variable):
                             look = re.match('.*' + dist + '.*', line)
                             if look:
                                 self.value = dist
+                                if dist == 'Amazon' and '2023' not in line:
+                                    self.value = 'AmazonLinux2'
                             look = re.match('.*' + dist.lower() + '.*', line)
                             if look:
                                 self.value = dist

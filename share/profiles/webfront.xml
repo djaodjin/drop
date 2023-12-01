@@ -146,9 +146,6 @@ Name of the machine hosting the LDAP server.
              to process aws cli output. -->
         <bin>jq</bin>
       </dep>
-      <dep name="wget">
-        <bin>wget</bin>
-      </dep>
       <dep name="sqlite3-django22" excludes="3.7.17">
         <!-- because Django2.2 requires at least version 3.8 of sqlite3 -->
         <bin>sqlite3</bin>
@@ -277,9 +274,6 @@ Name of the machine hosting the LDAP server.
         <!-- command-line JSON parser that is useful
              to process aws cli output. -->
         <bin>jq</bin>
-      </dep>
-      <dep name="wget">
-        <bin>wget</bin>
       </dep>
     </package>
   </project>

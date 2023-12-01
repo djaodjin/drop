@@ -34,7 +34,8 @@ from tero import (__version__, Error, pub_build, pub_make,
     FilteredList, ordered_prerequisites, fetch, merge_unique,
     IndexProjects, Context, stampfile, create_index_pathname)
 import tero.setup # for global variables (postinst)
-from tero.setup.integrity import fingerprint
+
+from .integrity import check_systemd_services, fingerprint
 
 
 def create_install_script(dgen, context, install_top):
@@ -140,11 +141,12 @@ set -x
 
 
 def create_postinst(start_timestamp, setups, context=None):
-    '''This routine will copy the updated config files on top of the existing
+    """
+    This routine will copy the updated config files on top of the existing
     ones in /etc and will issue necessary commands for the updated config
     to be effective. This routine thus requires to execute a lot of commands
-    with admin privileges.'''
-
+    with admin privileges.
+    """
     if not context:
         context = tero.CONTEXT
 
@@ -205,6 +207,12 @@ include %(share_dir)s/dws/suffix.mk
     # Enable all services before restarting them. In case we encounter
     # an transient error on restart, at least the services will be enabled.
     if tero.setup.postinst.scriptfile:
+        tero.setup.postinst.scriptfile.write(
+            "\n# Disable unused services\n")
+        enabled_services = check_systemd_services()
+        for service in ['rpcbind', 'postfix', 'firewalld']:
+            if service in enabled_services:
+                tero.setup.postinst.serviceDisable(service)
         tero.setup.postinst.scriptfile.write(
             "\n# Enable and restart services\n")
     for service in services:
