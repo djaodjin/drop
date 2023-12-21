@@ -1,6 +1,4 @@
-#!/usr/bin/env python
-#
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2023, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,9 +32,10 @@ Primary Author(s): Sebastien Mirolo <smirolo@fortylines.com>
 """
 from __future__ import unicode_literals
 
-import datetime, optparse, os, re, shutil, sys
+import argparse, datetime, os, re, shutil, sys
 
 import tero as dws
+
 
 DO_NOT_EXECUTE = True
 VERBOSE = False
@@ -146,20 +145,23 @@ def cleanup_aged_files(dirname,
 
 
 def pub_clean(args):
-    '''clean         targetDir
-                  Delete files which have aged according to a policy.
-                  The policy is defined by the number of stamped files
-                  that are kept per year, month and week. All stamps
-                  less than a week old are always kept.'''
+    """targetDir
+    Delete files which have aged according to a policy.
+    The policy is defined by the number of stamped files
+    that are kept per year, month and week. All stamps
+    less than a week old are always kept.
+    """
     if len(args) < 1:
         raise dws.Error('missing *targetDir*')
     cleanup_aged_files(
         args[0], keep_per_year=1, keep_per_month=1, keep_per_week=1)
 
+
 def pub_install(args):
-    '''install      sourceFile [sourceFile ...] targetDir
-                  Install source file into target directory
-                  with a stamp suffix.'''
+    """sourceFile [sourceFile ...] targetDir
+    Install source file into target directory
+    with a stamp suffix.
+    """
     install_dir = args.pop()
     for filename in args:
         shutil.copy(
@@ -167,35 +169,30 @@ def pub_install(args):
 
 # Main Entry Point
 def main(args):
+    """
+    Main Entry Point
+    """
+    parser = argparse.ArgumentParser(
+        usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version '
+        + str(dws.__version__),
+        formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('--help-book', dest='helpBook', action='store_true',
+        help='Print help in docbook format')
+    parser.add_argument('--version', dest='version', action='store_true',
+        help='Print version information')
+    parser.add_argument('-n', dest='noexecute', action='store_true',
+        help='Do not execute, run informative only.')
+    parser.add_argument('-v', dest='verbose', action='store_true',
+        help='Verbose mode')
+    dws.build_subcommands_parser(parser, sys.modules[__name__])
+
+    if len(args) <= 1:
+        parser.print_help()
+        sys.exit(1)
+
+    options = parser.parse_args(args[1:])
+
     try:
-        epilog = '\nCommands:\n'
-        import __main__
-        keys = __main__.__dict__.keys()
-        keys.sort()
-        for command in keys:
-            if command.startswith('pub'):
-                epilog += __main__.__dict__[command].__doc__ + '\n'
-
-        parser = optparse.OptionParser(\
-            usage='%prog [options] command\n\nVersion\n  %prog version ' \
-                + str(dws.__version__),
-            formatter=dws.CommandsFormatter(),
-            epilog=epilog)
-        parser.add_option('--help-book', dest='helpBook', action='store_true',
-                          help='Print help in docbook format')
-        parser.add_option('--version', dest='version', action='store_true',
-                          help='Print version information')
-        parser.add_option('-n', dest='noexecute', action='store_true',
-                          help='Do not execute, run informative only.')
-        parser.add_option('-v', dest='verbose', action='store_true',
-                          help='Verbose mode')
-
-        options, args = parser.parse_args()
-        if options.version:
-            sys.stdout.write(args[0] + ' version ' + str(dws.__version__) \
-                                 + '\n')
-            sys.exit(0)
-
         if options.helpBook:
             help_text = dws.StringIO()
             parser.print_help(help_text)
@@ -208,13 +205,15 @@ def main(args):
             global VERBOSE
             VERBOSE = True
 
-        arg = args.pop(0)
-        command = 'pub' + arg.capitalize()
-        if command in __main__.__dict__:
-            __main__.__dict__[command](args)
-        else:
-            raise dws.Error(args[0] + ' ' + arg + ' does not exist.\n')
+        # Filter out options with are not part of the function prototype.
+        func_args = dws.filter_subcommand_args(options.func, options)
+        options.func(**func_args)
 
     except dws.Error as err:
         sys.stderr.write(str(err))
         sys.exit(err.code)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    main(sys.argv)

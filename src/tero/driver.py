@@ -332,3 +332,8 @@ def main(args, settings_path=None):
     # Filter out options with are not part of the function prototype.
     func_args = filter_subcommand_args(options.func, options)
     options.func(**func_args)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    main(sys.argv)
