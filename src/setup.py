@@ -21,6 +21,50 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-from setuptools import setup
+from distutils.core import setup
 
-setup()
+import tero
+
+setup(name='drop',
+    version=tero.__version__,
+    author='DjaoDjin inc.',
+    author_email='support@djaodjin.com',
+    packages=[
+        'tero',
+        'tero.setup',
+        'tero.clouds'
+    ],
+    package_data={
+        'tero.setup': [
+            '*.tpl'
+        ],
+        'tero.clouds': [
+            'templates/*.j2'
+        ]
+    },
+    scripts=[
+        # Scripts on developper machine build packages and run tests
+        'scripts/dbldpkg',
+        'scripts/dstamp',
+        'scripts/dtimeout',
+        # Scripts installed on machines to manage operations
+        'scripts/dauthcmd',
+        'scripts/dcopylogs',
+        'scripts/dlogwatch',
+        # Scripts to configure cloud infrastructure and OS distributions
+        'scripts/dcloud',
+        'scripts/dservices',
+        'scripts/dsettings',
+        # Scripts to monitor development work and operations
+        'scripts/dintegrity',
+        'scripts/dmonitor',
+        'scripts/dregress',
+        'scripts/dissues'
+    ],
+    url='https://github.com/djaodjin/drop/',
+    download_url='https://github.com/djaodjin/drop/tarball/%s' \
+        % tero.__version__,
+    license='BSD',
+    description='DjaoDjin workspace management',
+    long_description=open('../README.md').read(),
+)
