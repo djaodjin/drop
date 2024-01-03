@@ -27,7 +27,7 @@ import os, re
 
 import six
 
-from . import modify_config, postinst, stage_file, SetupTemplate
+from tero.setup import modify_config, postinst, stage_file, SetupTemplate
 
 
 class syslog_ngSetup(SetupTemplate):

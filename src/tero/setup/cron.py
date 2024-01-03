@@ -1,4 +1,4 @@
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2024, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,7 +27,7 @@ import os
 
 import six
 
-from . import SetupTemplate, modify_config, stage_file
+from tero.setup import SetupTemplate, modify_config, stage_file
 
 def add_entry(filename, command,
               username='root', minutes='0', hours='19', dom='*', months='*',

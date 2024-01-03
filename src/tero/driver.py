@@ -166,7 +166,7 @@ def run_dservices(profile_names, host, remote_path, settings=None):
             profile = profile + '.xml'
         profiles += ['share/tero/profiles/' + profile]
     with fab_settings(abort_on_prompts=True, host_string=host):
-        fab.cd(remote_path):
+        fab.cd(remote_path)
         cmdline = ['./bin/dservices'] + defines + profiles
         fab.run(' '.join(cmdline))
 

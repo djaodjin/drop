@@ -1,4 +1,4 @@
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2024, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,7 @@ from __future__ import unicode_literals
 import argparse, os, sys
 
 import tero
-from . import stage_file, SetupTemplate
+from tero.setup import stage_file, SetupTemplate
 
 
 class dovecotSetup(SetupTemplate):

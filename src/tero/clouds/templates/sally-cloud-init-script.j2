@@ -45,6 +45,7 @@ fi
 
 [ -f /usr/bin/aws ] || $INSTALL_PACKAGES -y install awscli
 [ -f /usr/bin/bzip2 ] || $INSTALL_PACKAGES -y install bzip2
+[ -f /usr/bin/git ] || $INSTALL_PACKAGES -y install git-core
 [ -f /usr/bin/make ] || $INSTALL_PACKAGES -y install make
 
 VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
@@ -52,15 +53,16 @@ VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 # download keys, certificates, etc.
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
 
-# defaults to downloading drop so we can install the webfront.xml profile.
+# defaults to downloading drop so we can install the sally.xml profile.
 if [ ! -f ${siteTop}/bin/dservices ]; then
     /usr/bin/mkdir -p ${siteTop}/reps
     $VIRTUALENV_RUN ${siteTop}
     echo "installTop=${siteTop}" > ${siteTop}/dws.mk
     /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
-    pushd ${siteTop}/reps/drop
-    ${siteTop}/bin/pip install -r requirements.txt
-    make install
+    pushd ${siteTop}/reps/drop/src
+    ${siteTop}/bin/python3 -m pip install --upgrade pip
+    ${siteTop}/bin/pip install -r ../requirements.txt
+    ${siteTop}/bin/pip install .
     popd
 fi
 

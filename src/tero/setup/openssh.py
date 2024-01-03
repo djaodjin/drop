@@ -1,4 +1,4 @@
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2024, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,7 @@ import logging, os
 import six
 
 from tero import CONTEXT
-from . import SetupTemplate, modify_config, stage_file, postinst
+from tero.setup import SetupTemplate, modify_config, stage_file, postinst
 
 
 class openssh_serverSetup(SetupTemplate):

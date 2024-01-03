@@ -31,6 +31,22 @@ dependencies = [
   "sqlparse>=0.4.2"
 ]
 
+[project.scripts]
+dauthcmd = "tero.dauthcmd:cli_main"
+#dbldpkg =
+#dcloud =
+#dcopylogs =
+#dintegrity =
+#dissues =
+#dlogwatch =
+#dmonitor =
+#dregress =
+dservices = "tero.setup.local:cli_main"
+#dsettings =
+#dstamp =
+#dsummarize =
+#dtimeout =
+
 [project.urls]
 repository = "https://github.com/djaodjin/drop"
 documentation = "https://drop.readthedocs.io/"

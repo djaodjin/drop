@@ -1,4 +1,4 @@
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2024, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,8 +27,8 @@ import os, stat
 
 import six
 
-from .. import APT_DISTRIBS, REDHAT_DISTRIBS
-from . import postinst, stage_file, SetupTemplate
+from tero import APT_DISTRIBS, REDHAT_DISTRIBS
+from tero.setup import postinst, stage_file, SetupTemplate
 
 
 class iptablesSetup(SetupTemplate):

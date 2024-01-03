@@ -1,4 +1,4 @@
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2024, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -25,7 +25,7 @@ from __future__ import unicode_literals
 
 import os
 
-from . import (modify_config, modify_ini_config, postinst, stage_dir,
+from tero.setup import (modify_config, modify_ini_config, postinst, stage_dir,
     stage_file, SetupTemplate)
 
 

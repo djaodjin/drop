@@ -1,4 +1,4 @@
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2024, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,10 +28,9 @@ import argparse, logging, re, os, subprocess, sys
 import six
 
 import tero
-from .. import Variable, shell_command
-from . import (after_daemon_start, modify_config, postinst, stage_file,
+from tero.setup import (after_daemon_start, modify_config, postinst, stage_file,
     SetupTemplate)
-from .cron import add_entry as cron_add_entry
+from tero.setup.cron import add_entry as cron_add_entry
 
 
 class postgresql_serverSetup(SetupTemplate):
@@ -142,7 +141,7 @@ class postgresql_serverSetup(SetupTemplate):
 
         if not os.path.exists(postgresql_conf):
             # /var/lib/pgsql/data will be empty unless we run initdb once.
-            shell_command([self.postgresql_setup, 'initdb'])
+            tero.shell_command([self.postgresql_setup, 'initdb'])
 
         listen_addresses = "'localhost'"
         for key, val in six.iteritems(self.managed[
@@ -321,7 +320,7 @@ def main(args):
     defines = dict([item.split('=') for item in options.defines])
 
     tero.CONTEXT = tero.Context()
-    tero.CONTEXT.environ['vpc_cidr'] = Variable('vpc_cidr',
+    tero.CONTEXT.environ['vpc_cidr'] = tero.Variable('vpc_cidr',
              {'description': 'CIDR allowed to create remote connections',
               'default': defines.get('vpc_cidr', '192.168.144.0/24')})
     for define in options.defines:

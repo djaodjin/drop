@@ -27,7 +27,7 @@ import logging, os, re, subprocess, sys
 
 import six
 
-from .. import (APT_DISTRIBS, CONTEXT, REDHAT_DISTRIBS,
+from tero import (APT_DISTRIBS, CONTEXT, REDHAT_DISTRIBS,
     Error, SetupStep, log_info, shell_command)
 
 postinst = None

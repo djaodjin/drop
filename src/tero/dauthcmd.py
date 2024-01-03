@@ -26,7 +26,7 @@
 
 # Validate the ssh commands to execute on the server.
 
-import os, sys
+import logging, os, sys
 
 RSYNC = '/usr/bin/rsync'
 FORWARDTO = '/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell'
@@ -79,6 +79,12 @@ def main(args):
         err = synctree(cmd)
     sys.exit(err)
 
-if __name__ == '__main__':
+
+def cli_main():
+    logging.basicConfig(level='INFO')
     main(sys.argv)
+
+
+if __name__ == '__main__':
+    cli_main()
 

@@ -25,7 +25,7 @@ from __future__ import unicode_literals
 
 import logging, os
 
-from . import stage_file, postinst, SetupTemplate
+from tero.setup import stage_file, postinst, SetupTemplate
 
 
 class sssdSetup(SetupTemplate):

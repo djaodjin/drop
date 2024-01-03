@@ -26,20 +26,20 @@ Entry Point to setting-up a local machine.
 """
 from __future__ import unicode_literals
 
-import datetime, os, shutil, socket, subprocess, sys
+import datetime, logging, os, shutil, socket, subprocess, sys
 import imp # XXX deprecated, for `load_source`
 import argparse, __main__
 
 import six
 
 import tero # for global variables (CONTEXT, etc.)
-from .. import (__version__, Error, pub_build, pub_make,
+from tero import (__version__, Error, pub_build, pub_make,
     create_managed, shell_command,
     FilteredList, ordered_prerequisites, fetch, merge_unique,
     IndexProjects, Context, stampfile, create_index_pathname)
 import tero.setup # for global variables (postinst)
 
-from .integrity import check_systemd_services, fingerprint
+from tero.setup.integrity import check_systemd_services, fingerprint
 
 
 def create_install_script(dgen, context, install_top):
@@ -441,5 +441,10 @@ def main(args):
         shell_command(['./install.sh'], admin=True)
 
 
-if __name__ == '__main__':
+def cli_main():
+    logging.basicConfig(level='INFO')
     main(sys.argv)
+
+
+if __name__ == '__main__':
+    cli_main()

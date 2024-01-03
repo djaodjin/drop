@@ -25,7 +25,7 @@ from __future__ import unicode_literals
 
 import os, re
 
-from . import stage_file, SetupTemplate
+from tero.setup import stage_file, SetupTemplate
 
 
 class logrotateSetup(SetupTemplate):
