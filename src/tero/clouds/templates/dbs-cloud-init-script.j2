@@ -82,17 +82,33 @@ if [ ! -f ${siteTop}/bin/dservices ]; then
     popd
 fi
 
+cd ${siteTop}
 DB_PASSWORD='{{db_password}}'
 DB_MASTER_PASSWORD='{{db_master_password}}'
 ${siteTop}/bin/dservices -Dadmin=$USER -DetcDir=/etc -DlogsBucket={{s3_logs_bucket}} -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}"{% if ldap_hashed_password %} -DldapPasswordHash="{{ldap_hashed_password}}"{% endif %} -Dvpc_cidr="{{vpc_cidr}}" reps/drop/share/profiles/databases.xml
-sudo -u postgres /usr/bin/psql -c "ALTER USER postgres PASSWORD '$DB_MASTER_PASSWORD';"
-sudo -u postgres /usr/bin/psql -c "CREATE ROLE {{db_user}} LOGIN PASSWORD '$DB_PASSWORD';"
 
-# Restore database from flat files
+# Restore SQL databases from flat files
+PSQL="sudo -u postgres /usr/bin/psql"
 mkdir -p /var/migrate/pgsql/dumps /var/migrate/pgsql/schemas
 chown -R postgres:postgres /var/migrate/pgsql
-LDIF_DUMPS=`find /var/migrate/ldap/dumps -name '*.ldif' -print`
 PGSQL_DUMPS=`find /var/migrate/pgsql/dumps -name '*.sql' -o -name '*.sql.gz' -print`
-if [ "X$LDIF_DUMPS" != "X" ] && [ "X$PGSQL_DUMPS" != "X" ] ; then
-    bin/python reps/drop/src/drestore.py --domainName="{{company_domain}}" $LDIF_DUMPS $PGSQL_DUMPS
+if [ "X$PGSQL_DUMPS" != "X" ] ; then
+    ${PSQL} -c "ALTER USER postgres PASSWORD '$DB_MASTER_PASSWORD';"
+    ${PSQL} -c "DO \$\$
+BEGIN
+CREATE ROLE {{db_user}} LOGIN PASSWORD '$DB_PASSWORD';
+EXCEPTION WHEN duplicate_object THEN RAISE NOTICE '%, skipping', SQLERRM USING ERRCODE = SQLSTATE;
+END
+\$\$;"
+    for db_file in ${PGSQL_DUMPS}; do
+        db_name=`basename $db_file`
+        db_name=${db_name%%.*}
+        echo "restore $db_file to $db_name ..."
+        ${PSQL} -c "DROP DATABASE IF EXISTS \"$db_name\";"
+        if [[ $db_file == *.gz ]] ; then
+            /usr/bin/gzip -d -c $db_file | ${PSQL} $db_name
+        else
+            ${PSQL} -f $db_file $db_name
+        fi
+    done
 fi

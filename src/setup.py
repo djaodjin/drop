@@ -21,9 +21,13 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+import os, sys
 from distutils.core import setup
 
+sys.path.insert(0, os.path.dirname(__file__))
+
 import tero
+
 
 setup(name='drop',
     version=tero.__version__,

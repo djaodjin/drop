@@ -40,7 +40,7 @@ from six.moves.urllib.parse import urlparse
 
 from tero import shell_command
 from tero.setup.nginx import read_upstream_proxies
-from tero.clouds.monitor import APP_NAME, EC2_RUNNING, get_regions, list_db_meta
+from tero.clouds.monitor import APP_NAME, EC2_RUNNING, list_db_meta
 
 
 LOGGER = logging.getLogger(__name__)
@@ -720,7 +720,8 @@ def create_cloudwatch_groups(tag_prefix, trail_name, storage_enckey=None,
     logs_client.put_metric_filter(
         logGroupName=cloudwatch_logs_log_group_arn,
         filterName="ConsoleSignInFailures",
-        filterPattern='{ ($.eventName = ConsoleLogin) && ($.errorMessage = "Failed authentication") }',
+        filterPattern='{ ($.eventName = ConsoleLogin) &&'\
+' ($.errorMessage = "Failed authentication") }',
         metricTransformations=[{
             'metricName': 'ConsoleSigninFailureCount',
             'metricNamespace': 'LoginEvents',
@@ -733,7 +734,8 @@ def create_cloudwatch_groups(tag_prefix, trail_name, storage_enckey=None,
     )
     resp = cloudwatch_client.put_metric_alarm(
         AlarmName='Console sign-in failures',
-        AlarmDescription='Raises alarms if more than 3 console sign-in failures occur in 5 minutes',
+        AlarmDescription='Raises alarms if more than'\
+' 3 console sign-in failures occur in 5 minutes',
         OKActions=[
             'string',
         ],
@@ -2358,7 +2360,8 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                         "Resource": "arn:aws:s3:::%s" % s3_logs_bucket,
                         "Condition": {
                             "StringEquals": {
-                                "AWS:SourceArn": "arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
+                                "AWS:SourceArn":
+"arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
                             }
                         }
                     }, {
@@ -2367,11 +2370,13 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                             "Service": "cloudtrail.amazonaws.com"
                         },
                         "Action": "s3:PutObject",
-                        "Resource": "arn:aws:s3:::%s/AWSLogs/%s/*" % (s3_logs_bucket, aws_account_id),
+                        "Resource":
+"arn:aws:s3:::%s/AWSLogs/%s/*" % (s3_logs_bucket, aws_account_id),
                         "Condition": {
                             "StringEquals": {
                                 "s3:x-amz-acl": "bucket-owner-full-control",
-                                "AWS:SourceArn": "arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
+                                "AWS:SourceArn":
+"arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
                             }
                         }
                     }
@@ -2641,7 +2646,9 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
                       image_name=None, ssh_key_name=None,
                       company_domain=None, ldap_host=None,
                       ldap_hashed_password=None,
-                      provider=None, dry_run=False):
+                      provider=None,
+                      hosted_zone_id=None,
+                      dry_run=False):
     """
     This function creates in a specified AWS region the disk storage (S3) and
     databases (SQL) to run a SaaS product. It will:
@@ -2673,17 +2680,16 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
         _, s3_identities_bucket, restore_prefix = urlparse(identities_url)[:3]
         restore_prefix = restore_prefix.strip('/')
 
-        s3 = boto3.resource('s3')
+        s3_client = boto3.client('s3')
         for db_name, backups in search.items():
             backup_key = backups['db'][0][2]
             backup_url = "s3://%s/%s" % (s3_logs_bucket, backup_key)
-            restore_key = "%s/%s.sql.gz" % (restore_prefix, db_name)
+            restore_key = "%s/%s/%s.tar.gz" % (restore_prefix,
+                os.path.dirname(backup_key), db_name)
             restore_url = "s3://%s/%s" % (s3_identities_bucket, restore_key)
             LOGGER.info("copy %s to %s ...", backup_url, restore_url)
-            s3.meta.client.copy({'Bucket': s3_logs_bucket, 'Key': backup_key},
+            s3_client.copy({'Bucket': s3_logs_bucket, 'Key': backup_key},
                 s3_identities_bucket, restore_key)
-
-    return
 
     instance_type = 'm3.medium'
     sg_tag_prefix = tag_prefix
@@ -2933,12 +2939,20 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
         }],
         UserData=user_data,
         DryRun=dry_run)
-    instance_ids = [
-        instance['InstanceId'] for instance in resp['Instances']]
 
-    for instance in resp['Instances']:
+    instances = resp['Instances']
+    instance_ids = [
+        instance['InstanceId'] for instance in instances]
+
+    for instance in instances:
         LOGGER.info("%s started ec2 instances %s for '%s' at %s", tag_prefix,
             instance['InstanceId'], app_name, instance['PrivateDnsName'])
+
+    update_internal_dns = False
+    if update_internal_dns:
+        create_route53_record(region_name, app_name, [
+            instance['PrivateIpAddress'] for instance in instances],
+            hosted_zone_id=hosted_zone_id)
 
     return instance_ids
 
@@ -3553,60 +3567,11 @@ def create_app_resources(region_name, app_name, image_name,
         queue_url=queue_url)
 
     # Associates an internal domain name to the instance
-    update_dns_record = True
-    if update_dns_record:
-        hosted_zone = None
-        default_hosted_zone = None
-        hosted_zone_name = '%s.internal.' % region_name
-        route53 = boto3.client('route53')
-        if hosted_zone_id:
-            hosted_zone = route53.get_hosted_zone(
-                Id=hosted_zone_id)['HostedZone']
-        else:
-            hosted_zones_resp = route53.list_hosted_zones()
-            hosted_zones = hosted_zones_resp.get('HostedZones')
-            for hzone in hosted_zones:
-                if hzone.get('Name').startswith(region_name):
-                    hosted_zone = hzone
-                    hosted_zone_id = hzone.get('Id')
-                    break
-                if hzone.get('Name') == hosted_zone_name:
-                    default_hosted_zone = hzone
-        if hosted_zone:
-            hosted_zone_name = hosted_zone['Name']
-            LOGGER.info("found hosted zone %s", hosted_zone_name)
-        else:
-            hosted_zone_id = default_hosted_zone.get('Id')
-            LOGGER.info(
-                "cannot find hosted zone for region %s, defaults to %s",
-                region_name, hosted_zone_name)
-
-        host_name = "%(app_name)s.%(hosted_zone_name)s" % {
-            'app_name': app_name, 'hosted_zone_name': hosted_zone_name}
-        private_ip_addrs = [{'Value': instance['PrivateIpAddress']}
-            for instance in instances]
-        LOGGER.info("%supdate DNS record for %s to %s ...",
-            "(dry_run) " if dry_run else "",
-            host_name, [ip_addr['Value'] for ip_addr in private_ip_addrs])
-        LOGGER.debug("route53.change_resource_record_sets("\
-            "HostedZoneId=%(hosted_zone_id)s, ChangeBatch={'Changes':"\
-            " [{'Action': 'UPSERT', 'ResourceRecordSet': {"\
-            "'Name': %(host_name)s, 'Type': 'A', 'TTL': 60,"\
-            " 'ResourceRecords': %(private_ip_addrs)s}}]})",
-            hosted_zone_id=hosted_zone_id, host_name=host_name,
-            private_ip_addrs=private_ip_addrs)
-        if not dry_run:
-            route53.change_resource_record_sets(
-                HostedZoneId=hosted_zone_id,
-                ChangeBatch={'Changes': [{
-                    'Action': 'UPSERT',
-                    'ResourceRecordSet': {
-                        'Name': host_name,
-                        'Type': 'A',
-                        # 'Region': DEFAULT_REGION
-                        'TTL': 60,
-                        'ResourceRecords': private_ip_addrs
-                    }}]})
+    update_internal_dns = True
+    if update_internal_dns:
+        create_route53_record(region_name, app_name, [
+            instance['PrivateIpAddress'] for instance in instances],
+            hosted_zone_id=hosted_zone_id)
 
     return [instance['InstanceId'] for instance in instances]
 
@@ -3924,6 +3889,57 @@ def create_domain_forward(region_name, app_name, valid_domains=None,
             rule_arn = resp['Rules'][0]['RuleArn']
         LOGGER.info("%s%s created matching listener rule %s",
             "(dry_run) " if dry_run else "", tag_prefix, rule_arn)
+
+
+def create_route53_record(region_name, app_name, private_ip_addrs,
+                          hosted_zone_id=None,
+                          dry_run=False):
+    """
+    Create route53 records for internal names
+    """
+    hosted_zone = None
+    default_hosted_zone = None
+    hosted_zone_name = '%s.internal.' % region_name
+    route53 = boto3.client('route53')
+    if hosted_zone_id:
+        hosted_zone = route53.get_hosted_zone(
+            Id=hosted_zone_id)['HostedZone']
+    else:
+        hosted_zones_resp = route53.list_hosted_zones()
+        hosted_zones = hosted_zones_resp.get('HostedZones')
+        for hzone in hosted_zones:
+            if hzone.get('Name').startswith(region_name):
+                hosted_zone = hzone
+                hosted_zone_id = hzone.get('Id')
+                break
+            if hzone.get('Name') == hosted_zone_name:
+                default_hosted_zone = hzone
+    if hosted_zone:
+        hosted_zone_name = hosted_zone['Name']
+        LOGGER.info("found hosted zone %s", hosted_zone_name)
+    else:
+        hosted_zone_id = default_hosted_zone.get('Id')
+        LOGGER.info(
+            "cannot find hosted zone for region %s, defaults to %s",
+            region_name, hosted_zone_name)
+
+    host_name = "%(app_name)s.%(hosted_zone_name)s" % {
+        'app_name': app_name, 'hosted_zone_name': hosted_zone_name}
+    LOGGER.info("%supdate DNS record for %s to %s ...",
+        "(dry_run) " if dry_run else "", host_name, private_ip_addrs)
+    if not dry_run:
+        route53.change_resource_record_sets(
+            HostedZoneId=hosted_zone_id,
+            ChangeBatch={'Changes': [{
+                'Action': 'UPSERT',
+                'ResourceRecordSet': {
+                    'Name': host_name,
+                    'Type': 'A',
+                    # 'Region': DEFAULT_REGION
+                    'TTL': 60,
+                    'ResourceRecords': [
+                        {'Value': ip_addr} for ip_addr in private_ip_addrs]
+                }}]})
 
 
 def create_target_group(region_name, app_name, instance_ids=None,
@@ -4425,7 +4441,7 @@ def run_config(config_name, create_ami=False, local_docker=False,
         elif app_name.startswith('dbs-'):
             db_names = [db_name.strip()
                 for db_name in config[app_name].get('db_names', "").split(',')]
-            create_datastores(
+            instance_ids = create_datastores(
                 region_name,
                 config['default']['vpc_cidr'],
                 tag_prefix,
@@ -4456,6 +4472,14 @@ def run_config(config_name, create_ami=False, local_docker=False,
                 ssh_key_name=ssh_key_name,
                 provider=config[app_name].get('provider'),
                 dry_run=dry_run)
+            if instance_ids:
+                print_ssh_commands(
+                    region_name,
+                    instance_ids,
+                    ssh_key_name=ssh_key_name,
+                    sally_ip=config['default'].get('sally_ip'),
+                    sally_key_file=config['default'].get('sally_key_file'),
+                    sally_port=config['default'].get('sally_port'))
 
         elif app_name.startswith('sally') or app_name.startswith('mail'):
             create_sally_resources(

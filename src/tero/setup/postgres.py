@@ -35,15 +35,23 @@ from tero.setup.cron import add_entry as cron_add_entry
 
 class postgresql_serverSetup(SetupTemplate):
 
-    pgdata = '/var/lib/pgsql/data'
-    postgresql_setup = '/usr/bin/postgresql-setup'
-    pg_dump = '/usr/bin/pg_dump'
-    daemons = ['postgresql']
+    pgdata_candidates = ['/var/lib/pgsql/data']
+    postgresql_setup_candidates = ['/usr/bin/postgresql-setup']
+    pg_dump_candidates = ['/usr/bin/pg_dump']
+    service_candidates = ['/usr/lib/systemd/system/postgresql.service']
 
     def __init__(self, name, files, **kwargs):
         super(postgresql_serverSetup, self).__init__(name, files, **kwargs)
 
+    @property
+    def daemons(self):
+        if not hasattr(self, '_daemons'):
+            service = self.locate_config('service', self.service_candidates)
+            self._daemons = [os.path.splitext(os.path.basename(service))[0]]
+        return self._daemons
+
     def backup_script(self, context):
+        pg_dump = self.locate_config('pg_dump', self.pg_dump_candidates)
         return [
         "#!/bin/sh",
         "",
@@ -56,7 +64,7 @@ class postgresql_serverSetup(SetupTemplate):
         "sudo -u postgres psql -U postgres -qAt -c 'select datname from"\
         " pg_database where datallowconn' | xargs -r -I X sudo -u postgres"\
         " %(pg_dump)s -U postgres -C -f /var/backups/pgsql/X.sql$LOG_SUFFIX X" %
-            {'pg_dump': self.pg_dump},
+            {'pg_dump': pg_dump},
 
         "chmod 600 /var/backups/pgsql/*.sql",
 
@@ -67,6 +75,17 @@ class postgresql_serverSetup(SetupTemplate):
         " s3://%(s3_logs_bucket)s/var/migrate/pgsql/dumps/" % {
         's3_logs_bucket': context.value('logsBucket')
     }]
+
+    @staticmethod
+    def locate_config(name, candidates):
+        found = None
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                found = candidate
+                break
+        if not found:
+            raise RuntimeError("couldn't locate %s in %s!" % (name, candidates))
+        return found
 
     def create_cron_conf(self, context):
         """
@@ -136,17 +155,20 @@ class postgresql_serverSetup(SetupTemplate):
         db_host = context.value('dbHost')
         vpc_cidr = context.value('vpc_cidr')
         pg_user = context.value('dbUser')
-        postgresql_conf = os.path.join(self.pgdata, 'postgresql.conf')
-        pg_ident_conf = os.path.join(self.pgdata, 'pg_ident.conf')
-        pg_hba_conf = os.path.join(self.pgdata, 'pg_hba.conf')
+        pgdata = self.locate_config('pgdata', self.pgdata_candidates)
+        postgresql_conf = os.path.join(pgdata, 'postgresql.conf')
+        pg_ident_conf = os.path.join(pgdata, 'pg_ident.conf')
+        pg_hba_conf = os.path.join(pgdata, 'pg_hba.conf')
 
+        postgresql_setup = self.locate_config(
+            'postgresql_setup', self.postgresql_setup_candidates)
         if not os.path.exists(postgresql_conf):
             # /var/lib/pgsql/data will be empty unless we run initdb once.
-            tero.shell_command([self.postgresql_setup, 'initdb'])
+            tero.shell_command([postgresql_setup, 'initdb'])
 
         listen_addresses = "'localhost'"
-        for key, val in six.iteritems(self.managed[
-                '%s-server' % self.daemons[0].replace('-', '')]['files']):
+        name = self.__class__.__name__[:-len('Setup')].replace('_', '-')
+        for key, val in six.iteritems(self.managed[name]['files']):
             if key == 'listen_addresses':
                 listen_addresses = ', '.join(
                     ["'%s'" % address[0] for address in val])
@@ -261,25 +283,29 @@ r'(?P<db>\S+)\s+(?P<pg_user>\S+)\s+(?P<cidr>\S+)\s+(?P<method>\S+)',
         #https://people.planetpostgresql.org/devrim/index.php?/archives/\
         #83-Using-huge-pages-on-RHEL-7-and-PostgreSQL-9.4.html
         postinst.shell_command(['[ -d %(pgdata)s/base ] ||' % {
-            'pgdata': self.pgdata }, self.postgresql_setup, 'initdb'])
+            'pgdata': pgdata}, postgresql_setup, 'initdb'])
 
         return complete
 
 
 class postgresql14_serverSetup(postgresql_serverSetup):
 
-    pgdata = '/var/lib/pgsql/14/data'
-    postgresql_setup = '/usr/pgsql-14/bin/postgresql-14-setup'
-    pg_dump = '/usr/pgsql-14/bin/pg_dump'
-    daemons = ['postgresql-14']
+    pgdata_candidates = ['/var/lib/pgsql/14/data', '/var/lib/pgsql/data']
+    postgresql_setup_candidates = [
+        '/usr/pgsql-14/bin/postgresql-14-setup', '/usr/bin/postgresql-setup']
+    pg_dump_candidates = ['/usr/pgsql-14/bin/pg_dump', ]
+    service_candidates = ['/usr/lib/systemd/system/postgresql-14.service',
+        '/usr/lib/systemd/system/postgresql.service']
 
 
 class postgresql15_serverSetup(postgresql_serverSetup):
 
-    pgdata = '/var/lib/pgsql/15/data'
-    postgresql_setup = '/usr/pgsql-15/bin/postgresql-15-setup'
-    pg_dump = '/usr/pgsql-15/bin/pg_dump'
-    daemons = ['postgresql-15']
+    pgdata_candidates = ['/var/lib/pgsql/15/data', '/var/lib/pgsql/data']
+    postgresql_setup_candidates = [
+        '/usr/pgsql-15/bin/postgresql-15-setup', '/usr/bin/postgresql-setup']
+    pg_dump_candidates = ['/usr/pgsql-15/bin/pg_dump', '/usr/bin/pg_dump']
+    service_candidates = ['/usr/lib/systemd/system/postgresql-15.service',
+        '/usr/lib/systemd/system/postgresql.service']
 
 
 class postgresqlSetup(SetupTemplate):

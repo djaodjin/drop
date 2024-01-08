@@ -208,9 +208,9 @@ def main(input_args):
         with open(conf_path) as conf_file:
             content = conf_file.read()
         conf_name = os.path.basename(conf_path)
-        if command == 'descrypt':
+        if command == 'decrypt':
             decrypted = decrypt(content, passphrase)
-            with open(os.path.join(location, conf_name), "wb") as dest_file:
+            with open(os.path.join(location, conf_name), "w") as dest_file:
                 dest_file.write(decrypted)
         elif command == 'encrypt':
             encrypted = encrypt(content, passphrase)
