@@ -47,8 +47,9 @@ class postgresql_serverSetup(SetupTemplate):
         return [
         "#!/bin/sh",
         "",
-        "LOG_SUFFIX=`curl -s "\
-        " http://instance-data/latest/meta-data/instance-id | sed -e s/i-/-/`",
+        # IMDSv2
+        'TOKEN=`curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`',
+        'LOG_SUFFIX=`curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id | sed -e s/i-/-/`',
 
         "sudo -u postgres sh -c 'rm /var/migrate/pgsql/dumps/*.gz'",
 
@@ -271,6 +272,14 @@ class postgresql14_serverSetup(postgresql_serverSetup):
     postgresql_setup = '/usr/pgsql-14/bin/postgresql-14-setup'
     pg_dump = '/usr/pgsql-14/bin/pg_dump'
     daemons = ['postgresql-14']
+
+
+class postgresql15_serverSetup(postgresql_serverSetup):
+
+    pgdata = '/var/lib/pgsql/15/data'
+    postgresql_setup = '/usr/pgsql-15/bin/postgresql-15-setup'
+    pg_dump = '/usr/pgsql-15/bin/pg_dump'
+    daemons = ['postgresql-15']
 
 
 class postgresqlSetup(SetupTemplate):

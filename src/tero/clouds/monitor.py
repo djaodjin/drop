@@ -31,11 +31,16 @@ import pytz, six
 #pylint:disable=import-error
 from six.moves.urllib.parse import urlparse
 
-from .awscloud import APP_NAME, EC2_RUNNING, get_regions
 from ..dparselog import parse_logname
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+APP_NAME = 'djaoapp'
+
+EC2_RUNNING = 'running'
+
 
 def as_datetime(dtime_at=None):
     if isinstance(dtime_at, six.string_types):
@@ -63,6 +68,16 @@ def datetime_or_now(dtime_at=None):
     if dtime_at.tzinfo is None:
         dtime_at = dtime_at.replace(tzinfo=pytz.utc)
     return dtime_at
+
+
+def get_regions(ec2_client=None):
+    """
+    Returns a list of names of regions available
+    """
+    if not ec2_client:
+        ec2_client = boto3.client('ec2')
+    resp = ec2_client.describe_regions()
+    return [region['RegionName'] for region in resp.get('Regions', [])]
 
 
 def list_instances(regions=None, ec2_client=None):
@@ -241,6 +256,41 @@ def list_targetgroups_by_domains(regions=None, ec2_client=None):
     return targetgroups_by_domains
 
 
+def list_db_meta(log_location,
+                 db_names, start_at=None, ends_at=None, s3_client=None):
+    """
+    Returns a dictionnary `{db_name: {"db": []}` from a list of db_names.
+    """
+    if not log_location.endswith('/'):
+        log_location += '/'
+
+    if not s3_client:
+        s3_client = boto3.client('s3')
+    _, bucket_name, prefix = urlparse(log_location)[:3]
+    if prefix.startswith('/'):
+        prefix = prefix[1:]
+
+    backup = 'db'
+    search = {db_name: {backup: []} for db_name in db_names}
+    resp = s3_client.list_objects_v2(
+        Bucket=bucket_name,
+        Prefix=prefix)
+    continuation = (
+        resp['NextContinuationToken'] if resp['IsTruncated'] else None)
+    process_db_meta(resp.get('Contents', []), search,
+        start_at=start_at, ends_at=ends_at)
+    while continuation:
+        resp = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=prefix,
+            ContinuationToken=continuation)
+        continuation = (
+            resp['NextContinuationToken'] if resp['IsTruncated'] else None)
+        process_db_meta(resp.get('Contents', []), search,
+            start_at=start_at, ends_at=ends_at)
+    return search
+
+
 def process_db_meta(logmetas, search, start_at=None, ends_at=None):
     """
     This function will populate the search dictionnary with the instance
@@ -248,7 +298,7 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
 
     example search template:
     {
-      'cowork.djaoapp.com': {
+      'cowork': {
         'db': []
       }
     }
@@ -262,10 +312,11 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
         at_date = None
         # db backup files have the following name pattern:
         #   db_name.sql.gz
+        key_path = logmeta['Key']
         look = re.match(r'(?P<db_name>\S+)\.sql-(?P<instance_id>[^-]+)\.gz',
-            os.path.basename(logmeta['Key']))
+            os.path.basename(key_path))
         if look:
-            domain = look.group('db_name')
+            db_name = look.group('db_name')
             instance_id = look.group('instance_id')
             at_date = datetime_or_now(logmeta['LastModified'])
         if at_date:
@@ -274,15 +325,15 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                     if ends_at:
                         if at_date < ends_at:
                             try:
-                                search[domain][name] += [
-                                    (at_date, instance_id)]
+                                search[db_name][name] += [
+                                    (at_date, instance_id, key_path)]
                                 LOGGER.info("add  %s, %s, %s, %s" % (
-                                    domain, name, instance_id,
+                                    db_name, name, instance_id,
                                     at_date.isoformat()))
                             except KeyError:
                                 LOGGER.info(
-                                "skip %s, %s, %s, %s (on domain or dbname)" % (
-                                domain, name, instance_id,
+                                "skip %s, %s, %s, %s (on db_name or dbname)" % (
+                                db_name, name, instance_id,
                                 at_date.isoformat()))
                         else:
                             LOGGER.info(
@@ -291,15 +342,15 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                                 at_date.isoformat(), ends_at.isoformat()))
                     else:
                         try:
-                            search[domain][name] += [
-                                (at_date, instance_id)]
+                            search[db_name][name] += [
+                                (at_date, instance_id, key_path)]
                             LOGGER.info("add  %s, %s, %s, %s" % (
-                                domain, name, instance_id,
+                                db_name, name, instance_id,
                                 at_date.isoformat()))
                         except KeyError:
                             LOGGER.info(
-                            "skip %s, %s, %s, %s (on domain or dbname)" % (
-                            domain, name, instance_id,
+                            "skip %s, %s, %s, %s (on db_name or dbname)" % (
+                            db_name, name, instance_id,
                             at_date.isoformat()))
                 else:
                     LOGGER.info("skip %s, '%s' <= '%s' (on date)" % (
@@ -308,28 +359,29 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
             elif ends_at:
                 if at_date < ends_at:
                     try:
-                        search[domain][name] += [(at_date, instance_id)]
+                        search[db_name][name] += [(
+                            at_date, instance_id, key_path)]
                         LOGGER.info("add  %s, %s, %s, %s" % (
-                            domain, name, instance_id, at_date.isoformat()))
+                            db_name, name, instance_id, at_date.isoformat()))
                     except KeyError:
                         LOGGER.info(
-                            "skip %s, %s, %s, %s (on domain or dbname)" % (
-                            domain, name, instance_id, at_date.isoformat()))
+                            "skip %s, %s, %s, %s (on db_name or dbname)" % (
+                            db_name, name, instance_id, at_date.isoformat()))
                 else:
                     LOGGER.info("skip %s, '%s' < '%s' (on date)" % (
                         logmeta['Key'],
                         at_date.isoformat(), ends_at.isoformat()))
             else:
                 try:
-                    search[domain][name] += [(at_date, instance_id)]
+                    search[db_name][name] += [(at_date, instance_id, key_path)]
                     LOGGER.info("add  %s, %s, %s, %s" % (
-                        domain, name, instance_id, at_date.isoformat()))
+                        db_name, name, instance_id, at_date.isoformat()))
                 except KeyError:
                     LOGGER.info(
-                        "skip %s, %s, %s, %s (on domain or dbname)" % (
-                        domain, name, instance_id, at_date.isoformat()))
+                        "skip %s, %s, %s, %s (on db_name or dbname)" % (
+                        db_name, name, instance_id, at_date.isoformat()))
         else:
-            LOGGER.info("err  %s" % logmeta['Key'])
+            LOGGER.info("err  %s" % key_path)
 
 
 def process_log_meta(logmetas, search, start_at=None, ends_at=None):
@@ -428,15 +480,6 @@ def search_db_storage(log_location, domains,
 
         { domain: [db_name, ...] }
     """
-    if not log_location.endswith('/'):
-        log_location += '/'
-
-    if not s3_client:
-        s3_client = boto3.client('s3')
-    _, bucket_name, prefix = urlparse(log_location)[:3]
-    if prefix.startswith('/'):
-        prefix = prefix[1:]
-
     db_to_domains = {}
     for domain, db_names in six.iteritems(domains):
         for db_name in db_names:
@@ -445,24 +488,8 @@ def search_db_storage(log_location, domains,
             else:
                 db_to_domains[db_name] = [domain]
 
-    backup = 'db'
-    search = {db_name: {backup: []} for db_name in db_to_domains}
-    resp = s3_client.list_objects_v2(
-        Bucket=bucket_name,
-        Prefix=prefix)
-    continuation = (
-        resp['NextContinuationToken'] if resp['IsTruncated'] else None)
-    process_db_meta(resp.get('Contents', []), search,
-        start_at=start_at, ends_at=ends_at)
-    while continuation:
-        resp = s3_client.list_objects_v2(
-            Bucket=bucket_name,
-            Prefix=prefix,
-            ContinuationToken=continuation)
-        continuation = (
-            resp['NextContinuationToken'] if resp['IsTruncated'] else None)
-        process_db_meta(resp.get('Contents', []), search,
-            start_at=start_at, ends_at=ends_at)
+    search = list_db_meta(log_location,
+        db_to_domains, start_at=start_at, ends_at=ends_at, s3_client=s3_client)
 
     db_results = {}
     for domain, db_names in six.iteritems(domains):

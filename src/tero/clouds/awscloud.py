@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Djaodjin Inc.
+# Copyright (c) 2024, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -40,18 +40,17 @@ from six.moves.urllib.parse import urlparse
 
 from tero import shell_command
 from tero.setup.nginx import read_upstream_proxies
+from tero.clouds.monitor import APP_NAME, EC2_RUNNING, get_regions, list_db_meta
 
 
 LOGGER = logging.getLogger(__name__)
 
-APP_NAME = 'djaoapp'
 USES_DEPRECATED_DOCKER_VERSION = False
 BASH = '/bin/bash'
 NGINX = '/usr/sbin/nginx'
 
 
 EC2_PENDING = 'pending'
-EC2_RUNNING = 'running'
 EC2_SHUTTING_DOWN = 'shutting-down'
 EC2_TERMINATED = 'terminated'
 EC2_STOPPING = 'stopping'
@@ -506,16 +505,6 @@ def get_bucket_prefix(location):
     return bucket_name, prefix
 
 
-def get_regions(ec2_client=None):
-    """
-    Returns a list of names of regions available
-    """
-    if not ec2_client:
-        ec2_client = boto3.client('ec2')
-    resp = ec2_client.describe_regions()
-    return [region['RegionName'] for region in resp.get('Regions', [])]
-
-
 def is_aws_ecr(container_location):
     """
     return `True` if the container looks like it is stored in an AWS repository.
@@ -709,6 +698,107 @@ def create_cdn(tag_prefix, cdn_name=None, elb_domain=None,
     except botocore.exceptions.ClientError as err:
         LOGGER.error("CDN create_distribution raises error: %s", err)
         raise
+
+
+def create_cloudwatch_groups(tag_prefix, trail_name, storage_enckey=None,
+               s3_logs_bucket=None, region_name=None, dry_run=False):
+    """
+    Create log groups on CloudTrail
+    """
+    if not trail_name:
+        trail_name = "%s-trail" % tag_prefix
+    cloudwatch_logs_name = "%s-logs" % trail_name
+    logs_client = boto3.client('logs')
+    resp = logs_client.create_log_group(
+        logGroupName=cloudwatch_logs_name,
+        kmsKeyId=storage_enckey,
+        logGroupClass='STANDARD',
+        tags={'Prefix': tag_prefix})
+
+    # XXX Create SNS Topic
+    cloudwatch_logs_log_group_arn = resp['CloudWatchLogsLogGroupArn']
+    logs_client.put_metric_filter(
+        logGroupName=cloudwatch_logs_log_group_arn,
+        filterName="ConsoleSignInFailures",
+        filterPattern='{ ($.eventName = ConsoleLogin) && ($.errorMessage = "Failed authentication") }',
+        metricTransformations=[{
+            'metricName': 'ConsoleSigninFailureCount',
+            'metricNamespace': 'LoginEvents',
+            'metricValue': 1,
+            'unit': 'Count'
+        }])
+    resp = client.put_retention_policy(
+        logGroupName=cloudwatch_logs_log_group_arn,
+        retentionInDays=365
+    )
+    resp = cloudwatch_client.put_metric_alarm(
+        AlarmName='Console sign-in failures',
+        AlarmDescription='Raises alarms if more than 3 console sign-in failures occur in 5 minutes',
+        OKActions=[
+            'string',
+        ],
+        AlarmActions=[
+            sns_topic_arn,
+        ],
+        MetricName='ConsoleSigninFailureCount',
+        Namespace='CloudTrailMetrics',
+        Statistic='Sum',
+        ExtendedStatistic='string',
+        Period=300,
+        EvaluationPeriods=1,
+        Threshold=3,
+        ComparisonOperator='GreaterThanOrEqualToThreshold',
+        Tags=[{'Key': 'Prefix', 'Value': tag_prefix}])
+
+    if not iam_client:
+        iam_client = boto3.client('iam')
+    try:
+        cloudwatch_role = "CloudTrailRoleForCloudWatchLogs"
+        resp = iam_client.create_role(
+            RoleName=cloudwatch_role,
+            AssumeRolePolicyDocument=json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "",
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "ec2.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }))
+        cloudwatch_logs_role_arn = resp['CloudWatchLogsRoleArn']
+        iam_client.put_role_policy(
+            RoleName=gate_role,
+            PolicyName='WriteEventsToCloudwatchLogs',
+            PolicyDocument=json.dumps({
+                "Version": "2012-10-17",
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                "Resource": [
+                    "%s:log-stream:*" % cloudwatch_logs_log_group_arn
+                ]
+            }))
+    except botocore.exceptions.ClientError as err:
+        err_code = err.response.get('Error', {}).get('Code', 'Unknown')
+        if err_code != 'EntityAlreadyExists':
+            if err_code == 'AccessDenied':
+                # We don't have permissions to create the role. This might
+                # still be OK if the role already exists.
+                resp = iam_client.get_role(RoleName=cloudwatch_role)
+            else:
+                raise
+        LOGGER.info("%s found IAM role %s", tag_prefix, cloudwatch_role)
+
+    cloudtrail_client.update_trail(
+        Name=trail_name,
+        CloudWatchLogsLogGroupArn=cloudwatch_logs_log_group_arn,
+        CloudWatchLogsRoleArn=cloudwatch_logs_role_arn)
 
 
 def create_waf(tag_prefix, acl_name=None, elb_arn=None,
@@ -1005,7 +1095,7 @@ def create_gate_role(gate_name,
                 }]}))
         iam_client.put_role_policy(
             RoleName=gate_role,
-            PolicyName='WriteslogsToStorage',
+            PolicyName='WritesLogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [
@@ -1130,7 +1220,7 @@ def create_vault_role(vault_name,
             }))
         iam_client.put_role_policy(
             RoleName=vault_role,
-            PolicyName='WriteslogsToStorage',
+            PolicyName='WritesLogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -1214,11 +1304,18 @@ def create_logs_role(sg_name,
         }))
         iam_client.put_role_policy(
             RoleName=role_name,
-            PolicyName='WriteslogsToStorage',
+            PolicyName='WritesLogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
-                    # XXX We are uploading logs
+                    "Action": [
+                        "s3:ListBucket"
+                    ],
+                    "Effect": "Allow",
+                    "Resource": [
+                        "arn:aws:s3:::%s" % s3_logs_bucket
+                    ]
+                }, {
                     "Action": [
                         "s3:PutObject"
                     ],
@@ -2176,11 +2273,26 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                 'sa-east-1': '507241528517'
             }
             elb_account_id = elb_account_ids_per_region[region_name]
+
+            # Configure CloudTrail to store events to s3_logs_bucket
+            trail_name = "%s-trail" % tag_prefix
+            cloudtrail_client = boto3.client('cloudtrail')
+            cloudtrail_client.create_trail(
+                Name=trail_name,
+                S3BucketName=s3_logs_bucket,
+                KmsKeyId=storage_enckey,
+                IncludeGlobalServiceEvents=True,
+                IsMultiRegionTrail=True,
+                EnableLogFileValidation=True,
+                TagsList=[
+                    {'Key': "Prefix", 'Value': tag_prefix}
+                ])
+
             s3_client.put_bucket_policy(
                 Bucket=s3_logs_bucket,
                 Policy=json.dumps({
                     "Version": "2008-10-17",
-                    "Id": "WriteLogs",
+                    "Id": "WritesLogsToStorage",
                     "Statement": [{
                         # billing reports
                         "Effect": "Allow",
@@ -2228,7 +2340,42 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                         },
                         "Action": "s3:GetBucketAcl",
                         "Resource": "arn:aws:s3:::%s" % s3_logs_bucket
-                    }]
+                    },
+                    # CloudTrail
+                    {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "logging.s3.amazonaws.com"
+                        },
+                        "Action": "s3:PutObject",
+                        "Resource": "arn:aws:s3:::%s/*" % s3_logs_bucket
+                    }, {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "cloudtrail.amazonaws.com"
+                        },
+                        "Action": "s3:GetBucketAcl",
+                        "Resource": "arn:aws:s3:::%s" % s3_logs_bucket,
+                        "Condition": {
+                            "StringEquals": {
+                                "AWS:SourceArn": "arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
+                            }
+                        }
+                    }, {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "cloudtrail.amazonaws.com"
+                        },
+                        "Action": "s3:PutObject",
+                        "Resource": "arn:aws:s3:::%s/AWSLogs/%s/*" % (s3_logs_bucket, aws_account_id),
+                        "Condition": {
+                            "StringEquals": {
+                                "s3:x-amz-acl": "bucket-owner-full-control",
+                                "AWS:SourceArn": "arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
+                            }
+                        }
+                    }
+                ]
                 }))
 
     if s3_uploads_bucket:
@@ -2488,6 +2635,7 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
                       db_host=None,
                       db_master_user=None, db_master_password=None,
                       db_user=None, db_password=None,
+                      db_names=None,
                       identities_url=None,
                       s3_logs_bucket=None, s3_identities_bucket=None,
                       image_name=None, ssh_key_name=None,
@@ -2510,14 +2658,7 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
     `db_master_user` and `db_master_password` are to connect to RDS. When
     postgresql is installed on a bare instance, the master user is "postgres".
     """
-    instance_type = 'm3.medium'
-    sg_tag_prefix = tag_prefix
-
     LOGGER.info("Provisions datastores ...")
-    if not app_name:
-        app_name = '%s-dbs' % tag_prefix if tag_prefix else "dbs"
-    if not db_user:
-        db_user = tag_prefix
     if not db_host:
         db_host = '%s.%s.internal' % (app_name, region_name)
     if not identities_url:
@@ -2525,6 +2666,32 @@ def create_datastores(region_name, vpc_cidr, tag_prefix,
             s3_identities_bucket = '%s-identities' % tag_prefix
         identities_url = "s3://%s/identities/%s/%s" % (
             s3_identities_bucket, region_name, db_host)
+
+    if db_names:
+        search = list_db_meta(
+            "s3://%s/var/migrate/pgsql/dumps" % s3_logs_bucket, db_names)
+        _, s3_identities_bucket, restore_prefix = urlparse(identities_url)[:3]
+        restore_prefix = restore_prefix.strip('/')
+
+        s3 = boto3.resource('s3')
+        for db_name, backups in search.items():
+            backup_key = backups['db'][0][2]
+            backup_url = "s3://%s/%s" % (s3_logs_bucket, backup_key)
+            restore_key = "%s/%s.sql.gz" % (restore_prefix, db_name)
+            restore_url = "s3://%s/%s" % (s3_identities_bucket, restore_key)
+            LOGGER.info("copy %s to %s ...", backup_url, restore_url)
+            s3.meta.client.copy({'Bucket': s3_logs_bucket, 'Key': backup_key},
+                s3_identities_bucket, restore_key)
+
+    return
+
+    instance_type = 'm3.medium'
+    sg_tag_prefix = tag_prefix
+
+    if not app_name:
+        app_name = '%s-dbs' % tag_prefix if tag_prefix else "dbs"
+    if not db_user:
+        db_user = tag_prefix
 
     # XXX same vault_name as in `create_network`
     vault_name = _get_security_group_names(
@@ -3310,7 +3477,7 @@ def create_app_resources(region_name, app_name, image_name,
             if s3_logs_bucket:
                 iam_client.put_role_policy(
                     RoleName=app_role,
-                    PolicyName='WriteslogsToStorage',
+                    PolicyName='WritesLogsToStorage',
                     PolicyDocument=json.dumps({
                         "Version": "2012-10-17",
                         "Statement": [{
@@ -4256,6 +4423,8 @@ def run_config(config_name, create_ami=False, local_docker=False,
                         tag_prefix=tag_prefix)
 
         elif app_name.startswith('dbs-'):
+            db_names = [db_name.strip()
+                for db_name in config[app_name].get('db_names', "").split(',')]
             create_datastores(
                 region_name,
                 config['default']['vpc_cidr'],
@@ -4268,6 +4437,7 @@ def run_config(config_name, create_ami=False, local_docker=False,
                 db_master_password=config[app_name].get('db_master_password'),
                 db_user=config[app_name].get('db_user'),
                 db_password=config[app_name].get('db_password'),
+                db_names=db_names,
                 identities_url=config[app_name].get('identities_url'),
                 s3_logs_bucket=config[app_name].get(
                     's3_logs_bucket',

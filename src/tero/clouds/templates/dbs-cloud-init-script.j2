@@ -1,10 +1,11 @@
 #!/bin/bash
 #
-# databases machine
+# Configure a databases instance after boot-up
 
 set -x
 set -e
 
+siteTop=/usr/local
 OWNER=ec2-user
 INSTALL_PACKAGES=/usr/bin/dnf
 
@@ -44,23 +45,9 @@ fi
 
 [ -f /usr/bin/aws ] || $INSTALL_PACKAGES -y install awscli
 [ -f /usr/bin/bzip2 ] || $INSTALL_PACKAGES -y install bzip2
+[ -f /usr/bin/git ] || $INSTALL_PACKAGES -y install git-core
 [ -f /usr/bin/make ] || $INSTALL_PACKAGES -y install make
-
-# download keys, certificates, etc.
-/usr/bin/aws s3 cp {{identities_url}} / --recursive
-
-# defaults to downloading drop so we can install the webfront.xml profile.
-siteTop=${HOME}/workspace
-if [ ! -f ${siteTop}/bin/dservices ]; then
-    /usr/bin/mkdir -p ${siteTop}/reps
-    $VIRTUALENV_RUN ${siteTop}
-    echo "installTop=${siteTop}" > ${siteTop}/dws.mk
-    /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
-    pushd ${siteTop}/reps/drop
-    ${siteTop}/bin/pip install -r requirements.txt
-    make install
-    popd
-fi
+[ -f /usr/bin/rsync ] || $INSTALL_PACKAGES -y install rsync
 
 # Mount encrypted volume as /var after copying previous content over.
 if [ -e /dev/xvdf -a ! -d /var.old ] ; then
@@ -78,19 +65,23 @@ else
    echo "install databases storage on primary volume."
 fi
 
-# Install identities
+# download keys, certificates, etc.
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
 
-# Clone configuration scripts repository and setup the machine.
+# defaults to downloading drop so we can install the databases.xml profile.
 VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
-mkdir -p ${siteTop}/reps
-${VIRTUALENV_RUN} ${siteTop}
-cd ${siteTop}
-git clone {{remote_drop_repo}} reps/drop
-bin/pip install -r reps/drop/requirements.txt
-pushd reps/drop/src
-../../../bin/python setup.py --quiet build -b ../../../build install --prefix=${siteTop}
-popd
+if [ ! -f ${siteTop}/bin/dservices ]; then
+    /usr/bin/mkdir -p ${siteTop}/reps
+    $VIRTUALENV_RUN ${siteTop}
+    echo "installTop=${siteTop}" > ${siteTop}/dws.mk
+    /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
+    pushd ${siteTop}/reps/drop/src
+    ${siteTop}/bin/python3 -m pip install --upgrade pip
+    ${siteTop}/bin/pip install -r ../requirements.txt
+    ${siteTop}/bin/pip install .
+    popd
+fi
+
 DB_PASSWORD='{{db_password}}'
 DB_MASTER_PASSWORD='{{db_master_password}}'
 ${siteTop}/bin/dservices -Dadmin=$USER -DetcDir=/etc -DlogsBucket={{s3_logs_bucket}} -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}"{% if ldap_hashed_password %} -DldapPasswordHash="{{ldap_hashed_password}}"{% endif %} -Dvpc_cidr="{{vpc_cidr}}" reps/drop/share/profiles/databases.xml

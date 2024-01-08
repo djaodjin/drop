@@ -71,7 +71,7 @@ class sssdSetup(SetupTemplate):
             new_config.write("""[sssd]
 config_file_version = 2
 reconnection_retries = 3
-services = nss, pam, sudo
+services = nss, pam, ssh, sudo
 # SSSD will not start if you do not configure any domains.
 # Add new domain configurations as [domain/] sections, and
 # then add the list of domains (in the order you want them to be
@@ -125,6 +125,7 @@ ldap_group_object_class = posixGroup
 ldap_group_search_base = ou=groups,dc=%(domainNat)s,dc=%(domainTop)s
 ldap_group_name = cn
 ldap_group_member = memberUid
+ldap_user_ssh_public_key = sshPublicKey
 """ % names)
 
         postinst.shell_command(['chmod', '600', sssd_conf])

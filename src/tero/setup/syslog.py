@@ -111,7 +111,9 @@ allow logrotate_t syslogd_t:fifo_file { getattr read ioctl };
         logsLocation = context.value('logsLocation')
         lastaction_commands = [
             'LOGS=$1\n',
-            'LOG_SUFFIX=`curl -s http://instance-data/latest/meta-data/instance-id | sed -e s/i-/-/`\n',
+            # IMDSv2
+            'TOKEN=`curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`\n',
+            'LOG_SUFFIX=`curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id | sed -e s/i-/-/`\n',
             '/usr/local/bin/dcopylogs --quiet --location %s --logsuffix=$LOG_SUFFIX $LOGS\n' % logsLocation
         ]
         syslog_logrotate_conf = os.path.join(

@@ -9,7 +9,8 @@ Deploy and configure packages for running SQL databases.
       <personname>Sebastien Mirolo</personname>
       <email>smirolo@djaodjin.com</email>
     </maintainer>
-    <package name="RedHat">
+    <package name="Amazon">
+      <!-- Configuration for AL2023 -->
       <variable name="dbHost">
         <description>Hostname for the pgsql server</description>
       </variable>
@@ -49,11 +50,8 @@ Deploy and configure packages for running SQL databases.
         <bin>sssd</bin>
       </dep>
       <!-- monitoring -->
-      <dep name="syslog-ng">
-        <bin>syslog-ng</bin>
-      </dep>
-      <dep name="syslog-ng-libdbi">
-        <lib>dbi</lib>
+      <dep name="amazon-cloudwatch-agent">
+        <bin>amazon-cloudwatch-agent-ctl</bin>
       </dep>
       <dep name="ssmtp">
         <bin>ssmtp</bin>
@@ -65,9 +63,6 @@ Deploy and configure packages for running SQL databases.
       </dep>
       <dep name="policycoreutils-python-utils">
         <bin>semodule_package</bin>
-      </dep>
-      <dep name="fail2ban">
-        <bin>fail2ban-client</bin>
       </dep>
       <!-- XXX Client tools so we can debug installation. -->
       <dep name="postgresql">

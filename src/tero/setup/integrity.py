@@ -212,8 +212,8 @@ def check_permissions(paths, owner, group, mode):
 
 def check_systemd_services():
     services = []
-    output_lines = tero.shell_command(
-        '/usr/bin/systemctl list-unit-files', pat=r'.*')
+    output_lines = tero.shell_command([
+        '/usr/bin/systemctl', 'list-unit-files'], pat=r'.*')
     for line in output_lines:
         look = re.match(r'(.*)\.service\S+enabled', line)
         if look:

@@ -136,6 +136,11 @@ COMMIT
 """ % {'local6_filter_rules': local6_filter_rules})
 
         # Create ifup-local script to load iptables rules
+        # called from `/etc/sysconfig/network-scripts/ifup-post`, or
+        # a script in `/etc/NetworkManager/dispatcher.d/`.
+        #
+        # For AmazonLinux2023, we need to create a systemd service
+        # to run that script. See below.
         _, new_ifup_local = stage_file(
             '/usr/sbin/ifup-local', context=context)
         with open(new_ifup_local, 'w') as conf:
@@ -150,5 +155,21 @@ sed -i "/^.*  *%(domain)s/{h;s/.* /${IPADDR}/};\${x;/^\$/{s//${IPADDR} %(domain)
         os.chmod(new_ifup_local, stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR
             |stat.S_IRGRP|stat.S_IXGRP|stat.S_IROTH|stat.S_IXOTH)
         postinst.shell_command(['/usr/sbin/ifup-local'])
+
+        # https://docs.aws.amazon.com/linux/al2023/ug/networking-service.html
+        _, new_ifup_local = stage_file(
+            '/etc/systemd/system/ifup-local.service', context=context)
+        with open(new_ifup_local, 'w') as conf:
+            conf.write(r"""[Unit]
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/sbin/ifup-local
+
+[Install]
+WantedBy=multi-user.target
+""")
+        postinst.service_enable('ifup-local')
 
         return complete

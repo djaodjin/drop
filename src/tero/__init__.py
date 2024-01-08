@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2024, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -48,7 +48,7 @@ from __future__ import unicode_literals
 #
 # Requires Python 2.7 or above.
 
-__version__ = '1.0.0'
+__version__ = '1.0.1-dev'
 
 import datetime, getpass, hashlib, inspect, json, locale
 import logging, logging.config

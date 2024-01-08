@@ -114,7 +114,7 @@ class openssh_serverSetup(SetupTemplate):
 if [ "$1" == "%(user)s" ] ; then
     exit 1
 fi
-exec /usr/libexec/openssh/ssh-ldap-helper -s "$1"
+exec /usr/bin/sss_ssh_authorizedkeys -s "$1"
 """ % {
     'user': "ec2-user" if context.host() == 'Amazon' else context.host().lower()
 })

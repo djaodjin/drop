@@ -32,9 +32,6 @@ Name of the machine hosting the LDAP server.
       <dep name="sssd">
         <bin>sssd</bin>
       </dep>
-      <dep name="openssh-ldap">
-        <libexec>.*/(openssh)/ssh-ldap-helper</libexec>
-      </dep>
       <dep name="openssh-server">
         <bin>sshd</bin>
         <extra name="/etc/ssh/sshd_config">
@@ -56,19 +53,6 @@ Name of the machine hosting the LDAP server.
         <bin>ldapsearch</bin>
       </dep>
       <!-- monitoring -->
-      <dep name="syslog-ng">
-        <bin>syslog-ng</bin>
-      </dep>
-      <dep name="syslog-ng-libdbi">
-        <lib>dbi</lib>
-      </dep>
-      <dep name="policycoreutils-python-utils">
-        <!-- because we need to build a SELinux policy for syslog-ng -->
-        <bin>semodule_package</bin>
-      </dep>
-      <dep name="fail2ban">
-        <bin>fail2ban-client</bin>
-      </dep>
       <dep name="ssmtp">
         <bin>ssmtp</bin>
       </dep>
