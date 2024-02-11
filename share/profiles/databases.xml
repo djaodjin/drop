@@ -60,6 +60,10 @@ Deploy and configure packages for running SQL databases.
       <dep name="ssmtp">
         <bin>ssmtp</bin>
       </dep>
+      <dep name="anacron">
+        <!-- running scheduled backups -->
+        <bin>crond</bin>
+      </dep>
       <!-- XXX Client tools so we can debug installation. -->
       <dep name="openldap-clients">
         <bin>ldapadd</bin>

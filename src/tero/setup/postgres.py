@@ -63,10 +63,10 @@ class postgresql_serverSetup(SetupTemplate):
 
         "sudo -u postgres psql -U postgres -qAt -c 'select datname from"\
         " pg_database where datallowconn' | xargs -r -I X sudo -u postgres"\
-        " %(pg_dump)s -U postgres -C -f /var/backups/pgsql/X.sql$LOG_SUFFIX X" %
+        " %(pg_dump)s -U postgres -C -f /var/migrate/pgsql/dumps/X.sql$LOG_SUFFIX X" %
             {'pg_dump': pg_dump},
 
-        "chmod 600 /var/backups/pgsql/*.sql",
+        "chmod 600 /var/migrate/pgsql/dumps/*.sql",
 
     'sudo -u postgres sh -c "gzip /var/migrate/pgsql/dumps/*.sql$LOG_SUFFIX"',
 
@@ -103,7 +103,7 @@ class postgresql_serverSetup(SetupTemplate):
         _, new_conf_path = stage_file(os.path.join(
             context.value('etcDir'), 'logrotate.d', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
-            new_conf.write("""/var/backups/pgsql/*.sql
+            new_conf.write("""/var/migrate/pgsql/dumps/*.sql
 {
     create 0600 root root
     daily
@@ -322,8 +322,8 @@ class postgresqlSetup(SetupTemplate):
     'psql -e "GRANT ALL ON %s.* TO \'%s\'@\'localhost\' IDENTIFIED BY \'%s\'"'
              % (db_name, db_user, db_password))
         cron_add_entry('pg_backup_%(db_name)s' % {'db_name': db_name},
-'pg_dump -U postgres -C -f /var/backups/pgsql/%(db_name)s.sql %(db_name)s'\
-' && chmod 600 /var/backups/pgsql/%(db_name)s.sql' % {'db_name': db_name},
+'pg_dump -U postgres -C -f /var/migrate/pgsql/dumps/%(db_name)s.sql %(db_name)s'\
+' && chmod 600 /var/migrate/pgsql/dumps/%(db_name)s.sql' % {'db_name': db_name},
         context=context)
 
     def run(self, context):

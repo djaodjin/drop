@@ -5190,7 +5190,10 @@ def build_subcommands_parser(parser, module):
             func = module.__dict__[command]
             parser = subparsers.add_parser(command[4:], help=func.__doc__)
             parser.set_defaults(func=func)
-            argspec = inspect.getargspec(func)
+            try:
+                argspec = inspect.getfullargspec(func)
+            except AttributeError: # Python 3.11 removed `getargspec`
+                argspec = inspect.getargspec(func)
             flags = len(argspec.args)
             if argspec.defaults:
                 flags = len(argspec.args) - len(argspec.defaults)
@@ -5223,7 +5226,10 @@ def filter_subcommand_args(func, options):
     '''Filter out all options which are not part of the function *func*
     prototype and returns a set that can be used as kwargs for calling func.'''
     kwargs = {}
-    argspec = inspect.getargspec(func)
+    try:
+        argspec = inspect.getfullargspec(func)
+    except AttributeError: # Python 3.11 removed `getargspec`
+        argspec = inspect.getargspec(func)
     for arg in argspec.args:
         if arg in options:
             kwargs.update({arg: getattr(options, arg)})
