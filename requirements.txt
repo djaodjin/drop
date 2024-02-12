@@ -1,7 +1,5 @@
 ansible==2.9.20            # mostly for duploades (ElasticSearch) at this point
-awscli==1.32.18
 boto3==1.34.40             # clouds deploy and logs management
-docutils==0.20.1           # To prevent awscli to install an old version
 Fabric3==1.14.post1        # vmware.py and driver.py
 paramiko==2.12.0           # drundocker.py
 pyasn1_modules==0.2.5      # awscloud.py

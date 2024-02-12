@@ -20,7 +20,6 @@ classifiers = [
   "License :: OSI Approved :: BSD License"
 ]
 dependencies = [
-  "awscli>=1.31.5",
   "boto3>=1.33.5",
   "paramiko>=2.12.0",
   "pyasn1_modules>=0.2.5",
