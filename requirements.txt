@@ -16,3 +16,7 @@ urllib3==1.26.12
 # prerequisites with native code
 # cryptography
 # cysystemd==1.5.4
+
+# development
+Sphinx==7.2.6
+sphinxcontrib-httpdomain==1.8.1
