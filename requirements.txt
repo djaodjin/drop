@@ -18,5 +18,7 @@ urllib3==1.26.12
 # cysystemd==1.5.4
 
 # development
-Sphinx==7.2.6
+Sphinx== 7.2.6
+sphinx_rtd_theme==2.0.0
 sphinxcontrib-httpdomain==1.8.1
+sphinxcontrib-websupport==1.2.7
