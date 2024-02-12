@@ -11,6 +11,5 @@ Contents:
 .. toctree::
    :maxdepth: 1
 
+   clouds
    tutorials
-   cloud
-   apps
