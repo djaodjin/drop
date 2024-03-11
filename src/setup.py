@@ -57,6 +57,7 @@ setup(name='drop',
         'scripts/dlogwatch',
         # Scripts to configure cloud infrastructure and OS distributions
         'scripts/dcloud',
+        'scripts/dcloud-ami',
         'scripts/dservices',
         'scripts/dsettings',
         # Scripts to monitor development work and operations

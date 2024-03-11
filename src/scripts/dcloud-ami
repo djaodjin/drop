@@ -26,5 +26,5 @@
 
 if __name__ == '__main__':
     import sys
-    from tero.clouds.awscloud import cli_main
-    cli_main(sys.argv)
+    from tero.clouds.awscloud import cli_main_ami
+    cli_main_ami(sys.argv)

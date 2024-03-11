@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Configure a sally instance after boot-up
+# Configures a sally instance after initial boot-up
 
 set -x
 set -e
@@ -50,9 +50,31 @@ fi
 [ -f /usr/bin/rsync ] || $INSTALL_PACKAGES -y install rsync
 
 # download keys, certificates, etc.
+{% if identities_url %}
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
+{% endif %}
 
-# defaults to downloading drop so we can install the sally.xml profile.
+
+# recreates links for TLS certificates
+for domain in `ls /etc/pki/tls/certs/archive` ; do
+  chmod 600 /etc/pki/tls/certs/archive/$domain/privkey.pem
+  mkdir -p /etc/pki/tls/certs/live/$domain
+  pushd /etc/pki/tls/certs/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain.pem
+done
+for domain in `ls /etc/letsencrypt/archive` ; do
+  chmod 600 /etc/letsencrypt/archive/$domain/privkey.pem
+  mkdir -p /etc/letsencrypt/live/$domain
+  pushd /etc/letsencrypt/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey1.pem privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain1.pem fullchain.pem
+  [ -e cert.pem ] || ln -s ../../archive/$domain/cert1.pem cert.pem
+  [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
+done
+
+
+# defaults to downloading drop so we can install the instance profiles.
 VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 if [ ! -f ${siteTop}/bin/dservices ]; then
     /usr/bin/mkdir -p ${siteTop}/reps
@@ -64,10 +86,14 @@ if [ ! -f ${siteTop}/bin/dservices ]; then
     ${siteTop}/bin/pip install -r ../requirements.txt
     ${siteTop}/bin/pip install .
     popd
+    # Insures dcopylogs can upload the logs to S3
+    setsebool -P nis_enabled 1
 fi
 
 cd ${siteTop}
-${siteTop}/bin/dservices -DetcDir=/etc -DsshPort={{ssh_port}} -DlogsLocation={{logs_storage_location}}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %} ${siteTop}/reps/drop/share/profiles/sally.xml
+{% if profiles %}
+${siteTop}/bin/dservices -DetcDir=/etc -DsshPort={{ssh_port}} -DlogsLocation={{logs_storage_location}}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+{% endif %}
 
 # disable what we don't need
 if [ "$(grep "CentOS" /etc/system-release)" != "" ]; then

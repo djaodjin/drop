@@ -68,25 +68,11 @@ Name of the machine hosting the LDAP server.
         <bin>ldapsearch</bin>
       </dep>
       <!-- monitoring -->
-      <dep name="syslog-ng">
-        <bin>syslog-ng</bin>
-        <extra name="/var/log/docker">
-        </extra>
-      </dep>
-      <dep name="syslog-ng-libdbi">
-        <lib>dbi</lib>
-      </dep>
       <dep name="logrotate">
         <bin>logrotate</bin>
       </dep>
       <dep name="procps-ng">
         <bin>pgrep</bin>
-      </dep>
-      <dep name="fail2ban">
-        <bin>fail2ban-client</bin>
-      </dep>
-      <dep name="monit">
-        <bin>monit</bin>
       </dep>
       <dep name="ssmtp">
         <bin>ssmtp</bin>
@@ -137,14 +123,28 @@ Name of the machine hosting the LDAP server.
       <dep name="dejavu-lgc-sans-mono-fonts">
         <share>fonts/dejavu/DejaVuLGCSansMono.ttf</share>
       </dep>
-      <!-- because we use this profile for jenkins workers -->
-      <dep name="java-1.8.0-openjdk-headless">
-        <bin>java</bin>
-      </dep>
       <dep name="jq">
         <!-- command-line JSON parser that is useful
              to process aws cli output. -->
         <bin>jq</bin>
+      </dep>
+    </package>
+    <package name="AmazonLinux2">
+      <!-- These packages are in EPEL
+           which is not available on AmazonLinux2023 -->
+      <dep name="syslog-ng">
+        <bin>syslog-ng</bin>
+        <extra name="/var/log/docker">
+        </extra>
+      </dep>
+      <dep name="syslog-ng-libdbi">
+        <lib>dbi</lib>
+      </dep>
+      <dep name="fail2ban">
+        <bin>fail2ban-client</bin>
+      </dep>
+      <dep name="monit">
+        <bin>monit</bin>
       </dep>
       <dep name="sqlite3-django22" excludes="3.7.17">
         <!-- because Django2.2 requires at least version 3.8 of sqlite3 -->
@@ -266,10 +266,6 @@ Name of the machine hosting the LDAP server.
       <dep name="dejavu-lgc-sans-mono-fonts">
         <share>fonts/extras/dejavu-lgc-sans-mono-fonts.ttf</share>
       </dep>
-      <!-- because we use this profile for jenkins workers -->
-      <dep name="java-1.8.0-openjdk-headless">
-        <bin>java</bin>
-      </dep>
       <dep name="jq">
         <!-- command-line JSON parser that is useful
              to process aws cli output. -->
@@ -278,7 +274,7 @@ Name of the machine hosting the LDAP server.
     </package>
   </project>
   <project name="sqlite3-django22">
-    <package name="RedHat">
+    <package name="AmazonLinux2">
       <fetch>
         <url>https://www.djaodjin.com/pub/redhat/linux/updates/7/x86_64/sqlite-3.24.0-8.el7.1.x86_64.rpm</url>
         <sha1>22ba7b8f4b0cf7d026bdfe73b6558da1e429e04d</sha1>

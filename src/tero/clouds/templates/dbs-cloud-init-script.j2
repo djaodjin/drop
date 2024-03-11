@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Configure a databases instance after boot-up
+# Configures a databases instance after initial boot-up
 
 set -x
 set -e
@@ -66,9 +66,31 @@ else
 fi
 
 # download keys, certificates, etc.
+{% if identities_url %}
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
+{% endif %}
 
-# defaults to downloading drop so we can install the databases.xml profile.
+
+# recreates links for TLS certificates
+for domain in `ls /etc/pki/tls/certs/archive` ; do
+  chmod 600 /etc/pki/tls/certs/archive/$domain/privkey.pem
+  mkdir -p /etc/pki/tls/certs/live/$domain
+  pushd /etc/pki/tls/certs/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain.pem
+done
+for domain in `ls /etc/letsencrypt/archive` ; do
+  chmod 600 /etc/letsencrypt/archive/$domain/privkey.pem
+  mkdir -p /etc/letsencrypt/live/$domain
+  pushd /etc/letsencrypt/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey1.pem privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain1.pem fullchain.pem
+  [ -e cert.pem ] || ln -s ../../archive/$domain/cert1.pem cert.pem
+  [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
+done
+
+
+# defaults to downloading drop so we can install the instance profiles.
 VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 if [ ! -f ${siteTop}/bin/dservices ]; then
     /usr/bin/mkdir -p ${siteTop}/reps
@@ -80,12 +102,16 @@ if [ ! -f ${siteTop}/bin/dservices ]; then
     ${siteTop}/bin/pip install -r ../requirements.txt
     ${siteTop}/bin/pip install .
     popd
+    # Insures dcopylogs can upload the logs to S3
+    setsebool -P nis_enabled 1
 fi
 
 cd ${siteTop}
 DB_PASSWORD='{{db_password}}'
 DB_MASTER_PASSWORD='{{db_master_password}}'
-${siteTop}/bin/dservices -Dadmin=$USER -DetcDir=/etc -DlogsBucket={{s3_logs_bucket}} -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}"{% if ldap_hashed_password %} -DldapPasswordHash="{{ldap_hashed_password}}"{% endif %} -Dvpc_cidr="{{vpc_cidr}}" reps/drop/share/profiles/databases.xml
+{% if profiles %}
+${siteTop}/bin/dservices -Dadmin=$USER -DetcDir=/etc -DlogsBucket={{s3_logs_bucket}} -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}"{% if ldap_hashed_password %} -DldapPasswordHash="{{ldap_hashed_password}}"{% endif %} -Dvpc_cidr="{{vpc_cidr}}"{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+{% endif %}
 
 # Restore SQL databases from flat files
 PSQL="sudo -u postgres /usr/bin/psql"

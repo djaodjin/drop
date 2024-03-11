@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Configures a webfront instance.
+# Configures a webfront instance after boot-up
 
 set -x
 set -e
@@ -46,15 +46,20 @@ fi
 
 [ -f /usr/bin/aws ] || $INSTALL_PACKAGES -y install awscli
 [ -f /usr/bin/bzip2 ] || $INSTALL_PACKAGES -y install bzip2
+[ -f /usr/bin/git ] || $INSTALL_PACKAGES -y install git-core
 [ -f /usr/bin/make ] || $INSTALL_PACKAGES -y install make
+[ -f /usr/bin/rsync ] || $INSTALL_PACKAGES -y install rsync
 [ -f /usr/sbin/semanage ] || $INSTALL_PACKAGES -y install policycoreutils-python-utils
-
-# download keys, certificates, etc.
-/usr/bin/aws s3 cp {{identities_url}} / --recursive
 
 # update required ownership
 [ $(/usr/bin/getent group $USER) ] || /usr/sbin/groupadd --gid 1001 $USER
 [ $(/usr/bin/getent passwd $USER) ] || /usr/sbin/useradd --no-create-home --uid 1001 --gid 1001 $USER
+
+# download keys, certificates, etc.
+{% if identities_url %}
+/usr/bin/aws s3 cp {{identities_url}} / --recursive
+{% endif %}
+
 # recreates links for TLS certificates
 for domain in `ls /etc/pki/tls/certs/archive` ; do
   chmod 600 /etc/pki/tls/certs/archive/$domain/privkey.pem
@@ -73,11 +78,34 @@ for domain in `ls /etc/letsencrypt/archive` ; do
   [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
 done
 
-siteTop=${rootDir}/djaoapp
-cd $rootDir
-shopt -s nullglob
-packages=$(echo "*.tar.gz *.tar.bz2")
+# defaults to downloading drop so we can install the instance profiles.
+siteTop=/usr/local
 VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
+if [ ! -f ${siteTop}/bin/dservices ]; then
+    /usr/bin/mkdir -p ${siteTop}/reps
+    $VIRTUALENV_RUN ${siteTop}
+    echo "installTop=${siteTop}" > ${siteTop}/dws.mk
+    /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
+    pushd ${siteTop}/reps/drop/src
+    ${siteTop}/bin/python3 -m pip install --upgrade pip
+    ${siteTop}/bin/pip install -r ../requirements.txt
+    ${siteTop}/bin/pip install .
+    popd
+    # Insures dcopylogs can upload the logs to S3
+    setsebool -P nis_enabled 1
+fi
+
+cd $siteTop
+{% if profiles %}
+${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocation={{logs_storage_location}}{% endif %}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+{% endif %}
+
+
+# Installs packages that were downloaded from the identity URL.
+siteTop=$rootDir/djaoapp
+cd $rootDir
+packages=$(ls "*.tar.gz *.tar.bz2" 2>/dev/null || true)
+# defaults to downloading drop so we can install the instance profiles.
 if [ "X$packages" != "X" ] ; then
     for package in ${packages} ; do
         dirname=${package%%.*}
@@ -98,41 +126,16 @@ if [ "X$packages" != "X" ] ; then
         echo "installTop=$installTop" > $dirname/dws.mk
         echo "srcTop=$installTop/reps" >> $dirname/dws.mk
         echo "remoteIndex=$installTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
-        pushd $installTop/reps/drop
-        /usr/bin/make install
-        cd $installTop/reps/$dirname
+        pushd $installTop/reps/$dirname
         ../../bin/dws --default make recurse
         ../../bin/dws --default make install
         popd
         /usr/bin/chown -R ${OWNER}:${OWNER} "$dirname"
         rm ${package}
     done
-else
-    # defaults to downloading drop so we can install the webfront.xml profile.
-    if [ ! -f ${siteTop}/bin/dservices ]; then
-        /usr/bin/mkdir -p ${siteTop}/reps
-        $VIRTUALENV_RUN ${siteTop}
-        /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
-    fi
-fi
 
-cd $siteTop
-${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocation={{logs_storage_location}}{% endif %}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} reps/drop/share/profiles/webfront.xml
-
-# Extra configuation to start up djagent and djaoapp
-if [ -d ${siteTop} ] ; then
-    # Install dcopylogs into /usr/local/bin
-    if [ ! -f /usr/local/bin/dcopylogs ]; then
-        mv ${siteTop}/dws.mk ${siteTop}/dws.disable
-        cd ${siteTop}/reps/drop
-        make install installTop=/usr/local PYTHON=/usr/bin/python3
-        mv ${siteTop}/dws.disable ${siteTop}/dws.mk
-        # Insures dcopylogs can upload the logs to S3
-        setsebool -P nis_enabled 1
-    fi
-
-    # Install djagent service
-    if [ ! -f /usr/lib/systemd/system/djagent.service ]; then
+    # Finish configuration of the local install for the djagent service
+    if [ -d ${siteTop}/reps/djagent ]; then
         cd ${siteTop}/reps/djagent
         ../../bin/pip install -r requirements.txt
         ../../bin/dws --default make install
@@ -144,10 +147,11 @@ if [ -d ${siteTop} ] ; then
         /usr/bin/cp ${siteTop}/etc/systemd/system/djagent.service /usr/lib/systemd/system
         ../../bin/dws --default make install-selinux
         /usr/bin/systemctl enable djagent
+        /usr/bin/systemctl restart djagent.service
     fi
 
-    # Install djaoapp service
-    if [ ! -f /usr/lib/systemd/system/djaoapp.service ]; then
+    # Finish configuration of the local install for the djaoapp service
+    if [ -d ${siteTop}/reps/djaoapp ]; then
         echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djaoapp
         echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djaoapp
         echo "LD_LIBRARY_PATH=/usr/local/lib64" >> ${siteTop}/etc/sysconfig/djaoapp
@@ -159,7 +163,10 @@ if [ -d ${siteTop} ] ; then
         /usr/bin/ln -s /var/log/gunicorn
         popd
         /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/htdocs/themes ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
-
+        # move the database where the config files have been configured with.
+        if [ -f ${siteTop}/reps/djaoapp/db.sqlite ]; then
+            /usr/bin/mv ${siteTop}/reps/djaoapp/db.sqlite ${siteTop}/var/db/djaodjin.sqlite
+        fi
         # We make sure the .pid file can be created by gunicorn and systemd
         # service can load.
         /usr/bin/chown ${USER}:${USER} ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run /var/log/gunicorn
@@ -171,17 +178,14 @@ if [ -d ${siteTop} ] ; then
 
         /usr/bin/cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
         /usr/bin/systemctl enable djaoapp
+        /usr/bin/systemctl restart djaoapp.service
     fi
-    # move the database where the config files have been configured with.
-    if [ -f ${siteTop}/reps/djaoapp/db.sqlite ]; then
-        /usr/bin/mv ${siteTop}/reps/djaoapp/db.sqlite ${siteTop}/var/db/djaodjin.sqlite
-    fi
+fi
 
-    # Configure nginx proxy
-    if [ ! -f /etc/nginx/conf.d/proxy_djaoapp.conf ]; then
-
-        # Rewrite nginx config file to avoid redirects loops because no https
-        /usr/bin/cat << EOF >> /etc/nginx/conf.d/proxy_djaoapp.conf
+# Configure nginx proxy
+if [ ! -f /etc/nginx/conf.d/proxy_djaoapp.conf ]; then
+    # Rewrite nginx config file to avoid redirects loops because no https
+    /usr/bin/cat << EOF >> /etc/nginx/conf.d/proxy_djaoapp.conf
     upstream proxy_djaoapp {
         server  127.0.0.1:8000;
     }
@@ -213,9 +217,11 @@ EOF
     }
 EOF
 
-        /usr/bin/cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
-        /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp/htdocs
-    fi
+    /usr/bin/cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
+    /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp/htdocs
+    # We will be waiting for this server to respond
+    # before it continues with registering the AMI.
+    /usr/bin/systemctl restart nginx.service
 fi
 
 # cron notifications
@@ -223,9 +229,3 @@ alternatives --set mta /usr/sbin/sendmail.ssmtp
 
 # restart services whose configuration has been altered
 /usr/bin/systemctl force-reload systemd-journald
-/usr/bin/systemctl restart djaoapp.service
-/usr/bin/systemctl restart djagent.service
-
-# We will be waiting for this server to respond
-# before it continues with registering the AMI.
-/usr/bin/systemctl restart nginx.service

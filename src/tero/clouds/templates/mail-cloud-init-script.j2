@@ -1,11 +1,12 @@
 #!/bin/bash
 #
-# Configure a mail instance after boot-up
+# Configures a mail instance after initial boot-up
 
 set -x
 set -e
 
 siteTop=/usr/local
+OWNER=ec2-user
 INSTALL_PACKAGES=/usr/bin/dnf
 
 # Install necessary public packages to bootstrap configuration
@@ -28,6 +29,7 @@ if [ "$(grep "Amazon Linux release 2 " /etc/system-release)" != "" ]; then
     [ -e /usr/lib64/python2.7/site-packages/selinux ] || $INSTALL_PACKAGES -y install libselinux-python
 fi
 if [ "$(grep "CentOS" /etc/system-release)" != "" ]; then
+    OWNER=centos
     INSTALL_PACKAGES=/usr/bin/yum
     if [ ! -f /usr/bin/python3 ]; then
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
@@ -40,28 +42,59 @@ if [ "$(grep "CentOS" /etc/system-release)" != "" ]; then
     /usr/bin/yum -y install python36 python36-libs python36-devel python36-pip python-boto3
     [ -e /usr/lib64/python2.7/site-packages/selinux ] || $INSTALL_PACKAGES -y install libselinux-python
 fi
-VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
+
+[ -f /usr/bin/aws ] || $INSTALL_PACKAGES -y install awscli
+[ -f /usr/bin/bzip2 ] || $INSTALL_PACKAGES -y install bzip2
+[ -f /usr/bin/git ] || $INSTALL_PACKAGES -y install git-core
+[ -f /usr/bin/make ] || $INSTALL_PACKAGES -y install make
+[ -f /usr/bin/rsync ] || $INSTALL_PACKAGES -y install rsync
 
 # download keys, certificates, etc.
 {% if identities_url %}
 /usr/bin/aws s3 cp {{identities_url}} / --recursive
 {% endif %}
 
-# defaults to downloading drop so we can install the mail.xml profile.
+
+# recreates links for TLS certificates
+for domain in `ls /etc/pki/tls/certs/archive` ; do
+  chmod 600 /etc/pki/tls/certs/archive/$domain/privkey.pem
+  mkdir -p /etc/pki/tls/certs/live/$domain
+  pushd /etc/pki/tls/certs/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain.pem
+done
+for domain in `ls /etc/letsencrypt/archive` ; do
+  chmod 600 /etc/letsencrypt/archive/$domain/privkey.pem
+  mkdir -p /etc/letsencrypt/live/$domain
+  pushd /etc/letsencrypt/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey1.pem privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain1.pem fullchain.pem
+  [ -e cert.pem ] || ln -s ../../archive/$domain/cert1.pem cert.pem
+  [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
+done
+
+
+# defaults to downloading drop so we can install the instance profiles.
+VIRTUALENV_RUN="/usr/bin/python3 -m venv --system-site-packages"
 if [ ! -f ${siteTop}/bin/dservices ]; then
     /usr/bin/mkdir -p ${siteTop}/reps
     $VIRTUALENV_RUN ${siteTop}
     echo "installTop=${siteTop}" > ${siteTop}/dws.mk
     /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
-    pushd ${siteTop}/reps/drop
-    ${siteTop}/bin/pip install -r requirements.txt
-    make install
+    pushd ${siteTop}/reps/drop/src
+    ${siteTop}/bin/python3 -m pip install --upgrade pip
+    ${siteTop}/bin/pip install -r ../requirements.txt
+    ${siteTop}/bin/pip install .
     popd
+    # Insures dcopylogs can upload the logs to S3
+    setsebool -P nis_enabled 1
 fi
 
 cd ${siteTop}
 LDAP_HASHED_PASSWORD='{{ldap_hashed_password}}'
-${siteTop}/bin/dservices -DetcDir=/etc -DlogsLocation={{logs_storage_location}} -DldapPasswordHash="$LDAP_HASHED_PASSWORD"{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %} ${siteTop}/reps/drop/share/profiles/mail.xml
+{% if profiles %}
+${siteTop}/bin/dservices -DetcDir=/etc -DlogsLocation={{logs_storage_location}} -DldapPasswordHash="$LDAP_HASHED_PASSWORD"{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+{% endif %}
 
 # disable what we don't need
 /usr/bin/systemctl stop rpcbind

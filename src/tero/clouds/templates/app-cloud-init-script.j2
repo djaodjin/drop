@@ -1,11 +1,34 @@
 #!/bin/bash
 #
-# Configuration of an app instance.
+# Configuration of an app instance (This requires a djaoapp AMI).
 
 set -x
 set -e
 
 sysconfigFile=/var/www/djaoapp/etc/sysconfig/djagent
+
+# download keys, certificates, etc.
+{% if identities_url %}
+/usr/bin/aws s3 cp {{identities_url}} / --recursive
+{% endif %}
+
+# recreates links for TLS certificates
+for domain in `ls /etc/pki/tls/certs/archive` ; do
+  chmod 600 /etc/pki/tls/certs/archive/$domain/privkey.pem
+  mkdir -p /etc/pki/tls/certs/live/$domain
+  pushd /etc/pki/tls/certs/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain.pem
+done
+for domain in `ls /etc/letsencrypt/archive` ; do
+  chmod 600 /etc/letsencrypt/archive/$domain/privkey.pem
+  mkdir -p /etc/letsencrypt/live/$domain
+  pushd /etc/letsencrypt/live/$domain
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey1.pem privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain1.pem fullchain.pem
+  [ -e cert.pem ] || ln -s ../../archive/$domain/cert1.pem cert.pem
+  [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
+done
 
 # Configures the agent
 echo "QUEUE_URL={{queue_url}}" > ${sysconfigFile}

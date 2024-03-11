@@ -33,7 +33,8 @@ dependencies = [
 [project.scripts]
 dauthcmd = "tero.dauthcmd:cli_main"
 #dbldpkg =
-#dcloud =
+dcloud = "tero.clouds.awscloud:cli_main"
+dcloud-ami = "tero.clouds.awscloud:cli_main_ami"
 #dcopylogs =
 #dintegrity =
 #dissues =
@@ -60,6 +61,7 @@ include = ["tero*"]
 
 [tool.setuptools.package-data]
 tero = [
+  'setup/*.tpl',
   'clouds/templates/*.j2',
 ]
 
