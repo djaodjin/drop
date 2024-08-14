@@ -229,7 +229,7 @@ class NginxLogParser(LogParser):
             '$request_time$upstream_response_time$pipe'
 
         var_regex = r'\$[a-z_]+'
-        ipv6_regex = r'(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}'
+        ipv6_regex = r'(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?:(?::[0-9a-fA-F]{1,4}){1,6})|:(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(?::[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(?:ffff(?::0{1,4}){0,1}:){0,1}(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])|(?:[0-9a-fA-F]{1,4}:){1,4}:(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])'
         ipv4_regex = r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'
         ip_num_regex = r'(?:%s)|(?:%s)' % (ipv4_regex, ipv6_regex)
 
@@ -533,9 +533,17 @@ def parse_logname(filename):
         host = look.group('host')
         log_name = look.group('log_name')
         instance_id = look.group('instance_id')
-        log_date = datetime.datetime.strptime(look.group('log_date'), '%Y%m%d')
-        if log_date.tzinfo is None:
-            log_date = log_date.replace(tzinfo=pytz.utc)
+        try:
+            log_date = datetime.datetime.strptime(
+                look.group('log_date'), '%Y%m%d')
+            if log_date.tzinfo is None:
+                log_date = log_date.replace(tzinfo=pytz.utc)
+        except ValueError:
+            # If we have an error parsing the date, it is very likely
+            # the `instance_id` was not added to the suffix and we parsed
+            # something else (maybe the `log_date`) as an `instance_id`.
+            instance_id = None
+            log_date = None
     return host, log_name, instance_id, log_date
 
 
