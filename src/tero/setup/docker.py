@@ -59,15 +59,18 @@ class dockerSetup(SetupTemplate):
 Description=%(description)s
 After=docker.target network.target remote-fs.target nss-lookup.target
 Requires=docker.service
+StartLimitIntervalSec=30
+StartLimitBurst=2
 
 [Service]
 TimeoutStartSec=0
-#Restart=always
+EnvironmentFile=-/etc/sysconfig/%(name)s
 ExecStartPre=-/usr/bin/docker stop %(name)s
 ExecStartPre=-/usr/bin/docker rm %(name)s
 ExecStartPre=/usr/bin/docker pull %(location)s
-ExecStart=/usr/bin/docker run --rm --name %(name)s -p %(port)s:80  %(location)s
+ExecStart=/usr/bin/docker run --rm --name %(name)s -p %(port)s:80 $DOCKER_RUN_OPTIONS %(location)s
 ExecStop=/usr/bin/docker stop %(name)s
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target

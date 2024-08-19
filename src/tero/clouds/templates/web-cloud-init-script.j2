@@ -102,7 +102,6 @@ ${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocat
 
 
 # Installs packages that were downloaded from the identity URL.
-siteTop=$rootDir/djaoapp
 cd $rootDir
 packages=$(ls "*.tar.gz *.tar.bz2" 2>/dev/null || true)
 # defaults to downloading drop so we can install the instance profiles.
@@ -113,115 +112,60 @@ if [ "X$packages" != "X" ] ; then
         [[ $package == *.tar.gz ]] && /usr/bin/tar zxf $package
         [[ $package == *.tar.bz2 ]] && /usr/bin/tar jxf $package
         /usr/bin/chown -R ${OWNER}:${OWNER} "$dirname"
+    done
+fi
+
+if [ -e $rootDir/profiles ] ; then
+    while read -r profile
+    do
+        dirname=$(basename ${profile})
+        installTop="$rootDir/${dirname%%.*}"
         if [ ! -f ${installTop}/bin/activate ]; then
-            $VIRTUALENV_RUN ${installTop}
+            mkdir -p ${installTop}
+            chown ${OWNER}:${OWNER} ${installTop}
+            sudo -u ${OWNER} $VIRTUALENV_RUN ${installTop}
             # Updating pip because version 22.0. does not generate version
             # numbers correctly when doing `pip install .`
             # in a source directory.
-            ${installTop}/bin/pip install pip -U
+            sudo -u ${OWNER} ${installTop}/bin/pip install pip -U
             # Installing `wheel` will help install packages with Python bindinds
             # without recompiling from source.
-            ${installTop}/bin/pip install wheel
+            sudo -u ${OWNER} ${installTop}/bin/pip install wheel
         fi
-        echo "installTop=$installTop" > $dirname/dws.mk
-        echo "srcTop=$installTop/reps" >> $dirname/dws.mk
-        echo "remoteIndex=$installTop/./reps/djaoapp.git/djaoapp.xml" >> $dirname/dws.mk
-        pushd $installTop/reps/$dirname
-        ../../bin/dws --default make recurse
-        ../../bin/dws --default make install
-        popd
-        /usr/bin/chown -R ${OWNER}:${OWNER} "$dirname"
-        rm ${package}
-    done
-
-    # Finish configuration of the local install for the djagent service
-    if [ -d ${siteTop}/reps/djagent ]; then
-        cd ${siteTop}/reps/djagent
-        ../../bin/pip install -r requirements.txt
-        ../../bin/dws --default make install
-        echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djagent
-        echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djagent
-        echo "QUEUE_URL=" >> ${siteTop}/etc/sysconfig/djagent
-        /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djagent
-        /usr/bin/chown ${OWNER}:${OWNER} ${siteTop}/etc/sysconfig/djagent
-        /usr/bin/cp ${siteTop}/etc/systemd/system/djagent.service /usr/lib/systemd/system
-        ../../bin/dws --default make install-selinux
-        /usr/bin/systemctl enable djagent
-        /usr/bin/systemctl restart djagent.service
-    fi
-
-    # Finish configuration of the local install for the djaoapp service
-    if [ -d ${siteTop}/reps/djaoapp ]; then
-        echo "SETTINGS_LOCATION=" > ${siteTop}/etc/sysconfig/djaoapp
-        echo "SETTINGS_CRYPT_KEY=" >> ${siteTop}/etc/sysconfig/djaoapp
-        echo "LD_LIBRARY_PATH=/usr/local/lib64" >> ${siteTop}/etc/sysconfig/djaoapp
-        /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djaoapp
-        /usr/bin/mkdir -p /var/log/gunicorn
-        /usr/bin/chown ${USER}:${USER} /var/log/gunicorn
-        /usr/bin/rm -rf ${siteTop}/var/log/gunicorn
-        pushd ${siteTop}/var/log
-        /usr/bin/ln -s /var/log/gunicorn
-        popd
-        /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/htdocs/themes ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
-        # move the database where the config files have been configured with.
-        if [ -f ${siteTop}/reps/djaoapp/db.sqlite ]; then
-            /usr/bin/mv ${siteTop}/reps/djaoapp/db.sqlite ${siteTop}/var/db/djaodjin.sqlite
-        fi
-        # We make sure the .pid file can be created by gunicorn and systemd
-        # service can load.
-        /usr/bin/chown ${USER}:${USER} ${siteTop}/etc/sysconfig/djaoapp ${siteTop}/var/run /var/log/gunicorn
-        # Insures we can upload themes
-        /usr/bin/chown ${USER}:${USER} ${siteTop}/reps/djaoapp/htdocs/themes ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
-        # and that nginx can access the static assets
-        /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' "${siteTop}/reps/djaoapp/htdocs(.*)"
-        /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp
-
-        /usr/bin/cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
-        /usr/bin/systemctl enable djaoapp
-        /usr/bin/systemctl restart djaoapp.service
-    fi
+        sudo -u ${OWNER} /usr/local/bin/dws build ${profile}
+    done < "$rootDir/profiles"
 fi
 
-# Configure nginx proxy
-if [ ! -f /etc/nginx/conf.d/proxy_djaoapp.conf ]; then
-    # Rewrite nginx config file to avoid redirects loops because no https
-    /usr/bin/cat << EOF >> /etc/nginx/conf.d/proxy_djaoapp.conf
-    upstream proxy_djaoapp {
-        server  127.0.0.1:8000;
-    }
-EOF
-        /usr/bin/cat << EOF >> /etc/nginx/conf.d/djaoapp.com.conf
-    server {
-        listen       80;
-        listen       [::]:80;
-        server_name  {{domain_name}};
+# Finish configuration of the local install for the djagent service
+siteTop="$rootDir/djaoapp"
+if [ -d ${siteTop}/reps/djagent ]; then
+    /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djagent
+    /usr/bin/cp ${siteTop}/etc/systemd/system/djagent.service /usr/lib/systemd/system
+    /usr/bin/systemctl enable djagent
+    /usr/bin/systemctl restart djagent.service
+fi
 
-        root         /var/www/djaoapp/reps/djaoapp/htdocs;
+# Finish configuration of the local install for the djaoapp service
+if [ -d ${siteTop}/reps/djaoapp ]; then
+    /usr/bin/mkdir -p /var/log/gunicorn /var/run/djaoapp
+    /usr/bin/mkdir -p ${siteTop}/reps/djaoapp/htdocs/themes ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
+    /usr/bin/chmod 600 ${siteTop}/etc/sysconfig/djaoapp
+    # We make sure the .pid file can be created by gunicorn and systemd
+    # service can load.
+    /usr/bin/chown ${USER}:${USER} ${siteTop}/etc/sysconfig/djaoapp /var/run/djaoapp /var/log/gunicorn
+    # Insures we can upload themes
+    /usr/bin/chown ${USER}:${USER} ${siteTop}/reps/djaoapp/htdocs/themes ${siteTop}/reps/djaoapp/themes ${siteTop}/reps/djaoapp/.cache
+    # and that nginx can access the static assets
+    /usr/sbin/semanage fcontext -a -t 'httpd_sys_rw_content_t' "${siteTop}/reps/djaoapp/htdocs(.*)"
+    /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp
 
-        location / {
-            try_files \$uri/index.html \$uri.html \$uri @forward_to_djaoapp;
-        }
-
-        location @forward_to_djaoapp {
-            proxy_pass    http://proxy_djaoapp;
-            include       /etc/nginx/proxy_params;
-        }
-
-        error_page 404 /404.html;
-            location = /40x.html {
-        }
-
-        error_page 500 502 503 504 /50x.html;
-            location = /50x.html {
-        }
-    }
-EOF
-
-    /usr/bin/cp /usr/share/nginx/html/404.html /usr/share/nginx/html/50x.html ${siteTop}/reps/djaoapp/htdocs
-    /usr/sbin/restorecon -rvF ${siteTop}/reps/djaoapp/htdocs
-    # We will be waiting for this server to respond
-    # before it continues with registering the AMI.
-    /usr/bin/systemctl restart nginx.service
+    # move the database where the config files have been configured with.
+    if [ -f ${siteTop}/reps/djaoapp/db.sqlite ]; then
+        /usr/bin/mv ${siteTop}/reps/djaoapp/db.sqlite ${siteTop}/var/db/djaodjin.sqlite
+    fi
+    /usr/bin/cp ${siteTop}/etc/systemd/system/djaoapp.service /usr/lib/systemd/system
+    /usr/bin/systemctl enable djaoapp
+    /usr/bin/systemctl restart djaoapp.service
 fi
 
 # cron notifications
@@ -229,3 +173,6 @@ alternatives --set mta /usr/sbin/sendmail.ssmtp
 
 # restart services whose configuration has been altered
 /usr/bin/systemctl force-reload systemd-journald
+
+# We are expecting that a nginx server can respond to HTTP requests
+# by that point...

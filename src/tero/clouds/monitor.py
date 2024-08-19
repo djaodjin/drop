@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Djaodjin Inc.
+# Copyright (c) 2024, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,11 +22,9 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import argparse, configparser, datetime, json, logging, os, re, time
-from collections import OrderedDict
+import argparse, configparser, datetime, json, logging, os, re
 
 import boto3
-import botocore.exceptions
 import pytz, six
 #pylint:disable=import-error
 from six.moves.urllib.parse import urlparse
@@ -218,7 +216,8 @@ def list_logs(log_location, domains, lognames=['access', 'error'],
     return search
 
 
-def list_targetgroups_by_domains(regions=None, ec2_client=None):
+def list_targetgroups_by_domains(regions=None, default_top_domain=None,
+                                 ec2_client=None):
     """
     Returns a dictionnary of target groups indexed by domain name
     for all load balancers in a region.
@@ -228,6 +227,10 @@ def list_targetgroups_by_domains(regions=None, ec2_client=None):
     if not regions:
         regions = get_regions(ec2_client=ec2_client)
     for region_name in regions:
+        if default_top_domain:
+            default_domain = "%s.%s" % (region_name, default_top_domain)
+        else:
+            default_domain = region_name
         elb_client = boto3.client('elbv2', region_name=region_name)
         resp = elb_client.describe_load_balancers()
         for load_balancer in resp['LoadBalancers']:
@@ -240,19 +243,29 @@ def list_targetgroups_by_domains(regions=None, ec2_client=None):
             resp = elb_client.describe_listeners(
                 LoadBalancerArn=load_balancer['LoadBalancerArn'])
             for listener in resp['Listeners']:
+                if listener['Port'] != 443:
+                    continue
                 resp = elb_client.describe_rules(
                     ListenerArn=listener['ListenerArn'])
                 for rule in resp['Rules']:
-                    for cond in rule['Conditions']:
+                    if rule['IsDefault']:
                         action = rule['Actions'][-1]
-                        if (cond['Field'] in ('host-header',) and
-                            action['Type'] in ('forward',)):
-                            targetgroup = action['TargetGroupArn']
-                            for domain in cond['Values']:
-                                targetgroups_by_domains.update({
-                                    domain: targetgroups_by_arns.get(
-                                        targetgroup, {}).get(
-                                        'TargetGroupName', targetgroup)})
+                        targetgroup = action['TargetGroupArn']
+                        targetgroups_by_domains.update({
+                            default_domain: targetgroups_by_arns.get(
+                                targetgroup, {}).get(
+                                    'TargetGroupName', targetgroup)})
+                    else:
+                        for cond in rule['Conditions']:
+                            action = rule['Actions'][-1]
+                            if (cond['Field'] in ('host-header',) and
+                                action['Type'] in ('forward',)):
+                                targetgroup = action['TargetGroupArn']
+                                for domain in cond['Values']:
+                                    targetgroups_by_domains.update({
+                                        domain: targetgroups_by_arns.get(
+                                            targetgroup, {}).get(
+                                            'TargetGroupName', targetgroup)})
     return targetgroups_by_domains
 
 
@@ -491,6 +504,7 @@ def search_db_storage(log_location, domains,
     search = list_db_meta(log_location,
         db_to_domains, start_at=start_at, ends_at=ends_at, s3_client=s3_client)
 
+    backup = 'db'
     db_results = {}
     for domain, db_names in six.iteritems(domains):
         db_results[domain] = {backup: []}
@@ -519,6 +533,9 @@ def search_site_log_storage(log_location, domains,
     # app containers
     for domain, app_names in six.iteritems(domains):
         for app_name in app_names:
+            LOGGER.debug("list app logs in %s for %s",
+                  log_location + '%(app_name)s' % {'app_name': app_name},
+                  app_name)
             app_results = list_logs(
                 log_location + '%(app_name)s' % {
                     'app_name': app_name}, [app_name], lognames=['app'],

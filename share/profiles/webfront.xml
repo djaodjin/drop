@@ -68,6 +68,9 @@ Name of the machine hosting the LDAP server.
         <bin>ldapsearch</bin>
       </dep>
       <!-- monitoring -->
+      <dep name="anacron">
+        <bin>anacron</bin>
+      </dep>
       <dep name="logrotate">
         <bin>logrotate</bin>
       </dep>
@@ -127,6 +130,13 @@ Name of the machine hosting the LDAP server.
         <!-- command-line JSON parser that is useful
              to process aws cli output. -->
         <bin>jq</bin>
+      </dep>
+      <!-- required by webgate software -->
+      <dep name="cairo">
+        <lib>cairo.so</lib>
+      </dep>
+      <dep name="pango">
+        <lib>pango-1.0.so</lib>
       </dep>
     </package>
     <package name="AmazonLinux2">

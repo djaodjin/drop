@@ -46,6 +46,9 @@ class nginxSetup(SetupTemplate):
 
             # proxy_redirect default;
             proxy_redirect off;
+
+            # Intercept error codes to show proxy error page
+            proxy_intercept_errors on;
 """
 
     def __init__(self, name, files, **kwargs):

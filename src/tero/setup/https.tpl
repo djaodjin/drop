@@ -104,8 +104,12 @@ server {
             proxy_pass    http://proxy_%(subdomain)s;
         }
 
-        error_page 500 502 503 504 /500.html;
+        error_page 500 501 502 503 504 505 506 507 508 510 511 /50x.html;
         location = /50x.html {
+            ssi on;
+            internal;
+            auth_basic off;
             root %(htdocs_dir)s;
+            try_files /themes/%(subdomain)s$uri $uri =404;
         }
 }

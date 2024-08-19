@@ -25,7 +25,7 @@
 #pylint:disable=too-many-statements,too-many-locals,too-many-arguments
 #pylint:disable=too-many-lines
 
-import argparse, configparser, datetime, json, logging, os
+import argparse, configparser, datetime, json, logging, os, sys
 import random, re, shutil, subprocess, tempfile, time
 from collections import OrderedDict
 
@@ -45,6 +45,7 @@ from tero.clouds.monitor import APP_NAME, EC2_RUNNING, list_db_meta
 
 LOGGER = logging.getLogger(__name__)
 
+APP_VERSION = '%s-2024-03-15' % APP_NAME
 USES_DEPRECATED_DOCKER_VERSION = False
 BASH = '/bin/bash'
 NGINX = '/usr/sbin/nginx'
@@ -940,9 +941,18 @@ def create_waf(tag_prefix, acl_name=None, elb_arn=None,
         LOGGER.info("%s found Web ACL %s as %s",
             tag_prefix, acl_name, acl_arn)
     if not dry_run:
-        resp = waf_client.associate_web_acl(
-            WebACLArn=acl_arn,
-            ResourceArn=elb_arn)
+        for _ in range(0, NB_RETRIES):
+            # The WAF takes some time to be fully operational.
+            try:
+                resp = waf_client.associate_web_acl(
+                    WebACLArn=acl_arn,
+                    ResourceArn=elb_arn)
+                break
+            except botocore.exceptions.ClientError as err:
+                if not err.response.get('Error', {}).get(
+                        'Code', 'Unknown') == 'WAFUnavailableEntityException':
+                    raise
+            time.sleep(RETRY_WAIT_DELAY)
     LOGGER.info("%s%s associated Web ACL %s to load balancer %s",
         "(dryrun) " if dry_run else "", tag_prefix, acl_arn, elb_arn)
 
@@ -3196,6 +3206,8 @@ def create_instances(region_name, app_name, image_name, profiles,
         # containers.
         return instances
 
+    if not profiles:
+        profiles  = []    # let's make sure we don't have '' or None.
     search_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), 'templates')
     template_loader = jinja2.FileSystemLoader(searchpath=search_path)
@@ -4127,7 +4139,7 @@ def create_target_group(region_name, app_name, image_name,
                     raise
             time.sleep(RETRY_WAIT_DELAY)
 
-    return target_group
+    return instance_ids
 
 
 def deploy_app_container(
@@ -4441,9 +4453,9 @@ def run_config(config_name, local_docker=False,
         tag_prefix = os.path.splitext(os.path.basename(config_name))[0]
 
     default_by_regions = {}
-    for app_name in config:
-        app_name = app_name.lower()
-        if app_name in AWS_REGIONS:
+    for config_block in config:
+        config_block = config_block.lower()
+        if config_block in AWS_REGIONS:
             # We have default settings for a region.
             config_vars = {}
             for config_var in [
@@ -4470,7 +4482,7 @@ def run_config(config_name, local_docker=False,
                     'vpc_cidr',
                     'vpc_id',
             ]:
-                config_value = config[app_name].get(config_var,
+                config_value = config[config_block].get(config_var,
                     config['default'].get(config_var))
                 if not config_value and config_var == 's3_logs_bucket':
                     config_value = '%s-logs' % tag_prefix
@@ -4483,7 +4495,7 @@ def run_config(config_name, local_docker=False,
                             'tls_fullchain_cert': key_file.read()})
                 elif config_value:
                     config_vars.update({config_var: config_value})
-            default_by_regions.update({app_name: config_vars})
+            default_by_regions.update({config_block: config_vars})
 
     # Create network/infrastructure resources
     if not skip_create_network and not skip_create_global_resources:
@@ -4508,16 +4520,16 @@ def run_config(config_name, local_docker=False,
                 dry_run=dry_run)
 
     # Create target groups and instances for applications.
-    for app_name in config:
-        app_name = app_name.lower()
-        if (app_name == 'default' or
-            app_name in default_by_regions or
-            (include_apps and app_name not in include_apps)):
+    for config_block in config:
+        config_block = config_block.lower()
+        if (config_block == 'default' or
+            config_block in default_by_regions or
+            (include_apps and config_block not in include_apps)):
             continue
 
-        region_name = config[app_name].get('region_name',
+        region_name = config[config_block].get('region_name',
             config['default'].get('region_name'))
-        image_name = config[app_name].get('image_name',
+        image_name = config[config_block].get('image_name',
             default_by_regions[region_name].get('image_name'))
         resources_kwargs = {}
         for resources_name in [
@@ -4546,15 +4558,15 @@ def run_config(config_name, local_docker=False,
         ]:
             if resources_name == 'sally_port':
                 resources_kwargs.update({
-                    'ssh_port': config[app_name].get('ssh_port',
+                    'ssh_port': config[config_block].get('ssh_port',
                         default_by_regions[region_name].get(resources_name))})
             else:
                 resources_kwargs.update({
-                    resources_name: config[app_name].get(resources_name,
+                    resources_name: config[config_block].get(resources_name,
                         default_by_regions[region_name].get(resources_name))})
 
-        tls_priv_key_path = config[app_name].get('tls_priv_key_path')
-        tls_fullchain_path = config[app_name].get('tls_fullchain_path')
+        tls_priv_key_path = config[config_block].get('tls_priv_key_path')
+        tls_fullchain_path = config[config_block].get('tls_fullchain_path')
         if not tls_priv_key_path or not tls_fullchain_path:
             tls_priv_key_path = default_by_regions[region_name].get(
                 'tls_priv_key_path')
@@ -4569,7 +4581,9 @@ def run_config(config_name, local_docker=False,
                 tls_fullchain_cert = fullchain_file.read()
 
         # Setup the instance based on the section name
-        instance_ids = config[app_name].get('instance_ids')
+        instance_ids = config[config_block].get('instance_ids')
+
+        app_name = config_block.split('/')[-1]
         if tag_prefix and app_name.startswith(tag_prefix):
 
             # Create the EC2 instances
@@ -4605,16 +4619,16 @@ def run_config(config_name, local_docker=False,
 
         elif app_name.startswith('dbs-'):
             db_names = [db_name.strip()
-                for db_name in config[app_name].get('db_names', "").split(',')]
+                for db_name in config[config_block].get('db_names', "").split(',')]
             instance_ids = create_datastores(
                 region_name, app_name,
-                db_host=config[app_name].get('db_host'),
-                db_master_user=config[app_name].get('db_master_user'),
-                db_master_password=config[app_name].get('db_master_password'),
-                db_user=config[app_name].get('db_user'),
-                db_password=config[app_name].get('db_password'),
+                db_host=config[config_block].get('db_host'),
+                db_master_user=config[config_block].get('db_master_user'),
+                db_master_password=config[config_block].get('db_master_password'),
+                db_user=config[config_block].get('db_user'),
+                db_password=config[config_block].get('db_password'),
                 db_names=db_names,
-                provider=config[app_name].get('provider'),
+                provider=config[config_block].get('provider'),
 
                 storage_enckey=resources_kwargs.get('storage_enckey'),
                 identities_url=resources_kwargs.get('identities_url'),
@@ -4647,19 +4661,19 @@ def run_config(config_name, local_docker=False,
 
         else:
             # Environment variables is an array of name/value.
-            container_location=config[app_name].get('container_location')
-            env = config[app_name].get('env')
+            container_location=config[config_block].get('container_location')
+            env = config[config_block].get('env')
             if env:
                 env = json.loads(env)
             if local_docker:
                 run_app_local(
                     app_name,
-                    app_port=config[app_name].get('app_port'),
+                    app_port=config[config_block].get('app_port'),
                     container_location=container_location,
                     env=env,
-                    container_access_id=config[app_name].get(
+                    container_access_id=config[config_block].get(
                         'container_access_id'),
-                    container_access_key=config[app_name].get(
+                    container_access_key=config[config_block].get(
                         'container_access_key'),
                     dry_run=dry_run)
             else:
@@ -4667,19 +4681,19 @@ def run_config(config_name, local_docker=False,
                     region_name, app_name, image_name,
                     container_location=container_location,
                     env=env,
-                    container_access_id=config[app_name].get(
+                    container_access_id=config[config_block].get(
                         'container_access_id'),
-                    container_access_key=config[app_name].get(
+                    container_access_key=config[config_block].get(
                         'container_access_key'),
-                    djaoapp_version=config[app_name].get(
-                        'version', '%s-2023-09-22' % APP_NAME),
-                    settings_location=config[app_name].get('settings_location'),
-                    settings_crypt_key=config[app_name].get(
+                    djaoapp_version=config[config_block].get(
+                        'version', APP_VERSION),
+                    settings_location=config[config_block].get('settings_location'),
+                    settings_crypt_key=config[config_block].get(
                         'settings_crypt_key'),
-                    queue_url=config[app_name].get('queue_url'),
+                    queue_url=config[config_block].get('queue_url'),
                     tls_priv_key=tls_priv_key,
                     tls_fullchain_cert=tls_fullchain_cert,
-                    s3_uploads_bucket=config[app_name].get('s3_uploads_bucket'),
+                    s3_uploads_bucket=config[config_block].get('s3_uploads_bucket'),
                     identities_url=resources_kwargs.get('identities_url'),
                     s3_logs_bucket=resources_kwargs.get('s3_logs_bucket'),
                     ssh_key_name=resources_kwargs.get('ssh_key_name'),
@@ -4689,7 +4703,7 @@ def run_config(config_name, local_docker=False,
                     vpc_id=resources_kwargs.get('vpc_id'),
                     vpc_cidr=resources_kwargs.get('vpc_cidr'),
                     hosted_zone_id=resources_kwargs.get('hosted_zone_id'),
-                    app_prefix=config[app_name].get('app_prefix'),
+                    app_prefix=config[config_block].get('app_prefix'),
                     tag_prefix=tag_prefix,
                     dry_run=dry_run)
 
@@ -4720,7 +4734,7 @@ def upload_app_logs(app_name,
     sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(msg))
 
 
-def cli_main(input_args):
+def main(input_args):
     """
     Main entry point to provision AWS resources
     """
@@ -4768,7 +4782,7 @@ def cli_main(input_args):
         dry_run=args.dry_run)
 
 
-def cli_main_ami(input_args):
+def main_ami(input_args):
     """
     Main entry point to create an AMI
     """
@@ -4861,6 +4875,15 @@ def cli_main_ami(input_args):
     create_ami_webfront(region_name, app_name, instance_ids[0])
 
 
+def cli_main():
+    logging.basicConfig(level='INFO')
+    main(sys.argv)
+
+
+def cli_main_ami():
+    logging.basicConfig(level='INFO')
+    main(sys.argv)
+
+
 if __name__ == '__main__':
-    import sys
-    cli_main(sys.argv)
+    cli_main()

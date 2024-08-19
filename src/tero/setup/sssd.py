@@ -129,8 +129,10 @@ ldap_user_ssh_public_key = sshPublicKey
 """ % names)
 
         postinst.shell_command(['chmod', '600', sssd_conf])
-        postinst.shell_command(['authconfig',
-            '--update', '--enablesssd', '--enablesssdauth'])
+        # Fedora28, AL2023: `authconfig` was replaced by `authselect`
+        #postinst.shell_command(['authconfig',
+        #    '--update', '--enablesssd', '--enablesssdauth'])
+        postinst.shell_command(['authselect', 'select', 'sssd'])
         postinst.shell_command(['setsebool',
             '-P', 'authlogin_nsswitch_use_ldap', '1'])
         return complete
