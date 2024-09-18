@@ -521,33 +521,6 @@ def error_event(key, reason, extra=None):
     }
 
 
-def parse_logname(filename):
-    host = None
-    log_name = None
-    instance_id = None
-    log_date = None
-    look = re.match(
-        r'(?P<host>\S+)-(?P<log_name>\S+)\.log(-(?P<instance_id>[^-"\
-        "]+))?-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?',
-        os.path.basename(filename))
-    if look:
-        host = look.group('host')
-        log_name = look.group('log_name')
-        instance_id = look.group('instance_id')
-        try:
-            log_date = datetime.datetime.strptime(
-                look.group('log_date'), '%Y%m%d')
-            if log_date.tzinfo is None:
-                log_date = log_date.replace(tzinfo=pytz.utc)
-        except ValueError:
-            # If we have an error parsing the date, it is very likely
-            # the `instance_id` was not added to the suffix and we parsed
-            # something else (maybe the `log_date`) as an `instance_id`.
-            instance_id = None
-            log_date = None
-    return host, log_name, instance_id, log_date
-
-
 def generate_events(fileobj, key):
     #pylint:disable=too-many-locals
     host, log_name, instance_id, log_date = parse_logname(key)
@@ -631,6 +604,18 @@ def generate_events(fileobj, key):
             }
 
 
+def load_url_patterns(url_patterns_filename):
+    """
+    Loads the URL patterns to be used in `EventWriter`
+    """
+    url_patterns = []
+    if url_patterns_filename:
+        with open(url_patterns_filename) as url_patterns_file:
+            for pat in url_patterns_file.readlines():
+                url_patterns += [pat.strip()]
+    return url_patterns
+
+
 def parse_logfile(logname, writer=None):
     if not writer:
         writer = EventWriter()
@@ -649,6 +634,33 @@ def parse_logfile(logname, writer=None):
         with open(logname, 'rt') as logfile:
             for event in generate_events(logfile, logname):
                 writer.write(event)
+
+
+def parse_logname(filename):
+    host = None
+    log_name = None
+    instance_id = None
+    log_date = None
+    look = re.match(
+        r'(?P<host>\S+)-(?P<log_name>\S+)\.log(-(?P<instance_id>[^-"\
+        "]+))?-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?',
+        os.path.basename(filename))
+    if look:
+        host = look.group('host')
+        log_name = look.group('log_name')
+        instance_id = look.group('instance_id')
+        try:
+            log_date = datetime.datetime.strptime(
+                look.group('log_date'), '%Y%m%d')
+            if log_date.tzinfo is None:
+                log_date = log_date.replace(tzinfo=pytz.utc)
+        except ValueError:
+            # If we have an error parsing the date, it is very likely
+            # the `instance_id` was not added to the suffix and we parsed
+            # something else (maybe the `log_date`) as an `instance_id`.
+            instance_id = None
+            log_date = None
+    return host, log_name, instance_id, log_date
 
 
 def sanitize_filename(fname):
