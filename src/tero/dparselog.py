@@ -86,6 +86,7 @@ def parse_date(dt_str):
             raise
         naive_date_str = dt_str[:space_idx]
         offset_str = ""
+        # Somewhat ISO 8601
         naive_dt = datetime.datetime.strptime(
             naive_date_str, '%Y-%m-%d %H:%M:%S')
         tzinfo = datetime.timezone.utc
@@ -239,7 +240,7 @@ class NginxLogParser(LogParser):
             '$http_host'            :
                  # We cannot have parentheses in regex here?
                  r'[a-z0-9.-]+|[a-z0-9.-]+:\d+?',
-            '$remote_user'          : r'[\w.@+-]+',
+            '$remote_user'          : r'[\w=.@+-]+',
             '$time_local'           : r'[^\[\]]+',
             '$request'              : r'[^"]*',
             '$status'               : r'[0-9]{3}',
