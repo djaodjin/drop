@@ -40,7 +40,6 @@ Name of the machine hosting the LDAP server.
           <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
           <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
           <PasswordAuthentication>no</PasswordAuthentication>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <PermitTunnel>no</PermitTunnel>
           <X11Forwarding>no</X11Forwarding>
           <StrictModes>yes</StrictModes>
@@ -87,7 +86,6 @@ Name of the machine hosting the LDAP server.
           <AuthorizedKeysCommand>/usr/libexec/openssh/ssh-ldap-wrapper</AuthorizedKeysCommand>
           <AuthorizedKeysCommandUser>nobody</AuthorizedKeysCommandUser>
           <PasswordAuthentication>no</PasswordAuthentication>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <PermitTunnel>no</PermitTunnel>
           <X11Forwarding>no</X11Forwarding>
           <StrictModes>yes</StrictModes>

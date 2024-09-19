@@ -60,7 +60,6 @@ Name of the machine hosting the LDAP server.
           <PermitRootLogin>no</PermitRootLogin>
           <PermitTunnel>no</PermitTunnel>
           <StrictModes>yes</StrictModes>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <X11Forwarding>no</X11Forwarding>
         </extra>
       </dep>
@@ -215,7 +214,6 @@ Name of the machine hosting the LDAP server.
           <PermitRootLogin>no</PermitRootLogin>
           <PermitTunnel>no</PermitTunnel>
           <StrictModes>yes</StrictModes>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <X11Forwarding>no</X11Forwarding>
         </extra>
       </dep>

@@ -62,7 +62,6 @@ maintenance scripts for authentication and communication services
           <PermitRootLogin>no</PermitRootLogin>
           <PermitTunnel>no</PermitTunnel>
           <StrictModes>yes</StrictModes>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <X11Forwarding>no</X11Forwarding>
         </extra>
       </dep>

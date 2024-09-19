@@ -37,7 +37,6 @@ Deploy and configure packages for running SQL databases.
           <!-- BE CAREFUL: Password authentication is enabled here only
                when we use a sally port to access the web machines. -->
           <PasswordAuthentication>yes</PasswordAuthentication>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <PermitTunnel>no</PermitTunnel>
           <X11Forwarding>no</X11Forwarding>
           <StrictModes>yes</StrictModes>
@@ -99,7 +98,6 @@ Deploy and configure packages for running SQL databases.
           <PermitRootLogin>no</PermitRootLogin>
           <AuthorizedKeysFile>%%h/.ssh/authorized_keys</AuthorizedKeysFile>
           <PasswordAuthentication>no</PasswordAuthentication>
-          <UsePrivilegeSeparation>yes</UsePrivilegeSeparation>
           <PermitTunnel>no</PermitTunnel>
           <X11Forwarding>no</X11Forwarding>
           <StrictModes>yes</StrictModes>
