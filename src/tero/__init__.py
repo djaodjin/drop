@@ -2286,11 +2286,11 @@ class NpmInstallStep(InstallStep):
         if packages:
             admin = False
             noexecute = False
-            return [([self._manager(context), 'install', '-g',
+            return [([self._manager(context), 'install', '--location=global',
                 '--scripts-prepend-node-path', 'true',
                 '--cache', os.path.join(context.value('buildTop'), '.npm'),
                 '--tmp', os.path.join(context.value('buildTop'), 'tmp'),
-                '--prefix', context.value('installTop')] + packages,
+                '--prefix', context.value('libDir')] + packages,
                 admin, noexecute)]
         return []
 

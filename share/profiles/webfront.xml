@@ -73,6 +73,9 @@ Name of the machine hosting the LDAP server.
       <dep name="logrotate">
         <bin>logrotate</bin>
       </dep>
+      <dep name="otelcol-contrib">
+        <bin>otecol-contrib</bin>
+      </dep>
       <dep name="procps-ng">
         <bin>pgrep</bin>
       </dep>
@@ -298,6 +301,14 @@ Name of the machine hosting the LDAP server.
       <fetch>
         <url>https://www.djaodjin.com/pub/fedora/linux/updates/fc25/x86_64/openldap-clients-2.4.44-10.fc25.x86_64.rpm</url>
         <sha1>dbcfa8f4ceda5b31c17bcab5484f2de7c3aec8ff</sha1>
+      </fetch>
+    </package>
+  </project>
+  <project name="otelcol-contrib">
+    <package name="Amazon">
+      <fetch>
+        <url>https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.109.0/otelcol-contrib_0.109.0_linux_amd64.rpm</url>
+        <sha1>ca97651e3e6099e0ec9d412347388329b5c2b69b</sha1>
       </fetch>
     </package>
   </project>
