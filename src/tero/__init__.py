@@ -2289,8 +2289,7 @@ class NpmInstallStep(InstallStep):
             return [([self._manager(context), 'install', '--location=global',
                 '--scripts-prepend-node-path', 'true',
                 '--cache', os.path.join(context.value('buildTop'), '.npm'),
-                '--tmp', os.path.join(context.value('buildTop'), 'tmp'),
-                '--prefix', context.value('libDir')] + packages,
+                '--prefix', context.value('installTop')] + packages,
                 admin, noexecute)]
         return []
 
