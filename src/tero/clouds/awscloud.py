@@ -3221,6 +3221,7 @@ def create_instances(region_name, app_name, image_name, profiles,
         ldap_host=ldap_host,
         profiles=profiles,
         **kwargs)
+    LOGGER.debug("Render user_data from %s:\n%s", template_name, user_data)
 
     # Find the ImageId
     image_id = _get_image_id(
@@ -3303,8 +3304,32 @@ def create_instances(region_name, app_name, image_name, profiles,
         for _ in range(0, NB_RETRIES):
             # The IAM instance profile take some time to be visible.
             try:
+                tag_specifications = [{
+                    'ResourceType': "instance",
+                    'Tags': [{
+                        'Key': 'Name',
+                        'Value': app_name
+                    }, {
+                        'Key': 'Prefix',
+                        'Value': tag_prefix
+                    }]
+                }]
                 # Cannot use `SecurityGroups` with `SubnetId`
                 # but can use `SecurityGroupIds`.
+                LOGGER.info("aws ec2 run-instances --region %(region_name)s --block-device-mappings '%(block_devices)s' --image-id %(image_id)s --key-name %(ssh_key_name)s --instance-type %(instance_type)s --iam-instance-profile Arn=%(instance_profile_arn)s --security-group-ids=%(security_group_ids)s  --subnet-id %(subnet_id)s --tag-specifications %(tag_specifications)s --user-data file://%(template_name)s" % {
+                    'region_name': region_name,
+                    'block_devices': ','.join(["%s=%s" % (key, val)
+                        for key, val in block_devices[0].items()]),
+                    'image_id': image_id,
+                    'ssh_key_name': ssh_key_name,
+                    'instance_type': instance_type,
+                    'instance_profile_arn': instance_profile_arn,
+                    'security_group_ids': security_group_ids,
+                    'subnet_id': subnet_id,
+                    'tag_specifications': ','.join(["%s=%s" % (key, val)
+                        for key, val in tag_specifications[0].items()]),
+                    'template_name': template_name
+                })
                 resp = ec2_client.run_instances(
                     BlockDeviceMappings=block_devices,
                     ImageId=image_id,
@@ -3317,16 +3342,7 @@ def create_instances(region_name, app_name, image_name, profiles,
 #                    SecurityGroupIds=security_group_ids,
                     IamInstanceProfile={'Arn': instance_profile_arn},
                     NetworkInterfaces=network_interfaces,
-                    TagSpecifications=[{
-                        'ResourceType': "instance",
-                        'Tags': [{
-                            'Key': 'Name',
-                            'Value': app_name
-                        }, {
-                            'Key': 'Prefix',
-                            'Value': tag_prefix
-                        }]
-                    }],
+                    TagSpecifications=tag_specifications,
                     UserData=user_data,
                     DryRun=dry_run)
                 instances = resp['Instances']
