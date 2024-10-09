@@ -3591,30 +3591,6 @@ def create_app_resources(region_name, app_name, image_name, profiles,
                         "Effect": "Allow",
                         "Resource": "*"
                     }]}))
-            if ecr_access_role_arn:
-                iam_client.put_role_policy(
-                    RoleName=app_role,
-                    PolicyName='DeployContainer',
-                    PolicyDocument=json.dumps({
-                        "Version": "2012-10-17",
-                        "Statement": [{
-                            "Effect": "Allow",
-                            "Action": [
-                                "sts:AssumeRole"
-                            ],
-                            "Resource": [
-                                ecr_access_role_arn
-                            ]
-                        }, {
-                            "Effect": "Allow",
-                            "Action": [
-                                "ecr:GetAuthorizationToken",
-                                "ecr:BatchCheckLayerAvailability",
-                                "ecr:GetDownloadUrlForLayer",
-                                "ecr:BatchGetImage"
-                            ],
-                            "Resource": "*"
-                        }]}))
             if s3_logs_bucket:
                 iam_client.put_role_policy(
                     RoleName=app_role,
@@ -3669,6 +3645,37 @@ def create_app_resources(region_name, app_name, image_name, profiles,
                 'Code', 'Unknown') == 'EntityAlreadyExists':
             raise
         LOGGER.info("%s found IAM role %s", tag_prefix, app_role)
+    # Typically `s3_logs_bucket` and `s3_uploads_bucket` do not change
+    # after the role is created. This is not the case for the container
+    # images repository where apps are deployed from.
+    if ecr_access_role_arn:
+        if not dry_run:
+            iam_client.put_role_policy(
+                RoleName=app_role,
+                PolicyName='DeployContainer',
+                PolicyDocument=json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Action": [
+                            "sts:AssumeRole"
+                        ],
+                        "Resource": [
+                            ecr_access_role_arn
+                        ]
+                    }, {
+                        "Effect": "Allow",
+                        "Action": [
+                            "ecr:GetAuthorizationToken",
+                            "ecr:BatchCheckLayerAvailability",
+                            "ecr:GetDownloadUrlForLayer",
+                            "ecr:BatchGetImage"
+                        ],
+                        "Resource": "*"
+                    }]}))
+        LOGGER.info("%s%s put policy in role %s to deploy container %s",
+            "(dryrun) " if dry_run else "", tag_prefix, app_role,
+            ecr_access_role_arn)
 
     instance_profile_arn = create_instance_profile(
         app_role, iam_client=iam_client, tag_prefix=tag_prefix, dry_run=dry_run)
@@ -4260,6 +4267,8 @@ def run_app(
         app_prefix = app_name
 
     ecr_access_role_arn = None
+    LOGGER.debug("container_location=%s (aws=%s), container_access_id=%s",
+        container_location, is_aws_ecr(container_location), container_access_id)
     if container_location and is_aws_ecr(container_location):
         ecr_access_role_arn = container_access_id
 
