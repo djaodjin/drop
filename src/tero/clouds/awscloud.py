@@ -3316,9 +3316,10 @@ def create_instances(region_name, app_name, image_name, profiles,
                 }]
                 # Cannot use `SecurityGroups` with `SubnetId`
                 # but can use `SecurityGroupIds`.
-                LOGGER.info("aws ec2 run-instances --region %(region_name)s --block-device-mappings '%(block_devices)s' --image-id %(image_id)s --key-name %(ssh_key_name)s --instance-type %(instance_type)s --iam-instance-profile Arn=%(instance_profile_arn)s --security-group-ids=%(security_group_ids)s  --subnet-id %(subnet_id)s --tag-specifications %(tag_specifications)s --user-data file://%(template_name)s" % {
+                LOGGER.info("aws ec2 run-instances --region %(region_name)s --block-device-mappings '%(block_devices)s' --image-id %(image_id)s --key-name %(ssh_key_name)s --instance-type %(instance_type)s --iam-instance-profile Arn=%(instance_profile_arn)s --security-group-ids=%(security_group_ids)s  --subnet-id %(subnet_id)s --tag-specifications '%(tag_specifications)s' --user-data file://%(template_name)s" % {
                     'region_name': region_name,
-                    'block_devices': ','.join(["%s=%s" % (key, val)
+                    'block_devices': ','.join([
+                        "%s=%s" % (key, json.dumps(val))
                         for key, val in block_devices[0].items()]),
                     'image_id': image_id,
                     'ssh_key_name': ssh_key_name,
@@ -3326,7 +3327,8 @@ def create_instances(region_name, app_name, image_name, profiles,
                     'instance_profile_arn': instance_profile_arn,
                     'security_group_ids': security_group_ids,
                     'subnet_id': subnet_id,
-                    'tag_specifications': ','.join(["%s=%s" % (key, val)
+                    'tag_specifications': ','.join([
+                        "%s=%s" % (key, json.dumps(val))
                         for key, val in tag_specifications[0].items()]),
                     'template_name': template_name
                 })
