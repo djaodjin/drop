@@ -57,8 +57,7 @@ install:: $(srcDir)/src/prefix.mk \
 	$(installFiles) $(filter %.mk %.xsd,$^) $(shareDir)/dws
 
 install::
-	cd $(srcDir)/src && $(PYTHON) setup.py --quiet build \
-		-b $(CURDIR)/build install --prefix=$(DESTDIR)$(PREFIX)
+	cd $(srcDir)/src && $(PIP) install .
 
 
 install:: $(foreach shareItemDir,$(shareItemDirs),$(wildcard $(srcDir)/share/$(shareItemDir)/*))

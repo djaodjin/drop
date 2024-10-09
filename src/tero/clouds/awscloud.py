@@ -311,7 +311,12 @@ def _get_or_create_storage_enckey(region_name, tag_prefix, kms_client=None,
                 Description='%s storage encrypt/decrypt' % tag_prefix,
                 Tags=[{'TagKey': "Prefix", 'TagValue': tag_prefix}])
             kms_key_arn = resp['KeyMetadata']['Arn']
-        LOGGER.info("%s created KMS key %s", tag_prefix, kms_key_arn)
+            LOGGER.info("%s created KMS key %s", tag_prefix, kms_key_arn)
+            # XXX Set key policy otherwise it cannot be used to run instances.
+            resp = kms_client.put_key_policy(
+                KeyId=kms_key_arn,
+                Policy="""XXX""")
+            LOGGER.info("%s put policy for KMS key %s", tag_prefix, kms_key_arn)
     return kms_key_arn
 
 
@@ -3228,31 +3233,23 @@ def create_instances(region_name, app_name, image_name, profiles,
         image_name, instance_profile_arn=instance_profile_arn,
         ec2_client=ec2_client, region_name=region_name)
 
-    if not storage_enckey:
-        # Always make sure the EBS storage is encrypted.
-        storage_enckey = _get_or_create_storage_enckey(
-            region_name, tag_prefix, dry_run=dry_run)
-
-    block_devices = [
-        {
-            # `DeviceName` is required and must match expected name otherwise
-            # an extra disk is created.
-            'DeviceName': '/dev/xvda', # XXX '/dev/sda1',
-            #'VirtualName': 'string',
+    block_devices = [{
+        # `DeviceName` is required and must match expected name otherwise
+        # an extra disk is created.
+        'DeviceName': '/dev/xvda', # XXX '/dev/sda1',
+        #'VirtualName': 'string',
     # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html
-            'Ebs': {
-                'DeleteOnTermination': False,
-                #'Iops': 100, # 'not supported for gp2'
-                #'SnapshotId': 'string',
-                'VolumeSize': 8,
-                'VolumeType': 'gp2'
-            },
-            #'NoDevice': 'string'
+        'Ebs': {
+            'DeleteOnTermination': False,
+            #'Iops': 100, # 'not supported for gp2'
+            #'SnapshotId': 'string',
+            'VolumeSize': 8,
+            'VolumeType': 'gp2',
+            'Encrypted': True   # Uses default KMS key for the region by default
         },
-    ]
+        #'NoDevice': 'string'
+    }]
     if storage_enckey:
-        # XXX Haven't been able to use the key we created but the default
-        #     aws/ebs is OK...
         for block_device in block_devices:
             block_device['Ebs'].update({
                 'KmsKeyId': storage_enckey,
