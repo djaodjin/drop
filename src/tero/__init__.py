@@ -2679,13 +2679,29 @@ class Repository(object):
             if look:
                 sync = look.group(1)
                 rev = look.group(4)
-            path_list = sync.split(os.sep)
+            # Similar to what is done in `from_remote_index`.
+            look = re.match(r'(\S+@)?(\S+):(.*)', sync)
+            if look:
+                tunnel_point = look.group(2)
+                host_prefix = tunnel_point + ':'
+                if look.group(1):
+                    host_prefix = look.group(1) + host_prefix
+                path_list = [
+                    part for part in look.group(3).split(os.sep) if part != '.']
+            else:
+                host_prefix = ''
+                path_list = [
+                    part for part in sync.split(os.sep) if part != '.']
             for i in range(0, len(path_list)):
+                if path_list[i] == '.':
+                    continue
                 for ext, repo_class in _iteritems(repos):
                     if path_list[i].endswith(ext):
                         if path_list[i] == ext:
                             i = i - 1
-                        return repo_class(os.sep.join(path_list[:i + 1]), rev)
+                        return repo_class(host_prefix + os.sep.join(
+                            path_list[:i + 1]), rev)
+
             # We will guess, assuming the repository is on the local system
             for ext, repo_class in _iteritems(repos):
                 if os.path.isdir(os.path.join(pathname, ext)):
@@ -3239,7 +3255,19 @@ def search_repo_pat(sync_path):
 def filter_rep_ext(name):
     '''Filters the repository type indication from a pathname.'''
     localname = name
-    remote_path_list = name.split(os.sep)
+    # Similar to what is done in `from_remote_index`.
+    look = re.match(r'(\S+@)?(\S+):(.*)', name)
+    if look:
+        tunnel_point = look.group(2)
+        host_prefix = tunnel_point + ':'
+        if look.group(1):
+            host_prefix = look.group(1) + host_prefix
+        remote_path_list = [
+            part for part in look.group(3).split(os.sep) if part != '.']
+        remote_path_list[0] = host_prefix + remote_path_list[0]
+    else:
+        remote_path_list = [
+            part for part in name.split(os.sep) if part != '.']
     for i in range(len(remote_path_list) - 1, -1, -1):
         look = search_repo_pat(remote_path_list[i])
         if look:
