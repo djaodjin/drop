@@ -2120,8 +2120,9 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
 
     # Create the VPC for 3rd party application
     transit_gateway_id = None
+    vpc_peering_id = None
     if apps_vpc_cidr and apps_vpc_cidr != vpc_cidr:
-        apps_tag_prefix = "%sapps"
+        apps_tag_prefix = "%sapps" % (tag_prefix + '-') if tag_prefix else ""
         apps_vpc_id, vpc_cidr_read = _get_vpc_id(apps_tag_prefix,
             ec2_client=ec2_client, region_name=region_name)
         if apps_vpc_id:
@@ -2141,7 +2142,7 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                 DryRun=dry_run,
                 Resources=[apps_vpc_id],
                 Tags=[
-                    {'Key': "Prefix", 'Value': apps_tag_prefix},
+                    {'Key': "Prefix", 'Value': tag_prefix},
                     {'Key': "Name", 'Value': "%s-vpc" % apps_tag_prefix}])
             LOGGER.info("%s created Apps VPC %s", apps_tag_prefix, apps_vpc_id)
 
@@ -2152,32 +2153,46 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
             apps_vpc_id, region_zones, tag_prefix, ec2_client,
             dry_run=dry_run)
 
-        resp = ec2_client.create_transit_gateway(
+        resp = ec2_client.create_vpc_peering_connection(
             DryRun=dry_run,
-            Description="Transit Gateway for Gate VPC to Apps VPC"
-        )
-        transit_gateway_id = resp['TransitGateway']['TransitGatewayId']
+            VpcId=vpc_id,
+            PeerVpcId=apps_vpc_id)
+        vpc_peering_id = resp['VpcPeeringConnection']['VpcPeeringConnectionId']
 
-        apps_subnet_ids = [subnet['SubnetId']
-            for subnet in apps_subnet_by_cidrs.values() if subnet]
-        resp = ec2_client.create_transit_gateway_vpc_attachment(
-            TransitGatewayId=transit_gateway_id,
-            VpcId=apps_vpc_id,
-            SubnetIds=apps_subnet_ids)
-        apps_vpc_attachment_id = (
-            resp['TransitGatewayVpcAttachment']['TransitGatewayAttachmentId'])
-
-        resp = ec2_client.create_transit_gateway_route_table(
-            DryRun=dry_run,
-            TransitGatewayId=transit_gateway_id)
-        transit_gateway_route_table_id = (
-            resp['TransitGatewayRouteTable']['TransitGatewayRouteTableId'])
-
-        resp = ec2_client.create_transit_gateway_route(
+        resp = ec2_client.create_route(
             DryRun=dry_run,
             DestinationCidrBlock=apps_vpc_cidr,
-            TransitGatewayAttachmentId=apps_vpc_attachment_id,
-            TransitGatewayRouteTableId=transit_gateway_route_table_id)
+            VpcPeeringConnectionId=vpc_peering_id,
+            RouteTableId=dbs_route_table_id)
+
+        if False:
+            # We use a VPC peering connection instead of a transit gateway.
+            resp = ec2_client.create_transit_gateway(
+                DryRun=dry_run,
+                Description="Transit Gateway for Gate VPC to Apps VPC"
+            )
+            transit_gateway_id = resp['TransitGateway']['TransitGatewayId']
+
+            apps_subnet_ids = [subnet['SubnetId']
+                for subnet in apps_subnet_by_cidrs.values() if subnet]
+            resp = ec2_client.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=transit_gateway_id,
+                VpcId=apps_vpc_id,
+                SubnetIds=apps_subnet_ids)
+            apps_vpc_attachment_id = (
+                resp['TransitGatewayVpcAttachment']['TransitGatewayAttachmentId'])
+
+            resp = ec2_client.create_transit_gateway_route_table(
+                DryRun=dry_run,
+                TransitGatewayId=transit_gateway_id)
+            transit_gateway_route_table_id = (
+                resp['TransitGatewayRouteTable']['TransitGatewayRouteTableId'])
+
+            resp = ec2_client.create_transit_gateway_route(
+                DryRun=dry_run,
+                DestinationCidrBlock=apps_vpc_cidr,
+                TransitGatewayAttachmentId=apps_vpc_attachment_id,
+                TransitGatewayRouteTableId=transit_gateway_route_table_id)
 
         # Ensure that the Apps VPC has an Internet Gateway.
         resp = ec2_client.describe_internet_gateways(
@@ -2788,6 +2803,9 @@ def create_datastores(region_name, app_name,
         db_host = '%s.%s.internal' % (app_name, region_name)
 
     if db_names:
+        if not identities_url:
+            raise ValueError("`identities_url` cannot be %s" % str(
+                identities_url))
         search = list_db_meta(
             "s3://%s/var/migrate/pgsql/dumps" % s3_logs_bucket, db_names)
         _, s3_identities_bucket, restore_prefix = urlparse(identities_url)[:3]
@@ -2953,6 +2971,7 @@ def create_datastores(region_name, app_name,
     template_loader = jinja2.FileSystemLoader(searchpath=search_path)
     template_env = jinja2.Environment(loader=template_loader)
     template = template_env.get_template("dbs-cloud-init-script.j2")
+    profiles = ['databases']
     user_data = template.render(
         s3_logs_bucket=s3_logs_bucket,
         db_host=db_host,
@@ -2963,7 +2982,8 @@ def create_datastores(region_name, app_name,
         remote_drop_repo="https://github.com/djaodjin/drop.git",
         company_domain=company_domain,
         ldap_host=ldap_host,
-        vpc_cidr=vpc_cidr)
+        vpc_cidr=vpc_cidr,
+        profiles=profiles)
 
     # Find the ImageId
     instance_profile_arn = _get_instance_profile(security_group_name)
@@ -4536,11 +4556,13 @@ def run_config(config_name, local_docker=False,
                 region_name,
                 region_default.get('vpc_cidr'),
                 tag_prefix,
+                apps_vpc_cidr=region_default.get('apps_vpc_cidr'),
                 tls_priv_key=region_default.get('tls_priv_key'),
                 tls_fullchain_cert=region_default.get('tls_fullchain_cert'),
                 ssh_key_name=region_default.get('ssh_key_name'),
-                s3_logs_bucket=region_default.get('s3_logs_bucket'),
+                # ssh_key_content is loaded from the filesystem.
                 sally_ip=region_default.get('sally_ip'),
+                s3_logs_bucket=region_default.get('s3_logs_bucket'),
                 dry_run=dry_run)
 
     # Create target groups and instances for applications.
@@ -4642,8 +4664,13 @@ def run_config(config_name, local_docker=False,
                         tag_prefix=tag_prefix)
 
         elif app_name.startswith('dbs-'):
-            db_names = [db_name.strip()
-                for db_name in config[config_block].get('db_names', "").split(',')]
+            db_names = [db_name.strip() for db_name
+                in config[config_block].get('db_names', "").split(',')]
+            identities_url = resources_kwargs.get('identities_url')
+            if not identities_url:
+                identities_url = "s3://%s/identities/%s/%s.%s.internal" % (
+                    config['default'].get('s3_identities_bucket'),
+                    region_name, app_name, region_name)
             instance_ids = create_datastores(
                 region_name, app_name,
                 db_host=config[config_block].get('db_host'),
@@ -4653,9 +4680,8 @@ def run_config(config_name, local_docker=False,
                 db_password=config[config_block].get('db_password'),
                 db_names=db_names,
                 provider=config[config_block].get('provider'),
-
                 storage_enckey=resources_kwargs.get('storage_enckey'),
-                identities_url=resources_kwargs.get('identities_url'),
+                identities_url=identities_url,
                 s3_logs_bucket=resources_kwargs.get('s3_logs_bucket'),
                 image_name=image_name,
                 ssh_key_name=resources_kwargs.get('ssh_key_name'),

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2021, Djaodjin Inc.
+# Copyright (c) 2025, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,10 +24,12 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import datetime, decimal, json, logging, os, re, sys
+import argparse, datetime, decimal, json, logging, os, re, sys
 
 import boto3, requests, six
 from pytz import utc
+
+from . import __version__
 
 
 LOGGER = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ LOGGER = logging.getLogger(__name__)
 
 class JSONEncoder(json.JSONEncoder):
 
-    def default(self, obj): #pylint: disable=method-hidden
+    def default(self, obj): #pylint: disable=method-hidden,arguments-renamed
         # parameter is called `o` in json.JSONEncoder.
         if hasattr(obj, 'isoformat'):
             return obj.isoformat()
@@ -111,7 +113,7 @@ def as_filename(key_name, logsuffix=None, prefix=None, ext='.log'):
 def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
     if ext.startswith('.'):
         ext = ext[1:]
-    result = as_filename(key_name, logsuffix=logsuffix, prefix=prefix)
+    result = as_filename(key_name, logsuffix=logsuffix, prefix=prefix, ext=ext)
     look = re.match(r'(\S+\.%s)((-\S+)\.gz)' % ext, result)
     if look:
         result = look.group(1)
@@ -175,21 +177,33 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
     with their timestamp.
 
     Example:
-    [{ "Key": "var/log/nginx/www.example.com.log-0ce5c29636da94d4c-20160106.gz",
-       "LastModified": "Mon, 06 Jan 2016 00:00:00 UTC"},
-     { "Key": "var/log/nginx/www.example.com.log-0ce5c29636da94d4c-20160105.gz",
-       "LastModified": "Mon, 05 Jan 2016 00:00:00 UTC"},
-    ]
+
+    .. code-block:: json
+
+        list_s3(bucket, lognames=['www.example.com.log'])
+
+    returns
+
+    .. code-block:: json
+
+        [{
+            "Key": "var/log/www.example.com.log-0ce5c29636da94d4c-20160106.gz",
+            "LastModified": "Mon, 06 Jan 2016 00:00:00 UTC"
+         }, {
+            "Key": "var/log/www.example.com.log-0ce5c29636da94d4c-20160105.gz",
+            "LastModified": "Mon, 05 Jan 2016 00:00:00 UTC"
+         }]
     """
     results = []
     s3_resource = boto3.resource('s3')
     for logname in lognames:
-        logprefix = os.path.splitext(logname)[0].lstrip('/')
+        logprefix, ext = os.path.splitext(logname)
+        logprefix = logprefix.lstrip('/')
         if prefix:
             logprefix = "%s/%s" % (prefix.strip('/'), logprefix)
         for s3_key in s3_resource.Bucket(bucket).objects.filter(
                 Prefix=logprefix):
-            logkey = as_logname(s3_key.key, prefix=prefix)
+            logkey = as_logname(s3_key.key, prefix=prefix, ext=ext)
             if logname.startswith('/'):
                 logkey = '/' + logkey
             if logkey == logname:
@@ -259,7 +273,7 @@ def download_updated_logs(lognames,
                           local_prefix=None, logsuffix=None,
                           bucket=None, s3_prefix=None,
                           last_run=None, list_all=False,
-                          time_from_logsuffix=False):
+                          time_from_logsuffix=False, dry_run=False):
     """
     Fetches log files which are on S3 and more recent that specified
     in last_run and returns a list of filenames.
@@ -275,6 +289,7 @@ def download_updated_logs(lognames,
     s3_resource = boto3.resource('s3')
     for item in sorted(local_update, key=get_last_modified):
         keyname = item['Key']
+        keydatetime = item['LastModified']
         logname = as_logname(keyname)
         filename = as_filename(keyname, prefix=s3_prefix)
         filename = filename.lstrip(os.sep)
@@ -286,15 +301,17 @@ def download_updated_logs(lognames,
                 logname, item['LastModified'], update=True):
             s3_key = s3_resource.Object(bucket, keyname)
             if not s3_key.storage_class or s3_key.storage_class == 'STANDARD':
-                LOGGER.info("download %s to %s\n" % (
-                    keyname, os.path.abspath(filename)))
-                if not os.path.isdir(os.path.dirname(filename)):
-                    os.makedirs(os.path.dirname(filename))
-                s3_key.download_file(filename)
+                LOGGER.info("%sdownload %s (%s) to %s\n",
+                    "(dryrun) " if dry_run else "",
+                    keyname, keydatetime.isoformat(), os.path.abspath(filename))
+                if not dry_run:
+                    if not os.path.isdir(os.path.dirname(filename)):
+                        os.makedirs(os.path.dirname(filename))
+                    s3_key.download_file(filename)
                 downloaded += [filename]
             else:
-                LOGGER.info("skip %s (on %s storage)\n" % (
-                    keyname, s3_key.storage_class))
+                LOGGER.info("skip %s (%s, on %s storage)\n",
+                    keyname, keydatetime.isoformat(), s3_key.storage_class)
 
     # It is possible some files were already downloaded as part of a previous
     # run so we construct the list of recent files here.
@@ -315,7 +332,7 @@ def download_updated_logs(lognames,
     return downloaded
 
 
-def upload_log(s3_location, filename, logsuffix=None):
+def upload_log(s3_location, filename, logsuffix=None, dry_run=False):
     """
     Upload a local log file to an S3 bucket. If logsuffix is ``None``,
     the instance-id will be automatically added as a suffix in the log filename.
@@ -334,7 +351,100 @@ def upload_log(s3_location, filename, logsuffix=None):
             logsuffix = logsuffix[1:]
     keyname = as_keyname(
         filename, logsuffix=logsuffix, prefix=s3_prefix)
-    LOGGER.info("Upload %s ... to s3://%s/%s\n"
-        % (filename, s3_bucket, keyname))
-    s3_client = boto3.client('s3')
-    s3_client.upload_file(filename, s3_bucket, keyname, ExtraArgs=headers)
+    LOGGER.info("%supload %s ... to s3://%s/%s\n",
+        "(dryrun) " if dry_run else "", filename, s3_bucket, keyname)
+    if not dry_run:
+        s3_client = boto3.client('s3')
+        s3_client.upload_file(filename, s3_bucket, keyname, ExtraArgs=headers)
+
+
+def main(args):
+    #pylint:disable=too-many-locals
+    parser = argparse.ArgumentParser(
+        usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version '
+        + str(__version__))
+    parser.add_argument('--version', action='version',
+        version='%(prog)s ' + str(__version__))
+    parser.add_argument('--dry-run', action='store_true',
+        dest='dry_run', default=False,
+        help='Only show commands. Do not actually copy files')
+    parser.add_argument('--quiet', action='store_true',
+        dest='quiet', default=False,
+        help='Quiet mode. Only write on stderr when there is an error')
+    parser.add_argument('--last-run', action='store',
+        dest='last_run', default=None,
+        help='Store a map of {logname: last_date} to use when deciding'\
+            ' to download a log or not')
+    parser.add_argument('--location', action='store',
+        dest='location', default=None,
+        help='Location where log files are stored')
+    parser.add_argument('--list-all', action='store_true',
+        dest='list_all', default=False,
+        help='List all files (by default it will exclude the current log)')
+    parser.add_argument('--download', action='store_true',
+        dest='download', default=False,
+        help='Download the rotated log files (by default upload)')
+    parser.add_argument('--logsuffix', action='store',
+        dest='logsuffix', default=None,
+        help='Suffix inserted in log filenames on upload')
+    parser.add_argument('lognames', metavar='lognames', nargs='+',
+        help="rotated log files to upload/download")
+
+    options = parser.parse_args(args[1:])
+    if len(options.lognames) < 1:
+        sys.stderr.write("error: not enough arguments")
+        parser.print_help()
+        return 1
+
+    if options.quiet:
+        logging.basicConfig(level=logging.ERROR)
+    else:
+        logging.basicConfig(format='%(message)s', level=logging.INFO)
+
+    lognames = options.lognames
+    logsuffix = options.logsuffix
+    s3_location = options.location
+    parts = s3_location[5:].split('/')
+    s3_bucket = parts[0]
+    s3_prefix = '/'.join(parts[1:])
+    to_s3 = not options.download
+    if to_s3:
+        LOGGER.info(
+            "Upload rotated logs for %s to bucket '%s' under prefix '%s'\n",
+            ' '.join(lognames), s3_bucket, s3_prefix)
+    else:
+        LOGGER.info(
+            "Download rotated logs for %s from bucket '%s' under prefix '%s'\n",
+            ' '.join(lognames), s3_bucket, s3_prefix)
+
+    local_prefix = '.' if not to_s3 else None
+    if to_s3:
+        # Upload
+        _, s3_update = list_updates(
+            list_local(lognames, prefix=local_prefix,
+                       list_all=options.list_all),
+            list_s3(s3_bucket, lognames, prefix=s3_prefix),
+            logsuffix=logsuffix, prefix=s3_prefix)
+        for item in s3_update:
+            filename = item['Key']
+            upload_log(s3_location, filename, logsuffix=logsuffix,
+                dry_run=options.dry_run)
+    else:
+        # Download
+        if options.last_run and os.path.exists(options.last_run):
+            last_run = LastRunCache(options.last_run)
+        else:
+            last_run = None
+        download_updated_logs(lognames,
+            local_prefix=local_prefix, logsuffix=logsuffix,
+            bucket=s3_bucket, s3_prefix=s3_prefix,
+            last_run=last_run, list_all=options.list_all,
+            time_from_logsuffix=True, dry_run=options.dry_run)
+        if not options.dry_run and last_run:
+            last_run.save()
+    return 0
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    main(sys.argv[1:])
