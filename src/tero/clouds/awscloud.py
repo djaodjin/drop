@@ -4872,6 +4872,10 @@ def main_ami(input_args):
         help='Overides default subnet to boot the instance that will be used'\
         ' to create the AMI')
     parser.add_argument(
+        '--vpc-id', action='store',
+        default=None,
+        help='Overides default VPC')
+    parser.add_argument(
         '--region-name', action='store',
         default=None,
         help='Overides default region name in which to create the AMI')
@@ -4910,6 +4914,7 @@ def main_ami(input_args):
         identities_url=args.identities_url,
         ssh_key_name=args.ssh_key_name,
         gate_subnet_id=args.subnet_id,
+        vpc_id=args.vpc_id,
         tag_prefix=args.prefix,
         dry_run=args.dry_run)
 
