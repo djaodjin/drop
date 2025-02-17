@@ -1,6 +1,7 @@
 ansible==2.9.20            # mostly for duploades (ElasticSearch) at this point
 boto3==1.34.40             # clouds deploy and logs management
 Fabric3==1.14.post1        # vmware.py and driver.py
+jinja2==3.1.5              # cloud templates
 paramiko==2.12.0           # drundocker.py
 pyasn1_modules==0.2.5      # awscloud.py
 pyOpenSSL==22.1.0          # awscloud.py

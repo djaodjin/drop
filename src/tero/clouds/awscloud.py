@@ -4932,7 +4932,7 @@ def cli_main():
 
 def cli_main_ami():
     logging.basicConfig(level='INFO')
-    main(sys.argv)
+    main_ami(sys.argv)
 
 
 if __name__ == '__main__':
