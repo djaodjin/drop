@@ -110,7 +110,7 @@ cd ${siteTop}
 DB_PASSWORD='{{db_password}}'
 DB_MASTER_PASSWORD='{{db_master_password}}'
 {% if profiles %}
-${siteTop}/bin/dservices -Dadmin=$USER -DetcDir=/etc -DlogsBucket={{s3_logs_bucket}} -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}"{% if ldap_hashed_password %} -DldapPasswordHash="{{ldap_hashed_password}}"{% endif %} -Dvpc_cidr="{{vpc_cidr}}"{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+${siteTop}/bin/dservices -Dadmin=$USER -DetcDir=/etc -DlogsBucket={{s3_logs_bucket}} -DdbHost="{{db_host}}" -DdbUser="{{db_user}}" -DdbPassword="$DB_PASSWORD" -DcompanyDomain="{{company_domain}}" -DldapHost="{{ldap_host}}"{% if ldap_hashed_password %} -DldapPasswordHash="{{ldap_hashed_password}}"{% endif %} -Dvpc_cidr="{{vpc_cidr}}"{% for profile in profiles %} reps/drop/share/profiles/{{profile}}.xml{% endfor %}
 {% endif %}
 
 # Restore SQL databases from flat files

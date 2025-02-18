@@ -62,11 +62,13 @@ fi
 
 # recreates links for TLS certificates
 for domain in `ls /etc/pki/tls/certs/archive` ; do
-  chmod 600 /etc/pki/tls/certs/archive/$domain/privkey.pem
+  chmod 600 /etc/pki/tls/certs/archive/$domain/privkey1.pem
   mkdir -p /etc/pki/tls/certs/live/$domain
   pushd /etc/pki/tls/certs/live/$domain
-  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey.pem
-  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain.pem
+  [ -e privkey.pem ] || ln -s ../../archive/$domain/privkey1.pem privkey.pem
+  [ -e fullchain.pem ] || ln -s ../../archive/$domain/fullchain1.pem fullchain.pem
+  [ -e cert.pem ] || ln -s ../../archive/$domain/cert1.pem cert.pem
+  [ -e chain.pem ] || ln -s ../../archive/$domain/chain1.pem chain.pem
 done
 for domain in `ls /etc/letsencrypt/archive` ; do
   chmod 600 /etc/letsencrypt/archive/$domain/privkey.pem
@@ -86,10 +88,10 @@ if [ ! -f ${siteTop}/bin/dservices ]; then
     $VIRTUALENV_RUN ${siteTop}
     echo "installTop=${siteTop}" > ${siteTop}/dws.mk
     /usr/bin/git clone {{remote_drop_repo}} ${siteTop}/reps/drop
-    pushd ${siteTop}/reps/drop/src
+    pushd ${siteTop}/reps/drop
     ${siteTop}/bin/python3 -m pip install --upgrade pip
-    ${siteTop}/bin/pip install -r ../requirements.txt
-    ${siteTop}/bin/pip install .
+    ${siteTop}/bin/pip install -r requirements.txt
+    make install   # without running `make`, `dws` is not installed.
     popd
     # Insures dcopylogs can upload the logs to S3
     setsebool -P nis_enabled 1
@@ -97,11 +99,12 @@ fi
 
 cd $siteTop
 {% if profiles %}
-${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocation={{logs_storage_location}}{% endif %}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+${siteTop}/bin/dservices -DetcDir=/etc{% if logs_storage_location %} -DlogsLocation={{logs_storage_location}}{% endif %}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/{{profile}}.xml{% endfor %}
 {% endif %}
 
 
 # Installs packages that were downloaded from the identity URL.
+[ -d $rootDir ] || mkdir -p $rootDir
 cd $rootDir
 packages=$(ls "*.tar.gz *.tar.bz2" 2>/dev/null || true)
 # defaults to downloading drop so we can install the instance profiles.

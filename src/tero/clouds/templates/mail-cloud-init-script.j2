@@ -93,7 +93,7 @@ fi
 cd ${siteTop}
 LDAP_HASHED_PASSWORD='{{ldap_hashed_password}}'
 {% if profiles %}
-${siteTop}/bin/dservices -DetcDir=/etc -DlogsLocation={{logs_storage_location}} -DldapPasswordHash="$LDAP_HASHED_PASSWORD"{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+${siteTop}/bin/dservices -DetcDir=/etc -DlogsLocation={{logs_storage_location}} -DldapPasswordHash="$LDAP_HASHED_PASSWORD"{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% if domain_name %} -DdomainName={{domain_name}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/{{profile}}.xml{% endfor %}
 {% endif %}
 
 # disable what we don't need

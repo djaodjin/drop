@@ -92,7 +92,7 @@ fi
 
 cd ${siteTop}
 {% if profiles %}
-${siteTop}/bin/dservices -DetcDir=/etc -DsshPort={{ssh_port}} -DlogsLocation={{logs_storage_location}}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/${profile}.xml{% endfor %}
+${siteTop}/bin/dservices -DetcDir=/etc -DsshPort={{ssh_port}} -DlogsLocation={{logs_storage_location}}{% if ldap_host %} -DldapHost={{ldap_host}}{% endif %}{% if company_domain %} -DcompanyDomain={{company_domain}}{% endif %}{% for profile in profiles %} reps/drop/share/profiles/{{profile}}.xml{% endfor %}
 {% endif %}
 
 # disable what we don't need

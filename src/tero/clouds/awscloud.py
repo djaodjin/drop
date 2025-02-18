@@ -3127,7 +3127,7 @@ def create_ami_webfront(region_name, app_name, instance_id):
             break
 
     try:
-        requests.get('http://%s/' % instance_domain, timeout=5)
+        requests.get('http://%s/' % instance_domain, timeout=5*60) # 5min
         resp = ec2_client.create_image(InstanceId=instance_id, Name=app_name)
         LOGGER.info("creating image '%s'", resp['ImageId'])
     except (requests.exceptions.ConnectionError,
@@ -3239,7 +3239,8 @@ def create_instances(region_name, app_name, image_name, profiles,
     template_env = jinja2.Environment(loader=template_loader)
     template = template_env.get_template(template_name)
     user_data = template.render(
-        logs_storage_location="s3://%s" % s3_logs_bucket,
+        logs_storage_location=("s3://%s" % s3_logs_bucket if s3_logs_bucket
+            else None),
         identities_url=identities_url,
         remote_drop_repo="https://github.com/djaodjin/drop.git",
         company_domain=company_domain,
@@ -3817,7 +3818,7 @@ def create_gate_resources(region_name, app_name, image_name,
             iam_client=iam_client, tag_prefix=tag_prefix),
         iam_client=iam_client, tag_prefix=tag_prefix, dry_run=dry_run)
 
-    profiles = ['reps/drop/share/profiles/webfront.xml']
+    profiles = ['webfront']
     instances = create_instances(region_name, app_name, image_name, profiles,
         storage_enckey=storage_enckey,
         s3_logs_bucket=s3_logs_bucket,
@@ -4286,10 +4287,20 @@ def run_app(
     if not app_prefix:
         app_prefix = app_name
 
-    ecr_access_role_arn = None
+    create_domain_forward(region_name, djaoapp_version,
+        tls_priv_key=tls_priv_key,
+        tls_fullchain_cert=tls_fullchain_cert,
+        tag_prefix=tag_prefix,
+        dry_run=dry_run)
+
+    if not container_location:
+        return []
+
     LOGGER.debug("container_location=%s (aws=%s), container_access_id=%s",
         container_location, is_aws_ecr(container_location), container_access_id)
-    if container_location and is_aws_ecr(container_location):
+
+    ecr_access_role_arn = None
+    if is_aws_ecr(container_location):
         ecr_access_role_arn = container_access_id
 
     instance_ids = create_app_resources(
@@ -4311,22 +4322,15 @@ def run_app(
         app_prefix=app_prefix,
         tag_prefix=tag_prefix,
         dry_run=dry_run)
-    if tls_fullchain_cert and tls_priv_key:
-        create_domain_forward(region_name, djaoapp_version,
-            tls_priv_key=tls_priv_key,
-            tls_fullchain_cert=tls_fullchain_cert,
-            tag_prefix=tag_prefix,
-            dry_run=dry_run)
 
     # Environment variables is an array of name/value.
-    if container_location:
-        deploy_app_container(app_name, container_location,
-            env=env,
-            container_access_id=container_access_id,
-            container_access_key=container_access_key,
-            queue_url=queue_url,
-            region_name=region_name,
-            dry_run=dry_run)
+    deploy_app_container(app_name, container_location,
+        env=env,
+        container_access_id=container_access_id,
+        container_access_key=container_access_key,
+        queue_url=queue_url,
+        region_name=region_name,
+        dry_run=dry_run)
 
     return instance_ids
 
