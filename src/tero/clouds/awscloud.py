@@ -4287,11 +4287,12 @@ def run_app(
     if not app_prefix:
         app_prefix = app_name
 
-    create_domain_forward(region_name, djaoapp_version,
-        tls_priv_key=tls_priv_key,
-        tls_fullchain_cert=tls_fullchain_cert,
-        tag_prefix=tag_prefix,
-        dry_run=dry_run)
+    if djaoapp_version and tls_priv_key and tls_fullchain_cert:
+        create_domain_forward(region_name, djaoapp_version,
+            tls_priv_key=tls_priv_key,
+            tls_fullchain_cert=tls_fullchain_cert,
+            tag_prefix=tag_prefix,
+            dry_run=dry_run)
 
     if not container_location:
         return []
