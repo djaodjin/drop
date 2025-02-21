@@ -76,7 +76,7 @@ class LastRunCache(object):
         return result
 
 
-def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
+def as_keyname(filename, logsuffix=None, prefix=None, logext=None):
     """
     The keyname returned is in a format as expected by AWS S3
     (i.e. no leading '/') whether `filename` is an absolute path or
@@ -87,22 +87,32 @@ def as_keyname(filename, logsuffix=None, prefix=None, ext='.log'):
     if ext.startswith('.'):
         ext = ext[1:]
     if logsuffix:
-        look = re.match(r'^(\S+\.%s)(\S*)$' % ext, filename)
-        if look:
-            result = look.group(1) + logsuffix + look.group(2)
+        if logext:
+            look = re.match(r'^(\S+\.%s)(\S*)$' % ext, filename)
+            if look:
+                result = look.group(1) + logsuffix + look.group(2)
+        else:
+            base, ext = os.path.splitext(filename)
+            result = base + logsuffix + ext
     if prefix:
         result = "%s/%s" % (prefix.strip('/'), result)
     return result
 
 
-def as_filename(key_name, logsuffix=None, prefix=None, ext='.log'):
+def as_filename(key_name, logsuffix=None, prefix=None, logext=None):
     result = key_name
     if ext.startswith('.'):
         ext = ext[1:]
     if logsuffix:
-        look = re.match(r'^(\S+\.%s)%s(\S*)$' % (ext, logsuffix), key_name)
-        if look:
-            result = look.group(1) + look.group(2)
+        if logext:
+            look = re.match(r'^(\S+\.%s)%s(\S*)$' % (
+                logext, logsuffix), key_name)
+            if look:
+                result = look.group(1) + look.group(2)
+        else:
+            look = re.match(r'^(\S+)%s(\S*)$' % logsuffix, key_name)
+            if look:
+                result = look.group(1) + look.group(2)
     if prefix is not None:
         if result.startswith(prefix):
             result = result[len(prefix):]
@@ -113,7 +123,8 @@ def as_filename(key_name, logsuffix=None, prefix=None, ext='.log'):
 def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
     if ext.startswith('.'):
         ext = ext[1:]
-    result = as_filename(key_name, logsuffix=logsuffix, prefix=prefix, ext=ext)
+    result = as_filename(key_name, logsuffix=logsuffix, prefix=prefix,
+        logext=ext)
     look = re.match(r'(\S+\.%s)((-\S+)\.gz)' % ext, result)
     if look:
         result = look.group(1)
@@ -239,7 +250,7 @@ def list_updates(local_items, s3_items, prefix=None,
     local_index = {}
     for local_val in local_items:
         local_index[as_keyname(local_val['Key'],
-            logsuffix=logsuffix, prefix=prefix, ext=logext)] = local_val
+            logsuffix=logsuffix, prefix=prefix, logext=logext)] = local_val
     for s3_val in s3_items:
         s3_key = s3_val['Key']
         local_val = local_index.get(s3_key, None)
@@ -255,7 +266,7 @@ def list_updates(local_items, s3_items, prefix=None,
     s3_index = {}
     for s3_val in s3_items:
         s3_index[as_filename(s3_val['Key'],
-            logsuffix=logsuffix, prefix=prefix)] = s3_val
+            logsuffix=logsuffix, prefix=prefix, logext=logext)] = s3_val
     for local_val in local_items:
         local_key = local_val['Key'].lstrip('/')
         s3_val = s3_index.get(local_key, None)
@@ -354,7 +365,7 @@ def upload_log(s3_location, filename, logsuffix=None,
         if logsuffix.startswith('i-'):
             logsuffix = logsuffix[1:]
     keyname = as_keyname(
-        filename, logsuffix=logsuffix, prefix=s3_prefix, ext=logext)
+        filename, logsuffix=logsuffix, prefix=s3_prefix, logext=logext)
     LOGGER.info("%supload %s ... to s3://%s/%s\n",
         "(dryrun) " if dry_run else "", filename, s3_bucket, keyname)
     if not dry_run:
