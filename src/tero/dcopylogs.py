@@ -219,7 +219,8 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
     return results
 
 
-def list_updates(local_items, s3_items, logsuffix=None, prefix=None):
+def list_updates(local_items, s3_items, prefix=None,
+                 logsuffix=None, logext='.log'):
     """
     Returns two lists of updated files. The first list is all the files
     in the list *s3_items* which are more recent that files in the list
@@ -238,7 +239,7 @@ def list_updates(local_items, s3_items, logsuffix=None, prefix=None):
     local_index = {}
     for local_val in local_items:
         local_index[as_keyname(local_val['Key'],
-            logsuffix=logsuffix, prefix=prefix)] = local_val
+            logsuffix=logsuffix, prefix=prefix, ext=logext)] = local_val
     for s3_val in s3_items:
         s3_key = s3_val['Key']
         local_val = local_index.get(s3_key, None)
@@ -332,7 +333,8 @@ def download_updated_logs(lognames,
     return downloaded
 
 
-def upload_log(s3_location, filename, logsuffix=None, dry_run=False):
+def upload_log(s3_location, filename, logsuffix=None,
+               logext='.log', dry_run=False):
     """
     Upload a local log file to an S3 bucket. If logsuffix is ``None``,
     the instance-id will be automatically added as a suffix in the log filename.
@@ -340,6 +342,8 @@ def upload_log(s3_location, filename, logsuffix=None, dry_run=False):
     headers = {'ContentType': 'text/plain'}
     if filename.endswith('.gz'):
         headers.update({'ContentEncoding': 'gzip'})
+    if filename.endswith('.zip'):
+        headers.update({'ContentType': 'application/zip'})
     parts = s3_location[5:].split('/')
     s3_bucket = parts[0]
     s3_prefix = '/'.join(parts[1:])
@@ -350,7 +354,7 @@ def upload_log(s3_location, filename, logsuffix=None, dry_run=False):
         if logsuffix.startswith('i-'):
             logsuffix = logsuffix[1:]
     keyname = as_keyname(
-        filename, logsuffix=logsuffix, prefix=s3_prefix)
+        filename, logsuffix=logsuffix, prefix=s3_prefix, ext=logext)
     LOGGER.info("%supload %s ... to s3://%s/%s\n",
         "(dryrun) " if dry_run else "", filename, s3_bucket, keyname)
     if not dry_run:
@@ -387,6 +391,10 @@ def main(args):
     parser.add_argument('--logsuffix', action='store',
         dest='logsuffix', default=None,
         help='Suffix inserted in log filenames on upload')
+    parser.add_argument('--logext', action='store',
+        dest='logext', default='.log',
+        help='File extension after which logsuffix is inserted '
+            '(defaults to ".log")')
     parser.add_argument('lognames', metavar='lognames', nargs='+',
         help="rotated log files to upload/download")
 
@@ -403,6 +411,7 @@ def main(args):
 
     lognames = options.lognames
     logsuffix = options.logsuffix
+    logext = options.logext
     s3_location = options.location
     parts = s3_location[5:].split('/')
     s3_bucket = parts[0]
@@ -424,10 +433,11 @@ def main(args):
             list_local(lognames, prefix=local_prefix,
                        list_all=options.list_all),
             list_s3(s3_bucket, lognames, prefix=s3_prefix),
-            logsuffix=logsuffix, prefix=s3_prefix)
+            prefix=s3_prefix, logsuffix=logsuffix, logext=logext)
         for item in s3_update:
             filename = item['Key']
-            upload_log(s3_location, filename, logsuffix=logsuffix,
+            upload_log(s3_location, filename,
+                logsuffix=logsuffix, logext=logext,
                 dry_run=options.dry_run)
     else:
         # Download
