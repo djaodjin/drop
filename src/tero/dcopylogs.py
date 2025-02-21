@@ -186,7 +186,8 @@ def list_local(lognames, prefix=None, list_all=False):
     return results
 
 
-def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
+def list_s3(bucket, lognames, prefix=None, logsuffix=None,
+            time_from_logsuffix=False):
     """
     Returns a list of rotated log files present in a bucket
     with their timestamp.
@@ -218,7 +219,8 @@ def list_s3(bucket, lognames, prefix=None, time_from_logsuffix=False):
             logprefix = "%s/%s" % (prefix.strip('/'), logprefix)
         for s3_key in s3_resource.Bucket(bucket).objects.filter(
                 Prefix=logprefix):
-            logkey = as_logname(s3_key.key, prefix=prefix, ext=ext)
+            logkey = as_logname(s3_key.key, logsuffix=logsuffix,
+                prefix=prefix, ext=ext)
             if logname.startswith('/'):
                 logkey = '/' + logkey
             if logkey == logname:
@@ -446,8 +448,9 @@ def main(args):
         # Upload
         _, s3_update = list_updates(
             list_local(lognames, prefix=local_prefix,
-                       list_all=options.list_all),
-            list_s3(s3_bucket, lognames, prefix=s3_prefix),
+                list_all=options.list_all),
+            list_s3(s3_bucket, lognames, prefix=s3_prefix,
+                logsuffix=logsuffix),
             prefix=s3_prefix, logsuffix=logsuffix, logext=logext)
         for item in s3_update:
             filename = item['Key']
