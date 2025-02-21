@@ -84,11 +84,11 @@ def as_keyname(filename, logsuffix=None, prefix=None, logext=None):
     """
     filename = filename.lstrip(os.sep)
     result = filename
-    if ext.startswith('.'):
-        ext = ext[1:]
+    if logext and logext.startswith('.'):
+        logext = logext[1:]
     if logsuffix:
         if logext:
-            look = re.match(r'^(\S+\.%s)(\S*)$' % ext, filename)
+            look = re.match(r'^(\S+\.%s)(\S*)$' % logext, filename)
             if look:
                 result = look.group(1) + logsuffix + look.group(2)
         else:
@@ -101,8 +101,8 @@ def as_keyname(filename, logsuffix=None, prefix=None, logext=None):
 
 def as_filename(key_name, logsuffix=None, prefix=None, logext=None):
     result = key_name
-    if ext.startswith('.'):
-        ext = ext[1:]
+    if logext and logext.startswith('.'):
+        logext = logext[1:]
     if logsuffix:
         if logext:
             look = re.match(r'^(\S+\.%s)%s(\S*)$' % (
@@ -121,13 +121,17 @@ def as_filename(key_name, logsuffix=None, prefix=None, logext=None):
 
 
 def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
-    if ext.startswith('.'):
-        ext = ext[1:]
+    if ext in ['.gz', '.zip']:
+        # We don't really have a log extension. File is already compressed.
+        ext = None
     result = as_filename(key_name, logsuffix=logsuffix, prefix=prefix,
         logext=ext)
-    look = re.match(r'(\S+\.%s)((-\S+)\.gz)' % ext, result)
-    if look:
-        result = look.group(1)
+    if ext:
+        if ext.startswith('.'):
+            ext = ext[1:]
+        look = re.match(r'(\S+\.%s)((-\S+)\.gz)' % ext, result)
+        if look:
+            result = look.group(1)
     return result
 
 
