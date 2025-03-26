@@ -524,12 +524,16 @@ def error_event(key, reason, extra=None):
 def generate_events(fileobj, key):
     #pylint:disable=too-many-locals
     host, log_name, instance_id, log_date = parse_logname(key)
-    if not instance_id:
-        sys.stderr.write('warning: "%s" cannot extract instance_id\n' % key)
+    if not host:
+        sys.stderr.write('warning: "%s" cannot extract host\n' % key)
     if not log_name:
-        sys.stderr.write('warning: "%s" does not match log file regex\n' % key)
+        sys.stderr.write('error: "%s" does not match log file regex\n' % key)
         yield error_event(key, 'log filename didnt match regexp')
         return
+    if not instance_id:
+        sys.stderr.write('warning: "%s" cannot extract instance_id\n' % key)
+    if not log_date:
+        sys.stderr.write('warning: "%s" cannot extract log_date\n' % key)
 
     log_parser = NginxLogParser()
     log_type = 'webfront'
@@ -587,14 +591,19 @@ def generate_events(fileobj, key):
             if log_type is not None:
                 event['log_type'] = log_type
 
+            try:
+                log_date_as_str = log_date.strftime('%Y%m%d')
+            except AttributeError:
+                log_date_as_str = ""
+
             event.update({
                 'host': host,
                 'log_name': log_name,
                 'instance_id': instance_id,
-                'log_date': log_date.strftime('%Y%m%d')
+                'log_date': log_date_as_str
             })
 
-            index = 'logs-%s' % log_date.strftime('%Y%m%d')
+            index = 'logs-%s' % log_date_as_str
             doc_type = 'log'
             yield {
                 '_id': _id,
@@ -641,14 +650,11 @@ def parse_logname(filename):
     log_name = None
     instance_id = None
     log_date = None
+    basename = os.path.basename(filename)
     look = re.match(
-        r'(?P<host>\S+)-(?P<log_name>\S+)\.log(-(?P<instance_id>[^-"\
-        "]+))?-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?',
-        os.path.basename(filename))
+        r'(?P<host>\S+)-(?P<log_name>\S+)\.log(-(?P<instance_id>[^-]+))'\
+        '-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?', basename)
     if look:
-        host = look.group('host')
-        log_name = look.group('log_name')
-        instance_id = look.group('instance_id')
         try:
             log_date = datetime.datetime.strptime(
                 look.group('log_date'), '%Y%m%d')
@@ -658,8 +664,27 @@ def parse_logname(filename):
             # If we have an error parsing the date, it is very likely
             # the `instance_id` was not added to the suffix and we parsed
             # something else (maybe the `log_date`) as an `instance_id`.
+            look = None
+
+    if not look:
+        look = re.match(
+            r'(?P<host>\S+)-(?P<log_name>\S+)\.log'\
+            '-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?', basename)
+    if look:
+        host = look.group('host')
+        log_name = look.group('log_name')
+        try:
+            instance_id = look.group('instance_id')
+        except IndexError:
             instance_id = None
+        try:
+            log_date = datetime.datetime.strptime(
+                look.group('log_date'), '%Y%m%d')
+            if log_date.tzinfo is None:
+                log_date = log_date.replace(tzinfo=pytz.utc)
+        except ValueError:
             log_date = None
+
     return host, log_name, instance_id, log_date
 
 
