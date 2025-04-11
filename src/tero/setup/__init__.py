@@ -199,7 +199,7 @@ class PostinstScript(object):
         self.shell_command(['echo', '-e',
             '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
                 '\n%(domain)s\n%(email)s\n\n\n"' % {
-                'domain': certificate_name
+                'domain': certificate_name,
                 'email': 'support@%s' % (
                     company_domain if company_domain else 'example.com')
             }, '|',

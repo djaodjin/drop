@@ -4492,11 +4492,23 @@ def run_config(config_name, local_docker=False,
     LOGGER.info("read configuration from %s", config_name)
     for section in config.sections():
         LOGGER.info("[%s]", section)
+        env_overrides = {}
         for key, val in config.items(section):
+            look = re.match(r'\$\{(\S+)\}', val)
+            if look:
+                env_key = look.group(1)
+                env_val = os.getenv(env_key)
+                if env_val:
+                    env_overrides.update({key: env_val})
+                else:
+                    LOGGER.warning("%s is not defined in the environment.",
+                        env_key)
             if key.endswith('password'):
                 LOGGER.info("%s = [REDACTED]", key)
             else:
                 LOGGER.info("%s = %s", key, val)
+        for env_key, env_val in env_overrides.items():
+            config[section][env_key] = env_val
 
     if not tag_prefix:
         tag_prefix = os.path.splitext(os.path.basename(config_name))[0]
@@ -4675,7 +4687,8 @@ def run_config(config_name, local_docker=False,
                 region_name, app_name,
                 db_host=config[config_block].get('db_host'),
                 db_master_user=config[config_block].get('db_master_user'),
-                db_master_password=config[config_block].get('db_master_password'),
+                db_master_password=config[config_block].get(
+                    'db_master_password'),
                 db_user=config[config_block].get('db_user'),
                 db_password=config[config_block].get('db_password'),
                 db_names=db_names,
