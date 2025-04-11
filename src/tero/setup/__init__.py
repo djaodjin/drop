@@ -187,7 +187,8 @@ class PostinstScript(object):
             self.scriptfile.write('# ' + comment + '\n')
         self.scriptfile.write(' '.join(cmdline) + '\n')
 
-    def create_certificate(self, certificate_name, comment=None):
+    def create_certificate(self, certificate_name,
+                           company_domain=None, comment=None):
         """
         Shell commands to create a key pair.
         """
@@ -197,10 +198,14 @@ class PostinstScript(object):
         self.shell_command(['if [ ! -f %s ] ; then' % priv_key])
         self.shell_command(['echo', '-e',
             '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
-                '\nlocalhost\nsupport@example.com\n\n\n"', '|',
+                '\n%(domain)s\n%(email)s\n\n\n"' % {
+                'domain': certificate_name
+                'email': 'support@%s' % (
+                    company_domain if company_domain else 'example.com')
+            }, '|',
             'openssl', 'req', '-new', '-sha256',
-            '-newkey', 'rsa:2048', '-nodes', '-keyout', priv_key,
-            '-out', sign_request],
+            '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:secp256k1',
+            '-nodes', '-keyout', priv_key, '-out', sign_request],
             comment=comment)
         self.shell_command(['openssl', 'x509', '-req', '-days', '365',
             '-in', sign_request, '-signkey', priv_key, '-out', pub_cert])

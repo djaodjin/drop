@@ -198,7 +198,8 @@ olcObjectClasses: {0}( 1.3.6.1.4.1.24552.500.1.1.2.0 NAME 'ldapPublicKey' DESC
         self.create_cron_conf(context)
         self.create_syslogng_conf(context)
 
-        postinst.create_certificate(ldap_host)
+        postinst.create_certificate(ldap_host,
+            company_domain=context.value('companyDomain'))
         postinst.shell_command(['chmod', '750', os.path.dirname(priv_key)])
         postinst.shell_command(['chgrp', 'ldap', os.path.dirname(priv_key)])
         postinst.shell_command(['chmod', '640', priv_key])

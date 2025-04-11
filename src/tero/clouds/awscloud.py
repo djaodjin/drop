@@ -45,7 +45,7 @@ from tero.clouds.monitor import APP_NAME, EC2_RUNNING, list_db_meta
 
 LOGGER = logging.getLogger(__name__)
 
-APP_VERSION = '%s-2024-03-15' % APP_NAME
+APP_VERSION = '%s-2025-02-17' % APP_NAME
 USES_DEPRECATED_DOCKER_VERSION = False
 BASH = '/bin/bash'
 NGINX = '/usr/sbin/nginx'
@@ -4607,14 +4607,9 @@ def run_config(config_name, local_docker=False,
                 'vpc_cidr',
                 'vpc_id',
         ]:
-            if resources_name == 'sally_port':
-                resources_kwargs.update({
-                    'ssh_port': config[config_block].get('ssh_port',
-                        default_by_regions[region_name].get(resources_name))})
-            else:
-                resources_kwargs.update({
-                    resources_name: config[config_block].get(resources_name,
-                        default_by_regions[region_name].get(resources_name))})
+            resources_kwargs.update({
+                resources_name: config[config_block].get(resources_name,
+                    default_by_regions[region_name].get(resources_name))})
 
         tls_priv_key_path = config[config_block].get('tls_priv_key_path')
         tls_fullchain_path = config[config_block].get('tls_fullchain_path')
@@ -4693,6 +4688,7 @@ def run_config(config_name, local_docker=False,
                 company_domain=resources_kwargs.get('company_domain'),
                 ldap_host=resources_kwargs.get('ldap_host'),
                 hosted_zone_id=resources_kwargs.get('hosted_zone_id'),
+                vpc_id=resources_kwargs.get('vpc_id'),
                 vpc_cidr=resources_kwargs.get('vpc_cidr'),
                 tag_prefix=tag_prefix,
                 dry_run=dry_run)
@@ -4703,7 +4699,7 @@ def run_config(config_name, local_docker=False,
                 s3_logs_bucket=resources_kwargs.get('s3_logs_bucket'),
                 identities_url=resources_kwargs.get('identities_url'),
                 ssh_key_name=resources_kwargs.get('ssh_key_name'),
-                ssh_port=resources_kwargs.get('ssh_port'),
+                ssh_port=resources_kwargs.get('sally_port'),
                 company_domain=resources_kwargs.get('company_domain'),
                 ldap_host=resources_kwargs.get('ldap_host'),
                 security_group_name=resources_kwargs.get('security_group_name'),

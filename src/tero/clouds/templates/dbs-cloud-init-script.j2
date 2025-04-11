@@ -132,9 +132,9 @@ END
         echo "restore $db_file to $db_name ..."
         ${PSQL} -c "DROP DATABASE IF EXISTS \"$db_name\";"
         if [[ $db_file == *.gz ]] ; then
-            /usr/bin/gzip -d -c $db_file | ${PSQL} $db_name
+            /usr/bin/gzip -d -c $db_file | ${PSQL}
         else
-            ${PSQL} -f $db_file $db_name
+            ${PSQL} -f $db_file
         fi
     done
 fi

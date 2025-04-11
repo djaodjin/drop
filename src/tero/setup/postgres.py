@@ -179,28 +179,26 @@ class postgresql_serverSetup(SetupTemplate):
             db_ssl_key_file = "/etc/pki/tls/private/%s.key" % db_host
             db_ssl_cert_file = "/etc/pki/tls/certs/%s.crt" % db_host
             dh_params = "/etc/ssl/certs/dhparam.pem"
-            if (os.path.exists(db_ssl_key_file) and
-                os.path.exists(db_ssl_cert_file)):
-                postgresql_conf_settings.update({
-                    'ssl': "on",
-                    'ssl_cert_file': "'%s'" % db_ssl_cert_file,
-                    'ssl_key_file': "'%s'" % db_ssl_key_file,
-                    'ssl_prefer_server_ciphers': "on",
+            postinst.create_certificate(db_host,
+                company_domain=context.value('companyDomain'))
+            postgresql_conf_settings.update({
+                'ssl': "on",
+                'ssl_cert_file': "'%s'" % db_ssl_cert_file,
+                'ssl_key_file': "'%s'" % db_ssl_key_file,
+                'ssl_prefer_server_ciphers': "on",
                 #ssl_ca_file = ''
                 #ssl_crl_file = ''
                 #ssl_ecdh_curve = 'prime256v1'
                 #ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL' # allowed SSL ciphers
+            })
+            if os.path.exists(dh_params):
+                postgresql_conf_settings.update({
+                    'ssl_dh_params_file': "'%s'" % dh_params,
                 })
-                if os.path.exists(dh_params):
-                    postgresql_conf_settings.update({
-                        'ssl_dh_params_file': "'%s'" % dh_params,
-                    })
-                postinst.shell_command([
-                    'chown', 'root:postgres', db_ssl_key_file])
-                postinst.shell_command([
-                    'chmod', '640', db_ssl_key_file])
-                postinst.shell_command([
-                    'chmod', '755', os.path.dirname(db_ssl_key_file)])
+            postinst.shell_command(['chown', 'root:postgres', db_ssl_key_file])
+            postinst.shell_command(['chmod', '640', db_ssl_key_file])
+            postinst.shell_command([
+                'chmod', '755', os.path.dirname(db_ssl_key_file)])
         modify_config(postgresql_conf,
             settings=postgresql_conf_settings,
             sep=' = ', context=context)
@@ -260,7 +258,7 @@ r'(?P<db>\S+)\s+(?P<pg_user>\S+)\s+(?P<cidr>\S+)\s+(?P<method>\S+)',
                             connections = remains
                             if found:
                                 new_conf.write(
-                                '%(host)s    %(db)s%(pg_user)s%(cidr)smd5\n' % {
+                                '%(host)s %(db)s%(pg_user)s%(cidr)smd5\n' % {
                                     'host': source_host.ljust(10),
                                     'db': found[0].ljust(16),
                                     'pg_user': found[1].ljust(16),
