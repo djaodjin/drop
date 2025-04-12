@@ -1,4 +1,4 @@
-# Copyright (c) 2024, DjaoDjin inc.
+# Copyright (c) 2025, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -40,15 +40,28 @@ class dockerSetup(SetupTemplate):
         Create configuration for syslog
         """
         appname = 'djaoapp'
+        # syslog-ng config
         syslog_conf = os.path.join(
             context.value('etcDir'), 'syslog-ng', 'conf.d', 'docker.conf')
         templates_dir = os.path.dirname(os.path.abspath(__file__))
         _, new_conf_path = stage_file(syslog_conf, context)
         with open(os.path.join(
-                templates_dir, 'webapp-syslog.tpl')) as conf_file:
+                templates_dir, 'webapp-syslog-ng.tpl')) as conf_file:
             conf_template = conf_file.read()
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write(conf_template % {'appname': appname})
+        # rsyslog config
+        syslog_conf = os.path.join(
+            context.value('etcDir'), 'rsyslog.d', "%s.conf" % appname)
+        templates_dir = os.path.dirname(os.path.abspath(__file__))
+        _, new_conf_path = stage_file(syslog_conf, context)
+        with open(os.path.join(
+                templates_dir, 'webapp-rsyslog.tpl')) as conf_file:
+            conf_template = conf_file.read()
+        with open(new_conf_path, 'w') as new_conf:
+            new_conf.write(conf_template % {'appname': appname})
+
+
 
     @staticmethod
     def create_container_systemd_service(context, name, location, port,
@@ -98,7 +111,7 @@ WantedBy=multi-user.target
             context.value('etcDir'), 'sysconfig', 'docker')
         #pylint:disable=line-too-long
         modify_config(docker_conf, settings={
-            'OPTIONS': '--selinux-enabled --log-driver syslog --log-opt labels="{{.ID}}" --log-opt tag=".{{.ID}}"\'',
+            'OPTIONS': '--selinux-enabled --log-driver journald --log-opt tag="{{.Name}}/{{.ID}}"\'',
             'LOGROTATE': 'false\''
         }, sep='=\'', context=context)
 

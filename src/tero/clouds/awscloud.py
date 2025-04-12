@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Djaodjin Inc.
+# Copyright (c) 2025, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -3190,7 +3190,7 @@ def create_instances(region_name, app_name, image_name, profiles,
     `dry_run` shows the command that would be executed without executing them.
     """
     if not instance_type:
-        instance_type = 't3a.micro'
+        instance_type = 't3a.small'
     if not template_name:
         template_name = "%s-cloud-init-script.j2" % app_name
     if not ec2_client:
@@ -3787,7 +3787,7 @@ def create_gate_resources(region_name, app_name, image_name,
         - `vpc_cidr`
     """
     if not instance_type:
-        instance_type = 't3a.micro'
+        instance_type = 't3a.small'
     subnet_id = gate_subnet_id
     sg_tag_prefix = tag_prefix
     ec2_client = boto3.client('ec2', region_name=region_name)
