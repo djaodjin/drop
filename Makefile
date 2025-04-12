@@ -1,4 +1,4 @@
-# Copyright (c) 2020, DjaoDjin inc.
+# Copyright (c) 2025, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -83,5 +83,17 @@ dws: tero/__init__.py
 	$(SED) -e "s,^#!/usr/bin/env python,#!$(PYTHON),g" -e "s,\$${libDir},$(libDir),g" -e 's,__version__ = None,__version__ = "$(version)",' $< > $@ || (rm -f $@ ; false)
 	chmod 755 $@
 
+# These targets match the expected targets to build other projects through
+# the buildbot pipeline.
+build-assets:
+
+initdb:
+
+install-conf: install
+
+vendor-assets-prerequisites:
+
 
 include $(srcDir)/src/suffix.mk
+
+.PHONY: build-assets initdb install-conf vendor-assets-prerequisites
