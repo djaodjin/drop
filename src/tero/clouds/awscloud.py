@@ -38,7 +38,7 @@ from pyasn1_modules.rfc2459 import SubjectAltName
 #pylint:disable=import-error
 from six.moves.urllib.parse import urlparse
 
-from tero import shell_command
+from tero import __version__, shell_command
 from tero.setup.nginx import read_upstream_proxies
 from tero.clouds.monitor import APP_NAME, EC2_RUNNING, list_db_meta
 
@@ -4804,6 +4804,8 @@ def main(input_args):
     """
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
+    parser.add_argument('--version', action='version',
+        version='%(prog)s ' + str(__version__))
     parser.add_argument(
         '--dry-run', action='store_true',
         default=False,
@@ -4852,6 +4854,8 @@ def main_ami(input_args):
     """
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
+    parser.add_argument('--version', action='version',
+        version='%(prog)s ' + str(__version__))
     parser.add_argument(
         '--dry-run', action='store_true',
         default=False,

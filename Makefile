@@ -64,6 +64,8 @@ install:: $(foreach shareItemDir,$(shareItemDirs),$(wildcard $(srcDir)/share/$(s
 	for dir in $(shareItemDirs); do $(installDirs) $(shareDir)/dws/$$dir ; done
 	cd $(srcDir)/share && find playbooks profiles -path playbooks/group_vars -prune -o -type f -exec $(installFiles) {} $(shareDir)/dws/{} \;
 
+clean::
+	cd $(srcDir)/src && rm -rf build tero.egg-info tero/__pycache__
 
 dist::
 	cd $(srcDir)/src && $(PYTHON) -m build
