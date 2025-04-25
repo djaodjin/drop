@@ -94,6 +94,7 @@ def list_instances(regions=None, ec2_client=None):
 
 
 def list_instances_by_subnets(regions=None, ec2_client=None):
+    #pylint:disable=too-many-locals
     if not regions:
         regions = get_regions(ec2_client)
     subnets = {}
@@ -196,7 +197,7 @@ def list_logs(log_location, domains, lognames=['access', 'error'],
     _, bucket_name, prefix = urlparse(log_location)[:3]
     if prefix.startswith('/'):
         prefix = prefix[1:]
-    LOGGER.info("list logs at s3://%s/%s" % (bucket_name, prefix))
+    LOGGER.info("list logs at s3://%s/%s", bucket_name, prefix)
     resp = s3_client.list_objects_v2(
         Bucket=bucket_name,
         Prefix=prefix)
@@ -222,6 +223,7 @@ def list_targetgroups_by_domains(regions=None, default_top_domain=None,
     Returns a dictionnary of target groups indexed by domain name
     for all load balancers in a region.
     """
+    #pylint:disable=too-many-locals,too-many-nested-blocks
     targetgroups_by_arns = {}
     targetgroups_by_domains = {}
     if not regions:
@@ -316,6 +318,7 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
       }
     }
     """
+    #pylint:disable=too-many-nested-blocks
     if start_at:
         start_at = as_datetime(start_at)
     if ends_at:
@@ -340,61 +343,61 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                             try:
                                 search[db_name][name] += [
                                     (at_date, instance_id, key_path)]
-                                LOGGER.info("add  %s, %s, %s, %s" % (
+                                LOGGER.debug("add  %s, %s, %s, %s",
                                     db_name, name, instance_id,
-                                    at_date.isoformat()))
-                            except KeyError:
+                                    at_date.isoformat())
+                            except KeyError as err:
                                 LOGGER.info(
-                                "skip %s, %s, %s, %s (on db_name or dbname)" % (
+                                "skip %s, %s, %s, %s (on %s)",
                                 db_name, name, instance_id,
-                                at_date.isoformat()))
+                                at_date.isoformat(), err)
                         else:
                             LOGGER.info(
-                                "skip %s, '%s' <= '%s' < '%s' (on date)" % (
+                                "skip %s, '%s' <= '%s' < '%s' (on date)",
                                 logmeta['Key'], start_at.isoformat(),
-                                at_date.isoformat(), ends_at.isoformat()))
+                                at_date.isoformat(), ends_at.isoformat())
                     else:
                         try:
                             search[db_name][name] += [
                                 (at_date, instance_id, key_path)]
-                            LOGGER.info("add  %s, %s, %s, %s" % (
+                            LOGGER.debug("add  %s, %s, %s, %s",
                                 db_name, name, instance_id,
-                                at_date.isoformat()))
-                        except KeyError:
+                                at_date.isoformat())
+                        except KeyError as err:
                             LOGGER.info(
-                            "skip %s, %s, %s, %s (on db_name or dbname)" % (
+                            "skip %s, %s, %s, %s (on %s)",
                             db_name, name, instance_id,
-                            at_date.isoformat()))
+                            at_date.isoformat(), err)
                 else:
-                    LOGGER.info("skip %s, '%s' <= '%s' (on date)" % (
+                    LOGGER.info("skip %s, '%s' <= '%s' (on date)",
                         logmeta['Key'],
-                        start_at.isoformat(), at_date.isoformat()))
+                        start_at.isoformat(), at_date.isoformat())
             elif ends_at:
                 if at_date < ends_at:
                     try:
                         search[db_name][name] += [(
                             at_date, instance_id, key_path)]
-                        LOGGER.info("add  %s, %s, %s, %s" % (
-                            db_name, name, instance_id, at_date.isoformat()))
-                    except KeyError:
-                        LOGGER.info(
-                            "skip %s, %s, %s, %s (on db_name or dbname)" % (
-                            db_name, name, instance_id, at_date.isoformat()))
+                        LOGGER.debug("add  %s, %s, %s, %s",
+                            db_name, name, instance_id, at_date.isoformat())
+                    except KeyError as err:
+                        LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                            db_name, name, instance_id, at_date.isoformat(),
+                            err)
                 else:
-                    LOGGER.info("skip %s, '%s' < '%s' (on date)" % (
+                    LOGGER.info("skip %s, '%s' < '%s' (on date)",
                         logmeta['Key'],
-                        at_date.isoformat(), ends_at.isoformat()))
+                        at_date.isoformat(), ends_at.isoformat())
             else:
                 try:
                     search[db_name][name] += [(at_date, instance_id, key_path)]
-                    LOGGER.info("add  %s, %s, %s, %s" % (
-                        db_name, name, instance_id, at_date.isoformat()))
-                except KeyError:
-                    LOGGER.info(
-                        "skip %s, %s, %s, %s (on db_name or dbname)" % (
-                        db_name, name, instance_id, at_date.isoformat()))
+                    LOGGER.debug("add  %s, %s, %s, %s",
+                        db_name, name, instance_id, at_date.isoformat())
+                except KeyError as err:
+                    LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                        db_name, name, instance_id, at_date.isoformat(),
+                        err)
         else:
-            LOGGER.info("err  %s" % key_path)
+            LOGGER.info("err  %s", key_path)
 
 
 def process_log_meta(logmetas, search, start_at=None, ends_at=None):
@@ -410,6 +413,7 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
       }
     }
     """
+    #pylint:disable=too-many-nested-blocks
     if start_at:
         start_at = as_datetime(start_at)
     if ends_at:
@@ -427,60 +431,59 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                             try:
                                 search[domain][name] += [
                                     (at_date, instance_id)]
-                                LOGGER.info("add  %s, %s, %s, %s" % (
+                                LOGGER.debug("add  %s, %s, %s, %s",
                                     domain, name, instance_id,
-                                    at_date.isoformat()))
-                            except KeyError:
-                                LOGGER.info(
-                                "skip %s, %s, %s, %s (on domain or logname)" % (
+                                    at_date.isoformat())
+                            except KeyError as err:
+                                LOGGER.info("skip %s, %s, %s, %s (on %s)",
                                 domain, name, instance_id,
-                                at_date.isoformat()))
+                                at_date.isoformat(), err)
                         else:
                             LOGGER.info(
-                                "skip %s, '%s' <= '%s' < '%s' (on date)" % (
+                                "skip %s, '%s' <= '%s' < '%s' (on date)",
                                 logmeta['Key'], start_at.isoformat(),
-                                at_date.isoformat(), ends_at.isoformat()))
+                                at_date.isoformat(), ends_at.isoformat())
                     else:
                         try:
                             search[domain][name] += [
                                 (at_date, instance_id)]
-                            LOGGER.info("add  %s, %s, %s, %s" % (
+                            LOGGER.debug("add  %s, %s, %s, %s",
                                 domain, name, instance_id,
-                                at_date.isoformat()))
-                        except KeyError:
+                                at_date.isoformat())
+                        except KeyError as err:
                             LOGGER.info(
-                            "skip %s, %s, %s, %s (on domain or logname)" % (
+                            "skip %s, %s, %s, %s (on %s)",
                             domain, name, instance_id,
-                            at_date.isoformat()))
+                            at_date.isoformat(), err)
                 else:
-                    LOGGER.info("skip %s, '%s' <= '%s' (on date)" % (
+                    LOGGER.info("skip %s, '%s' <= '%s' (on date)",
                         logmeta['Key'],
-                        start_at.isoformat(), at_date.isoformat()))
+                        start_at.isoformat(), at_date.isoformat())
             elif ends_at:
                 if at_date < ends_at:
                     try:
                         search[domain][name] += [(at_date, instance_id)]
-                        LOGGER.info("add  %s, %s, %s, %s" % (
-                            domain, name, instance_id, at_date.isoformat()))
-                    except KeyError:
+                        LOGGER.debug("add  %s, %s, %s, %s",
+                            domain, name, instance_id, at_date.isoformat())
+                    except KeyError as err:
                         LOGGER.info(
-                            "skip %s, %s, %s, %s (on domain or logname)" % (
-                            domain, name, instance_id, at_date.isoformat()))
+                            "skip %s, %s, %s, %s (on %s)",
+                            domain, name, instance_id, at_date.isoformat(),
+                            err)
                 else:
-                    LOGGER.info("skip %s, '%s' < '%s' (on date)" % (
+                    LOGGER.info("skip %s, '%s' < '%s' (on date)",
                         logmeta['Key'],
-                        at_date.isoformat(), ends_at.isoformat()))
+                        at_date.isoformat(), ends_at.isoformat())
             else:
                 try:
                     search[domain][name] += [(at_date, instance_id)]
-                    LOGGER.info("add  %s, %s, %s, %s" % (
-                        domain, name, instance_id, at_date.isoformat()))
-                except KeyError:
-                    LOGGER.info(
-                        "skip %s, %s, %s, %s (on domain or logname)" % (
-                        domain, name, instance_id, at_date.isoformat()))
+                    LOGGER.debug("add  %s, %s, %s, %s",
+                        domain, name, instance_id, at_date.isoformat())
+                except KeyError as err:
+                    LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                        domain, name, instance_id, at_date.isoformat(), err)
         else:
-            LOGGER.info("err  %s" % logmeta['Key'])
+            LOGGER.info("err  %s", logmeta['Key'])
 
 
 def search_db_storage(log_location, domains,

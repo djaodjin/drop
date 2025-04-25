@@ -652,7 +652,7 @@ def parse_logname(filename):
     log_date = None
     basename = os.path.basename(filename)
     look = re.match(
-        r'(?P<host>\S+)-(?P<log_name>\S+)\.log(-(?P<instance_id>[^-]+))'\
+        r'(?P<host>\S+)-(?P<log_name>[a-z]+)\.log(-(?P<instance_id>[^-]+))'\
         '-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?', basename)
     if look:
         try:
@@ -668,7 +668,7 @@ def parse_logname(filename):
 
     if not look:
         look = re.match(
-            r'(?P<host>\S+)-(?P<log_name>\S+)\.log'\
+            r'(?P<host>\S+)-(?P<log_name>[a-z]+)\.log'\
             '-(?P<log_date>[0-9]{8})(-[0-9]{1,10})?(\.gz)?', basename)
     if look:
         host = look.group('host')
