@@ -79,6 +79,9 @@ Name of the machine hosting the LDAP server.
       <dep name="procps-ng">
         <bin>pgrep</bin>
       </dep>
+      <dep name="rsyslog">
+        <bin>rsyslogd</bin>
+      </dep>
       <dep name="ssmtp">
         <bin>ssmtp</bin>
       </dep>
