@@ -67,7 +67,7 @@ class postgresql_serverSetup(SetupTemplate):
         " %(pg_dump)s -U postgres -C -f /var/migrate/pgsql/dumps/X.sql$LOG_SUFFIX X" %
             {'pg_dump': pg_dump},
 
-        "chmod 600 /var/migrate/pgsql/dumps/*.sql",
+        "chmod 600 /var/migrate/pgsql/dumps/*.sql$LOG_SUFFIX",
 
     'sudo -u postgres sh -c "gzip /var/migrate/pgsql/dumps/*.sql$LOG_SUFFIX"',
 
@@ -88,6 +88,7 @@ class postgresql_serverSetup(SetupTemplate):
             raise RuntimeError("couldn't locate %s in %s!" % (name, candidates))
         return found
 
+
     def create_cron_conf(self, context):
         """
         Create a cron job to backup the database to a flat text file.
@@ -96,6 +97,8 @@ class postgresql_serverSetup(SetupTemplate):
             context.value('etcDir'), 'cron.daily', 'pg_backup'), context)
         with open(new_conf_path, 'w') as new_conf:
             new_conf.write("\n".join(self.backup_script(context)))
+        postinst.shell_command(['chmod', '755', new_conf_path])
+
 
     def create_logrotate_conf(self, context):
         """
@@ -190,6 +193,12 @@ class postgresql_serverSetup(SetupTemplate):
                 #ssl_crl_file = ''
                 #ssl_ecdh_curve = 'prime256v1'
                 #ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL' # allowed SSL ciphers
+                # performance monitoring
+                'compute_query_id': "auto",
+                'pg_stat_statements.track': "all",
+                'pg_stat_statements.max': "10000",
+                'track_activity_query_size': "2048",
+                'shared_preload_libraries': "'pg_stat_statements'"
             })
             if os.path.exists(dh_params):
                 postgresql_conf_settings.update({

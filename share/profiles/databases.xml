@@ -24,6 +24,9 @@ Deploy and configure packages for running SQL databases.
         <bin>postgres</bin>
         <listen_addresses>private-ip.local</listen_addresses>
       </dep>
+      <dep name="postgresql15-contrib">
+        <lib>.*/pg_stat_statements.so</lib>
+      </dep>
       <dep name="iptables">
         <bin>iptables</bin>
         <port>22</port>

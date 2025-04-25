@@ -2815,7 +2815,7 @@ def create_datastores(region_name, app_name,
         for db_name, backups in search.items():
             backup_key = backups['db'][0][2]
             backup_url = "s3://%s/%s" % (s3_logs_bucket, backup_key)
-            restore_key = "%s/%s/%s.tar.gz" % (restore_prefix,
+            restore_key = "%s/%s/%s.sql.gz" % (restore_prefix,
                 os.path.dirname(backup_key), db_name)
             restore_url = "s3://%s/%s" % (s3_identities_bucket, restore_key)
             LOGGER.info("copy %s to %s ...", backup_url, restore_url)
