@@ -284,7 +284,7 @@ def list_db_meta(log_location,
     _, bucket_name, prefix = urlparse(log_location)[:3]
     if prefix.startswith('/'):
         prefix = prefix[1:]
-
+    LOGGER.info("list dbs at s3://%s/%s", bucket_name, prefix)
     backup = 'db'
     search = {db_name: {backup: []} for db_name in db_names}
     resp = s3_client.list_objects_v2(
@@ -347,10 +347,12 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                                     db_name, name, instance_id,
                                     at_date.isoformat())
                             except KeyError as err:
-                                LOGGER.info(
-                                "skip %s, %s, %s, %s (on %s)",
-                                db_name, name, instance_id,
-                                at_date.isoformat(), err)
+                                LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                                    db_name, name, instance_id,
+                                    at_date.isoformat(),
+                                    "db_name=%s" % str(err)
+                                    if str(err) == db_name
+                                    else "name=%s" % str(err))
                         else:
                             LOGGER.info(
                                 "skip %s, '%s' <= '%s' < '%s' (on date)",
@@ -364,10 +366,12 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                                 db_name, name, instance_id,
                                 at_date.isoformat())
                         except KeyError as err:
-                            LOGGER.info(
-                            "skip %s, %s, %s, %s (on %s)",
-                            db_name, name, instance_id,
-                            at_date.isoformat(), err)
+                            LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                                db_name, name, instance_id, at_date.isoformat(),
+                                "db_name=%s" % str(err)
+                                if str(err) == db_name
+                                else "name=%s" % str(err))
+
                 else:
                     LOGGER.info("skip %s, '%s' <= '%s' (on date)",
                         logmeta['Key'],
@@ -382,7 +386,9 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                     except KeyError as err:
                         LOGGER.info("skip %s, %s, %s, %s (on %s)",
                             db_name, name, instance_id, at_date.isoformat(),
-                            err)
+                            "db_name=%s" % str(err)
+                            if str(err) == db_name
+                            else "name=%s" % str(err))
                 else:
                     LOGGER.info("skip %s, '%s' < '%s' (on date)",
                         logmeta['Key'],
@@ -395,7 +401,9 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                 except KeyError as err:
                     LOGGER.info("skip %s, %s, %s, %s (on %s)",
                         db_name, name, instance_id, at_date.isoformat(),
-                        err)
+                        "db_name=%s" % str(err)
+                        if str(err) == db_name
+                        else "name=%s" % str(err))
         else:
             LOGGER.info("err  %s", key_path)
 

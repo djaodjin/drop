@@ -30,6 +30,7 @@ import boto3, requests, six
 from pytz import utc
 
 from . import __version__
+from .dparselog import parse_logname
 
 
 LOGGER = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ def as_logname(key_name, logsuffix=None, prefix=None, ext='.log'):
     if ext:
         if ext.startswith('.'):
             ext = ext[1:]
-        look = re.match(r'(\S+\.%s)((-\S+)\.gz)' % ext, result)
+        look = re.match(r'(\S+\.%s)((-[0-9a-z\-]+)(\.gz)?)' % ext, result)
         if look:
             result = look.group(1)
     return result
@@ -177,12 +178,26 @@ def list_local(lognames, prefix=None, list_all=False):
         if os.path.isdir(prefixed_dirname):
             for filename in os.listdir(prefixed_dirname):
                 fullpath = os.path.join(dirname, filename)
+                if as_logname(fullpath, ext=ext) != logname:
+                    # We are only uploading logs matching
+                    # a specific name pattern.
+                    continue
+
+                if not (list_all or fullpath.endswith('.gz')):
+                    # We are only uploading compressed logs.
+                    continue
+
+                parsed_host, _, _, _ = parse_logname(fullpath)
+                if not (list_all or parsed_host is not None):
+                    # If we cannot parse a host, we won't upload the file,
+                    # i.e. we are filtering out /var/log/nginx/access.log
+                    # and /var/log/nginx/error.log files.
+                    continue
+
                 prefixed_fullpath = os.path.join(prefixed_dirname, filename)
-                if (as_logname(fullpath, ext=ext) == logname
-                    and (list_all or not fullpath == logname)):
-                    mtime = datetime.datetime.fromtimestamp(
-                        os.path.getmtime(prefixed_fullpath), tz=utc)
-                    results += [{"Key": fullpath, "LastModified": mtime}]
+                mtime = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(prefixed_fullpath), tz=utc)
+                results += [{"Key": fullpath, "LastModified": mtime}]
     return results
 
 
