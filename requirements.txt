@@ -1,5 +1,5 @@
 ansible==2.9.20            # mostly for duploades (ElasticSearch) at this point
-boto3==1.35.40             # clouds deploy and logs management
+boto3==1.38.3              # clouds deploy and logs management
 #Fabric3==1.14.post1        # vmware.py and driver.py
 jinja2==3.1.5              # cloud templates
 paramiko==3.5.0            # drundocker.py
@@ -12,7 +12,7 @@ sqlparse==0.5.1            # integrity.py
 
 # used in duploades (ElasticSearch)
 elasticsearch==7.6.0
-urllib3==2.2.3
+urllib3==1.26.20
 
 # prerequisites with native code
 # cryptography==43.0.1
