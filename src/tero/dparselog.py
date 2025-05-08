@@ -572,7 +572,7 @@ def generate_events(fileobj, key):
         try:
             event = log_parser.parse(line)
         except Exception as err:
-            LOGGER.info("warning: '%s' cannot be interpreted by %s (%s)",
+            LOGGER.warning("'%s' cannot be interpreted by %s (%s)",
                 line.replace("'", "\\'"), log_parser.__class__.__name__, err)
             yield error_event(key, 'could not parse log line',
                               {'line': line,

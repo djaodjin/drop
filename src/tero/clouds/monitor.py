@@ -347,14 +347,14 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                                     db_name, name, instance_id,
                                     at_date.isoformat())
                             except KeyError as err:
-                                LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                                LOGGER.debug("skip %s, %s, %s, %s (on %s)",
                                     db_name, name, instance_id,
                                     at_date.isoformat(),
                                     "db_name=%s" % str(err)
                                     if str(err) == db_name
                                     else "name=%s" % str(err))
                         else:
-                            LOGGER.info(
+                            LOGGER.debug(
                                 "skip %s, '%s' <= '%s' < '%s' (on date)",
                                 logmeta['Key'], start_at.isoformat(),
                                 at_date.isoformat(), ends_at.isoformat())
@@ -366,7 +366,7 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                                 db_name, name, instance_id,
                                 at_date.isoformat())
                         except KeyError as err:
-                            LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                            LOGGER.debug("skip %s, %s, %s, %s (on %s)",
                                 db_name, name, instance_id, at_date.isoformat(),
                                 "db_name=%s" % str(err)
                                 if str(err) == db_name
@@ -384,13 +384,13 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                         LOGGER.debug("add  %s, %s, %s, %s",
                             db_name, name, instance_id, at_date.isoformat())
                     except KeyError as err:
-                        LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                        LOGGER.debug("skip %s, %s, %s, %s (on %s)",
                             db_name, name, instance_id, at_date.isoformat(),
                             "db_name=%s" % str(err)
                             if str(err) == db_name
                             else "name=%s" % str(err))
                 else:
-                    LOGGER.info("skip %s, '%s' < '%s' (on date)",
+                    LOGGER.debug("skip %s, '%s' < '%s' (on date)",
                         logmeta['Key'],
                         at_date.isoformat(), ends_at.isoformat())
             else:
@@ -399,13 +399,13 @@ def process_db_meta(logmetas, search, start_at=None, ends_at=None):
                     LOGGER.debug("add  %s, %s, %s, %s",
                         db_name, name, instance_id, at_date.isoformat())
                 except KeyError as err:
-                    LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                    LOGGER.debug("skip %s, %s, %s, %s (on %s)",
                         db_name, name, instance_id, at_date.isoformat(),
                         "db_name=%s" % str(err)
                         if str(err) == db_name
                         else "name=%s" % str(err))
         else:
-            LOGGER.info("err  %s", key_path)
+            LOGGER.debug("err  %s", key_path)
 
 
 def process_log_meta(logmetas, search, start_at=None, ends_at=None):
@@ -443,11 +443,11 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                                     domain, name, instance_id,
                                     at_date.isoformat())
                             except KeyError as err:
-                                LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                                LOGGER.debug("skip %s, %s, %s, %s (on %s)",
                                 domain, name, instance_id,
                                 at_date.isoformat(), err)
                         else:
-                            LOGGER.info(
+                            LOGGER.debug(
                                 "skip %s, '%s' <= '%s' < '%s' (on date)",
                                 logmeta['Key'], start_at.isoformat(),
                                 at_date.isoformat(), ends_at.isoformat())
@@ -459,12 +459,12 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                                 domain, name, instance_id,
                                 at_date.isoformat())
                         except KeyError as err:
-                            LOGGER.info(
+                            LOGGER.debug(
                             "skip %s, %s, %s, %s (on %s)",
                             domain, name, instance_id,
                             at_date.isoformat(), err)
                 else:
-                    LOGGER.info("skip %s, '%s' <= '%s' (on date)",
+                    LOGGER.debug("skip %s, '%s' <= '%s' (on date)",
                         logmeta['Key'],
                         start_at.isoformat(), at_date.isoformat())
             elif ends_at:
@@ -474,12 +474,12 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                         LOGGER.debug("add  %s, %s, %s, %s",
                             domain, name, instance_id, at_date.isoformat())
                     except KeyError as err:
-                        LOGGER.info(
+                        LOGGER.debug(
                             "skip %s, %s, %s, %s (on %s)",
                             domain, name, instance_id, at_date.isoformat(),
                             err)
                 else:
-                    LOGGER.info("skip %s, '%s' < '%s' (on date)",
+                    LOGGER.debug("skip %s, '%s' < '%s' (on date)",
                         logmeta['Key'],
                         at_date.isoformat(), ends_at.isoformat())
             else:
@@ -488,10 +488,10 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                     LOGGER.debug("add  %s, %s, %s, %s",
                         domain, name, instance_id, at_date.isoformat())
                 except KeyError as err:
-                    LOGGER.info("skip %s, %s, %s, %s (on %s)",
+                    LOGGER.debug("skip %s, %s, %s, %s (on %s)",
                         domain, name, instance_id, at_date.isoformat(), err)
         else:
-            LOGGER.info("err  %s", logmeta['Key'])
+            LOGGER.debug("err  %s", logmeta['Key'])
 
 
 def search_db_storage(log_location, domains,
