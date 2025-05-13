@@ -411,19 +411,25 @@ def find_running_processes(log_path_prefix, dist_host, apps=None):
             user = look.group('user')
             pid = int(look.group('pid'))
             command = look.group('command')
+            app_name = pid
+            look = re.match(r'gunicorn: master \[(\S+)\]', command)
+            if look:
+                app_name = look.group(1)
             app_by_pids.update(
-                {pid: {'user': user, 'command': command}})
+                {app_name: {'pid': pid, 'user': user, 'command': command}})
 
     if apps is None:
         apps = {}
 
     if apps:
         for app_name, app_snap in apps.items():
-            pid = app_snap.get('pid')
+            pid = app_snap.get('pid', app_name)
             if not pid:
                 continue
-            app_snap.update(app_by_pids[pid])
-            del app_by_pids[pid]
+            running_process = app_by_pids.get(pid, {})
+            app_snap.update(running_process)
+            if pid in app_by_pids:
+                del app_by_pids[pid]
 
     apps.update(app_by_pids)
     return apps
@@ -473,15 +479,29 @@ def find_open_ports(log_path_prefix, dist_host, apps=None):
 
     if apps:
         for app_name, app_snap in apps.items():
-            pid = app_snap.get('pid')
+            pid = app_snap.get('pid', app_name)
             if not pid:
                 continue
-            app_snap.update(app_by_pids[pid])
-            del app_by_pids[pid]
+            app_open_port = app_by_pids.get(pid, {})
+            app_snap.update(app_open_port)
+            if pid in app_by_pids:
+                del app_by_pids[pid]
 
     apps.update(app_by_pids)
 
     return apps
+
+
+def find_os_release():
+    tero.shell_command(['cat', '/etc/os-release'])
+    dist_name = ""
+    with open('/etc/os-release') as os_release:
+        for line in os_release.readlines():
+            look = re.match(r'PRETTY_NAME="(.+)"', line.strip())
+            if look:
+                dist_name = look.group(1)
+    if dist_name.startswith('Amazon Linux 2023'):
+        tero.shell_command(['dnf', 'check-update'])
 
 
 def fingerprint(context, log_path_prefix, skip_usage=False,
@@ -491,6 +511,8 @@ def fingerprint(context, log_path_prefix, skip_usage=False,
     Record a fingerprint of the running system.
     """
     dist_host = context.value('distHost')
+
+    find_os_release()
     if not skip_usage:
         find_meminfo(dist_host)
         find_disk_usage(dist_host)
@@ -522,7 +544,6 @@ def fingerprint(context, log_path_prefix, skip_usage=False,
                     'django_version': app_snap.get(
                         'dependencies', {}).get('Django'),
                 })
-#        print("apps=%s" % str(apps))
 
 
 def pub_check(names, reference=None):
@@ -587,10 +608,10 @@ def main(args, settings_path=None):
     import argparse
     parser = argparse.ArgumentParser(\
             usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version ' \
-                + str(__version__))
+                + str(tero.__version__))
     parser.add_argument('--version', action='version',
-                        version='%(prog)s ' + str(__version__))
-    build_subcommands_parser(parser, integrity)
+                        version='%(prog)s ' + str(tero.__version__))
+    tero.build_subcommands_parser(parser, sys.modules[__name__])
 
     if len(args) <= 1:
         parser.print_help()
@@ -598,7 +619,7 @@ def main(args, settings_path=None):
     options = parser.parse_args(args[1:])
 
     # Filter out options with are not part of the function prototype.
-    func_args = filter_subcommand_args(options.func, options)
+    func_args = tero.filter_subcommand_args(options.func, options)
     options.func(**func_args)
 
 
