@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Djaodjin Inc.
+# Copyright (c) 2025, Djaodjin Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,7 +22,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import argparse, configparser, datetime, json, logging, os, re
+import argparse, configparser, datetime, gzip, json, logging, os, re
 
 import boto3
 import pytz, six
@@ -68,6 +68,19 @@ def datetime_or_now(dtime_at=None):
     return dtime_at
 
 
+def extract_os_release(log_content):
+    """
+    Extract the OS release name from the log content
+    """
+    os_release = None
+    for line in log_content.split('\n'):
+        look = re.match(r'PRETTY_NAME="(.+)"', line)
+        if look:
+            os_release = look.group(1)
+            break
+    return os_release
+
+
 def get_regions(ec2_client=None):
     """
     Returns a list of names of regions available
@@ -81,7 +94,7 @@ def get_regions(ec2_client=None):
 def list_instances(regions=None, ec2_client=None):
     if not regions:
         regions = get_regions(ec2_client)
-    runnning_instance_ids = []
+    runnning_instance_ids = {}
     for region_name in regions:
         LOGGER.info('look for instances in region %s...', region_name)
         ec2_client = boto3.client('ec2', region_name=region_name)
@@ -89,7 +102,8 @@ def list_instances(regions=None, ec2_client=None):
             Filters=[{'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
         for reserv in resp['Reservations']:
             for instance in reserv['Instances']:
-                runnning_instance_ids += [instance['InstanceId']]
+                runnning_instance_ids.update({
+                    instance['InstanceId']: {'region': region_name}})
     return runnning_instance_ids
 
 
@@ -431,13 +445,15 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
         #   domain-name.log-instanceid-yyyymmdd.gz
         domain, name, instance_id, at_date = parse_logname(
             os.path.basename(logmeta['Key']))
+        instance_name = "i-%s" % instance_id
+        search_key = instance_name if instance_name in search else domain
         if at_date:
             if start_at:
                 if start_at <= at_date:
                     if ends_at:
                         if at_date < ends_at:
                             try:
-                                search[domain][name] += [
+                                search[search_key][name] += [
                                     (at_date, instance_id)]
                                 LOGGER.debug("add  %s, %s, %s, %s",
                                     domain, name, instance_id,
@@ -453,7 +469,7 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                                 at_date.isoformat(), ends_at.isoformat())
                     else:
                         try:
-                            search[domain][name] += [
+                            search[search_key][name] += [
                                 (at_date, instance_id)]
                             LOGGER.debug("add  %s, %s, %s, %s",
                                 domain, name, instance_id,
@@ -470,7 +486,7 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
             elif ends_at:
                 if at_date < ends_at:
                     try:
-                        search[domain][name] += [(at_date, instance_id)]
+                        search[search_key][name] += [(at_date, instance_id)]
                         LOGGER.debug("add  %s, %s, %s, %s",
                             domain, name, instance_id, at_date.isoformat())
                     except KeyError as err:
@@ -484,7 +500,7 @@ def process_log_meta(logmetas, search, start_at=None, ends_at=None):
                         at_date.isoformat(), ends_at.isoformat())
             else:
                 try:
-                    search[domain][name] += [(at_date, instance_id)]
+                    search[search_key][name] += [(at_date, instance_id)]
                     LOGGER.debug("add  %s, %s, %s, %s",
                         domain, name, instance_id, at_date.isoformat())
                 except KeyError as err:
@@ -525,6 +541,74 @@ def search_db_storage(log_location, domains,
     return db_results
 
 
+def search_instance_log_storage(log_location, instance_ids,
+                                start_at=None, ends_at=None, s3_client=None):
+    """
+    We expect to find logs for the period [``start_at``, ``ends_at``[
+    in the bucket ``log_location`` for all ``instances`` listed.
+
+    ``instances`` is a dictionary formatted as such:
+
+        { instance_id: {} }
+    """
+    if not s3_client:
+        s3_client = boto3.client('s3')
+    _, bucket_name, prefix = urlparse(log_location)[:3]
+
+    prefix = (prefix + 'var/log/dintegrity').lstrip('/')
+    log_results = list_logs(
+        log_location + prefix, instance_ids.keys(),
+        start_at=start_at, ends_at=ends_at, lognames=['app'],
+        s3_client=s3_client)
+
+    for instance_id, instance_meta in six.iteritems(instance_ids):
+        if instance_id in log_results:
+            instance_meta.update(log_results[instance_id])
+            log_prefix = None
+            app_dates = instance_meta.get('app')
+            if app_dates:
+                at_time = app_dates[0][0].date().strftime("%Y%m%d")
+                log_prefix = "%s/dintegrity-app.log-%s-%s" % (
+                    prefix, instance_id[2:], at_time)
+            if log_prefix:
+                resp = s3_client.list_objects_v2(
+                    Bucket=bucket_name,
+                    Prefix=log_prefix)
+                for logmeta in resp.get('Contents', []):
+                    logname = logmeta['Key']
+                    obj = s3_client.get_object(Bucket=bucket_name, Key=logname)
+                    if logname.endswith('.gz'):
+                        with gzip.GzipFile(
+                                fileobj=obj['Body'], mode='rb') as logfile:
+                            content = logfile.read().decode('utf-8')
+                    else:
+                        content = obj.read().decode('utf-8')
+                    os_release = extract_os_release(content)
+                    instance_meta.update({'os_release': os_release})
+    return instance_ids
+
+
+def search_proxy_log_storage(log_location, domains,
+                             start_at=None, ends_at=None, s3_client=None):
+    """
+    We expect to find logs for the period [``start_at``, ``ends_at``[
+    in the bucket ``log_location`` for all ``domains`` listed.
+
+    ``domains`` is a dictionary formatted as such:
+
+        { domain: [app_name, ...] }
+    """
+    if not log_location.endswith('/'):
+        log_location += '/'
+
+    # djaoapp session proxys
+    log_results = list_logs(log_location + 'var/log/gunicorn', [APP_NAME],
+        lognames=['access', 'error', 'app'],
+        start_at=start_at, ends_at=ends_at, s3_client=s3_client)
+
+    return log_results
+
+
 def search_site_log_storage(log_location, domains,
                             start_at=None, ends_at=None, s3_client=None):
     """
@@ -552,27 +636,6 @@ def search_site_log_storage(log_location, domains,
                     'app_name': app_name}, [app_name], lognames=['app'],
                 start_at=start_at, ends_at=ends_at, s3_client=s3_client)
             log_results[domain].update(app_results[app_name])
-
-    return log_results
-
-
-def search_proxy_log_storage(log_location, domains,
-                             start_at=None, ends_at=None, s3_client=None):
-    """
-    We expect to find logs for the period [``start_at``, ``ends_at``[
-    in the bucket ``log_location`` for all ``domains`` listed.
-
-    ``domains`` is a dictionary formatted as such:
-
-        { domain: [app_name, ...] }
-    """
-    if not log_location.endswith('/'):
-        log_location += '/'
-
-    # djaoapp session proxys
-    log_results = list_logs(log_location + 'var/log/gunicorn', [APP_NAME],
-        lognames=['access', 'error', 'app'],
-        start_at=start_at, ends_at=ends_at, s3_client=s3_client)
 
     return log_results
 
