@@ -2010,7 +2010,7 @@ def create_network(region_name, vpc_cidr, aws_account_id, tag_prefix,
                 PortRange={
                     'From': 123,
                     'To': 123
-                }
+                },
                 DryRun=dry_run)
 
     # Create subnets for app, dbs and web services
@@ -3853,7 +3853,7 @@ def create_app_resources(region_name, app_name, image_name, profiles,
                 settings_arn = "%s/settings/%s" % (
                     bucket_arn, hostname_parts[1])
                 tag_prefix_arn = '/'.join(
-                    identities_parts[:-1] + ['.'join(hostname_parts[1:]]))
+                    identities_parts[:-1] + ['.'.join(hostname_parts[1:])])
                 iam_client.put_role_policy(
                     RoleName=app_role,
                     PolicyName='ReadIdentities',
