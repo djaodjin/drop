@@ -321,6 +321,9 @@ def find_apps(root_dir):
     Find apps installed in *root_dir*
     """
     apps = {}
+    if not os.path.isdir(root_dir):
+        return apps
+
     for app_name in os.listdir(root_dir):
         python_version = None
         python = os.path.join(root_dir, app_name, 'bin', 'python')
