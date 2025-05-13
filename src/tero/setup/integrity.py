@@ -1,4 +1,4 @@
-# Copyright (c) 2023, DjaoDjin inc.
+# Copyright (c) 2025, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -577,3 +577,31 @@ def pub_snap(names):
             os.path.join(tero.CONTEXT.host(), socket.gethostname())))
     fingerprint(tero.CONTEXT, log_path_prefix, skip_filesystem=True,
                 skip_privileged_executables=True,  skip_apps=False)
+
+
+
+def main(args, settings_path=None):
+    """
+    Main Entry Point.
+    """
+    import argparse
+    parser = argparse.ArgumentParser(\
+            usage='%(prog)s [options] command\n\nVersion\n  %(prog)s version ' \
+                + str(__version__))
+    parser.add_argument('--version', action='version',
+                        version='%(prog)s ' + str(__version__))
+    build_subcommands_parser(parser, integrity)
+
+    if len(args) <= 1:
+        parser.print_help()
+        sys.exit(1)
+    options = parser.parse_args(args[1:])
+
+    # Filter out options with are not part of the function prototype.
+    func_args = filter_subcommand_args(options.func, options)
+    options.func(**func_args)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    main(sys.argv)
