@@ -32,7 +32,7 @@ server {
         ssl_certificate      /etc/pki/tls/certs/live/djaoapp.com/fullchain.pem;
         ssl_certificate_key  /etc/pki/tls/certs/live/djaoapp.com/privkey.pem;
         ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
-        ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+        ssl_protocols TLSv1.3 TLSv1.2;
         ssl_dhparam /etc/pki/tls/certs/dhparam.pem;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;

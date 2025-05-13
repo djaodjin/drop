@@ -111,9 +111,9 @@ WantedBy=multi-user.target
             context.value('etcDir'), 'sysconfig', 'docker')
         #pylint:disable=line-too-long
         modify_config(docker_conf, settings={
-            'OPTIONS': '--selinux-enabled --log-driver journald --log-opt tag="{{.Name}}/{{.ID}}"\'',
-            'LOGROTATE': 'false\''
-        }, sep='=\'', context=context)
+            'OPTIONS': '\'--selinux-enabled --log-driver journald --log-opt tag="{{.Name}}/{{.ID}}"\'',
+            'LOGROTATE': '\'false\''
+        }, sep='=', context=context)
 
         self.create_syslog_conf(context)
 

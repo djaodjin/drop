@@ -973,21 +973,28 @@ def create_elb(tag_prefix, web_subnet_by_cidrs, moat_sg_id,
         elb_name = '%selb' % _clean_tag_prefix(tag_prefix)
 
     elb_client = boto3.client('elbv2', region_name=region_name)
-    resp = elb_client.create_load_balancer(
-        Name=elb_name,
-        Subnets=[subnet['SubnetId'] for subnet in web_subnet_by_cidrs.values()
-                 if subnet],
-        SecurityGroups=[
-            moat_sg_id,
-        ],
-        Scheme='internet-facing',
-        Type='application',
-        Tags=[{'Key': "Prefix", 'Value': tag_prefix}])
-    load_balancer = resp['LoadBalancers'][0]
-    load_balancer_arn = load_balancer['LoadBalancerArn']
-    load_balancer_dns = load_balancer['DNSName']
-    LOGGER.info("%s found/created application load balancer %s available at %s",
-        tag_prefix, load_balancer_arn, load_balancer_dns)
+    if not dry_run:
+        resp = elb_client.create_load_balancer(
+            Name=elb_name,
+            Subnets=[subnet['SubnetId']
+                for subnet in web_subnet_by_cidrs.values() if subnet],
+            SecurityGroups=[
+                moat_sg_id,
+            ],
+            Scheme='internet-facing',
+            Type='application',
+            Tags=[{'Key': "Prefix", 'Value': tag_prefix}])
+        load_balancer = resp['LoadBalancers'][0]
+        load_balancer_arn = load_balancer['LoadBalancerArn']
+        load_balancer_dns = load_balancer['DNSName']
+    else:
+        resp = elb_client.describe_load_balancers(Names=[elb_name])
+        load_balancer = resp['LoadBalancers'][0]
+        load_balancer_arn = load_balancer['LoadBalancerArn']
+        load_balancer_dns = load_balancer['DNSName']
+    LOGGER.info("%s%s found/created application load balancer %s available"\
+        " at %s", "(dryrun) " if dry_run else "", tag_prefix,
+        load_balancer_arn, load_balancer_dns)
 
     attributes = [{
         'Key': 'deletion_protection.enabled',
@@ -1038,23 +1045,25 @@ def create_elb(tag_prefix, web_subnet_by_cidrs, moat_sg_id,
             tag_prefix, load_balancer_arn)
 
     try:
-        resp = elb_client.create_listener(
-            LoadBalancerArn=load_balancer_arn,
-            Protocol='HTTP',
-            Port=80,
-            DefaultActions=[{
-                "Type": "redirect",
-                "RedirectConfig": {
-                    "Protocol": "HTTPS",
-                    "Port": "443",
-                    "Host": "#{host}",
-                    "Path": "/#{path}",
-                    "Query": "#{query}",
-                    "StatusCode": "HTTP_301"
-                }
-            }])
-        LOGGER.info("%s created HTTP application load balancer listener for %s",
-            tag_prefix, load_balancer_arn)
+        if not dry_run:
+            elb_client.create_listener(
+                LoadBalancerArn=load_balancer_arn,
+                Protocol='HTTP',
+                Port=80,
+                DefaultActions=[{
+                    "Type": "redirect",
+                    "RedirectConfig": {
+                        "Protocol": "HTTPS",
+                        "Port": "443",
+                        "Host": "#{host}",
+                        "Path": "/#{path}",
+                        "Query": "#{query}",
+                        "StatusCode": "HTTP_301"
+                    }
+                }])
+        LOGGER.info("%s%s created HTTP application load balancer listener"\
+            " for %s", "(dryrun) " if dry_run else "", tag_prefix,
+            load_balancer_arn)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
                 'Code', 'Unknown') == 'DuplicateListener':
@@ -1086,22 +1095,23 @@ def create_elb(tag_prefix, web_subnet_by_cidrs, moat_sg_id,
                 " tls_priv_key and tls_fullchain_cert either.")
 
     try:
-        resp = elb_client.create_listener(
-            LoadBalancerArn=load_balancer_arn,
-            Protocol='HTTPS',
-            Port=443,
-            Certificates=[{'CertificateArn': default_cert_location}],
-            DefaultActions=[{
-                'Type': 'fixed-response',
-                'FixedResponseConfig': {
-                    'MessageBody': '%s ELB' % tag_prefix,
-                    'StatusCode': '200',
-                    'ContentType': 'text/plain'
-                }
-            }])
+        if not dry_run:
+            elb_client.create_listener(
+                LoadBalancerArn=load_balancer_arn,
+                Protocol='HTTPS',
+                Port=443,
+                Certificates=[{'CertificateArn': default_cert_location}],
+                DefaultActions=[{
+                    'Type': 'fixed-response',
+                    'FixedResponseConfig': {
+                        'MessageBody': '%s ELB' % tag_prefix,
+                        'StatusCode': '200',
+                        'ContentType': 'text/plain'
+                    }
+                }])
         LOGGER.info(
-            "%s created HTTPS application load balancer listener for %s",
-            tag_prefix, load_balancer_arn)
+            "%s%s created HTTPS application load balancer listener for %s",
+            "(dryrun) " if dry_run else "", tag_prefix, load_balancer_arn)
     except botocore.exceptions.ClientError as err:
         if not err.response.get('Error', {}).get(
                 'Code', 'Unknown') == 'DuplicateListener':
@@ -1154,7 +1164,7 @@ def create_gate_role(gate_name,
                 }]}))
         iam_client.put_role_policy(
             RoleName=gate_role,
-            PolicyName='WritesLogsToStorage',
+            PolicyName='WriteLogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [
@@ -1264,22 +1274,7 @@ def create_vault_role(vault_name,
         }))
         iam_client.put_role_policy(
             RoleName=vault_role,
-            PolicyName='DatabasesBackup',
-            PolicyDocument=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Action": [
-                        "s3:PutObject"
-                    ],
-                    "Effect": "Allow",
-                    "Resource": [
-                        "arn:aws:s3:::%s/var/migrate/*" % s3_logs_bucket
-                    ]
-                }]
-            }))
-        iam_client.put_role_policy(
-            RoleName=vault_role,
-            PolicyName='WritesLogsToStorage',
+            PolicyName='WriteLogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -1289,13 +1284,14 @@ def create_vault_role(vault_name,
                     ],
                     "Effect": "Allow",
                     "Resource": [
-                        "arn:aws:s3:::%s/var/log/*" % s3_logs_bucket
+                        "arn:aws:s3:::%s/var/log/*" % s3_logs_bucket,
+                        "arn:aws:s3:::%s/var/migrate/*" % s3_logs_bucket
                     ]
                 }]
             }))
         iam_client.put_role_policy(
             RoleName=vault_role,
-            PolicyName='GetIdentities',
+            PolicyName='ReadIdentities',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -1363,7 +1359,7 @@ def create_logs_role(sg_name,
         }))
         iam_client.put_role_policy(
             RoleName=role_name,
-            PolicyName='WritesLogsToStorage',
+            PolicyName='WriteLogsToStorage',
             PolicyDocument=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -1389,7 +1385,7 @@ def create_logs_role(sg_name,
             _, identities_bucket, prefix = urlparse(identities_url)[:3]
             iam_client.put_role_policy(
                 RoleName=role_name,
-                PolicyName='ReadsIdentity',
+                PolicyName='ReadIdentities',
                 PolicyDocument=json.dumps({
                     "Version": "2012-10-17",
                     "Statement": [
@@ -1476,292 +1472,86 @@ def create_global_resources(s3_logs_bucket=None, s3_identities_bucket=None,
         s3_identities_bucket = '%s-identities' % tag_prefix
     s3_uploads_bucket = tag_prefix
     s3_client = boto3.client('s3')
-    default_region_name = s3_client.meta.region_name
+    try:
+        resp = s3_client.get_bucket_location(
+            Bucket=s3_logs_bucket, ExpectedBucketOwner=aws_account_id)
+        default_region_name =resp['LocationConstraint']
+        s3_client = boto3.client('s3', region_name=default_region_name)
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get('Code', 'Unknown') == \
+           'NoSuchBucket':
+            raise
+        default_region_name = s3_client.meta.region_name
+        LOGGER.info("%s couldn't find bucket %s, defaulting to create buckets"\
+            " in region %s", tag_prefix, s3_logs_bucket, default_region_name)
     if s3_logs_bucket:
-        try:
-            resp = s3_client.create_bucket(
-                ACL='private',
-                Bucket=s3_logs_bucket,
-                CreateBucketConfiguration={
-                    'LocationConstraint': default_region_name
-                })
-            LOGGER.info("%s created S3 bucket for logs %s in region %s",
-                tag_prefix, s3_logs_bucket, default_region_name)
-        except botocore.exceptions.ClientError as err:
-            LOGGER.info("%s found S3 bucket for logs %s in region %s",
-                tag_prefix, s3_logs_bucket, default_region_name)
-            if not err.response.get('Error', {}).get(
-                    'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
-                raise
-        # Apply bucket encryption by default
-        found_encryption = False
-        try:
-            resp = s3_client.get_bucket_encryption(
-                Bucket=s3_logs_bucket)
-            if resp['ServerSideEncryptionConfiguration']['Rules'][0][
-                    'ApplyServerSideEncryptionByDefault'][
-                        'SSEAlgorithm'] == 'AES256':
-                found_encryption = True
-                LOGGER.info("%s found encryption AES256 enabled on %s bucket",
-                    tag_prefix, s3_logs_bucket)
-        except botocore.exceptions.ClientError as err:
-            LOGGER.info("%s found S3 bucket for logs %s",
-                tag_prefix, s3_logs_bucket)
-            if not err.response.get('Error', {}).get('Code', 'Unknown') == \
-               'ServerSideEncryptionConfigurationNotFoundError':
-                raise
-        if not found_encryption:
-            s3_client.put_bucket_encryption(
-                Bucket=s3_logs_bucket,
-                ServerSideEncryptionConfiguration={
-                    'Rules': [{
-                        'ApplyServerSideEncryptionByDefault': {
-                            'SSEAlgorithm': 'AES256',
-                        }
-                    }]
-                })
-            LOGGER.info("%s enable encryption on %s bucket",
-                tag_prefix, s3_logs_bucket)
-
-        # Set versioning and lifecycle policies
-        resp = s3_client.get_bucket_versioning(
-            Bucket=s3_logs_bucket)
-        if 'Status' in resp and resp['Status'] == 'Enabled':
-            LOGGER.info("%s found versioning enabled on %s bucket",
-                tag_prefix, s3_logs_bucket)
-        else:
-            s3_client.put_bucket_versioning(
-                Bucket=s3_logs_bucket,
-                VersioningConfiguration={
-                    'MFADelete': 'Disabled',
-                    'Status': 'Enabled'
-                })
-            LOGGER.info("%s enable versioning on %s bucket",
-                tag_prefix, s3_logs_bucket)
-        found_policy = False
-        #pylint:disable=too-many-nested-blocks
-        try:
-            resp = s3_client.get_bucket_lifecycle_configuration(
-                Bucket=s3_logs_bucket)
-            for rule in resp['Rules']:
-                if rule['Status'] == 'Enabled':
-                    found_rule = True
-                    for transition in rule['Transitions']:
-                        if transition['StorageClass'] == 'GLACIER':
-                            if transition.get('Days', 0) < 90:
-                                found_rule = False
-                                LOGGER.warning("%s lifecycle for 'GLACIER'"\
-                                    " is less than 90 days.", tag_prefix)
-                                break
-                    if rule['Expiration'].get('Days', 0) < 365:
-                        found_rule = False
-                        LOGGER.warning(
-                            "%s lifecycle expiration is less than 365 days.",
-                            tag_prefix)
-                    for transition in rule['NoncurrentVersionTransitions']:
-                        if transition['StorageClass'] == 'GLACIER':
-                            if transition.get('NoncurrentDays', 0) < 90:
-                                found_rule = False
-                                LOGGER.warning(
-                                    "%s version lifecycle for 'GLACIER'"\
-                                    " is less than 90 days.", tag_prefix)
-                                break
-                    if rule['NoncurrentVersionExpiration'].get(
-                            'NoncurrentDays', 0) < 365:
-                        found_rule = False
-                        LOGGER.warning("%s lifecycle version expiration is"\
-                            " less than 365 days.", tag_prefix)
-                    if found_rule:
-                        found_policy = True
-        except botocore.exceptions.ClientError as err:
-            if not err.response.get('Error', {}).get(
-                    'Code', 'Unknown') == 'NoSuchLifecycleConfiguration':
-                raise
-        if found_policy:
-            LOGGER.info("%s found lifecycle policy on %s bucket",
-                tag_prefix, s3_logs_bucket)
-        else:
-            s3_client.put_bucket_lifecycle_configuration(
-                Bucket=s3_logs_bucket,
-                LifecycleConfiguration={
-                    "Rules": [{
-                        "Status": "Enabled",
-                        "ID": "expire-logs",
-                        "Filter": {
-                            "Prefix": "", # This is required.
-                        },
-                        "Transitions": [{
-                            "Days": 90,
-                            "StorageClass": "GLACIER"
-                        }],
-                        "Expiration" : {
-                            "Days": 365
-                        },
-                        "NoncurrentVersionTransitions": [{
-                            "NoncurrentDays": 90,
-                            "StorageClass": "GLACIER"
-                        }],
-                        'NoncurrentVersionExpiration': {
-                            'NoncurrentDays': 365
-                        },
-                    }]})
-            LOGGER.info("%s update lifecycle policy on %s bucket",
-                tag_prefix, s3_logs_bucket)
-
-            # https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/enable-access-logs.html#attach-bucket-policy
-            elb_account_ids_per_region = {
-                'us-east-1': '127311923021',
-                'us-east-2': '033677994240',
-                'us-west-1': '027434742980',
-                'us-west-2': '797873946194',
-                'af-south-1': '098369216593',
-                'ca-central-1': '985666609251',
-                'eu-central-1': '054676820928',
-                'eu-west-1': '156460612806',
-                'eu-west-2': '652711504416',
-                'eu-south-1': '635631232127',
-                'eu-west-3': '009996457667',
-                'eu-north-1': '897822967062',
-                'ap-east-1': '754344448648',
-                'ap-northeast-1': '582318560864',
-                'ap-northeast-2': '600734575887',
-                'ap-northeast-3': '383597477331',
-                'ap-southeast-1': '114774131450',
-                'ap-southeast-2': '783225319266',
-                'ap-south-1': '718504428378',
-                'me-south-1': '076674570225',
-                'sa-east-1': '507241528517'
-            }
-            elb_account_id = elb_account_ids_per_region[default_region_name]
-
-            # Creates encryption keys (KMS) in default region
-            if not storage_enckey:
-                storage_enckey = _get_or_create_storage_enckey(
-                    default_region_name, tag_prefix, dry_run=dry_run)
-
-            # Configure CloudTrail to store events to s3_logs_bucket
-            trail_name = "%s-trail" % tag_prefix
-            cloudtrail_client = boto3.client('cloudtrail')
-            cloudtrail_client.create_trail(
-                Name=trail_name,
-                S3BucketName=s3_logs_bucket,
-                KmsKeyId=storage_enckey,
-                IncludeGlobalServiceEvents=True,
-                IsMultiRegionTrail=True,
-                EnableLogFileValidation=True,
-                TagsList=[
-                    {'Key': "Prefix", 'Value': tag_prefix}
-                ])
-
-            s3_client.put_bucket_policy(
-                Bucket=s3_logs_bucket,
-                Policy=json.dumps({
-                    "Version": "2008-10-17",
-                    "Id": "WritesLogsToStorage",
-                    "Statement": [{
-                        # billing reports
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "billingreports.amazonaws.com"
-                        },
-                        "Action": [
-                            "s3:GetBucketAcl",
-                            "s3:GetBucketPolicy"
-                        ],
-                        "Resource": "arn:aws:s3:::%s" % s3_logs_bucket
-                    }, {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "billingreports.amazonaws.com"
-                        },
-                        "Action": "s3:PutObject",
-                        "Resource": "arn:aws:s3:::%s/*" % s3_logs_bucket
-                    }, {
-                        # ELB access logs
-                        "Effect": "Allow",
-                        "Principal": {
-                            "AWS": "arn:aws:iam::%s:root" % elb_account_id
-                        },
-                        "Action": "s3:PutObject",
-                        "Resource":
-                            "arn:aws:s3:::%s/var/log/elb/*" % s3_logs_bucket
-                    }, {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "delivery.logs.amazonaws.com"
-                        },
-                        "Action": "s3:PutObject",
-                        "Resource":
-                            ("arn:aws:s3:::%s/var/log/elb/*" % s3_logs_bucket),
-                        "Condition": {
-                            "StringEquals": {
-                                "s3:x-amz-acl": "bucket-owner-full-control"
-                            }
-                        }
-                    }, {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "delivery.logs.amazonaws.com"
-                        },
-                        "Action": "s3:GetBucketAcl",
-                        "Resource": "arn:aws:s3:::%s" % s3_logs_bucket
-                    },
-                    # CloudTrail
-                    {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "logging.s3.amazonaws.com"
-                        },
-                        "Action": "s3:PutObject",
-                        "Resource": "arn:aws:s3:::%s/*" % s3_logs_bucket
-                    }, {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "cloudtrail.amazonaws.com"
-                        },
-                        "Action": "s3:GetBucketAcl",
-                        "Resource": "arn:aws:s3:::%s" % s3_logs_bucket,
-                        "Condition": {
-                            "StringEquals": {
-                                "AWS:SourceArn":
-"arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
-                            }
-                        }
-                    }, {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "cloudtrail.amazonaws.com"
-                        },
-                        "Action": "s3:PutObject",
-                        "Resource":
-"arn:aws:s3:::%s/AWSLogs/%s/*" % (s3_logs_bucket, aws_account_id),
-                        "Condition": {
-                            "StringEquals": {
-                                "s3:x-amz-acl": "bucket-owner-full-control",
-                                "AWS:SourceArn":
-"arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (aws_account_id, trail_name)
-                            }
-                        }
-                    }
-                ]
-                }))
+        create_logs_bucket(s3_logs_bucket, default_region_name, aws_account_id,
+            storage_enckey=storage_enckey,
+            log_billing_reports=True, log_cloudtrail_events=True,
+            tag_prefix=tag_prefix, dry_run=dry_run,
+            s3_client=s3_client)
 
     if s3_uploads_bucket:
         try:
-            resp = s3_client.create_bucket(
-                ACL='private',
-                Bucket=s3_uploads_bucket,
-                CreateBucketConfiguration={
-                    'LocationConstraint': default_region_name
-                })
-            LOGGER.info("%s created S3 bucket for uploads %s",
-                tag_prefix, s3_uploads_bucket)
+            if not dry_run:
+                resp = s3_client.create_bucket(
+                    ACL='private',
+                    Bucket=s3_uploads_bucket,
+                    CreateBucketConfiguration={
+                        'LocationConstraint': default_region_name
+                    })
+            LOGGER.info("%s%s created S3 bucket for uploads %s",
+                "(dryrun) " if dry_run else "", tag_prefix, s3_uploads_bucket)
         except botocore.exceptions.ClientError as err:
             LOGGER.info("%s found S3 bucket for uploads %s",
                 tag_prefix, s3_uploads_bucket)
             if not err.response.get('Error', {}).get(
                     'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
                 raise
+        found_policy = False
+        policy_statements = [{
+            # Deny http:// access, requires https://.
+            "Sid": "AllowSSLRequestsOnly",
+            "Action": "s3:*",
+            "Effect": "Deny",
+            "Resource": [
+                "arn:aws:s3:::%s" % s3_uploads_bucket,
+                "arn:aws:s3:::%s/*" % s3_uploads_bucket
+            ],
+            "Condition": {
+                "Bool": {
+                    "aws:SecureTransport": "false"
+                }
+            },
+            "Principal": "*"
+        }]
+        try:
+            resp = s3_client.get_bucket_policy(Bucket=s3_uploads_bucket)
+            policy_document = json.loads(resp['Policy'])
+            if len(policy_document['Statement']) != len(policy_statements):
+                LOGGER.warning("Expected %d statements for policy"\
+                    " in bucket %s, but found %d instead",
+                    len(policy_statements), s3_uploads_bucket,
+                    len(policy_document['Statement']))
+            found_policy = True
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'NoSuchLifecycleConfiguration':
+                raise
+        if found_policy:
+            LOGGER.info("%s found bucket policy on bucket %s",
+                tag_prefix, s3_uploads_bucket)
+        else:
+            if not dry_run:
+                s3_client.put_bucket_policy(
+                    Bucket=s3_uploads_bucket,
+                    Policy=json.dumps({
+                        "Version": "2008-10-17",
+                        "Id": "UploadsPolicy",
+                        "Statement": policy_statements
+                    }))
+            LOGGER.info("%s%s update bucket policy on bucket %s",
+                "(dryrun) " if dry_run else "", tag_prefix, s3_uploads_bucket)
 
     # Create instance profiles ...
     iam_client = boto3.client('iam')
@@ -1792,7 +1582,354 @@ def create_global_resources(s3_logs_bucket=None, s3_identities_bucket=None,
         iam_client=iam_client, tag_prefix=tag_prefix, dry_run=dry_run)
 
 
-def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
+def create_logs_bucket(s3_logs_bucket, region_name, aws_account_id,
+                       storage_enckey=None,
+                       log_billing_reports=False, log_cloudtrail_events=False,
+                       tag_prefix=None, dry_run=False, s3_client=None):
+    """
+    Creates a log bucket in `region_name`.
+    """
+    if not s3_client:
+        s3_client = boto3.client('s3', region_name=region_name)
+
+    try:
+        if not dry_run:
+            resp = s3_client.create_bucket(
+                ACL='private',
+                Bucket=s3_logs_bucket,
+                CreateBucketConfiguration={
+                    'LocationConstraint': region_name
+                })
+        LOGGER.info("%s%s created S3 bucket for logs %s in region %s",
+            "(dryrun) " if dry_run else "", tag_prefix,
+            s3_logs_bucket, region_name)
+    except botocore.exceptions.ClientError as err:
+        LOGGER.info("%s found S3 bucket for logs %s in region %s",
+            tag_prefix, s3_logs_bucket, region_name)
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'BucketAlreadyOwnedByYou':
+            raise
+    # Apply bucket encryption by default
+    found_encryption = False
+    try:
+        resp = s3_client.get_bucket_encryption(
+            Bucket=s3_logs_bucket)
+        if resp['ServerSideEncryptionConfiguration']['Rules'][0][
+                'ApplyServerSideEncryptionByDefault'][
+                    'SSEAlgorithm'] == 'AES256':
+            found_encryption = True
+            LOGGER.info("%s found encryption AES256 enabled on bucket %s",
+                tag_prefix, s3_logs_bucket)
+    except botocore.exceptions.ClientError as err:
+        LOGGER.info("%s found S3 bucket for logs %s",
+            tag_prefix, s3_logs_bucket)
+        if not err.response.get('Error', {}).get('Code', 'Unknown') == \
+           'ServerSideEncryptionConfigurationNotFoundError':
+            raise
+    if not found_encryption:
+        if not dry_run:
+            s3_client.put_bucket_encryption(
+                Bucket=s3_logs_bucket,
+                ServerSideEncryptionConfiguration={
+                    'Rules': [{
+                        'ApplyServerSideEncryptionByDefault': {
+                            'SSEAlgorithm': 'AES256',
+                        }
+                    }]
+                })
+        LOGGER.info("%s%s enable encryption on bucket %s",
+            "(dryrun) " if dry_run else "", tag_prefix, s3_logs_bucket)
+
+    # Set versioning and lifecycle policies
+    resp = s3_client.get_bucket_versioning(
+        Bucket=s3_logs_bucket)
+    if 'Status' in resp and resp['Status'] == 'Enabled':
+        LOGGER.info("%s found versioning enabled on bucket %s",
+            tag_prefix, s3_logs_bucket)
+    else:
+        if not dry_run:
+            # Implementation Note:
+            # We cannot put a lifecycle policy on a bucket that has
+            # `MFADelete=Enabled`. Similarly, we cannot enable `MFADelete`
+            # on a bucket that has a lifecycle policy.
+            s3_client.put_bucket_versioning(
+                Bucket=s3_logs_bucket,
+                VersioningConfiguration={
+                    'MFADelete': 'Disabled',
+                    'Status': 'Enabled'
+                })
+        LOGGER.info("%s%s enable versioning on bucket %s",
+            "(dryrun) " if dry_run else "", tag_prefix, s3_logs_bucket)
+    found_policy = False
+    #pylint:disable=too-many-nested-blocks
+    try:
+        resp = s3_client.get_bucket_lifecycle_configuration(
+            Bucket=s3_logs_bucket)
+        for rule in resp['Rules']:
+            if rule['Status'] == 'Enabled':
+                found_rule = True
+                for transition in rule['Transitions']:
+                    if transition['StorageClass'] == 'GLACIER':
+                        if transition.get('Days', 0) < 90:
+                            found_rule = False
+                            LOGGER.warning("%s lifecycle for 'GLACIER'"\
+                                " is less than 90 days.", tag_prefix)
+                            break
+                if rule['Expiration'].get('Days', 0) < 365:
+                    found_rule = False
+                    LOGGER.warning(
+                        "%s lifecycle expiration is less than 365 days.",
+                        tag_prefix)
+                for transition in rule['NoncurrentVersionTransitions']:
+                    if transition['StorageClass'] == 'GLACIER':
+                        if transition.get('NoncurrentDays', 0) < 90:
+                            found_rule = False
+                            LOGGER.warning(
+                                "%s version lifecycle for 'GLACIER'"\
+                                " is less than 90 days.", tag_prefix)
+                            break
+                if rule['NoncurrentVersionExpiration'].get(
+                        'NoncurrentDays', 0) < 365:
+                    found_rule = False
+                    LOGGER.warning("%s lifecycle version expiration is"\
+                        " less than 365 days.", tag_prefix)
+                if found_rule:
+                    found_policy = True
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'NoSuchLifecycleConfiguration':
+            raise
+    if found_policy:
+        LOGGER.info("%s found lifecycle policy on bucket %s",
+            tag_prefix, s3_logs_bucket)
+    else:
+        if not dry_run:
+            s3_client.put_bucket_lifecycle_configuration(
+                Bucket=s3_logs_bucket,
+                LifecycleConfiguration={
+                    "Rules": [{
+                        "Status": "Enabled",
+                        "ID": "expire-logs",
+                        "Filter": {
+                            "Prefix": "", # This is required.
+                        },
+                        "Transitions": [{
+                            "Days": 90,
+                            "StorageClass": "GLACIER"
+                        }],
+                        "Expiration" : {
+                            "Days": 365
+                        },
+                        "NoncurrentVersionTransitions": [{
+                            "NoncurrentDays": 90,
+                            "StorageClass": "GLACIER"
+                        }],
+                        'NoncurrentVersionExpiration': {
+                            'NoncurrentDays': 365
+                        },
+                    }]})
+        LOGGER.info("%s%s update lifecycle policy on bucket %s",
+            "(dryrun) " if dry_run else "", tag_prefix, s3_logs_bucket)
+
+    # https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/enable-access-logs.html#attach-bucket-policy
+    elb_account_ids_per_region = {
+        'us-east-1': '127311923021',
+        'us-east-2': '033677994240',
+        'us-west-1': '027434742980',
+        'us-west-2': '797873946194',
+        'af-south-1': '098369216593',
+        'ca-central-1': '985666609251',
+        'eu-central-1': '054676820928',
+        'eu-west-1': '156460612806',
+        'eu-west-2': '652711504416',
+        'eu-south-1': '635631232127',
+        'eu-west-3': '009996457667',
+        'eu-north-1': '897822967062',
+        'ap-east-1': '754344448648',
+        'ap-northeast-1': '582318560864',
+        'ap-northeast-2': '600734575887',
+        'ap-northeast-3': '383597477331',
+        'ap-southeast-1': '114774131450',
+        'ap-southeast-2': '783225319266',
+        'ap-south-1': '718504428378',
+        'me-south-1': '076674570225',
+        'sa-east-1': '507241528517'
+    }
+    elb_account_id = elb_account_ids_per_region[region_name]
+
+    policy_statements = [{
+        # Deny http:// access, requires https://.
+        "Sid": "AllowSSLRequestsOnly",
+        "Action": "s3:*",
+        "Effect": "Deny",
+        "Resource": [
+            "arn:aws:s3:::%s" % s3_logs_bucket,
+            "arn:aws:s3:::%s/*" % s3_logs_bucket
+        ],
+        "Condition": {
+            "Bool": {
+                "aws:SecureTransport": "false"
+            }
+        },
+        "Principal": "*"
+    }, {
+        # ELB access logs
+        "Effect": "Allow",
+        "Principal": {
+            "AWS": "arn:aws:iam::%s:root" % elb_account_id
+        },
+        "Action": "s3:PutObject",
+        "Resource":
+        "arn:aws:s3:::%s/var/log/elb/*" % s3_logs_bucket
+    }, {
+        "Effect": "Allow",
+        "Principal": {
+            "Service": "delivery.logs.amazonaws.com"
+        },
+        "Action": "s3:PutObject",
+        "Resource":
+        ("arn:aws:s3:::%s/var/log/elb/*" % s3_logs_bucket),
+        "Condition": {
+            "StringEquals": {
+                "s3:x-amz-acl": "bucket-owner-full-control"
+            }
+        }
+    }, {
+        "Effect": "Allow",
+        "Principal": {
+            "Service": "delivery.logs.amazonaws.com"
+        },
+        "Action": "s3:GetBucketAcl",
+        "Resource": "arn:aws:s3:::%s" % s3_logs_bucket
+    }]
+    if log_billing_reports:
+        policy_statements += [{
+            # billing reports
+            "Sid": "LogsBillingReports",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "billingreports.amazonaws.com"
+            },
+            "Action": [
+                "s3:GetBucketAcl",
+                "s3:GetBucketPolicy"
+            ],
+            "Resource": "arn:aws:s3:::%s" % s3_logs_bucket
+        }, {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "billingreports.amazonaws.com"
+            },
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::%s/*" % s3_logs_bucket
+        }]
+
+    if log_cloudtrail_events:
+        trail_name = "%s-trail" % tag_prefix
+        policy_statements += [{
+            # CloudTrail
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "logging.s3.amazonaws.com"
+            },
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::%s/*" % s3_logs_bucket
+        }, {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "cloudtrail.amazonaws.com"
+            },
+            "Action": "s3:GetBucketAcl",
+            "Resource": "arn:aws:s3:::%s" % s3_logs_bucket,
+            "Condition": {
+                "StringEquals": {
+                "AWS:SourceArn": "arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (
+                        aws_account_id, trail_name)
+                }
+            }
+        }, {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "cloudtrail.amazonaws.com"
+            },
+            "Action": [
+                "s3:PutObject"
+            ],
+            "Resource": "arn:aws:s3:::%s/AWSLogs/%s/*" % (
+                s3_logs_bucket, aws_account_id),
+            "Condition": {
+                "StringEquals": {
+                    "s3:x-amz-acl": "bucket-owner-full-control",
+                "AWS:SourceArn": "arn:aws:cloudtrail:us-east-1:%s:trail/%s" % (
+                        aws_account_id, trail_name)
+                }
+            }
+        }]
+
+    found_policy = False
+    try:
+        resp = s3_client.get_bucket_policy(Bucket=s3_logs_bucket)
+        policy_document = json.loads(resp['Policy'])
+        if len(policy_document['Statement']) != len(policy_statements):
+            LOGGER.warning("Expected %d statements for policy in bucket %s,"\
+                " but found %d instead", len(policy_statements),
+                s3_logs_bucket, len(policy_document['Statement']))
+        found_policy = True
+    except botocore.exceptions.ClientError as err:
+        if not err.response.get('Error', {}).get(
+                'Code', 'Unknown') == 'NoSuchBucketPolicy':
+            raise
+    if found_policy:
+        LOGGER.info("%s found bucket policy on bucket %s",
+            tag_prefix, s3_logs_bucket)
+    else:
+        if not dry_run:
+            s3_client.put_bucket_policy(
+                Bucket=s3_logs_bucket,
+                Policy=json.dumps({
+                    "Version": "2008-10-17",
+                    "Id": "WriteLogsToStorage",
+                    "Statement": policy_statements
+                }))
+        LOGGER.info("%s%s update bucket policy on bucket %s",
+            "(dryrun) " if dry_run else "", tag_prefix, s3_logs_bucket)
+
+    if log_cloudtrail_events:
+        # Configure CloudTrail to store events to s3_logs_bucket. We must
+        # create the trail after the bucket policy has been updated.
+
+        # Creates encryption keys (KMS) in default region
+        if not storage_enckey:
+            storage_enckey = _get_or_create_storage_enckey(
+                region_name, tag_prefix, dry_run=dry_run)
+
+        cloudtrail_client = boto3.client('cloudtrail', region_name='us-east-1')
+        try:
+            if not dry_run:
+                cloudtrail_client.create_trail(
+                    Name=trail_name,
+                    S3BucketName=s3_logs_bucket,
+                    IncludeGlobalServiceEvents=True,
+                    IsMultiRegionTrail=True,
+                    EnableLogFileValidation=True,
+                    KmsKeyId=storage_enckey,
+                    IsOrganizationTrail=False,
+                    TagsList=[
+                        {'Key': "Prefix", 'Value': tag_prefix}
+                    ])
+            LOGGER.info("%s%s create cloudtrail %s in region %s",
+                "(dryrun) " if dry_run else "", tag_prefix,
+                trail_name, region_name)
+        except botocore.exceptions.ClientError as err:
+            if not err.response.get('Error', {}).get(
+                    'Code', 'Unknown') == 'TrailAlreadyExistsException':
+                raise
+            LOGGER.info("%s found cloudtrail %s in region %s",
+                tag_prefix, trail_name, region_name)
+
+
+def create_network(region_name, vpc_cidr, aws_account_id, tag_prefix,
+                   apps_vpc_cidr=None,
                    tls_priv_key=None, tls_fullchain_cert=None,
                    ssh_key_name=None, ssh_key_content=None, sally_ip=None,
                    s3_logs_bucket=None,
@@ -1843,6 +1980,38 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                 {'Key': "Prefix", 'Value': tag_prefix},
                 {'Key': "Name", 'Value': "%s-vpc" % tag_prefix}])
         LOGGER.info("%s created VPC %s", tag_prefix, vpc_id)
+
+    # Tightens the ACL for the VPC
+    # https://docs.aws.amazon.com/vpc/latest/userguide/custom-network-acl.html
+    acl_entries = [
+        {
+        }
+    ]
+    resp = ec2_client.describe_network_acls(
+        Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
+    for network_acl in resp['NetworkAcls']:
+        network_acl_id = network_acl['NetworkAclId']
+        for entry in network_acl['Entries']:
+            LOGGER.info("%s ACL % with %s rule: %s", tag_prefix, network_acl_id,
+                "egress" if entry['Egress'] else "ingress", entry)
+        if False:
+            ec2_client.create_network_acl_entry(
+                NetworkAclId=network_acl_id,
+                RuleNumber=123,
+                Protocol='string',
+                RuleAction='allow'|'deny',
+                Egress=True|False,
+                CidrBlock='string',
+                Ipv6CidrBlock='string',
+                IcmpTypeCode={
+                    'Code': 123,
+                    'Type': 123
+                },
+                PortRange={
+                    'From': 123,
+                    'To': 123
+                }
+                DryRun=dry_run)
 
     # Create subnets for app, dbs and web services
     # ELB will require that there is at least one subnet per availability zones.
@@ -2620,15 +2789,27 @@ def create_network(region_name, vpc_cidr, tag_prefix, apps_vpc_cidr=None,
                     raise
 
     # Create an Application ELB and WAF
+    region_logs_bucket = s3_logs_bucket
+    s3_client = boto3.client('s3')
+    resp = s3_client.get_bucket_location(Bucket=s3_logs_bucket)
+    logs_bucket_region_name = resp['LocationConstraint']
+    if logs_bucket_region_name != region_name:
+        # We can't log accross regions, so we need to create a logs bucket
+        # in the same region as the ELB.
+        region_logs_bucket = "%s-%s" % (s3_logs_bucket, region_name)
+        create_logs_bucket(region_logs_bucket, region_name,
+            aws_account_id, # XXX Uses AWS default S3 encryption key
+            tag_prefix=tag_prefix, dry_run=dry_run)
+
     load_balancer_arn = create_elb(
         tag_prefix, web_subnet_by_cidrs, moat_sg_id,
-        s3_logs_bucket=s3_logs_bucket,
+        s3_logs_bucket=region_logs_bucket,
         tls_priv_key=tls_priv_key, tls_fullchain_cert=tls_fullchain_cert,
-        region_name=region_name)
+        region_name=region_name, dry_run=dry_run)
     create_waf(
         tag_prefix,
         elb_arn=load_balancer_arn,
-        s3_logs_bucket=s3_logs_bucket,
+        s3_logs_bucket=region_logs_bucket,
         region_name=region_name,
         dry_run=dry_run)
 
@@ -3023,6 +3204,17 @@ def create_datastores(region_name, app_name,
                 'KmsKeyId': storage_enckey,
                 'Encrypted': True
             })
+    debug_kwargs = {
+        'block_devices': block_devices,
+        'image_id': image_id,
+        'ssh_key_name': ssh_key_name,
+        'instance_type': instance_type,
+        'db_subnet_group_subnet_id': db_subnet_group_subnet_ids[0],
+        'group_ids': group_ids,
+        'instance_profile_arn': instance_profile_arn,
+        'app_name': app_name,
+        'user_data': user_data
+    }
     LOGGER.debug("""
         ec2_client.run_instances(
         BlockDeviceMappings=%(block_devices)s,
@@ -3043,16 +3235,7 @@ def create_datastores(region_name, app_name,
                 'Value': '%(app_name)s'
             }]}],
         UserData='''%(user_data)s''')
-    """ % {
-        'block_devices': block_devices,
-        'image_id': image_id,
-        'ssh_key_name': ssh_key_name,
-        'instance_type': instance_type,
-        'db_subnet_group_subnet_id': db_subnet_group_subnet_ids[0],
-        'group_ids': group_ids,
-        'instance_profile_arn': instance_profile_arn,
-        'app_name': app_name,
-        'user_data': user_data})
+    """, **debug_kwargs)
     resp = ec2_client.run_instances(
         BlockDeviceMappings=block_devices,
         ImageId=image_id,
@@ -3142,6 +3325,7 @@ def create_instances(region_name, app_name, image_name, profiles,
                      ssh_key_name=None,
                      company_domain=None,
                      ldap_host=None,
+                     alarm_notification_sns_arn=None,
                      instance_type=None,
                      security_group_ids=None,
                      instance_profile_arn=None,
@@ -3153,6 +3337,7 @@ def create_instances(region_name, app_name, image_name, profiles,
                      dry_run=False,
                      template_name=None,
                      ec2_client=None,
+                     cloudwatch_client=None,
                      **kwargs):
     """
     Create EC2 instances for application `app_name` based on OS distribution
@@ -3168,6 +3353,8 @@ def create_instances(region_name, app_name, image_name, profiles,
     `identities_url` is the URL from which configuration files that cannot
         or should not be re-created are downloaded from.
     `s3_logs_bucket` contains the S3 Bucket instance logs are uploaded to.
+    `alarm_notification_sns_arn` contains the SNS Topic ARN to which monitoring
+    post alarms.
 
     Connection settings
     -------------------
@@ -3334,7 +3521,7 @@ def create_instances(region_name, app_name, image_name, profiles,
                 }]
                 # Cannot use `SecurityGroups` with `SubnetId`
                 # but can use `SecurityGroupIds`.
-                LOGGER.info("aws ec2 run-instances --region %(region_name)s --block-device-mappings '%(block_devices)s' --image-id %(image_id)s --key-name %(ssh_key_name)s --instance-type %(instance_type)s --iam-instance-profile Arn=%(instance_profile_arn)s --security-group-ids=%(security_group_ids)s  --subnet-id %(subnet_id)s --tag-specifications '%(tag_specifications)s' --user-data file://%(template_name)s" % {
+                debug_kwargs = {
                     'region_name': region_name,
                     'block_devices': ','.join([
                         "%s=%s" % (key, json.dumps(val))
@@ -3349,7 +3536,14 @@ def create_instances(region_name, app_name, image_name, profiles,
                         "%s=%s" % (key, json.dumps(val))
                         for key, val in tag_specifications[0].items()]),
                     'template_name': template_name
-                })
+                }
+                LOGGER.info("aws ec2 run-instances --region %(region_name)s"\
+" --block-device-mappings '%(block_devices)s' --image-id %(image_id)s"\
+" --key-name %(ssh_key_name)s --instance-type %(instance_type)s"\
+" --iam-instance-profile Arn=%(instance_profile_arn)s"\
+" --security-group-ids=%(security_group_ids)s  --subnet-id %(subnet_id)s"\
+" --tag-specifications '%(tag_specifications)s'"\
+" --user-data file://%(template_name)s", **debug_kwargs)
                 resp = ec2_client.run_instances(
                     BlockDeviceMappings=block_devices,
                     ImageId=image_id,
@@ -3357,9 +3551,10 @@ def create_instances(region_name, app_name, image_name, profiles,
                     InstanceType=instance_type,
                     MinCount=1,
                     MaxCount=1,
-#botocore.exceptions.ClientError: An error occurred (InvalidParameterCombination) when calling the RunInstances operation: Network interfaces and an instance-level subnet ID may not be specified on the same request
-#                    SubnetId=subnet_id,
-#                    SecurityGroupIds=security_group_ids,
+                    # A network interfaces and an instance-level subnet ID
+                    # may not be specified on the same request.
+                    #SubnetId=subnet_id,
+                    #SecurityGroupIds=security_group_ids,
                     IamInstanceProfile={'Arn': instance_profile_arn},
                     NetworkInterfaces=network_interfaces,
                     TagSpecifications=tag_specifications,
@@ -3392,6 +3587,35 @@ def create_instances(region_name, app_name, image_name, profiles,
                 LOGGER.info("%s waiting for EC2 instances %s to be"\
                     " operational ...", tag_prefix, instance_ids)
             time.sleep(RETRY_WAIT_DELAY)
+
+        # Create a CPUUtilization alarm on all EC2 instances
+        if not cloudwatch_client:
+            cloudwatch_client = boto3.client(
+                'cloudwatch', region_name=region_name)
+        for instance_id in instance_ids:
+            alarm_name = "%s CPU utilization above 80%%" % instance_id
+            if not dry_run:
+                resp = cloudwatch_client.put_metric_alarm(
+                    AlarmName=alarm_name,
+                    AlarmDescription='Raises alarms if CPU utilization is'\
+                    'above 80% for more than 2 periods.',
+                    AlarmActions=[
+                        alarm_notification_sns_arn,
+                    ],
+                    MetricName='CPUUtilization',
+                    Namespace='AWS/EC2',
+                    Dimensions=[{
+                        'Name': "InstanceId",
+                        'Value': instance_id
+                    }],
+                    Statistic='Average',
+                    Period=300, # 5min
+                    EvaluationPeriods=2,
+                    Threshold=80,
+                    ComparisonOperator='GreaterThanOrEqualToThreshold',
+                    Tags=[{'Key': 'Prefix', 'Value': tag_prefix}])
+                LOGGER.info("%s%s created metric alarm %s",
+                    "(dryrun) " if dry_run else "", tag_prefix, alarm_name)
 
     return instances
 
@@ -3487,11 +3711,17 @@ def create_app_resources(region_name, app_name, image_name, profiles,
                 "Expected queue_url %s but found or created queue %s",
                 queue_url, resp.get("QueueUrl"))
         queue_url = resp.get("QueueUrl")
+        queue_arn = resp.get("QueueArn")
         LOGGER.info("found or created queue. queue_url set to %s", queue_url)
     else:
         if not queue_url:
             queue_url = \
             'https://dry-run-sqs.%(region_name)s.amazonaws.com/%(app_name)s' % {
+                'region_name': region_name,
+                'app_name': app_name
+            }
+            queue_arn = \
+            'arn:aws:sqs:%s:%s' % {
                 'region_name': region_name,
                 'app_name': app_name
             }
@@ -3599,6 +3829,7 @@ def create_app_resources(region_name, app_name, image_name, profiles,
                     }
                 ]
             }))
+
             iam_client.put_role_policy(
                 RoleName=app_role,
                 PolicyName='AgentCtrlMessages',
@@ -3610,12 +3841,48 @@ def create_app_resources(region_name, app_name, image_name, profiles,
                             "sqs:DeleteMessage"
                         ],
                         "Effect": "Allow",
-                        "Resource": "*"
+                        "Resource": queue_arn
                     }]}))
+
+            if identities_url:
+                identities_arn = identities_url.replace(
+                    's3://', 'arn:aws:s3:::')
+                identities_parts = identities_arn.split('/')
+                hostname_parts = identities_parts[-1].split('.')
+                bucket_arn = identities_parts[0]
+                settings_arn = "%s/settings/%s" % (
+                    bucket_arn, hostname_parts[1])
+                tag_prefix_arn = '/'.join(
+                    identities_parts[:-1] + ['.'join(hostname_parts[1:]]))
+                iam_client.put_role_policy(
+                    RoleName=app_role,
+                    PolicyName='ReadIdentities',
+                    PolicyDocument=json.dumps({
+                        "Version": "2012-10-17",
+                        "Statement": [{
+                            "Action": [
+                                "s3:GetObject"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                "%s/*" % settings_arn,
+                                "%s/*" % tag_prefix_arn,
+                                "%s/*" % identities_arn
+                            ]
+                        }, {
+                            "Action": [
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                bucket_arn
+                            ]
+                        }]}))
+
             if s3_logs_bucket:
                 iam_client.put_role_policy(
                     RoleName=app_role,
-                    PolicyName='WritesLogsToStorage',
+                    PolicyName='WriteLogsToStorage',
                     PolicyDocument=json.dumps({
                         "Version": "2012-10-17",
                         "Statement": [{
@@ -4559,20 +4826,20 @@ def run_config(config_name, local_docker=False,
             default_by_regions.update({config_block: config_vars})
 
     # Create network/infrastructure resources
+    aws_account_id = config['default'].get('aws_account_id')
     if not skip_create_network and not skip_create_global_resources:
         create_global_resources(
             s3_logs_bucket=config['default'].get('s3_logs_bucket'),
             s3_identities_bucket=config['default'].get('s3_identities_bucket'),
-            aws_account_id=config['default'].get('aws_account_id'),
+            storage_enckey=config['default'].get('storage_enckey'),
+            aws_account_id=aws_account_id,
             tag_prefix=tag_prefix,
             dry_run=dry_run)
 
     if not local_docker and not skip_create_network:
         for region_name, region_default in default_by_regions.items():
-            create_network(
-                region_name,
-                region_default.get('vpc_cidr'),
-                tag_prefix,
+            create_network(region_name, region_default.get('vpc_cidr'),
+                aws_account_id, tag_prefix,
                 apps_vpc_cidr=region_default.get('apps_vpc_cidr'),
                 tls_priv_key=region_default.get('tls_priv_key'),
                 tls_fullchain_cert=region_default.get('tls_fullchain_cert'),

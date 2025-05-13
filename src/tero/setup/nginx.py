@@ -144,6 +144,7 @@ class nginxSetup(SetupTemplate):
                     for line in org_nginx_conf_file.readlines():
                         if remove_line and re.match(';', line):
                             new_nginx_conf_file.write(
+        "server_tokens off;\n"\
         "log_format  main '$remote_addr $host $http_x_amzn_trace_id '\n"\
         "'[$time_local] \"$request\" $status $body_bytes_sent '\n"\
         "'\"$http_referer\" \"$http_user_agent\" '\n"\
