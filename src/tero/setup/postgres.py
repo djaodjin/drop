@@ -168,7 +168,8 @@ class postgresql_serverSetup(SetupTemplate):
             'postgresql_setup', self.postgresql_setup_candidates)
         if not os.path.exists(postgresql_conf):
             # /var/lib/pgsql/data will be empty unless we run initdb once.
-            tero.shell_command([postgresql_setup, 'initdb'])
+            tero.shell_command(
+                [postgresql_setup, '--initdb', '--unit', 'postgresql'])
 
         listen_addresses = "'localhost'"
         name = self.__class__.__name__[:-len('Setup')].replace('_', '-')
@@ -182,8 +183,10 @@ class postgresql_serverSetup(SetupTemplate):
             db_ssl_key_file = "/etc/pki/tls/private/%s.key" % db_host
             db_ssl_cert_file = "/etc/pki/tls/certs/%s.crt" % db_host
             dh_params = "/etc/ssl/certs/dhparam.pem"
+            # (15.12) The psql client cannot connect to the server
+            # if we use a ecdsa certificate.
             postinst.create_certificate(db_host,
-                company_domain=context.value('companyDomain'))
+                company_domain=context.value('companyDomain'), prev_rsa=True)
             postgresql_conf_settings.update({
                 'ssl': "on",
                 'ssl_cert_file': "'%s'" % db_ssl_cert_file,

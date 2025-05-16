@@ -188,7 +188,7 @@ class PostinstScript(object):
         self.scriptfile.write(' '.join(cmdline) + '\n')
 
     def create_certificate(self, certificate_name,
-                           company_domain=None, comment=None):
+                           company_domain=None, comment=None, prev_rsa=False):
         """
         Shell commands to create a key pair.
         """
@@ -196,17 +196,30 @@ class PostinstScript(object):
         sign_request = '/etc/pki/tls/certs/%s.csr' % certificate_name
         pub_cert = '/etc/pki/tls/certs/%s.crt' % certificate_name
         self.shell_command(['if [ ! -f %s ] ; then' % priv_key])
-        self.shell_command(['echo', '-e',
-            '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
-                '\n%(domain)s\n%(email)s\n\n\n"' % {
-                'domain': certificate_name,
-                'email': 'support@%s' % (
-                    company_domain if company_domain else 'example.com')
-            }, '|',
-            'openssl', 'req', '-new', '-sha256',
-            '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:secp256k1',
-            '-nodes', '-keyout', priv_key, '-out', sign_request],
-            comment=comment)
+        if prev_rsa:
+            self.shell_command(['echo', '-e',
+                '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
+                    '\n%(domain)s\n%(email)s\n\n\n"' % {
+                    'domain': certificate_name,
+                    'email': 'support@%s' % (
+                        company_domain if company_domain else 'example.com')
+                }, '|',
+                'openssl', 'req', '-new', '-sha256',
+                '-newkey', 'rsa:2048',
+                '-nodes', '-keyout', priv_key, '-out', sign_request],
+                comment=comment)
+        else:
+            self.shell_command(['echo', '-e',
+                '"US\nCalifornia\nSan Francisco\nExample inc.\n'\
+                    '\n%(domain)s\n%(email)s\n\n\n"' % {
+                    'domain': certificate_name,
+                    'email': 'support@%s' % (
+                        company_domain if company_domain else 'example.com')
+                }, '|',
+                'openssl', 'req', '-new', '-sha256',
+                '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:secp256k1',
+                '-nodes', '-keyout', priv_key, '-out', sign_request],
+                comment=comment)
         self.shell_command(['openssl', 'x509', '-req', '-days', '365',
             '-in', sign_request, '-signkey', priv_key, '-out', pub_cert])
         self.shell_command(['fi'])
@@ -585,14 +598,12 @@ def stage_file(pathname, context):
         # the original original files when the script is run a second time.
         #
         try:
-            try:
-                user_opt = ['-o', context.value('admin')]
-            except Error:
-                user_opt = []
-            try:
-                group_opt = ['-g', context.value('admin')]
-            except Error:
-                group_opt = []
+            user_opt = []
+            group_opt = []
+            admin = context.value('admin')
+            if admin:
+                user_opt = ['-o', admin]
+                group_opt = ['-g', admin]
             shell_command(['install', '-D', '-p'] + user_opt + group_opt +
                 [pathname, org_path], admin=len(user_opt) > 0)
         except Error as err:
