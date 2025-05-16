@@ -511,6 +511,37 @@ def get_bucket_prefix(location):
     return bucket_name, prefix
 
 
+def get_instances(app_name, region_name=None, ec2_client=None):
+    """
+    Returns all instances and stopped instances for an app.
+    """
+    if not ec2_client:
+        ec2_client = boto3.client('ec2', region_name=region_name)
+    resp = ec2_client.describe_instances(
+        Filters=[
+            {'Name': 'tag:Name', 'Values': ["*%s*" % app_name]},
+            {'Name': 'instance-state-name',
+             'Values': [EC2_RUNNING, EC2_STOPPED, EC2_PENDING]}])
+
+    instances = None
+    instance_ids = []
+    stopped_instance_ids = []
+    for reserv in resp['Reservations']:
+        instances = reserv['Instances']
+        for instance in reserv['Instances']:
+            names = []
+            for tag in instance['Tags']:
+                if tag['Key'] == 'Name':
+                    names = [name.strip() for name in tag['Value'].split(',')]
+                    break
+            if app_name not in names:
+                continue
+            instance_ids += [instance['InstanceId']]
+            if instance['State']['Name'] == EC2_STOPPED:
+                stopped_instance_ids += [instance['InstanceId']]
+    return instances, instance_ids, stopped_instance_ids
+
+
 def is_aws_ecr(container_location):
     """
     return `True` if the container looks like it is stored in an AWS repository.
@@ -1992,7 +2023,8 @@ def create_network(region_name, vpc_cidr, aws_account_id, tag_prefix,
     for network_acl in resp['NetworkAcls']:
         network_acl_id = network_acl['NetworkAclId']
         for entry in network_acl['Entries']:
-            LOGGER.info("%s ACL % with %s rule: %s", tag_prefix, network_acl_id,
+            LOGGER.info("%s ACL %s with %s rule: %s",
+                tag_prefix, network_acl_id,
                 "egress" if entry['Egress'] else "ingress", entry)
         if False:
             ec2_client.create_network_acl_entry(
@@ -2983,26 +3015,6 @@ def create_datastores(region_name, app_name,
     if not db_host:
         db_host = '%s.%s.internal' % (app_name, region_name)
 
-    if db_names:
-        if not identities_url:
-            raise ValueError("`identities_url` cannot be %s" % str(
-                identities_url))
-        search = list_db_meta(
-            "s3://%s/var/migrate/pgsql/dumps" % s3_logs_bucket, db_names)
-        _, s3_identities_bucket, restore_prefix = urlparse(identities_url)[:3]
-        restore_prefix = restore_prefix.strip('/')
-
-        s3_client = boto3.client('s3')
-        for db_name, backups in search.items():
-            backup_key = backups['db'][0][2]
-            backup_url = "s3://%s/%s" % (s3_logs_bucket, backup_key)
-            restore_key = "%s/%s/%s.sql.gz" % (restore_prefix,
-                os.path.dirname(backup_key), db_name)
-            restore_url = "s3://%s/%s" % (s3_identities_bucket, restore_key)
-            LOGGER.info("copy %s to %s ...", backup_url, restore_url)
-            s3_client.copy({'Bucket': s3_logs_bucket, 'Key': backup_key},
-                s3_identities_bucket, restore_key)
-
     sg_tag_prefix = tag_prefix
     if not instance_type:
         instance_type = 'm3.medium'
@@ -3134,18 +3146,52 @@ def create_datastores(region_name, app_name,
         return db_name # XXX do we have an aws id?
 
     # We are going to provision the SQL databases as EC2 instances
-    resp = ec2_client.describe_instances(
-        Filters=[
-            {'Name': 'tag:Name', 'Values': [app_name]},
-            {'Name': 'instance-state-name', 'Values': [EC2_RUNNING]}])
-    previous_instances_ids = []
-    for reserv in resp['Reservations']:
-        for instance in reserv['Instances']:
-            previous_instances_ids += [instance['InstanceId']]
-    if previous_instances_ids:
-        LOGGER.info("%s found already running '%s' on instances %s",
-            tag_prefix, app_name, previous_instances_ids)
-        return previous_instances_ids
+    instances, instance_ids, stopped_instance_ids = get_instances(
+        app_name, ec2_client=ec2_client)
+    if stopped_instance_ids:
+        LOGGER.info("%s restart instances %s for '%s'...",
+            tag_prefix, stopped_instance_ids, app_name)
+        ec2_client.start_instances(
+            InstanceIds=stopped_instance_ids,
+            DryRun=dry_run)
+        LOGGER.info("%s restarted instances %s for '%s'",
+            tag_prefix, stopped_instance_ids, app_name)
+    if instance_ids:
+        LOGGER.info("%s found running instances %s for '%s'",
+            tag_prefix, instance_ids, app_name)
+        # If instances are running and there is a message queue,
+        # we assume the infrastructure for this app is ready to accept
+        # containers.
+        return instance_ids
+
+    # couldn't find instances running, let's prepare to restore db dumps.
+    LOGGER.info(
+        "%s couldn't find running instance for '%s', preparing restore...",
+        tag_prefix, app_name)
+
+    if db_names:
+        if not identities_url:
+            raise ValueError("`identities_url` cannot be %s" % str(
+                identities_url))
+        search = list_db_meta(
+            "s3://%s/var/migrate/pgsql/dumps" % s3_logs_bucket, db_names)
+        _, s3_identities_bucket, restore_prefix = urlparse(identities_url)[:3]
+        restore_prefix = restore_prefix.strip('/')
+
+        s3_client = boto3.client('s3')
+        for db_name, backups in search.items():
+            try:
+                backup_key = backups['db'][0][2]
+                backup_url = "s3://%s/%s" % (s3_logs_bucket, backup_key)
+                restore_key = "%s/%s/%s.sql.gz" % (restore_prefix,
+                    os.path.dirname(backup_key), db_name)
+                restore_url = "s3://%s/%s" % (s3_identities_bucket, restore_key)
+                LOGGER.info("copy %s to %s ...", backup_url, restore_url)
+                s3_client.copy({'Bucket': s3_logs_bucket, 'Key': backup_key},
+                    s3_identities_bucket, restore_key)
+            except IndexError:
+                LOGGER.error("copying backup for db '%s' - search['%s'] = %s",
+                    db_name, db_name, backups)
 
     search_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), 'templates')
@@ -3380,28 +3426,9 @@ def create_instances(region_name, app_name, image_name, profiles,
         template_name = "%s-cloud-init-script.j2" % app_name
     if not ec2_client:
         ec2_client = boto3.client('ec2', region_name=region_name)
-    resp = ec2_client.describe_instances(
-        Filters=[
-            {'Name': 'tag:Name', 'Values': ["*%s*" % app_name]},
-            {'Name': 'instance-state-name',
-             'Values': [EC2_RUNNING, EC2_STOPPED, EC2_PENDING]}])
 
-    instances = None
-    instance_ids = []
-    stopped_instance_ids = []
-    for reserv in resp['Reservations']:
-        instances = reserv['Instances']
-        for instance in reserv['Instances']:
-            names = []
-            for tag in instance['Tags']:
-                if tag['Key'] == 'Name':
-                    names = [name.strip() for name in tag['Value'].split(',')]
-                    break
-            if app_name not in names:
-                continue
-            instance_ids += [instance['InstanceId']]
-            if instance['State']['Name'] == EC2_STOPPED:
-                stopped_instance_ids += [instance['InstanceId']]
+    instances, instance_ids, stopped_instance_ids = get_instances(
+        app_name, ec2_client=ec2_client)
     if stopped_instance_ids:
         LOGGER.info("%s restart instances %s for '%s'...",
             tag_prefix, stopped_instance_ids, app_name)
@@ -3411,7 +3438,7 @@ def create_instances(region_name, app_name, image_name, profiles,
         LOGGER.info("%s restarted instances %s for '%s'",
             tag_prefix, stopped_instance_ids, app_name)
     if instance_ids:
-        LOGGER.info("%s found instances %s for '%s'",
+        LOGGER.info("%s found running instances %s for '%s'",
             tag_prefix, instance_ids, app_name)
         # If instances are running and there is a message queue,
         # we assume the infrastructure for this app is ready to accept
@@ -3712,16 +3739,15 @@ def create_app_resources(region_name, app_name, image_name, profiles,
         LOGGER.info("found or created queue. queue_url set to %s", queue_url)
     else:
         if not queue_url:
-            queue_url = \
-            'https://dry-run-sqs.%(region_name)s.amazonaws.com/%(app_name)s' % {
+            queue_kwargs = {
                 'region_name': region_name,
                 'app_name': app_name
             }
-            queue_arn = \
-            'arn:aws:sqs:%s:%s' % {
-                'region_name': region_name,
-                'app_name': app_name
-            }
+            queue_url = (
+            'https://dry-run-sqs.%(region_name)s.amazonaws.com/%(app_name)s' %
+                queue_kwargs)
+            queue_arn = ('arn:aws:sqs:%(region_name)s:%(app_name)s' %
+                queue_kwargs)
         LOGGER.warning(
             "(dryrun) queue not created. queue_url set to %s", queue_url)
 
