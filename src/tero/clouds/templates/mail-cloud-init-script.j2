@@ -97,5 +97,7 @@ ${siteTop}/bin/dservices -DetcDir=/etc -DlogsLocation={{logs_storage_location}} 
 {% endif %}
 
 # disable what we don't need
-/usr/bin/systemctl stop rpcbind
-/usr/bin/systemctl disable rpcbind
+if [ "$(grep "Amazon Linux release 2023" /etc/system-release)" != "" ]; then
+    /usr/bin/systemctl stop rpcbind
+    /usr/bin/systemctl disable rpcbind
+fi

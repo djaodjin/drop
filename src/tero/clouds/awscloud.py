@@ -3235,7 +3235,7 @@ def create_datastores(region_name, app_name,
                 'Value': '%(app_name)s'
             }]}],
         UserData='''%(user_data)s''')
-    """, **debug_kwargs)
+    """ % debug_kwargs)
     resp = ec2_client.run_instances(
         BlockDeviceMappings=block_devices,
         ImageId=image_id,
@@ -3325,7 +3325,6 @@ def create_instances(region_name, app_name, image_name, profiles,
                      ssh_key_name=None,
                      company_domain=None,
                      ldap_host=None,
-                     alarm_notification_sns_arn=None,
                      instance_type=None,
                      security_group_ids=None,
                      instance_profile_arn=None,
@@ -3353,7 +3352,6 @@ def create_instances(region_name, app_name, image_name, profiles,
     `identities_url` is the URL from which configuration files that cannot
         or should not be re-created are downloaded from.
     `s3_logs_bucket` contains the S3 Bucket instance logs are uploaded to.
-    `alarm_notification_sns_arn` contains the SNS Topic ARN to which monitoring
     post alarms.
 
     Connection settings
@@ -3405,6 +3403,8 @@ def create_instances(region_name, app_name, image_name, profiles,
             if instance['State']['Name'] == EC2_STOPPED:
                 stopped_instance_ids += [instance['InstanceId']]
     if stopped_instance_ids:
+        LOGGER.info("%s restart instances %s for '%s'...",
+            tag_prefix, stopped_instance_ids, app_name)
         ec2_client.start_instances(
             InstanceIds=stopped_instance_ids,
             DryRun=dry_run)
@@ -3543,7 +3543,7 @@ def create_instances(region_name, app_name, image_name, profiles,
 " --iam-instance-profile Arn=%(instance_profile_arn)s"\
 " --security-group-ids=%(security_group_ids)s  --subnet-id %(subnet_id)s"\
 " --tag-specifications '%(tag_specifications)s'"\
-" --user-data file://%(template_name)s", **debug_kwargs)
+" --user-data file://%(template_name)s" % debug_kwargs)
                 resp = ec2_client.run_instances(
                     BlockDeviceMappings=block_devices,
                     ImageId=image_id,
@@ -3599,9 +3599,6 @@ def create_instances(region_name, app_name, image_name, profiles,
                     AlarmName=alarm_name,
                     AlarmDescription='Raises alarms if CPU utilization is'\
                     'above 80% for more than 2 periods.',
-                    AlarmActions=[
-                        alarm_notification_sns_arn,
-                    ],
                     MetricName='CPUUtilization',
                     Namespace='AWS/EC2',
                     Dimensions=[{
@@ -4191,7 +4188,7 @@ def create_sally_resources(region_name, app_name, image_name,
             iam_client=iam_client, tag_prefix=tag_prefix),
         iam_client=iam_client, tag_prefix=tag_prefix, dry_run=dry_run)
 
-    profiles = ['reps/drop/share/profiles/sally.xml']
+    profiles = [app_name]
     instances = create_instances(region_name, app_name, image_name, profiles,
         storage_enckey=storage_enckey,
         s3_logs_bucket=s3_logs_bucket,
