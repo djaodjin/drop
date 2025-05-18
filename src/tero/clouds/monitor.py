@@ -211,7 +211,7 @@ def list_logs(log_location, domains, lognames=['access', 'error'],
     _, bucket_name, prefix = urlparse(log_location)[:3]
     if prefix.startswith('/'):
         prefix = prefix[1:]
-    LOGGER.info("list logs at s3://%s/%s", bucket_name, prefix)
+    LOGGER.debug("list logs at s3://%s/%s", bucket_name, prefix)
     resp = s3_client.list_objects_v2(
         Bucket=bucket_name,
         Prefix=prefix)

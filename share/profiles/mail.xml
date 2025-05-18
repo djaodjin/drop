@@ -82,18 +82,18 @@ maintenance scripts for authentication and communication services
       <dep name="fail2ban">
         <bin>fail2ban-client</bin>
       </dep>
-      <dep name="syslog-ng">
-        <bin>syslog-ng</bin>
-      </dep>
-      <dep name="syslog-ng-libdbi">
-        <lib>dbi</lib>
-      </dep>
-      <dep name="monit">
-        <bin>monit</bin>
-      </dep>
       <!-- mail -->
-      <dep name="clamav">
+      <dep name="clamav1.4">
         <bin>clamscan</bin>
+      </dep>
+      <dep name="clamav1.4-freshclam">
+        <bin>freshclam</bin>
+      </dep>
+      <dep name="clamd1.4">
+        <bin>clamd</bin>
+      </dep>
+      <dep name="clamav1.4-milter">
+        <bin>clamav-milter</bin>
       </dep>
       <dep name="spamassassin">
         <bin>spamc</bin>
@@ -123,7 +123,7 @@ filter="grep spamd: -"
           <smtp>     inet  n       -       n       -       -       smtpd -o content_filter=spamassassin</smtp>
           <submission>     inet  n       -       n       -       -       smtpd -o content_filter=spamassassin</submission>
           <spamassassin> unix -     n       n       -       -       pipe user=spamassassin argv=/usr/bin/spamc -e /usr/sbin/sendmail -oi -f ${sender} ${recipient}</spamassassin>
-          <!-- http://www.linux.com/learn/tutorials/313660:using-clamav-to-kill-viruses-on-postfix -->
+          <!-- https://www.linux.com/training-tutorials/using-clamav-kill-viruses-postfix/ -->
           <scan>unix - - n - 16 smtp -o smtp_send_xforward_command=yes</scan>
         </extra>
       </dep>
