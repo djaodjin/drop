@@ -2761,6 +2761,7 @@ class GitRepository(Repository):
             self.url = context.remote_src_path(self.url)
         if not name:
             url_parts = _urlparse(self.url)
+            log_info("debug: url_parts=%s" % str(url_parts))
             normalized_url = _urlunparse((url_parts.scheme, url_parts.netloc,
                 os.path.normpath(url_parts.path), url_parts.params,
                 url_parts.query, url_parts.fragment))
