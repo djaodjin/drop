@@ -2761,7 +2761,6 @@ class GitRepository(Repository):
             self.url = context.remote_src_path(self.url)
         if not name:
             url_parts = _urlparse(self.url)
-            log_info("debug: url_parts=%s" % str(url_parts))
             normalized_url = _urlunparse((url_parts.scheme, url_parts.netloc,
                 os.path.normpath(url_parts.path), url_parts.params,
                 url_parts.query, url_parts.fragment))
@@ -2795,8 +2794,26 @@ class GitRepository(Repository):
             updated = True
         else:
             os.chdir(local)
+            # Look for the default branch
+            default_branch = 'main'
+            cmdline = ' '.join([git_executable, 'remote', 'show', 'origin'])
+            log_info(cmdline, context=context)
+            cmd = subprocess.Popen(cmdline,
+                                   shell=True,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+            line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
+            while line:
+                log_info(line.strip(), context=context)
+                look = re.match(r'HEAD branch: (\S+)', line)
+                if look:
+                    default_branch = look.group(1)
+                line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
+            cmd.wait()
+            if cmd.returncode != 0:
+                raise Error("'%s' returns code %d" % (cmdline, cmd.returncode))
             # Make sure we are not on a detached HEAD.
-            shell_command([git_executable, 'checkout', 'master'])
+            shell_command([git_executable, 'checkout', default_branch])
             # 'pull' does fetch and rebase all in one.
             cmdline = ' '.join([git_executable, 'pull'])
             log_info(cmdline, context=context)
