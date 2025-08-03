@@ -2805,7 +2805,7 @@ class GitRepository(Repository):
             line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
             while line:
                 log_info(line.strip(), context=context)
-                look = re.match(r'HEAD branch: (\S+)', line)
+                look = re.match(r'\s*HEAD branch: (\S+)', line)
                 if look:
                     default_branch = look.group(1)
                 line = cmd.stdout.readline().decode(DEFAULT_ENCODING)
