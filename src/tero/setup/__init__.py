@@ -596,21 +596,26 @@ def stage_file(pathname, context):
         # Note that we only do that the first time through so unless
         # the original (cache) directory is deleted, we donot overwrite
         # the original original files when the script is run a second time.
-        #
+        user_opt = []
+        group_opt = []
         try:
-            user_opt = []
-            group_opt = []
             admin = context.value('admin')
             if admin:
                 user_opt = ['-o', admin]
                 group_opt = ['-g', admin]
+        except Error as err:
+            # We don't have an 'admin' environment variable. We will be
+            # defaulting to running user.
+            log_info("no 'admin' environment variable."
+                " defaulting to running user running the script.")
+        try:
             shell_command(['install', '-D', '-p'] + user_opt + group_opt +
                 [pathname, org_path], admin=len(user_opt) > 0)
         except Error as err:
             # We sometimes need sudo access to make backup copies of config
             # files (even ones with no credentials). This is just a convoluted
             # way to achieve the first copy before modification.
-            pass
+            log_info("warning: %s" % err)
     if (not os.path.exists(os.path.dirname(new_path))
         and len(os.path.dirname(new_path)) > 0):
         os.makedirs(os.path.dirname(new_path))
