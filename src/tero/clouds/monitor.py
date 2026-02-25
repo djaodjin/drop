@@ -567,6 +567,7 @@ def search_instance_log_storage(log_location, instance_ids,
             log_prefix = None
             app_dates = instance_meta.get('app')
             if app_dates:
+                app_dates.sort(reverse=True)
                 at_time = app_dates[0][0].date().strftime("%Y%m%d")
                 log_prefix = "%s/dintegrity-app.log-%s-%s" % (
                     prefix, instance_id[2:], at_time)

@@ -504,7 +504,10 @@ def find_os_release():
             if look:
                 dist_name = look.group(1)
     if dist_name.startswith('Amazon Linux 2023'):
-        tero.shell_command(['dnf', 'check-update'])
+        try:
+            tero.shell_command(['dnf', 'check-update'])
+        except RuntimeError as err:
+            tero.log_info("warning: updates available")
 
 
 def fingerprint(context, log_path_prefix, skip_usage=False,

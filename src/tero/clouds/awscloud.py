@@ -3383,6 +3383,7 @@ def create_instances(region_name, app_name, image_name, profiles,
                      template_name=None,
                      ec2_client=None,
                      cloudwatch_client=None,
+                     volume_size=8,
                      **kwargs):
     """
     Create EC2 instances for application `app_name` based on OS distribution
@@ -3478,8 +3479,8 @@ def create_instances(region_name, app_name, image_name, profiles,
             'DeleteOnTermination': False,
             #'Iops': 100, # 'not supported for gp2'
             #'SnapshotId': 'string',
-            'VolumeSize': 8,
-            'VolumeType': 'gp2',
+            'VolumeSize': volume_size,
+            'VolumeType': 'gp3',
             'Encrypted': True   # Uses default KMS key for the region by default
         },
         #'NoDevice': 'string'
@@ -3663,6 +3664,7 @@ def create_app_resources(region_name, app_name, image_name, profiles,
                          hosted_zone_id=None,
                          app_prefix=None,
                          tag_prefix=None,
+                         volume_size=8,
                          dry_run=False):
     """
     Create the servers for the application named `app_name` in `region_name`
@@ -4008,7 +4010,8 @@ def create_app_resources(region_name, app_name, image_name, profiles,
         ec2_client=ec2_client,
         settings_location=settings_location if settings_location else "",
         settings_crypt_key=settings_crypt_key if settings_crypt_key else "",
-        queue_url=queue_url)
+        queue_url=queue_url,
+        volume_size=volume_size)
 
     # Associates an internal domain name to the instance
     update_internal_dns = True
@@ -4550,6 +4553,7 @@ def run_app(
         hosted_zone_id=None,      # To set DNS
         app_prefix=None, # account_id for billing purposes
         tag_prefix=None,
+        volume_size=8,
         dry_run=False):
     """
     Creates the resources and deploy an application `app_name` in region
@@ -4612,6 +4616,7 @@ def run_app(
         hosted_zone_id=hosted_zone_id,
         app_prefix=app_prefix,
         tag_prefix=tag_prefix,
+        volume_size=volume_size,
         dry_run=dry_run)
 
     # Environment variables is an array of name/value.
@@ -5059,6 +5064,7 @@ def run_config(config_name, local_docker=False,
                     hosted_zone_id=resources_kwargs.get('hosted_zone_id'),
                     app_prefix=config[config_block].get('app_prefix'),
                     tag_prefix=tag_prefix,
+                    volume_size=config[config_block].get('volume_size', 8),
                     dry_run=dry_run)
 
         if instance_ids:
