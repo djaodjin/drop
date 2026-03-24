@@ -15,6 +15,7 @@ elasticsearch==7.6.0
 urllib3==1.26.20
 
 # prerequisites with native code
+coverage==7.2.7
 # cryptography==43.0.1
 # cysystemd==1.5.4
 

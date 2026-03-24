@@ -217,3 +217,12 @@ def main(input_args):
             with open(os.path.join(location, conf_name), "wb") as dest_file:
                 dest_file.write(encrypted)
     return 0
+
+
+def cli_main():
+    logging.basicConfig(level='INFO')
+    main(sys.argv)
+
+
+if __name__ == '__main__':
+    cli_main()
