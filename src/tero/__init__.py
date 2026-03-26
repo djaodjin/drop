@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024, DjaoDjin inc.
+# Copyright (c) 2026, DjaoDjin inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -52,7 +52,7 @@ __version__ = '1.0.1-dev'
 
 import datetime, getpass, hashlib, inspect, json, locale
 import logging, logging.config
-import re, optparse, os, shutil, socket, stat, subprocess, sys, tempfile
+import re, optparse, os, pwd, shutil, socket, stat, subprocess, sys, tempfile
 import xml.dom.minidom, xml.sax
 
 # Minimal compatibility Python2 / Python3
@@ -4937,31 +4937,39 @@ def shell_command(execute, admin=False, search_path=None, node_path=None,
     '''
     filtered_output = []
     env = os.environ.copy()
+    cmdline = []
     if admin and not (USER or GROUP):
+        change_uid = True
+        try:
+            user_info = pwd.getpwnam(
+                admin if isinstance(admin, string_types) else 'root')
+            if user_info.pw_uid == os.geteuid():
+                change_uid = False
+        except KeyError:
+            pass
         if False:
             # \todo cannot do this simple check because of a shell variable
             # setup before call to apt-get.
             if not execute.startswith('/'):
                 raise Error("admin command without a fully quaified path: "
                     + execute)
-        # ex: su username -c 'sudo port install icu'
-        cmdline = ['/usr/bin/sudo']
-        if USE_DEFAULT_ANSWER:
-            # Error out if sudo prompts for a password because this should
-            # never happen in non-interactive mode.
-            if ASK_PASS:
-                # XXX Workaround while sudo is broken
-                # http://groups.google.com/group/comp.lang.python/\
-                # browse_thread/thread/4c2bb14c12d31c29
-                env['SUDO_ASKPASS'] = ASK_PASS
-                cmdline = cmdline + ['-A']
-            else:
-                cmdline += ['-n']
-        if isinstance(admin, string_types):
-            cmdline += ['-u', admin]
-        cmdline += execute
-    else:
-        cmdline = execute
+        if change_uid:
+            # ex: su username -c 'sudo port install icu'
+            cmdline = ['/usr/bin/sudo']
+            if USE_DEFAULT_ANSWER:
+                # Error out if sudo prompts for a password because this should
+                # never happen in non-interactive mode.
+                if ASK_PASS:
+                    # XXX Workaround while sudo is broken
+                    # http://groups.google.com/group/comp.lang.python/\
+                    # browse_thread/thread/4c2bb14c12d31c29
+                    env['SUDO_ASKPASS'] = ASK_PASS
+                    cmdline = cmdline + ['-A']
+                else:
+                    cmdline += ['-n']
+            if isinstance(admin, string_types):
+                cmdline += ['-u', admin]
+    cmdline += execute
     if search_path:
         env['PATH'] = ':'.join(search_path)
     if node_path:
