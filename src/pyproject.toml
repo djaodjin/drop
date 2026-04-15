@@ -6,7 +6,7 @@ dynamic = ["version"]
 description = "Configures development machines to cloud resources"
 readme = "README.md"
 requires-python = ">=3.7"
-license =  {text = "BSD-2-Clause"}
+license =  "BSD-2-Clause"
 keywords = ["scripts", "cloud", "configure", "paas", "saas"]
 authors = [
   {name = "The DjaoDjin Team", email = "help@djaodjin.com"}
@@ -16,8 +16,7 @@ maintainers = [
 ]
 classifiers = [
   "Environment :: Web Environment",
-  "Programming Language :: Python",
-  "License :: OSI Approved :: BSD License"
+  "Programming Language :: Python"
 ]
 dependencies = [
   "boto3>=1.33.5",
