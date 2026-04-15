@@ -44,7 +44,6 @@ dcloud-ami = "tero.clouds.awscloud:cli_main_ami"
 dservices = "tero.setup.local:cli_main"
 dsettings = "tero.crypt:cli_main"
 #dstamp =
-#dsummarize =
 #dtimeout =
 
 [project.urls]

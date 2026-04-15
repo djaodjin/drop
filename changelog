@@ -1,6 +1,19 @@
 Released versions
 =================
 
+1.1.0
+
+  * adds dsettings command
+  * supports environment variables in dcloud configs
+  * adds otel to profiles
+  * replaces remote_user by trace context
+  * monitors cloud resources more efficiently
+  * separates creation of AMI into dcloud-ami
+  * migrates base AMI to Amazon Linux 2023
+
+ -- Sebastien Mirolo <smirolo@djaodjin.com>  Wed, 15 Apr 2026 09:20:00 -0700
+
+
 1.0.0
 
   * creates pypi package so it can be used as a third-party dependency
