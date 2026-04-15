@@ -1,18 +1,18 @@
-ansible==2.9.20            # mostly for duploades (ElasticSearch) at this point
-boto3==1.38.3              # clouds deploy and logs management
-#Fabric3==1.14.post1        # vmware.py and driver.py
-jinja2==3.1.5              # cloud templates
+ansible==2.9.23rc1         # mostly for duploades (ElasticSearch) at this point
+boto3==1.42.89             # clouds deploy and logs management
+#Fabric3==1.14.post1       # vmware.py and driver.py
+jinja2==3.1.6              # cloud templates
 paramiko==3.5.0            # drundocker.py
 pyasn1_modules==0.4.1      # awscloud.py
-pyOpenSSL==24.2.1          # awscloud.py
-pytz==2024.2               # logs management (dcopylogs, monitor.py, dparselog)
+pyOpenSSL==26.0.0          # awscloud.py
+pytz==2026.1.post1         # logs management (dcopylogs, monitor.py, dparselog)
 requests==2.32.3           # logs management (dcopylogs, monitor.py, dparselog)
 six==1.16.0
 sqlparse==0.5.1            # integrity.py
 
 # used in duploades (ElasticSearch)
 elasticsearch==7.6.0
-urllib3==1.26.20
+urllib3==2.6.3
 
 # prerequisites with native code
 coverage==7.2.7
