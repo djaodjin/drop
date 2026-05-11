@@ -12,7 +12,7 @@ sqlparse==0.5.1            # integrity.py
 
 # used in duploades (ElasticSearch)
 elasticsearch==7.6.0
-urllib3==2.6.3
+urllib3==2.7.0
 
 # prerequisites with native code
 coverage==7.2.7
